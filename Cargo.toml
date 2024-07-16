@@ -17,6 +17,7 @@ proc-macro = true
 [dependencies]
 syn = "1.0"
 quote = "1.0"
+thisenum = "0.1"
 thiserror = "1.0"
 proc-macro2 = "1.0"
 
