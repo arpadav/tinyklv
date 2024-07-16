@@ -1,24 +1,24 @@
 use tinyklv::Klv;
+use tinyklv::prelude::*;
 
-// #[klv(default_enc = (ty = u8, func = "serialize_u8"))]
 #[derive(Klv)]
-#[klv(key_dec = "key_decoder")]
-#[klv(key_enc = "key_encoder")]
-#[klv(len_dec = "len_decoder")]
-#[klv(len_enc = "len_encoder")]
-#[klv(default_dec(ty = u8, func = "deserialize_u8"))]
-// #[klv_set_default_enc_for(ty = u8, func = "serialize_u8")]
+#[klv(decoder(Key, func = "key_decoder"), encoder(Key, func = "key_encoder"))]
+#[klv(Key::Decoder, func = "key_decoder", fixed = false)]
+#[klv(Key::Encoder, func = "key_encoder")]
+#[klv(Len::Decoder, func = "len_decoder", fixed = false)]
+#[klv(Len::Encoder, func = "len_encoder")]
+#[klv(DefaultType::Decoder, ty = u8, func = "deserialize_u8")]
 pub struct MyStruct {
     #[klv(key = b"\x01")]
     #[klv(len = 2)]
-    #[klv(dec = "serialize")]
-    #[klv(enc = "deserialize")]
+    #[klv(Val::Decoder, func = "serialize")]
+    #[klv(Val::Encoder, func = "deserialize")]
     pub BRUHHH: u8,
     
     #[klv(key = b"\x02")]
     #[klv(len = 1)]
-    #[klv(dec = "serialize")]
-    #[klv(enc = "deserialize")]
+    #[klv(Val::Decoder, func = "serialize")]
+    #[klv(Val::Encoder, func = "deserialize")]
     pub b: u8,
 }
 
