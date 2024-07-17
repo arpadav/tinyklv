@@ -9,9 +9,6 @@ use hashbrown::HashMap;
 #[derive(Const)]
 #[armtype(&str)]
 pub(crate) enum KlvStructAttributes {
-    // master derive attribute
-    #[value = "klv"]
-    Klv,
     // key encoder / decoder
     #[value = "key_encoder"]
     KeyEnc,
