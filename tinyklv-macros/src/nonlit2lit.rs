@@ -1,16 +1,17 @@
-use proc_macro::token_stream;
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use regex::Regex;
 use thiserror::Error;
 use lazy_static::lazy_static;
-use quote::{format_ident, quote, ToTokens};
+use quote::{
+    quote,
+    ToTokens,
+};
 
 // --------------------------------------------------
 // constants
 // --------------------------------------------------
-const ARGS_DELIM_CHAR: char = ',';
 lazy_static! {
     static ref PATH_STRUCT_ATTR_RE: Regex = Regex::new(r"#\[(.*?)\((.*?)\)\]").unwrap();
     static ref CNTS_STRUCT_ATTR_RE: Regex = Regex::new(r"#\[.*\((.*?)\)\]").unwrap();
@@ -34,7 +35,6 @@ pub enum ParseError {
 #[derive(Clone)]
 pub(crate) struct StructAttribute {
     pub path: syn::Path,
-    raw_contents: String,
     pub contents: Vec<KeyValPair>
 }
 /// [`StructAttribute`] implementation
@@ -75,7 +75,6 @@ impl StructAttribute {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(StructAttribute {
             path: name,
-            raw_contents: contents_raw.as_str().to_string(),
             contents: contents,
         })
     }
