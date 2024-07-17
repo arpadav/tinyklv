@@ -48,42 +48,56 @@ enum KlvAttributes {
     #[value = "klv"]
     Klv,
     // key encoder / decoder
-    #[value = "key_enc"]
+    #[value = "key_encoder"]
     KeyEnc,
-    #[value = "key_dec"]
+    #[value = "key_decoder"]
     KeyDec,
     // length encoder / decoder
-    #[value = "len_enc"]
+    #[value = "len_encoder"]
     LenEnc,
-    #[value = "len_dec"]
+    #[value = "len_decoder"]
     LenDec,
     // default encoder / decoder
-    // with type + func
-    #[value = "default_enc"]
+    // with type + func + fixed
+    #[value = "default_encoder"]
     DefaultEnc,
-    #[value = "default_dec"]
+    #[value = "default_decoder"]
     DefaultDec,
     #[value = "ty"]
     Type,
     #[value = "func"]
     Func,
+    #[value = "fixed"]
+    Fixed,
     // key
     #[value = "key"]
     Key,
-    #[value = "len"]
     // length
+    #[value = "len"]
     Len,
-    #[value = "enc"]
     // value encoder / decoder
+    #[value = "encoder"]
     Enc,
-    #[value = "dec"]
+    #[value = "decoder"]
     Dec,
-    // for any encoder type, dynamic or static
-    #[value = "dyn"]
-    Dyn,
 }
 
-#[proc_macro_derive(Klv, attributes(klv))]
+#[proc_macro_derive(Klv, attributes(
+    klv,
+    // key_encoder,
+    // key_decoder,
+    // len_encoder,
+    // len_decoder,
+    // default_encoder,
+    // default_decoder,
+    // ty,
+    // func,
+    // fixed,
+    // key,
+    // len,
+    // encoder,
+    // decoder
+))]
 pub fn klv(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     // --------------------------------------------------
@@ -192,6 +206,10 @@ impl std::fmt::Debug for StructAttrs {
 
 fn parse_struct_attr(attr: &Attribute, struct_attrs: &mut StructAttrs) {
     match attr.parse_meta() {
+        Ok(meta) => println!("meta: {:#?}", meta.to_token_stream().to_string()),
+        Err(_) => println!("attr: {:#?}", attr.to_token_stream().to_string()),
+    }
+    match attr.parse_meta() {
         Ok(meta) => match meta {
             Meta::List(meta) => for nested in meta.nested {
                 if let NestedMeta::Meta(Meta::NameValue(mnv)) = nested {
@@ -200,30 +218,26 @@ fn parse_struct_attr(attr: &Attribute, struct_attrs: &mut StructAttrs) {
                         .get_ident()
                         .map(|id| id.to_string())
                     {
-                        Some(val) => match match val.as_str() {
-                            s if KlvAttributes::KeyDec == s => KlvAttributes::KeyDec,
-                            s if KlvAttributes::KeyEnc == s => KlvAttributes::KeyEnc,
-                            s if KlvAttributes::LenDec == s => KlvAttributes::LenDec,
-                            s if KlvAttributes::LenEnc == s => KlvAttributes::LenEnc,
-                            _ => continue,
-                        } {
-                            KlvAttributes::KeyDec => struct_attrs.key_dec = Some(match &mnv.lit {
-                                Lit::Str(lit) => lit.parse().unwrap(),
+                        Some(val) => if let Ok(val) = KlvAttributes::try_from(val.as_str()) {
+                            match val {
+                                KlvAttributes::KeyDec => struct_attrs.key_dec = Some(match &mnv.lit {
+                                    Lit::Str(lit) => lit.parse().unwrap(),
+                                    _ => continue,
+                                }),
+                                KlvAttributes::KeyEnc => struct_attrs.key_enc = Some(match &mnv.lit {
+                                    Lit::Str(lit) => lit.parse().unwrap(),
+                                    _ => continue,
+                                }),
+                                KlvAttributes::LenDec => struct_attrs.len_dec = Some(match &mnv.lit {
+                                    Lit::Str(lit) => lit.parse().unwrap(),
+                                    _ => continue,
+                                }),
+                                KlvAttributes::LenEnc => struct_attrs.len_enc = Some(match &mnv.lit {
+                                    Lit::Str(lit) => lit.parse().unwrap(),
+                                    _ => continue,
+                                }),
                                 _ => continue,
-                            }),
-                            KlvAttributes::KeyEnc => struct_attrs.key_enc = Some(match &mnv.lit {
-                                Lit::Str(lit) => lit.parse().unwrap(),
-                                _ => continue,
-                            }),
-                            KlvAttributes::LenDec => struct_attrs.len_dec = Some(match &mnv.lit {
-                                Lit::Str(lit) => lit.parse().unwrap(),
-                                _ => continue,
-                            }),
-                            KlvAttributes::LenEnc => struct_attrs.len_enc = Some(match &mnv.lit {
-                                Lit::Str(lit) => lit.parse().unwrap(),
-                                _ => continue,
-                            }),
-                            _ => continue,
+                            }
                         }
                         None => continue,
                     }
@@ -239,9 +253,8 @@ fn parse_struct_attr(attr: &Attribute, struct_attrs: &mut StructAttrs) {
                             TokenTree::Ident(ident) => ident,
                             _ => return,
                         };
-                        let wattr = match ident.to_string().as_str() {
-                            s if KlvAttributes::DefaultDec.value() == s => KlvAttributes::DefaultDec,
-                            s if KlvAttributes::DefaultEnc.value() == s => KlvAttributes::DefaultEnc,
+                        let wattr = match KlvAttributes::try_from(ident.to_string().as_str()) {
+                            Ok(wattr) => wattr,
                             _ => return,
                         };
                         let tree = group.stream().into_iter().nth(1).unwrap();
@@ -323,30 +336,26 @@ fn parse_field_attr(attr: &Attribute, field_attrs: &mut FieldAttrs) {
                     .get_ident()
                     .map(|id| id.to_string())
                 {
-                    Some(val) => match match val.as_str() {
-                        s if KlvAttributes::Key.value() == s => KlvAttributes::Key,
-                        s if KlvAttributes::Len.value() == s => KlvAttributes::Len,
-                        s if KlvAttributes::Dec.value() == s => KlvAttributes::Dec,
-                        s if KlvAttributes::Enc.value() == s => KlvAttributes::Enc,
-                        _ => return,
-                    } {
-                        KlvAttributes::Key => field_attrs.key = Some(match &mnv.lit {
-                            Lit::ByteStr(lit) => lit.value(),
+                    Some(val) => if let Ok(val) = KlvAttributes::try_from(val.as_str()) {
+                        match val {
+                            KlvAttributes::Key => field_attrs.key = Some(match &mnv.lit {
+                                Lit::ByteStr(lit) => lit.value(),
+                                _ => continue,
+                            }),
+                            KlvAttributes::Len => field_attrs.len = Some(match &mnv.lit {
+                                Lit::Int(lit) => lit.base10_parse().unwrap(),
+                                _ => continue,
+                            }),
+                            KlvAttributes::Dec => field_attrs.dec = Some(match &mnv.lit {
+                                Lit::Str(lit) => lit.parse().unwrap(),
+                                _ => continue,
+                            }),
+                            KlvAttributes::Enc => field_attrs.enc = Some(match &mnv.lit {
+                                Lit::Str(lit) => lit.parse().unwrap(),
+                                _ => continue,
+                            }),
                             _ => continue,
-                        }),
-                        KlvAttributes::Len => field_attrs.len = Some(match &mnv.lit {
-                            Lit::Int(lit) => lit.base10_parse().unwrap(),
-                            _ => continue,
-                        }),
-                        KlvAttributes::Dec => field_attrs.dec = Some(match &mnv.lit {
-                            Lit::Str(lit) => lit.parse().unwrap(),
-                            _ => continue,
-                        }),
-                        KlvAttributes::Enc => field_attrs.enc = Some(match &mnv.lit {
-                            Lit::Str(lit) => lit.parse().unwrap(),
-                            _ => continue,
-                        }),
-                        _ => continue,
+                        }
                     }
                     None => continue,
                 }
