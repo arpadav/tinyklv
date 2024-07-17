@@ -1,15 +1,18 @@
 [package]
-name = "tinyklv"
+name = "tinyklv-macros"
 version = "0.1.0"
 authors = ["Arpad Voros <arpadav@gmail.com>"]
 license = "MIT"
 description = ""
-repository = "https://github.com/arpadav/tinyklv"
-documentation = "https://docs.rs/tinyklv"
+repository = "https://github.com/arpadav/tinyklv/tinyklv-macros"
+documentation = "https://docs.rs/tinyklv-macros"
 readme = "README.md"
 # keywords = ["enum", "const", "literals", "macro", "parsing"]
 # categories = ["parsing", "memory-management"]
 edition = "2021"
+
+[lib]
+proc-macro = true
 
 [dependencies]
 quote = "1.0"
@@ -17,15 +20,13 @@ thisenum = "0.1"
 thiserror = "1.0"
 hashbrown = "0.14"
 proc-macro2 = "1.0"
-tinyklv-macros = "0.1"
 tinyklv-common = "0.1"
 syn = { version = "1.0", features = ["full"] }
 
 [dev-dependencies]
 
 [patch.crates-io]
-tinyklv-macros = { path = "tinyklv-macros" }
-tinyklv-common = { path = "tinyklv-common" }
+tinyklv-common = { path = "../tinyklv-common" }
 
 [profile.dev]
 opt-level = 0
