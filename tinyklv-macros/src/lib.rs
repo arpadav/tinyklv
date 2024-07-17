@@ -30,7 +30,7 @@ mod klv;
 use klv::*;
 mod types;
 // mod parse_utils;
-mod parse_utils_2;
+mod nonlit2lit;
 use tinyklv_common::prelude;
 
 #[derive(Error, Debug)]
@@ -156,7 +156,7 @@ fn parse_struct_attr(attr: &Attribute, struct_attrs: &mut StructAttrs) {
     match match attr.parse_meta() {
         Ok(meta) => meta,
         Err(_) => {
-            let attr = match parse_utils_2::StructAttribute::new(attr.to_token_stream().to_string()) {
+            let attr = match nonlit2lit::StructAttribute::new(attr.to_token_stream().to_string()) {
                 Ok(attr) => attr.as_attr(),
                 _ => return,
             };
