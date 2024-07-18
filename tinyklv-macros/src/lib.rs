@@ -167,29 +167,29 @@ fn parse_struct_attr(attr: &Attribute, struct_attrs: &mut StructAttrs) {
         Meta::List(meta) => for nested in meta.nested {
             if let NestedMeta::Meta(Meta::NameValue(mnv)) = nested {
                 println!("{}", mnv.to_token_stream());
-                match mnv
-                    .path
-                    .get_ident()
-                    .map(|id| id.to_string())
-                {
-                    Some(val) => match if let Ok(val) = KlvStructAttributes::try_from(val.as_str()) { val } else { continue } {
-                        KlvStructAttributes::KeyDec => struct_attrs.key_dec = Some(sattr.
-                        KlvStructAttributes::KeyEnc => struct_attrs.key_enc = Some(match &mnv.lit {
-                            Lit::Str(lit) => lit.parse().unwrap(),
-                            _ => continue,
-                        }),
-                        KlvStructAttributes::LenDec => struct_attrs.len_dec = Some(match &mnv.lit {
-                            Lit::Str(lit) => lit.parse().unwrap(),
-                            _ => continue,
-                        }),
-                        KlvStructAttributes::LenEnc => struct_attrs.len_enc = Some(match &mnv.lit {
-                            Lit::Str(lit) => lit.parse().unwrap(),
-                            _ => continue,
-                        }),
-                        _ => continue,
-                    }
-                    None => continue,
-                }
+                // match mnv
+                //     .path
+                //     .get_ident()
+                //     .map(|id| id.to_string())
+                // {
+                //     Some(val) => match if let Ok(val) = KlvStructAttributes::try_from(val.as_str()) { val } else { continue } {
+                //         KlvStructAttributes::KeyDec => struct_attrs.key_dec = Some(sattr.
+                //         KlvStructAttributes::KeyEnc => struct_attrs.key_enc = Some(match &mnv.lit {
+                //             Lit::Str(lit) => lit.parse().unwrap(),
+                //             _ => continue,
+                //         }),
+                //         KlvStructAttributes::LenDec => struct_attrs.len_dec = Some(match &mnv.lit {
+                //             Lit::Str(lit) => lit.parse().unwrap(),
+                //             _ => continue,
+                //         }),
+                //         KlvStructAttributes::LenEnc => struct_attrs.len_enc = Some(match &mnv.lit {
+                //             Lit::Str(lit) => lit.parse().unwrap(),
+                //             _ => continue,
+                //         }),
+                //         _ => continue,
+                //     }
+                //     None => continue,
+                // }
             }
         }
         _ => return,
