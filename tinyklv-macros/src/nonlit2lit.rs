@@ -1,13 +1,13 @@
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use regex::Regex;
-use thiserror::Error;
-use lazy_static::lazy_static;
 use quote::{
     quote,
     ToTokens,
 };
+use regex::Regex;
+use thiserror::Error;
+use lazy_static::lazy_static;
 
 // --------------------------------------------------
 // constants
@@ -39,6 +39,7 @@ pub(crate) struct StructAttribute {
 }
 /// [`StructAttribute`] implementation
 impl StructAttribute {
+    /// Creates new [`StructAttribute`]
     pub fn new(s: String) -> Result<Self, ParseError> {
         // --------------------------------------------------
         // name
@@ -79,6 +80,7 @@ impl StructAttribute {
         })
     }
 
+    /// Convert to [`syn::Attribute`]
     pub fn as_attr(&self) -> syn::Attribute {
         let token_stream = self.to_token_stream();
         let result: syn::Attribute = syn::parse_quote! {

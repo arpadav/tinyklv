@@ -29,9 +29,7 @@ use proc_macro::TokenStream;
 mod klv;
 use klv::*;
 mod types;
-// mod parse_utils;
 mod nonlit2lit;
-use tinyklv_common::prelude;
 
 #[derive(Error, Debug)]
 enum Error {
@@ -47,16 +45,12 @@ enum Error {
 
 const NAME: &str = "Klv";
 #[proc_macro_derive(Klv, attributes(
-    klv,
     key_encoder,
     key_decoder,
     len_encoder,
     len_decoder,
     default_encoder,
     default_decoder,
-    // ty,
-    // func,
-    // fixed,
     key,
     len,
     encoder,
