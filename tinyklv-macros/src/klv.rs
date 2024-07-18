@@ -2,6 +2,7 @@
 // --------------------------------------------------
 // external
 // --------------------------------------------------
+use std::any::Any;
 use quote::ToTokens;
 use thisenum::Const;
 use hashbrown::HashMap;
@@ -44,76 +45,53 @@ pub(crate) struct KlvStructAttrProd {
 /// [`KlvStructAttrProd`] implementation of [`Push<StructAttribute>`]
 impl KlvStructAttrProd {
     fn push(&mut self, x: nonlit2lit::StructAttribute) {
-        match KlvStructAttrSum::try_from(x.path.to_token_stream().to_string().as_str()) {
+        match KlvStructAttrSum::try_from(x.path().as_str()) {
             Ok(KlvStructAttrSum::KeyEnc) => self.key_enc = Some(x.contents.into()),
             Ok(KlvStructAttrSum::KeyDec) => self.key_dec = Some(x.contents.into()),
             Ok(KlvStructAttrSum::LenEnc) => self.len_enc = Some(x.contents.into()),
             Ok(KlvStructAttrSum::LenDec) => self.len_dec = Some(x.contents.into()),
-            Ok(KlvStructAttrSum::DefaultEnc) => x.contents
-                .iter()
-                .for_each(|x| self.default_enc.insert(x.typ.unwrap().type_id(), x.into())),
-            Ok(KlvStructAttrSum::DefaultDec) => x.contents
-                .iter()
-                .for_each(|x| self.default_dec.insert(x.typ.unwrap().type_id(), x.into())),
+            Ok(KlvStructAttrSum::DefaultEnc) => {
+                let mut kxap = KlvXcoderArgProd::default();
+                x.contents
+                    .iter()
+                    .for_each(|x| {
+                        if x.key.is_none() || x.val.is_none() { return }
+                        match KlvXcoderArgSum::try_from(x.key.unwrap().to_token_stream().to_string().as_str()) {
+                            Ok(KlvXcoderArgSum::Type) => kxap.ty = Some(x.val.unwrap()),
+                            Ok(KlvXcoderArgSum::Func) => kxap.func = Some(x.val.unwrap()),
+                            Ok(KlvXcoderArgSum::Fixed) => kxap.fixed = x.val.unwrap(),
+                            _ => {}
+                        }
+                    });
+                self.default_enc.insert(kxap.ty.unwrap().type_id(), kxap);
+            },
+            Ok(KlvStructAttrSum::DefaultDec) => {
+                let mut kxap = KlvXcoderArgProd::default();
+                x.contents
+                    .iter()
+                    .for_each(|x| {
+                        if x.key.is_none() || x.val.is_none() { return }
+                        match KlvXcoderArgSum::try_from(x.key.unwrap().to_token_stream().to_string().as_str()) {
+                            Ok(KlvXcoderArgSum::Type) => kxap.ty = Some(x.val.unwrap()),
+                            Ok(KlvXcoderArgSum::Func) => kxap.func = Some(x.val.unwrap()),
+                            Ok(KlvXcoderArgSum::Fixed) => kxap.fixed = x.val.unwrap(),
+                            _ => {}
+                        }
+                    });
+                self.default_dec.insert(kxap.ty.unwrap().type_id(), kxap);
+            },
             Err(_) => {}
         }
     }
 }
-
-// /// [`KlvStructAttrProd`] implementation of [`From<StructAttribute>`]
-// impl From<nonlit2lit::StructAttribute> for KlvStructAttrProd {
-//     fn from(x: nonlit2lit::StructAttribute) -> Self {
-//         match KlvStructAttrSum::try_from(x.path.to_token_stream().to_string().as_str()) {
-//             Ok(KlvStructAttrSum::KeyEnc) => Self {
-//                 key_enc: Some(x.contents),
-//                 ..Default::default()
-//             },
-//             Ok(KlvStructAttrSum::KeyDec) => Self {
-//                 key_dec: Some(x.contents),
-//                 ..Default::default()
-//             },
-//             Ok(KlvStructAttrSum::LenEnc) => Self {
-//                 len_enc: Some(x.contents),
-//                 ..Default::default()
-//             },
-//             Ok(KlvStructAttrSum::LenDec) => Self {
-//                 len_dec: Some(x.contents),
-//                 ..Default::default()
-//             },
-//             Ok(KlvStructAttrSum::DefaultEnc) => {
-//                 let mut default_enc = HashMap::new();
-//                 for (k, v) in x.contents.into_iter() {
-//                     let v = KlvXcoderArgProd {
-//                         ty: Some(v.ty),
-//                         func: Some(v.func),
-//                         fixed: v.fixed,
-//                     };
-//                     default_enc.insert(k, v);
-//                 }
-//                 Self {
-//                     default_enc,
-//                     ..Default::default()
-//                 }
-//             }
-//             Ok(KlvStructAttrSum::DefaultDec) => {
-//                 let mut default_dec = HashMap::new();
-//                 for (k, v) in x.contents.into_iter() {
-//                     let v = KlvXcoderArgProd {
-//                         ty: Some(v.ty),
-//                         func: Some(v.func),
-//                         fixed: v.fixed,
-//                     };
-//                     default_dec.insert(k, v);
-//                 }
-//                 Self {
-//                     default_dec,
-//                     ..Default::default()
-//                 }
-//             }
-//             _ => Self::default(),
-//         }
-//     }
-// }
+/// [`KlvStructAttrProd`] implementation of [`From<Vec<KeyValPair>>`]
+impl From<Vec<nonlit2lit::KeyValPair>> for KlvStructAttrProd {
+    fn from(v: Vec<nonlit2lit::KeyValPair>) -> Self {
+        let mut ret = KlvStructAttrProd::default();
+        v.iter().for_each(|x| ret.push(x.clone()));
+        ret
+    }
+}
 
 #[derive(Const)]
 #[armtype(&str)]

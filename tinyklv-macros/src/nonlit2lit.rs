@@ -88,6 +88,11 @@ impl StructAttribute {
         };
         result
     }
+
+    /// Export the path as a [`String`]
+    pub fn path(&self) -> String {
+        self.path.to_token_stream().to_string()
+    }
 }
 /// [`StructAttribute`] implementation of [`Into<TokenStream>`]
 impl Into<proc_macro2::TokenStream> for StructAttribute {
