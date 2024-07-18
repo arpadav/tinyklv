@@ -41,72 +41,79 @@ pub(crate) struct KlvStructAttrProd {
     pub default_dec: HashMap<std::any::TypeId, KlvXcoderArgProd>,
     pub default_enc: HashMap<std::any::TypeId, KlvXcoderArgProd>,
 }
-// impl std::fmt::Debug for StructAttrs {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         f.debug_struct("StructAttrs")
-//             .field("key_dec", &self.key_dec.as_ref().map_or("None".to_string(), |v| v.to_token_stream().to_string()))
-//             .field("key_enc", &self.key_enc.as_ref().map_or("None".to_string(), |v| v.to_token_stream().to_string()))
-//             .field("len_dec", &self.len_dec.as_ref().map_or("None".to_string(), |v| v.to_token_stream().to_string()))
-//             .field("len_enc", &self.len_enc.as_ref().map_or("None".to_string(), |v| v.to_token_stream().to_string()))
-//             // .field("default_dec", &self.default_dec.as_ref().map_or("None".to_string(), |(t, p)| format!("type: {}, func: {}", t.to_token_stream().to_string(), p.to_token_stream().to_string())))
-//             // .field("default_enc", &self.default_enc.as_ref().map_or("None".to_string(), |(t, p)| format!("type: {}, func: {}", t.to_token_stream().to_string(), p.to_token_stream().to_string())))
-//             .finish()
-//     }
-// }
-/// [`KlvStructAttrProd`] implementation of [`From<StructAttribute>`]
-impl From<nonlit2lit::StructAttribute> for KlvStructAttrProd {
-    fn from(x: nonlit2lit::StructAttribute) -> Self {
+/// [`KlvStructAttrProd`] implementation of [`Push<StructAttribute>`]
+impl KlvStructAttrProd {
+    fn push(&mut self, x: nonlit2lit::StructAttribute) {
         match KlvStructAttrSum::try_from(x.path.to_token_stream().to_string().as_str()) {
-            Ok(KlvStructAttrSum::KeyEnc) => Self {
-                key_enc: Some(x.contents),
-                ..Default::default()
-            },
-            Ok(KlvStructAttrSum::KeyDec) => Self {
-                key_dec: Some(x.contents),
-                ..Default::default()
-            },
-            Ok(KlvStructAttrSum::LenEnc) => Self {
-                len_enc: Some(x.contents),
-                ..Default::default()
-            },
-            Ok(KlvStructAttrSum::LenDec) => Self {
-                len_dec: Some(x.contents),
-                ..Default::default()
-            },
-            Ok(KlvStructAttrSum::DefaultEnc) => {
-                let mut default_enc = HashMap::new();
-                for (k, v) in x.contents.into_iter() {
-                    let v = KlvXcoderArgProd {
-                        ty: Some(v.ty),
-                        func: Some(v.func),
-                        fixed: v.fixed,
-                    };
-                    default_enc.insert(k, v);
-                }
-                Self {
-                    default_enc,
-                    ..Default::default()
-                }
-            }
-            Ok(KlvStructAttrSum::DefaultDec) => {
-                let mut default_dec = HashMap::new();
-                for (k, v) in x.contents.into_iter() {
-                    let v = KlvXcoderArgProd {
-                        ty: Some(v.ty),
-                        func: Some(v.func),
-                        fixed: v.fixed,
-                    };
-                    default_dec.insert(k, v);
-                }
-                Self {
-                    default_dec,
-                    ..Default::default()
-                }
-            }
-            _ => Self::default(),
+            Ok(KlvStructAttrSum::KeyEnc) => self.key_enc = Some(x.contents.into()),
+            Ok(KlvStructAttrSum::KeyDec) => self.key_dec = Some(x.contents.into()),
+            Ok(KlvStructAttrSum::LenEnc) => self.len_enc = Some(x.contents.into()),
+            Ok(KlvStructAttrSum::LenDec) => self.len_dec = Some(x.contents.into()),
+            Ok(KlvStructAttrSum::DefaultEnc) => x.contents
+                .iter()
+                .for_each(|x| self.default_enc.insert(x.typ.unwrap().type_id(), x.into())),
+            Ok(KlvStructAttrSum::DefaultDec) => x.contents
+                .iter()
+                .for_each(|x| self.default_dec.insert(x.typ.unwrap().type_id(), x.into())),
+            Err(_) => {}
         }
     }
 }
+
+// /// [`KlvStructAttrProd`] implementation of [`From<StructAttribute>`]
+// impl From<nonlit2lit::StructAttribute> for KlvStructAttrProd {
+//     fn from(x: nonlit2lit::StructAttribute) -> Self {
+//         match KlvStructAttrSum::try_from(x.path.to_token_stream().to_string().as_str()) {
+//             Ok(KlvStructAttrSum::KeyEnc) => Self {
+//                 key_enc: Some(x.contents),
+//                 ..Default::default()
+//             },
+//             Ok(KlvStructAttrSum::KeyDec) => Self {
+//                 key_dec: Some(x.contents),
+//                 ..Default::default()
+//             },
+//             Ok(KlvStructAttrSum::LenEnc) => Self {
+//                 len_enc: Some(x.contents),
+//                 ..Default::default()
+//             },
+//             Ok(KlvStructAttrSum::LenDec) => Self {
+//                 len_dec: Some(x.contents),
+//                 ..Default::default()
+//             },
+//             Ok(KlvStructAttrSum::DefaultEnc) => {
+//                 let mut default_enc = HashMap::new();
+//                 for (k, v) in x.contents.into_iter() {
+//                     let v = KlvXcoderArgProd {
+//                         ty: Some(v.ty),
+//                         func: Some(v.func),
+//                         fixed: v.fixed,
+//                     };
+//                     default_enc.insert(k, v);
+//                 }
+//                 Self {
+//                     default_enc,
+//                     ..Default::default()
+//                 }
+//             }
+//             Ok(KlvStructAttrSum::DefaultDec) => {
+//                 let mut default_dec = HashMap::new();
+//                 for (k, v) in x.contents.into_iter() {
+//                     let v = KlvXcoderArgProd {
+//                         ty: Some(v.ty),
+//                         func: Some(v.func),
+//                         fixed: v.fixed,
+//                     };
+//                     default_dec.insert(k, v);
+//                 }
+//                 Self {
+//                     default_dec,
+//                     ..Default::default()
+//                 }
+//             }
+//             _ => Self::default(),
+//         }
+//     }
+// }
 
 #[derive(Const)]
 #[armtype(&str)]

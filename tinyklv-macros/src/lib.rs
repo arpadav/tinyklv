@@ -173,7 +173,7 @@ fn parse_struct_attr(attr: &Attribute, struct_attrs: &mut StructAttrs) {
                     .map(|id| id.to_string())
                 {
                     Some(val) => match if let Ok(val) = KlvStructAttributes::try_from(val.as_str()) { val } else { continue } {
-                        KlvStructAttributes::KeyDec => struct_attrs.key_dec = Some(val.),
+                        KlvStructAttributes::KeyDec => struct_attrs.key_dec = Some(sattr.
                         KlvStructAttributes::KeyEnc => struct_attrs.key_enc = Some(match &mnv.lit {
                             Lit::Str(lit) => lit.parse().unwrap(),
                             _ => continue,
