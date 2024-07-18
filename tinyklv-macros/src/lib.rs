@@ -98,36 +98,36 @@ pub fn klv(input: TokenStream) -> TokenStream {
             Some(attrs)
         })
         .collect();
-    // --------------------------------------------------
-    // loop through fields
-    // --------------------------------------------------
-    field_attrs
-        .iter_mut()
-        .for_each(|field_attr| {
-            // --------------------------------------------------
-            // if field type has no decoder/encoder, AND the
-            // default decoder/encoder exists for that type
-            // within struct_attrs, use that
-            // --------------------------------------------------
-            if field_attr.enc.is_none() {
-                match field_attr.typ.as_ref() {
-                    Some(typ) => match struct_attrs.default_enc.get(&typ.type_id()) {
-                        Some(func) => field_attr.enc = Some(func.clone()),
-                        None => (),
-                    },
-                    None => (),
-                }
-            }
-            if field_attr.dec.is_none() {
-                match field_attr.typ.as_ref() {
-                    Some(typ) => match struct_attrs.default_dec.get(&typ.type_id()) {
-                        Some(func) => field_attr.dec = Some(func.clone()),
-                        None => (),
-                    },
-                    None => (),
-                }
-            }
-        });
+    // // --------------------------------------------------
+    // // loop through fields
+    // // --------------------------------------------------
+    // field_attrs
+    //     .iter_mut()
+    //     .for_each(|field_attr| {
+    //         // --------------------------------------------------
+    //         // if field type has no decoder/encoder, AND the
+    //         // default decoder/encoder exists for that type
+    //         // within struct_attrs, use that
+    //         // --------------------------------------------------
+    //         if field_attr.enc.is_none() {
+    //             match field_attr.typ.as_ref() {
+    //                 Some(typ) => match struct_attrs.default_enc.get(&typ.type_id()) {
+    //                     Some(func) => field_attr.enc = Some(func.clone()),
+    //                     None => (),
+    //                 },
+    //                 None => (),
+    //             }
+    //         }
+    //         if field_attr.dec.is_none() {
+    //             match field_attr.typ.as_ref() {
+    //                 Some(typ) => match struct_attrs.default_dec.get(&typ.type_id()) {
+    //                     Some(func) => field_attr.dec = Some(func.clone()),
+    //                     None => (),
+    //                 },
+    //                 None => (),
+    //             }
+    //         }
+    //     });
     // --------------------------------------------------
     // debug
     // --------------------------------------------------
@@ -147,19 +147,23 @@ pub fn klv(input: TokenStream) -> TokenStream {
 }
 
 fn parse_struct_attr(attr: &Attribute, struct_attrs: &mut StructAttrs) {
-    match match attr.parse_meta() {
-        Ok(meta) => meta,
+    let (sattr, attr) = match attr.parse_meta() {
+        Ok(meta) => match nonlit2lit::StructAttribute::new(attr.to_token_stream().to_string()) {
+            Ok(sattr) => (sattr, meta),
+            _ => return,
+        },
         Err(_) => {
-            let attr = match nonlit2lit::StructAttribute::new(attr.to_token_stream().to_string()) {
-                Ok(attr) => attr.as_attr(),
+            let (struct_attr, attr) = match nonlit2lit::StructAttribute::new(attr.to_token_stream().to_string()) {
+                Ok(attr) => (attr, attr.as_attr()),
                 _ => return,
             };
             match attr.parse_meta() {
-                Ok(meta) => meta,
+                Ok(meta) => (struct_attr, meta),
                 Err(_) => return,
             }
         },
-    } {
+    };
+    match attr {
         Meta::List(meta) => for nested in meta.nested {
             if let NestedMeta::Meta(Meta::NameValue(mnv)) = nested {
                 println!("{}", mnv.to_token_stream());
@@ -169,10 +173,7 @@ fn parse_struct_attr(attr: &Attribute, struct_attrs: &mut StructAttrs) {
                     .map(|id| id.to_string())
                 {
                     Some(val) => match if let Ok(val) = KlvStructAttributes::try_from(val.as_str()) { val } else { continue } {
-                        KlvStructAttributes::KeyDec => struct_attrs.key_dec = Some(match &mnv.lit {
-                            Lit::Str(lit) => lit.parse().unwrap(),
-                            _ => continue,
-                        }),
+                        KlvStructAttributes::KeyDec => struct_attrs.key_dec = Some(val.),
                         KlvStructAttributes::KeyEnc => struct_attrs.key_enc = Some(match &mnv.lit {
                             Lit::Str(lit) => lit.parse().unwrap(),
                             _ => continue,

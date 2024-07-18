@@ -106,6 +106,9 @@ impl ToTokens for StructAttribute {
 }
 
 #[derive(Clone)]
+/// Key-Value pair for an attribute input
+/// 
+/// AKA un-successfully parsed [`syn::MetaNameValue`]
 pub(crate) struct KeyValPair {
     pub key: Option<syn::Ident>,
     pub val: Option<syn::Lit>,
@@ -171,5 +174,23 @@ impl ToTokens for KeyValPair {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let token_stream: proc_macro2::TokenStream = self.clone().into();
         tokens.extend(token_stream);
+    }
+}
+/// [`KeyValPair`] implementation of [`Into<MetaNameValue>`]
+impl Into<syn::MetaNameValue> for KeyValPair {
+    fn into(self) -> syn::MetaNameValue {
+        let key = match self.key {
+            Some(x) => x,
+            None => unreachable!(),
+        };
+        let val = match self.val {
+            Some(x) => x,
+            None => unreachable!(),
+        };
+        syn::MetaNameValue {
+            path: key.into(),
+            eq_token: Default::default(),
+            lit: val.into(),
+        }
     }
 }

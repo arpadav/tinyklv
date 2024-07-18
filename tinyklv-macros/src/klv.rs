@@ -6,9 +6,14 @@ use quote::ToTokens;
 use thisenum::Const;
 use hashbrown::HashMap;
 
+// --------------------------------------------------
+// local
+// --------------------------------------------------
+use super::nonlit2lit;
+
 #[derive(Const)]
 #[armtype(&str)]
-pub(crate) enum KlvStructAttributes {
+pub(crate) enum KlvStructAttrSum {
     // key encoder / decoder
     #[value = "key_encoder"]
     KeyEnc,
@@ -28,13 +33,13 @@ pub(crate) enum KlvStructAttributes {
 }
 
 #[derive(Default, Debug)]
-pub(crate) struct StructAttrs {
-    pub key_dec: Option<XcoderArgs>,
-    pub key_enc: Option<XcoderArgs>,
-    pub len_dec: Option<XcoderArgs>,
-    pub len_enc: Option<XcoderArgs>,
-    pub default_dec: HashMap<std::any::TypeId, XcoderArgs>,
-    pub default_enc: HashMap<std::any::TypeId, XcoderArgs>,
+pub(crate) struct KlvStructAttrProd {
+    pub key_dec: Option<KlvXcoderArgProd>,
+    pub key_enc: Option<KlvXcoderArgProd>,
+    pub len_dec: Option<KlvXcoderArgProd>,
+    pub len_enc: Option<KlvXcoderArgProd>,
+    pub default_dec: HashMap<std::any::TypeId, KlvXcoderArgProd>,
+    pub default_enc: HashMap<std::any::TypeId, KlvXcoderArgProd>,
 }
 // impl std::fmt::Debug for StructAttrs {
 //     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -48,10 +53,64 @@ pub(crate) struct StructAttrs {
 //             .finish()
 //     }
 // }
+/// [`KlvStructAttrProd`] implementation of [`From<StructAttribute>`]
+impl From<nonlit2lit::StructAttribute> for KlvStructAttrProd {
+    fn from(x: nonlit2lit::StructAttribute) -> Self {
+        match KlvStructAttrSum::try_from(x.path.to_token_stream().to_string().as_str()) {
+            Ok(KlvStructAttrSum::KeyEnc) => Self {
+                key_enc: Some(x.contents),
+                ..Default::default()
+            },
+            Ok(KlvStructAttrSum::KeyDec) => Self {
+                key_dec: Some(x.contents),
+                ..Default::default()
+            },
+            Ok(KlvStructAttrSum::LenEnc) => Self {
+                len_enc: Some(x.contents),
+                ..Default::default()
+            },
+            Ok(KlvStructAttrSum::LenDec) => Self {
+                len_dec: Some(x.contents),
+                ..Default::default()
+            },
+            Ok(KlvStructAttrSum::DefaultEnc) => {
+                let mut default_enc = HashMap::new();
+                for (k, v) in x.contents.into_iter() {
+                    let v = KlvXcoderArgProd {
+                        ty: Some(v.ty),
+                        func: Some(v.func),
+                        fixed: v.fixed,
+                    };
+                    default_enc.insert(k, v);
+                }
+                Self {
+                    default_enc,
+                    ..Default::default()
+                }
+            }
+            Ok(KlvStructAttrSum::DefaultDec) => {
+                let mut default_dec = HashMap::new();
+                for (k, v) in x.contents.into_iter() {
+                    let v = KlvXcoderArgProd {
+                        ty: Some(v.ty),
+                        func: Some(v.func),
+                        fixed: v.fixed,
+                    };
+                    default_dec.insert(k, v);
+                }
+                Self {
+                    default_dec,
+                    ..Default::default()
+                }
+            }
+            _ => Self::default(),
+        }
+    }
+}
 
 #[derive(Const)]
 #[armtype(&str)]
-pub(crate) enum KlvXcoderArguments {
+pub(crate) enum KlvXcoderArgSum {
     #[value = "type"]
     Type,
     #[value = "func"]
@@ -59,12 +118,12 @@ pub(crate) enum KlvXcoderArguments {
     #[value = "fixed"]
     Fixed,
 }
-pub(crate) struct XcoderArgs {
+pub(crate) struct KlvXcoderArgProd {
     pub ty: Option<syn::Type>,
     pub func: Option<syn::Path>,
     pub fixed: bool,
 }
-impl std::default::Default for XcoderArgs {
+impl std::default::Default for KlvXcoderArgProd {
     fn default() -> Self {
         Self {
             ty: Some(crate::types::u8_slice()),
@@ -73,9 +132,9 @@ impl std::default::Default for XcoderArgs {
         }
     }
 }
-impl std::fmt::Debug for XcoderArgs {
+impl std::fmt::Debug for KlvXcoderArgProd {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("XcoderArgs")
+        f.debug_struct("KlvXcoderArgProd")
             .field("ty", &self.ty.to_token_stream().to_string())
             .field("func", &self.func.to_token_stream().to_string())
             .field("fixed", &self.fixed)
@@ -85,7 +144,7 @@ impl std::fmt::Debug for XcoderArgs {
 
 #[derive(Const)]
 #[armtype(&str)]
-pub(crate) enum KlvFieldAttributes {
+pub(crate) enum KlvFieldAttrSum {
     // key
     #[value = "key"]
     Key,
@@ -100,7 +159,7 @@ pub(crate) enum KlvFieldAttributes {
 }
 
 #[derive(Default)]
-pub(crate) struct FieldAttrs {
+pub(crate) struct KlvFieldAttrProd {
     pub name: Option<syn::Ident>,
     pub typ: Option<syn::Type>,
     pub key: Option<Vec<u8>>,
@@ -108,9 +167,9 @@ pub(crate) struct FieldAttrs {
     pub dec: Option<syn::Path>,
     pub enc: Option<syn::Path>,
 }
-impl std::fmt::Debug for FieldAttrs {
+impl std::fmt::Debug for KlvFieldAttrProd {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("FieldAttrs")
+        f.debug_struct("KlvFieldAttrProd")
             .field("name", &self.name)
             .field("typ", &self.typ.to_token_stream().to_string())
             .field("key", &self.key)
