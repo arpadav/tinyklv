@@ -126,18 +126,19 @@ impl From<Vec<nonlit2lit::KeyValPair>> for KlvXcoderArg {
             let key_rf = x.key.as_ref().unwrap();
             let val_rf = x.val.as_ref().unwrap();
             match KlvXcoderArgValue::try_from(key_rf.to_token_stream().to_string().as_str()) {
-                // this overwrites default!
-                Ok(KlvXcoderArgValue::Type) => ret.typ = match val_rf {
-                    syn::Lit::Str(val) => syn::parse_str::<syn::Type>(&val.value()).ok(),
-                    _ => None,
+                Ok(KlvXcoderArgValue::Type) => if let syn::Lit::Str(val) = val_rf {
+                    if let Ok(val) = syn::parse_str::<syn::Type>(&val.value()) {
+                        ret.typ = Some(val);
+                    }
                 },
-                // this overwrites default!
-                Ok(KlvXcoderArgValue::Func) => ret.func = match val_rf {
-                    syn::Lit::Str(val) => syn::parse_str::<syn::Path>(&val.value()).ok(),
-                    _ => None,
+                Ok(KlvXcoderArgValue::Func) => if let syn::Lit::Str(val) = val_rf {
+                    if let Ok(val) = syn::parse_str::<syn::Path>(&val.value()) {
+                        ret.func = Some(val);
+                    }
                 },
-                // this overwrites default!
-                Ok(KlvXcoderArgValue::Fixed) => ret.fixed = val_rf.to_token_stream().to_string() == "true",
+                Ok(KlvXcoderArgValue::Fixed) => if val_rf.to_token_stream().to_string() == "true" {
+                    ret.fixed = true;
+                },
                 _ => {},
             }
         }

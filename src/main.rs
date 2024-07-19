@@ -1,6 +1,7 @@
 use tinyklv::Klv;
 
 #[derive(Klv)]
+// #[ordered = true]
 #[key_encoder(func = key_encoder_v)]
 #[key_decoder(func = key_decoder_v, fixed = true)]
 #[len_encoder(func = len_encoder_v)]
