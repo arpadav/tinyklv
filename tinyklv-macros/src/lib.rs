@@ -90,9 +90,7 @@ pub fn klv(input: TokenStream) -> TokenStream {
             field
                 .attrs
                 .iter()
-                .find(|attr| true)
-                // .find(|attr| attr.path.is_ident(KlvStructAttributes::Klv.value()))
-                .map(|attr| parse_field_attr(attr, &mut attrs));
+                .for_each(|attr| parse_field_attr(attr, &mut attrs));
             attrs.name = field.ident.clone();
             attrs.typ = Some(field.ty.clone());
             Some(attrs)
@@ -154,42 +152,54 @@ fn parse_struct_attr(attr: &Attribute, struct_attrs: &mut KlvStructAttr) {
     struct_attrs.push(sattr);
 }
 
-fn parse_xcoder_attribute(inner: impl ToString) -> Option<(Type, Path)> {
-    let parts = split_inner_xcoder_attribute(inner)?;
-    match (parts.get(KlvXcoderArgValue::Type.value()), parts.get(KlvXcoderArgValue::Func.value())) {
-        (Some(ty), Some(func)) => {
-            let ty: Type = syn::parse_str(ty.trim_matches('"')).ok()?;
-            let func: Path = syn::parse_str(func.trim_matches('"')).ok()?;
-            Some((ty, func))
-        },
-        _ => None
-    }
-}
+// fn parse_xcoder_attribute(inner: impl ToString) -> Option<(Type, Path)> {
+//     let parts = split_inner_xcoder_attribute(inner)?;
+//     match (parts.get(KlvXcoderArgValue::Type.value()), parts.get(KlvXcoderArgValue::Func.value())) {
+//         (Some(ty), Some(func)) => {
+//             let ty: Type = syn::parse_str(ty.trim_matches('"')).ok()?;
+//             let func: Path = syn::parse_str(func.trim_matches('"')).ok()?;
+//             Some((ty, func))
+//         },
+//         _ => None
+//     }
+// }
 
-fn split_inner_xcoder_attribute(inner: impl ToString) -> Option<HashMap<String, String>> {
-    let parts: HashMap<String, String> = inner
-        .to_string()
-        .trim_matches('(')
-        .trim_matches(')')
-        .split(',')
-        .filter_map(|part| {
-            let mut split = part.splitn(2, '=');
-            match (split.next(), split.next()) {
-                (Some(key), Some(value)) => Some((key.trim().to_string(), value.trim().to_string())),
-                _ => None
-            }
-        })
-        .collect();
-    match parts.is_empty() {
-        true => None,
-        false => Some(parts),
-    }
-}
+// fn split_inner_xcoder_attribute(inner: impl ToString) -> Option<HashMap<String, String>> {
+//     let parts: HashMap<String, String> = inner
+//         .to_string()
+//         .trim_matches('(')
+//         .trim_matches(')')
+//         .split(',')
+//         .filter_map(|part| {
+//             let mut split = part.splitn(2, '=');
+//             match (split.next(), split.next()) {
+//                 (Some(key), Some(value)) => Some((key.trim().to_string(), value.trim().to_string())),
+//                 _ => None
+//             }
+//         })
+//         .collect();
+//     match parts.is_empty() {
+//         true => None,
+//         false => Some(parts),
+//     }
+// }
 
 fn parse_field_attr(attr: &Attribute, field_attrs: &mut KlvFieldAttr) {
+    // println!("{:#?}", attr.to_token_stream().to_string());
+
+    match attr.parse_meta() {
+        Ok(Meta::List(meta)) => {
+            println!("{:#?}", meta.to_token_stream().to_string());
+        }
+        Err(e) => println!("{:#?}", e),
+        _ => return,
+    }
+
     if let Ok(Meta::List(meta)) = attr.parse_meta() {
+        println!("{:#?}", meta.to_token_stream().to_string());
         for nested in meta.nested {
             if let NestedMeta::Meta(Meta::NameValue(mnv)) = nested {
+                // println!("{:#?}", mnv.to_token_stream());
                 match mnv
                     .path
                     .get_ident()
