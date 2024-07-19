@@ -33,12 +33,12 @@ mod nonlit2lit;
 
 #[derive(Error, Debug)]
 enum Error {
-    #[error("`{0}` can only be derived for structs")]
+    #[error("`{0}` can only be derived for structs.")]
     DeriveForNonStruct(String),
-    // #[error("Missing #[armtype = ...] attribute {0}, required for `{1}`-derived enum")]
-    // MissingArmType(String, String),
-    // #[error("Missing #[value = ...] attribute, expected for `{0}`-derived enum")]
-    // MissingValue(String),
+    #[error("Missing required attribute: function in `#[{0}(func = ?)]`.")]
+    MissingFunc(String),
+    #[error("Missing required attribute: type in `#[{0}(typ = ?)]`.")]
+    MissingType(String),
     // #[error("Attemping to parse non-literal attribute for `value`: not yet supported")]
     // NonLiteralValue,
 }
@@ -69,13 +69,13 @@ pub fn klv(input: TokenStream) -> TokenStream {
     // --------------------------------------------------
     // parse struct-level attributes
     // --------------------------------------------------
-    let mut struct_attrs = StructAttrs::default();
+    let mut struct_attrs = KlvStructAttr::default();
     input
         .attrs
         .iter()
         .filter(|attr|
             match attr.path.get_ident() {
-                Some(ident) => KlvStructAttributes::try_from(ident.to_string().as_str()).is_ok(),
+                Some(ident) => KlvStructAttrValue::try_from(ident.to_string().as_str()).is_ok(),
                 None => false,
             }
         )
@@ -86,7 +86,7 @@ pub fn klv(input: TokenStream) -> TokenStream {
     let mut field_attrs: Vec<_> = fields
         .iter()
         .filter_map(|field| {
-            let mut attrs = FieldAttrs::default();
+            let mut attrs = KlvFieldAttr::default();
             field
                 .attrs
                 .iter()
@@ -146,86 +146,17 @@ pub fn klv(input: TokenStream) -> TokenStream {
     unimplemented!()
 }
 
-fn parse_struct_attr(attr: &Attribute, struct_attrs: &mut StructAttrs) {
-    let (sattr, attr) = match attr.parse_meta() {
-        Ok(meta) => match nonlit2lit::StructAttribute::new(attr.to_token_stream().to_string()) {
-            Ok(sattr) => (sattr, meta),
-            _ => return,
-        },
-        Err(_) => {
-            let (struct_attr, attr) = match nonlit2lit::StructAttribute::new(attr.to_token_stream().to_string()) {
-                Ok(attr) => (attr, attr.as_attr()),
-                _ => return,
-            };
-            match attr.parse_meta() {
-                Ok(meta) => (struct_attr, meta),
-                Err(_) => return,
-            }
-        },
-    };
-    match attr {
-        Meta::List(meta) => for nested in meta.nested {
-            if let NestedMeta::Meta(Meta::NameValue(mnv)) = nested {
-                println!("{}", mnv.to_token_stream());
-                // match mnv
-                //     .path
-                //     .get_ident()
-                //     .map(|id| id.to_string())
-                // {
-                //     Some(val) => match if let Ok(val) = KlvStructAttributes::try_from(val.as_str()) { val } else { continue } {
-                //         KlvStructAttributes::KeyDec => struct_attrs.key_dec = Some(sattr.
-                //         KlvStructAttributes::KeyEnc => struct_attrs.key_enc = Some(match &mnv.lit {
-                //             Lit::Str(lit) => lit.parse().unwrap(),
-                //             _ => continue,
-                //         }),
-                //         KlvStructAttributes::LenDec => struct_attrs.len_dec = Some(match &mnv.lit {
-                //             Lit::Str(lit) => lit.parse().unwrap(),
-                //             _ => continue,
-                //         }),
-                //         KlvStructAttributes::LenEnc => struct_attrs.len_enc = Some(match &mnv.lit {
-                //             Lit::Str(lit) => lit.parse().unwrap(),
-                //             _ => continue,
-                //         }),
-                //         _ => continue,
-                //     }
-                //     None => continue,
-                // }
-            }
-        }
+fn parse_struct_attr(attr: &Attribute, struct_attrs: &mut KlvStructAttr) {
+    let sattr = match nonlit2lit::StructAttr::new(attr.to_token_stream().to_string()) {
+        Ok(sattr) => sattr,
         _ => return,
     };
+    struct_attrs.push(sattr);
 }
-//         Err(_) => {
-//             if let Some(meta) = attr.tokens.clone().into_iter().next() {
-//                 if let TokenTree::Group(group) = meta {
-//                     if let Some(inner) = group.stream().into_iter().next() {
-//                         let ident = match inner {
-//                             TokenTree::Ident(ident) => ident,
-//                             _ => return,
-//                         };
-//                         let wattr = match KlvStructAttributes::try_from(ident.to_string().as_str()) {
-//                             Ok(wattr) => wattr,
-//                             _ => return,
-//                         };
-//                         let tree = group.stream().into_iter().nth(1).unwrap();
-//                         let _ = match parse_xcoder_attribute(tree) {
-//                             Some((ty, func)) => match wattr {
-//                                 KlvStructAttributes::DefaultDec => struct_attrs.default_dec.insert(ty.type_id(), func),
-//                                 KlvStructAttributes::DefaultEnc => struct_attrs.default_enc.insert(ty.type_id(), func),
-//                                 _ => None,
-//                             },
-//                             None => return,
-//                         };
-//                     }
-//                 }
-//             }
-//         },
-//     };
-// }
 
 fn parse_xcoder_attribute(inner: impl ToString) -> Option<(Type, Path)> {
     let parts = split_inner_xcoder_attribute(inner)?;
-    match (parts.get(KlvXcoderArguments::Type.value()), parts.get(KlvXcoderArguments::Func.value())) {
+    match (parts.get(KlvXcoderArgValue::Type.value()), parts.get(KlvXcoderArgValue::Func.value())) {
         (Some(ty), Some(func)) => {
             let ty: Type = syn::parse_str(ty.trim_matches('"')).ok()?;
             let func: Path = syn::parse_str(func.trim_matches('"')).ok()?;
@@ -255,7 +186,7 @@ fn split_inner_xcoder_attribute(inner: impl ToString) -> Option<HashMap<String, 
     }
 }
 
-fn parse_field_attr(attr: &Attribute, field_attrs: &mut FieldAttrs) {
+fn parse_field_attr(attr: &Attribute, field_attrs: &mut KlvFieldAttr) {
     if let Ok(Meta::List(meta)) = attr.parse_meta() {
         for nested in meta.nested {
             if let NestedMeta::Meta(Meta::NameValue(mnv)) = nested {
@@ -264,20 +195,20 @@ fn parse_field_attr(attr: &Attribute, field_attrs: &mut FieldAttrs) {
                     .get_ident()
                     .map(|id| id.to_string())
                 {
-                    Some(val) => match if let Ok(val) = KlvFieldAttributes::try_from(val.as_str()) { val } else { continue } {
-                        KlvFieldAttributes::Key => field_attrs.key = Some(match &mnv.lit {
+                    Some(val) => match if let Ok(val) = KlvFieldAttrValue::try_from(val.as_str()) { val } else { continue } {
+                        KlvFieldAttrValue::Key => field_attrs.key = Some(match &mnv.lit {
                             Lit::ByteStr(lit) => lit.value(),
                             _ => continue,
                         }),
-                        KlvFieldAttributes::Len => field_attrs.len = Some(match &mnv.lit {
+                        KlvFieldAttrValue::Len => field_attrs.len = Some(match &mnv.lit {
                             Lit::Int(lit) => lit.base10_parse().unwrap(),
                             _ => continue,
                         }),
-                        KlvFieldAttributes::Dec => field_attrs.dec = Some(match &mnv.lit {
+                        KlvFieldAttrValue::Dec => field_attrs.dec = Some(match &mnv.lit {
                             Lit::Str(lit) => lit.parse().unwrap(),
                             _ => continue,
                         }),
-                        KlvFieldAttributes::Enc => field_attrs.enc = Some(match &mnv.lit {
+                        KlvFieldAttrValue::Enc => field_attrs.enc = Some(match &mnv.lit {
                             Lit::Str(lit) => lit.parse().unwrap(),
                             _ => continue,
                         }),

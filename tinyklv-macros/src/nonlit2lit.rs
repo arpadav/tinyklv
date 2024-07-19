@@ -33,13 +33,13 @@ pub enum ParseError {
 }
 
 #[derive(Clone)]
-pub(crate) struct StructAttribute {
+pub(crate) struct StructAttr {
     pub path: syn::Path,
     pub contents: Vec<KeyValPair>
 }
-/// [`StructAttribute`] implementation
-impl StructAttribute {
-    /// Creates new [`StructAttribute`]
+/// [`StructAttr`] implementation
+impl StructAttr {
+    /// Creates new [`StructAttr`]
     pub fn new(s: String) -> Result<Self, ParseError> {
         // --------------------------------------------------
         // name
@@ -74,14 +74,14 @@ impl StructAttribute {
             .iter()
             .map(KeyValPair::try_from)
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(StructAttribute {
+        Ok(StructAttr {
             path: name,
             contents: contents,
         })
     }
 
     /// Convert to [`syn::Attribute`]
-    pub fn as_attr(&self) -> syn::Attribute {
+    pub fn _as_attr(&self) -> syn::Attribute {
         let token_stream = self.to_token_stream();
         let result: syn::Attribute = syn::parse_quote! {
             #token_stream
@@ -94,16 +94,16 @@ impl StructAttribute {
         self.path.to_token_stream().to_string()
     }
 }
-/// [`StructAttribute`] implementation of [`Into<TokenStream>`]
-impl Into<proc_macro2::TokenStream> for StructAttribute {
+/// [`StructAttr`] implementation of [`Into<TokenStream>`]
+impl Into<proc_macro2::TokenStream> for StructAttr {
     fn into(self) -> proc_macro2::TokenStream {
         let path = self.path;
         let contents = self.contents;
         quote! { #[#path(#(#contents),*)] }
     }
 }
-/// [`StructAttribute`] implementation of [`ToTokens`]
-impl ToTokens for StructAttribute {
+/// [`StructAttr`] implementation of [`ToTokens`]
+impl ToTokens for StructAttr {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let token_stream: proc_macro2::TokenStream = self.clone().into();
         tokens.extend(token_stream);
