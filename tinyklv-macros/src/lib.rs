@@ -6,21 +6,14 @@ use quote::{
     ToTokens,
 };
 use syn::{
-    Lit,
     Meta,
     Data,
-    Type,
-    Path,
     Attribute,
     DataStruct,
-    NestedMeta,
     DeriveInput,
     parse_macro_input,
 };
-use std::any::Any;
 use thiserror::Error;
-use hashbrown::HashMap;
-use proc_macro2::TokenTree;
 use proc_macro::TokenStream;
 
 // --------------------------------------------------
@@ -28,8 +21,9 @@ use proc_macro::TokenStream;
 // --------------------------------------------------
 mod klv;
 use klv::*;
-mod types;
+mod primitives;
 mod nonlit2lit;
+use primitives::Push;
 
 #[derive(Error, Debug)]
 enum Error {
@@ -39,8 +33,14 @@ enum Error {
     MissingFunc(String),
     #[error("Missing required attribute: type in `#[{0}(typ = ?)]`.")]
     MissingType(String),
-    // #[error("Attemping to parse non-literal attribute for `value`: not yet supported")]
-    // NonLiteralValue,
+    #[error("Attemping to parse non-integer value for `len`: {0}")]
+    NonIntLength(String),
+    #[error("Attemping to parse non-byte string for `key`: {0}")]
+    NonByteStrKey(String),
+    #[error("Encoder type mismatch: `#[encoder(typ = {0})]`, but expected {1} from variant `{2}`.")]
+    EncoderTypeMismatch(String, String, String),
+    #[error("Decoder type mismatch: `#[decoder(typ = {0})]`, but expected {1} from variant `{2}`.")]
+    DecoderTypeMismatch(String, String, String),
 }
 
 const NAME: &str = "Klv";
@@ -96,36 +96,65 @@ pub fn klv(input: TokenStream) -> TokenStream {
             Some(attrs)
         })
         .collect();
-    // // --------------------------------------------------
-    // // loop through fields
-    // // --------------------------------------------------
-    // field_attrs
-    //     .iter_mut()
-    //     .for_each(|field_attr| {
-    //         // --------------------------------------------------
-    //         // if field type has no decoder/encoder, AND the
-    //         // default decoder/encoder exists for that type
-    //         // within struct_attrs, use that
-    //         // --------------------------------------------------
-    //         if field_attr.enc.is_none() {
-    //             match field_attr.typ.as_ref() {
-    //                 Some(typ) => match struct_attrs.default_enc.get(&typ.type_id()) {
-    //                     Some(func) => field_attr.enc = Some(func.clone()),
-    //                     None => (),
-    //                 },
-    //                 None => (),
-    //             }
-    //         }
-    //         if field_attr.dec.is_none() {
-    //             match field_attr.typ.as_ref() {
-    //                 Some(typ) => match struct_attrs.default_dec.get(&typ.type_id()) {
-    //                     Some(func) => field_attr.dec = Some(func.clone()),
-    //                     None => (),
-    //                 },
-    //                 None => (),
-    //             }
-    //         }
-    //     });
+    // --------------------------------------------------
+    // loop through fields, update encoder / decoder
+    // using default types and struct attributes for
+    // default encoder / decoder, if needed
+    // --------------------------------------------------
+    field_attrs
+        .iter_mut()
+        .for_each(|field_attr| {
+            // --------------------------------------------------
+            // if field has no encoder, AND the
+            // default encoder exists for that type
+            // within struct_attrs, use that
+            // --------------------------------------------------
+            // if field has no type, use the type
+            // from the variant definition. otherwise,
+            // if there is a mismatch, raise an error
+            // --------------------------------------------------
+            if field_attr.enc.is_none() {
+                match field_attr.typ.as_ref() {
+                    Some(typ) => match struct_attrs.default_enc.get(&typ.to_token_stream().to_string()) {
+                        Some(func) => field_attr.enc = Some(func.clone()),
+                        None => (),
+                    },
+                    None => (),
+                }
+            } else if let Some(enc_typ) = &field_attr.enc.as_ref().unwrap().typ {
+                let enc_typ_str = enc_typ.to_token_stream().to_string();
+                let variant_typ_str = field_attr.typ.as_ref().unwrap().to_token_stream().to_string();
+                let variant_name_str = field_attr.name.as_ref().unwrap().to_token_stream().to_string();
+                if enc_typ_str != variant_typ_str { panic!("{}", Error::EncoderTypeMismatch(enc_typ_str, variant_typ_str, variant_name_str)); }
+            } else {
+                field_attr.enc.as_mut().unwrap().typ = Some(field_attr.typ.as_ref().unwrap().clone());
+            }
+            // --------------------------------------------------
+            // if field has no decoder, AND the
+            // default decoder exists for that type
+            // within struct_attrs, use that
+            // --------------------------------------------------
+            // if field has no type, use the type
+            // from the variant definition. otherwise,
+            // if there is a mismatch, raise an error
+            // --------------------------------------------------
+            if field_attr.dec.is_none() {
+                match field_attr.typ.as_ref() {
+                    Some(typ) => match struct_attrs.default_dec.get(&typ.to_token_stream().to_string()) {
+                        Some(func) => field_attr.dec = Some(func.clone()),
+                        None => (),
+                    },
+                    None => (),
+                }
+            } else if let Some(dec_typ) = &field_attr.dec.as_ref().unwrap().typ {
+                let dec_typ_str = dec_typ.to_token_stream().to_string();
+                let variant_typ_str = field_attr.typ.as_ref().unwrap().to_token_stream().to_string();
+                let variant_name_str = field_attr.name.as_ref().unwrap().to_token_stream().to_string();
+                if dec_typ_str != variant_typ_str { panic!("{}", Error::DecoderTypeMismatch(dec_typ_str, variant_typ_str, variant_name_str)); }
+            } else {
+                field_attr.dec.as_mut().unwrap().typ = Some(field_attr.typ.as_ref().unwrap().clone());
+            }
+        });
     // --------------------------------------------------
     // debug
     // --------------------------------------------------
@@ -144,89 +173,31 @@ pub fn klv(input: TokenStream) -> TokenStream {
     unimplemented!()
 }
 
+/// Parses a struct-level attribute and pushes it to the
+/// [`KlvStructAttr`] struct
 fn parse_struct_attr(attr: &Attribute, struct_attrs: &mut KlvStructAttr) {
-    let sattr = match nonlit2lit::StructAttr::new(attr.to_token_stream().to_string()) {
+    let sattr = match nonlit2lit::ListedAttr::new(attr.to_token_stream().to_string()) {
         Ok(sattr) => sattr,
         _ => return,
     };
     struct_attrs.push(sattr);
 }
 
-// fn parse_xcoder_attribute(inner: impl ToString) -> Option<(Type, Path)> {
-//     let parts = split_inner_xcoder_attribute(inner)?;
-//     match (parts.get(KlvXcoderArgValue::Type.value()), parts.get(KlvXcoderArgValue::Func.value())) {
-//         (Some(ty), Some(func)) => {
-//             let ty: Type = syn::parse_str(ty.trim_matches('"')).ok()?;
-//             let func: Path = syn::parse_str(func.trim_matches('"')).ok()?;
-//             Some((ty, func))
-//         },
-//         _ => None
-//     }
-// }
-
-// fn split_inner_xcoder_attribute(inner: impl ToString) -> Option<HashMap<String, String>> {
-//     let parts: HashMap<String, String> = inner
-//         .to_string()
-//         .trim_matches('(')
-//         .trim_matches(')')
-//         .split(',')
-//         .filter_map(|part| {
-//             let mut split = part.splitn(2, '=');
-//             match (split.next(), split.next()) {
-//                 (Some(key), Some(value)) => Some((key.trim().to_string(), value.trim().to_string())),
-//                 _ => None
-//             }
-//         })
-//         .collect();
-//     match parts.is_empty() {
-//         true => None,
-//         false => Some(parts),
-//     }
-// }
-
+/// Parses a field-level attribute and pushes it to the
+/// [`KlvFieldAttr`] struct
 fn parse_field_attr(attr: &Attribute, field_attrs: &mut KlvFieldAttr) {
-    // println!("{:#?}", attr.to_token_stream().to_string());
-
     match attr.parse_meta() {
-        Ok(Meta::List(meta)) => {
-            println!("{:#?}", meta.to_token_stream().to_string());
+        Ok(Meta::NameValue(mnv)) => {
+            let kvp = match nonlit2lit::KeyValPair::try_from(mnv) {
+                Ok(kvp) => kvp,
+                Err(e) => panic!("{}", e),
+            };
+            field_attrs.push(kvp);
+        },
+        Err(_) => match nonlit2lit::ListedAttr::new(attr.to_token_stream().to_string()) {
+            Ok(sattr) => field_attrs.push(sattr),
+            _ => return,
         }
-        Err(e) => println!("{:#?}", e),
         _ => return,
-    }
-
-    if let Ok(Meta::List(meta)) = attr.parse_meta() {
-        println!("{:#?}", meta.to_token_stream().to_string());
-        for nested in meta.nested {
-            if let NestedMeta::Meta(Meta::NameValue(mnv)) = nested {
-                // println!("{:#?}", mnv.to_token_stream());
-                match mnv
-                    .path
-                    .get_ident()
-                    .map(|id| id.to_string())
-                {
-                    Some(val) => match if let Ok(val) = KlvFieldAttrValue::try_from(val.as_str()) { val } else { continue } {
-                        KlvFieldAttrValue::Key => field_attrs.key = Some(match &mnv.lit {
-                            Lit::ByteStr(lit) => lit.value(),
-                            _ => continue,
-                        }),
-                        KlvFieldAttrValue::Len => field_attrs.len = Some(match &mnv.lit {
-                            Lit::Int(lit) => lit.base10_parse().unwrap(),
-                            _ => continue,
-                        }),
-                        KlvFieldAttrValue::Dec => field_attrs.dec = Some(match &mnv.lit {
-                            Lit::Str(lit) => lit.parse().unwrap(),
-                            _ => continue,
-                        }),
-                        KlvFieldAttrValue::Enc => field_attrs.enc = Some(match &mnv.lit {
-                            Lit::Str(lit) => lit.parse().unwrap(),
-                            _ => continue,
-                        }),
-                        _ => continue,
-                    }
-                    None => continue,
-                }
-            }
-        }
     }
 }

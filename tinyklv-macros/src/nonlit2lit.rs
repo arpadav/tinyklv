@@ -33,13 +33,25 @@ pub enum ParseError {
 }
 
 #[derive(Clone)]
-pub(crate) struct StructAttr {
+/// [`ListedAttr`]
+/// 
+/// AKA un-successfully parsed [`syn::MetaList`]
+/// 
+/// # Example
+/// 
+/// `#[<path>(<contents>)]`
+/// 
+/// # Variants
+/// 
+/// * path: [`syn::Path`]
+/// * contents: [`Vec<KeyValPair>`]
+pub(crate) struct ListedAttr {
     pub path: syn::Path,
     pub contents: Vec<KeyValPair>
 }
-/// [`StructAttr`] implementation
-impl StructAttr {
-    /// Creates new [`StructAttr`]
+/// [`ListedAttr`] implementation
+impl ListedAttr {
+    /// Creates new [`ListedAttr`]
     pub fn new(s: String) -> Result<Self, ParseError> {
         // --------------------------------------------------
         // name
@@ -74,7 +86,7 @@ impl StructAttr {
             .iter()
             .map(KeyValPair::try_from)
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(StructAttr {
+        Ok(ListedAttr {
             path: name,
             contents: contents,
         })
@@ -94,16 +106,16 @@ impl StructAttr {
         self.path.to_token_stream().to_string()
     }
 }
-/// [`StructAttr`] implementation of [`Into<TokenStream>`]
-impl Into<proc_macro2::TokenStream> for StructAttr {
+/// [`ListedAttr`] implementation of [`Into<TokenStream>`]
+impl Into<proc_macro2::TokenStream> for ListedAttr {
     fn into(self) -> proc_macro2::TokenStream {
         let path = self.path;
         let contents = self.contents;
         quote! { #[#path(#(#contents),*)] }
     }
 }
-/// [`StructAttr`] implementation of [`ToTokens`]
-impl ToTokens for StructAttr {
+/// [`ListedAttr`] implementation of [`ToTokens`]
+impl ToTokens for ListedAttr {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let token_stream: proc_macro2::TokenStream = self.clone().into();
         tokens.extend(token_stream);
@@ -114,9 +126,39 @@ impl ToTokens for StructAttr {
 /// Key-Value pair for an attribute input
 /// 
 /// AKA un-successfully parsed [`syn::MetaNameValue`]
+/// 
+/// This will correctly parse a non-literal value (raw
+/// string without quotes) and convert it to a literal
+/// to be used in later parsing.
+/// 
+/// # Example
+/// 
+/// `key = val`
+/// 
+/// # Variants
+/// 
+/// * key: [`syn::Ident`]
+/// * val: [`syn::Lit`]
 pub(crate) struct KeyValPair {
     pub key: Option<syn::Ident>,
     pub val: Option<syn::Lit>,
+}
+/// [`KeyValPair`] implementation
+impl KeyValPair {
+    /// Return the key as a [`Option<String>`]
+    pub fn key(&self) -> Option<String> {
+        match &self.key {
+            Some(x) => Some(x.to_token_stream().to_string()),
+            None => None,
+        }
+    }
+    /// Return the value as a [`Option<String>`]
+    pub fn _val(&self) -> Option<String> {
+        match &self.val {
+            Some(x) => Some(x.to_token_stream().to_string()),
+            None => None,
+        }
+    }
 }
 /// [`KeyValPair`] implementation of [`TryFrom<&String>`]
 impl TryFrom<&String> for KeyValPair {
@@ -197,5 +239,19 @@ impl Into<syn::MetaNameValue> for KeyValPair {
             eq_token: Default::default(),
             lit: val.into(),
         }
+    }
+}
+/// [`KeyValPair`] implementation of [`TryFrom<MetaNameValue>`]
+impl TryFrom<syn::MetaNameValue> for KeyValPair {
+    type Error = ParseError;
+    fn try_from(x: syn::MetaNameValue) -> Result<Self, Self::Error> { 
+        let key = match syn::parse_str::<syn::Ident>(&x.path.to_token_stream().to_string().as_str()) {
+            Ok(x) => Some(x),
+            Err(e) => return Err(ParseError::KeyError(format!("{}", e))),
+        };
+        Ok(KeyValPair {
+            key: key,
+            val: Some(x.lit),
+        })
     }
 }
