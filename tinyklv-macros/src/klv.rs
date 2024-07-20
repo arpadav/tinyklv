@@ -2,7 +2,6 @@
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use std::any::Any;
 use quote::ToTokens;
 use thisenum::Const;
 use hashbrown::HashMap;
@@ -10,10 +9,14 @@ use hashbrown::HashMap;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::nonlit2lit;
+use crate::primitives;
+use crate::nonlit2lit;
 
 #[derive(Const)]
 #[armtype(&str)]
+/// [`KlvStructAttrValue`], to hold a
+/// reference to all the attribute names 
+/// for the KLV-defined struct
 pub(crate) enum KlvStructAttrValue {
     // key encoder / decoder
     #[value = "key_encoder"]
@@ -34,6 +37,8 @@ pub(crate) enum KlvStructAttrValue {
 }
 
 #[derive(Default, Debug)]
+/// [`KlvStructAttr`], to hold all the 
+/// attribute values for the KLV-defined struct
 pub(crate) struct KlvStructAttr {
     pub key_dec: Option<KlvXcoderArg>,
     pub key_enc: Option<KlvXcoderArg>,
@@ -42,9 +47,23 @@ pub(crate) struct KlvStructAttr {
     pub default_dec: HashMap<String, KlvXcoderArg>,
     pub default_enc: HashMap<String, KlvXcoderArg>,
 }
-/// [`KlvStructAttr`] implementation of [`Push<StructAttr>`]
-impl KlvStructAttr {
-    pub fn push(&mut self, x: nonlit2lit::StructAttr) {
+/// [`KlvStructAttr`] implementation
+impl primitives::Push<nonlit2lit::ListedAttr> for KlvStructAttr {
+    /// See [`primitives::Push::push`]
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if the function attribute for any of the
+    /// following attribute names within [`KlvStructAttr`]
+    /// has a missing `func` attribute value:
+    /// 
+    /// - `key_encoder`
+    /// - `key_decoder`
+    /// - `len_encoder`
+    /// - `len_decoder`
+    /// - `default_encoder`
+    /// - `default_decoder` 
+    fn push(&mut self, x: nonlit2lit::ListedAttr) {
         match KlvStructAttrValue::try_from(x.path().as_str()) {
             Ok(KlvStructAttrValue::KeyEnc) => self.key_enc = {
                 let res: KlvXcoderArg = x.contents.into();
@@ -85,6 +104,9 @@ impl KlvStructAttr {
 
 #[derive(Const)]
 #[armtype(&str)]
+/// [`KlvXcoderArgValue`], to hold
+/// a reference to all the encoder/decoder
+/// input argument names
 pub(crate) enum KlvXcoderArgValue {
     #[value = "typ"]
     Type,
@@ -93,22 +115,32 @@ pub(crate) enum KlvXcoderArgValue {
     #[value = "fixed"]
     Fixed,
 }
+
+#[derive(Clone)]
+/// [`KlvXcoderArg`], to hold all the
+/// encoder/decoder input argument values
+/// for the KLV-defined struct and/or fields
 pub(crate) struct KlvXcoderArg {
     pub typ: Option<syn::Type>,
     pub func: Option<syn::Path>,
     pub fixed: bool,
 }
+/// [`KlvXcoderArg`] implementation
 impl KlvXcoderArg {
+    /// Return a default [`KlvXcoderArg`],
+    /// with the addition of the `typ` field
+    /// being set to [`primitives::u8_slice`]
     pub fn deftype(mut self) -> Self {
         match self.typ {
             Some(_) => self,
             None => {
-                self.typ = Some(crate::types::u8_slice());
+                self.typ = Some(crate::primitives::u8_slice());
                 self
             }
         }
     }
 }
+/// [`KlvXcoderArg`] implementation of [`std::default::Default`]
 impl std::default::Default for KlvXcoderArg {
     fn default() -> Self {
         Self {
@@ -118,11 +150,15 @@ impl std::default::Default for KlvXcoderArg {
         }
     }
 }
+/// [`KlvXcoderArg`] implementation of [`std::convert::From<Vec<nonlit2lit::KeyValPair>>`](nonlit2lit::KeyValPair)
 impl From<Vec<nonlit2lit::KeyValPair>> for KlvXcoderArg {
+    /// Iterate through a [`Vec`] of [`nonlit2lit::KeyValPair`]
+    /// and assigns them to the appropriate fields in
+    /// the [`KlvXcoderArg`]
     fn from(v: Vec<nonlit2lit::KeyValPair>) -> Self {
         let mut ret = KlvXcoderArg::default();
         for x in v.iter() {
-            if x.key.is_none() || x.val.is_none() { continue }
+            if x.key.is_none() | x.val.is_none() { continue }
             let key_rf = x.key.as_ref().unwrap();
             let val_rf = x.val.as_ref().unwrap();
             match KlvXcoderArgValue::try_from(key_rf.to_token_stream().to_string().as_str()) {
@@ -145,6 +181,7 @@ impl From<Vec<nonlit2lit::KeyValPair>> for KlvXcoderArg {
         ret
     }
 }
+/// [`KlvXcoderArg`] implementation of [`std::fmt::Debug`]
 impl std::fmt::Debug for KlvXcoderArg {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("KlvXcoderArg")
@@ -177,18 +214,72 @@ pub(crate) struct KlvFieldAttr {
     pub typ: Option<syn::Type>,
     pub key: Option<Vec<u8>>,
     pub len: Option<usize>,
-    pub dec: Option<syn::Path>,
-    pub enc: Option<syn::Path>,
+    pub dec: Option<KlvXcoderArg>,
+    pub enc: Option<KlvXcoderArg>,
 }
+impl primitives::Push<nonlit2lit::ListedAttr> for KlvFieldAttr {
+    /// See [`primitives::Push::push`]
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if the function attribute for `encoder` or `decoder`
+    /// within [`KlvFieldAttr`] is missing
+    fn push(&mut self, x: nonlit2lit::ListedAttr) {
+        match KlvFieldAttrValue::try_from(x.path().as_str()) {
+            Ok(KlvFieldAttrValue::Enc) => self.enc = {
+                let mut res: KlvXcoderArg = x.contents.into();
+                if res.func.is_none() { panic!("{}", crate::Error::MissingFunc(KlvFieldAttrValue::Enc.value().into())) }
+                res.typ = self.typ.clone();
+                Some(res)
+            },
+            Ok(KlvFieldAttrValue::Dec) => self.dec = {
+                let mut res: KlvXcoderArg = x.contents.into();
+                if res.func.is_none() { panic!("{}", crate::Error::MissingFunc(KlvFieldAttrValue::Dec.value().into())) }
+                res.typ = self.typ.clone();
+                Some(res)
+            },
+            _ => {}
+        }
+    }
+}
+
+impl primitives::Push<nonlit2lit::KeyValPair> for KlvFieldAttr {
+    /// See [`primitives::Push::push`]
+    /// 
+    /// # Panics
+    /// 
+    /// Panics if the function attribute for values for `key` or `len`
+    /// [`KlvFieldAttr`] are invalid formats
+    fn push(&mut self, x: nonlit2lit::KeyValPair) {
+        if let Some(key) = x.key() {
+            match KlvFieldAttrValue::try_from(key.as_str()) {
+                Ok(KlvFieldAttrValue::Key) => if let Some(val) = x.val { match val {
+                    syn::Lit::ByteStr(lit) => self.key = Some(lit.value()),
+                    _ => panic!("{}", crate::Error::NonByteStrKey(val.to_token_stream().to_string())),
+                }},
+                Ok(KlvFieldAttrValue::Len) => if let Some(val) = x.val { match val {
+                    syn::Lit::Int(lit) => self.len = Some(match lit.base10_parse() {
+                        Ok(val) => val,
+                        Err(_) => panic!("{}", crate::Error::NonIntLength(lit.to_token_stream().to_string())),
+                    }),
+                    _ => panic!("{}", crate::Error::NonIntLength(val.to_token_stream().to_string())),
+                }},
+                _ => {}
+            }
+        }
+    }
+}
+
 impl std::fmt::Debug for KlvFieldAttr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // let dec = self.dec.as_ref().map(|x| x.to_token_stream().to_string());
         f.debug_struct("KlvFieldAttr")
             .field("name", &self.name)
             .field("typ", &self.typ.to_token_stream().to_string())
             .field("key", &self.key)
             .field("len", &self.len)
-            .field("dec", &self.dec.to_token_stream().to_string())
-            .field("enc", &self.enc.to_token_stream().to_string())
+            .field("dec", &self.dec)
+            .field("enc", &self.enc)
             .finish()
     }
 }

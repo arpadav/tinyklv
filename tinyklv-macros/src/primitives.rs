@@ -12,3 +12,8 @@ pub fn u8_slice() -> syn::Type {
         })),
     })
 }
+
+pub(crate) trait Push<T> {
+    fn push(&mut self, item: T);
+    // fn extend<I: Iterator<Item = T>>(&mut self, iter: I);
+}
