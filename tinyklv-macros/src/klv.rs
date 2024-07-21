@@ -9,7 +9,6 @@ use hashbrown::HashMap;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::primitives;
 use crate::nonlit2lit;
 
 #[derive(Const)]
@@ -48,8 +47,8 @@ pub(crate) struct KlvStructAttr {
     pub default_enc: HashMap<String, KlvXcoderArg>,
 }
 /// [`KlvStructAttr`] implementation
-impl primitives::Push<nonlit2lit::ListedAttr> for KlvStructAttr {
-    /// See [`primitives::Push::push`]
+impl Push<nonlit2lit::ListedAttr> for KlvStructAttr {
+    /// See [`Push::push`]
     /// 
     /// # Panics
     /// 
@@ -129,12 +128,12 @@ pub(crate) struct KlvXcoderArg {
 impl KlvXcoderArg {
     /// Return a default [`KlvXcoderArg`],
     /// with the addition of the `typ` field
-    /// being set to [`primitives::u8_slice`]
+    /// being set to [`u8_slice`]
     pub fn deftype(mut self) -> Self {
         match self.typ {
             Some(_) => self,
             None => {
-                self.typ = Some(crate::primitives::u8_slice());
+                self.typ = Some(u8_slice());
                 self
             }
         }
@@ -217,8 +216,9 @@ pub(crate) struct KlvFieldAttr {
     pub dec: Option<KlvXcoderArg>,
     pub enc: Option<KlvXcoderArg>,
 }
-impl primitives::Push<nonlit2lit::ListedAttr> for KlvFieldAttr {
-    /// See [`primitives::Push::push`]
+/// [`KlvFieldAttr`] implementation of [`Push`] for [`nonlit2lit::ListedAttr`]
+impl Push<nonlit2lit::ListedAttr> for KlvFieldAttr {
+    /// See [`Push::push`]
     /// 
     /// # Panics
     /// 
@@ -242,9 +242,9 @@ impl primitives::Push<nonlit2lit::ListedAttr> for KlvFieldAttr {
         }
     }
 }
-
-impl primitives::Push<nonlit2lit::KeyValPair> for KlvFieldAttr {
-    /// See [`primitives::Push::push`]
+/// [`KlvFieldAttr`] implementation of [`Push`] for [`nonlit2lit::KeyValPair`]
+impl Push<nonlit2lit::KeyValPair> for KlvFieldAttr {
+    /// See [`Push::push`]
     /// 
     /// # Panics
     /// 
@@ -269,7 +269,7 @@ impl primitives::Push<nonlit2lit::KeyValPair> for KlvFieldAttr {
         }
     }
 }
-
+/// [`KlvFieldAttr`] implementation of [`std::fmt::Debug`]
 impl std::fmt::Debug for KlvFieldAttr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // let dec = self.dec.as_ref().map(|x| x.to_token_stream().to_string());
@@ -282,4 +282,24 @@ impl std::fmt::Debug for KlvFieldAttr {
             .field("enc", &self.enc)
             .finish()
     }
+}
+
+pub(crate) trait Push<T> {
+    fn push(&mut self, item: T);
+    // fn extend<I: Iterator<Item = T>>(&mut self, iter: I);
+}
+
+pub fn u8_slice() -> syn::Type {
+    syn::Type::Reference(syn::TypeReference {
+        and_token: Default::default(),
+        lifetime: None,
+        mutability: None,
+        elem: Box::new(syn::Type::Slice(syn::TypeSlice {
+            bracket_token: Default::default(),
+            elem: Box::new(syn::Type::Path(syn::TypePath {
+                qself: None,
+                path: syn::parse_quote! { u8 },
+            })),
+        })),
+    })
 }

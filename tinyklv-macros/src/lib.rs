@@ -21,9 +21,7 @@ use proc_macro::TokenStream;
 // --------------------------------------------------
 mod klv;
 use klv::*;
-mod primitives;
 mod nonlit2lit;
-use primitives::Push;
 
 #[derive(Error, Debug)]
 enum Error {
