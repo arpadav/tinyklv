@@ -160,6 +160,27 @@ impl KeyValPair {
         }
     }
 }
+/// [`KeyValPair`] implementation of [`Into<TokenStream>`]
+impl Into<proc_macro2::TokenStream> for KeyValPair {
+    fn into(self) -> proc_macro2::TokenStream {
+        let key = match self.key {
+            Some(x) => x.to_token_stream(),
+            None => quote!(),
+        };
+        let val = match self.val {
+            Some(x) => x.to_token_stream(),
+            None => quote!(),
+        };
+        quote!(#key = #val)
+    }
+}
+/// [`KeyValPair`] implementation of [`ToTokens`]
+impl ToTokens for KeyValPair {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let token_stream: proc_macro2::TokenStream = self.clone().into();
+        tokens.extend(token_stream);
+    }
+}
 /// [`KeyValPair`] implementation of [`TryFrom<&String>`]
 impl TryFrom<&String> for KeyValPair {
     type Error = ParseError;
@@ -200,27 +221,6 @@ impl TryFrom<&String> for KeyValPair {
             key,
             val,
         })
-    }
-}
-/// [`KeyValPair`] implementation of [`Into<TokenStream>`]
-impl Into<proc_macro2::TokenStream> for KeyValPair {
-    fn into(self) -> proc_macro2::TokenStream {
-        let key = match self.key {
-            Some(x) => x.to_token_stream(),
-            None => quote!(),
-        };
-        let val = match self.val {
-            Some(x) => x.to_token_stream(),
-            None => quote!(),
-        };
-        quote!(#key = #val)
-    }
-}
-/// [`KeyValPair`] implementation of [`ToTokens`]
-impl ToTokens for KeyValPair {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let token_stream: proc_macro2::TokenStream = self.clone().into();
-        tokens.extend(token_stream);
     }
 }
 /// [`KeyValPair`] implementation of [`Into<MetaNameValue>`]
