@@ -17,3 +17,7 @@ pub(crate) trait Push<T> {
     fn push(&mut self, item: T);
     // fn extend<I: Iterator<Item = T>>(&mut self, iter: I);
 }
+
+pub trait Encoder {
+    fn encode(&self, input: &[u8]) -> nom::IResult<&[u8], &[u8]>;
+}
