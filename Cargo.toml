@@ -11,21 +11,20 @@ readme = "README.md"
 # categories = ["parsing", "memory-management"]
 edition = "2021"
 
+[lib]
+proc-macro = true
+
 [dependencies]
 quote = "1.0"
+regex = "1.10"
 thisenum = "0.1"
 thiserror = "1.0"
 hashbrown = "0.14"
 proc-macro2 = "1.0"
-tinyklv-macros = "0.1"
-tinyklv-common = "0.1"
+lazy_static = "1.5"
 syn = { version = "1.0", features = ["full"] }
 
 [dev-dependencies]
-
-[patch.crates-io]
-tinyklv-macros = { path = "tinyklv-macros" }
-tinyklv-common = { path = "tinyklv-common" }
 
 [profile.dev]
 opt-level = 0

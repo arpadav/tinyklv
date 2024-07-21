@@ -8,7 +8,7 @@ use tinyklv::Klv;
 // optional, as many as you like
 #[default_encoder(typ = u8, func = serialize_u8)]
 #[default_decoder(typ = u8, func = deserialize_u8)]
-#[default_encoder(typ = Vec<f32>, func = serialize_u8)]
+#[default_encoder(typ = Vec<f16>, func = serialize_u8)]
 #[default_decoder(typ = Vec<f32>, func = deserialize_u8)]
 pub struct MyStruct {
     #[key = b"\x01"]
