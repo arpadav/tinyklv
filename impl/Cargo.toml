@@ -1,15 +1,12 @@
 [package]
-name = "tinyklv-macros"
+name = "tinyklv-impl"
 version = "0.1.0"
 authors = ["Arpad Voros <arpadav@gmail.com>"]
 license = "MIT"
-description = ""
-repository = "https://github.com/arpadav/tinyklv/tinyklv-macros"
-documentation = "https://docs.rs/tinyklv-macros"
-readme = "README.md"
-# keywords = ["enum", "const", "literals", "macro", "parsing"]
-# categories = ["parsing", "memory-management"]
+description = "Implementation detail of the `tinyklv` crate"
+repository = "https://github.com/arpadav/tinyklv"
 edition = "2021"
+publish = false
 
 [lib]
 proc-macro = true
@@ -23,6 +20,7 @@ thiserror = "1.0"
 hashbrown = "0.14"
 proc-macro2 = "1.0"
 lazy_static = "1.5"
+convert_case = "0.6"
 syn = { version = "1.0", features = ["full"] }
 
 [dev-dependencies]

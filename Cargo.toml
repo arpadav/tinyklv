@@ -13,10 +13,7 @@ edition = "2021"
 
 [dependencies]
 nom = "7.1"
-tinyklv-macros = "0.1"
-
-[patch.crates-io]
-tinyklv-macros = { path = "tinyklv-macros" }
+tinyklv-impl = { version = "0.1", path = "impl" }
 
 [dev-dependencies]
 

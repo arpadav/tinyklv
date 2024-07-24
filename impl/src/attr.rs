@@ -53,6 +53,7 @@ pub(crate) struct ListedAttr {
 impl ListedAttr {
     /// Creates new [`ListedAttr`]
     pub fn new(s: String) -> Result<Self, ParseError> {
+        let s: String = s.chars().filter(|&c| !c.is_whitespace() || c == '\n').collect();
         // --------------------------------------------------
         // name
         // --------------------------------------------------
@@ -140,37 +141,25 @@ impl ToTokens for ListedAttr {
 /// * key: [`syn::Ident`]
 /// * val: [`syn::Lit`]
 pub(crate) struct KeyValPair {
-    pub key: Option<syn::Ident>,
-    pub val: Option<syn::Lit>,
+    pub key: syn::Ident,
+    pub val: syn::Lit,
 }
 /// [`KeyValPair`] implementation
 impl KeyValPair {
-    /// Return the key as a [`Option<String>`]
-    pub fn key(&self) -> Option<String> {
-        match &self.key {
-            Some(x) => Some(x.to_token_stream().to_string()),
-            None => None,
-        }
+    /// Return the key as a [`String`]
+    pub fn key(&self) -> String {
+        self.key.to_token_stream().to_string()
     }
-    /// Return the value as a [`Option<String>`]
-    pub fn _val(&self) -> Option<String> {
-        match &self.val {
-            Some(x) => Some(x.to_token_stream().to_string()),
-            None => None,
-        }
+    /// Return the value as a [`String`]
+    pub fn val(&self) -> String {
+        self.val.to_token_stream().to_string()
     }
 }
 /// [`KeyValPair`] implementation of [`Into<TokenStream>`]
 impl Into<proc_macro2::TokenStream> for KeyValPair {
     fn into(self) -> proc_macro2::TokenStream {
-        let key = match self.key {
-            Some(x) => x.to_token_stream(),
-            None => quote!(),
-        };
-        let val = match self.val {
-            Some(x) => x.to_token_stream(),
-            None => quote!(),
-        };
+        let key = self.key.to_token_stream();
+        let val = self.val.to_token_stream();
         quote!(#key = #val)
     }
 }
@@ -197,7 +186,7 @@ impl TryFrom<&String> for KeyValPair {
             None => return Err(ParseError::KeyError(s.into())),
         };
         let key = match syn::parse_str::<syn::Ident>(&key) {
-            Ok(x) => Some(x),
+            Ok(x) => x,
             Err(e) => return Err(ParseError::KeyError(format!("{}: {}", s, e))),
         };
         // --------------------------------------------------
@@ -208,9 +197,9 @@ impl TryFrom<&String> for KeyValPair {
             None => return Err(ParseError::ValError(s.into())),
         };
         let val = match syn::parse_str::<syn::Lit>(&val) {
-            Ok(x) => Some(x),
+            Ok(x) => x,
             Err(_) =>  match syn::parse_str::<syn::Lit>(&format!("\"{}\"", val)) {
-                Ok(x) => Some(x),
+                Ok(x) => x,
                 Err(e) => return Err(ParseError::ValError(format!("{}: {}", s, e))),
             }
         };
@@ -226,18 +215,10 @@ impl TryFrom<&String> for KeyValPair {
 /// [`KeyValPair`] implementation of [`Into<MetaNameValue>`]
 impl Into<syn::MetaNameValue> for KeyValPair {
     fn into(self) -> syn::MetaNameValue {
-        let key = match self.key {
-            Some(x) => x,
-            None => unreachable!(),
-        };
-        let val = match self.val {
-            Some(x) => x,
-            None => unreachable!(),
-        };
         syn::MetaNameValue {
-            path: key.into(),
+            path: self.key.into(),
             eq_token: Default::default(),
-            lit: val.into(),
+            lit: self.val.into(),
         }
     }
 }
@@ -246,12 +227,12 @@ impl TryFrom<syn::MetaNameValue> for KeyValPair {
     type Error = ParseError;
     fn try_from(x: syn::MetaNameValue) -> Result<Self, Self::Error> { 
         let key = match syn::parse_str::<syn::Ident>(&x.path.to_token_stream().to_string().as_str()) {
-            Ok(x) => Some(x),
+            Ok(x) => x,
             Err(e) => return Err(ParseError::KeyError(format!("{}", e))),
         };
         Ok(KeyValPair {
             key: key,
-            val: Some(x.lit),
+            val: x.lit,
         })
     }
 }
