@@ -303,3 +303,10 @@ pub fn u8_slice() -> syn::Type {
         })),
     })
 }
+
+pub fn usize() -> syn::Type {
+    syn::Type::Path(syn::TypePath {
+        qself: None,
+        path: syn::parse_quote! { usize },
+    })
+}
