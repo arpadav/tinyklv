@@ -158,17 +158,83 @@ pub fn klv(input: TokenStream) -> TokenStream {
     // --------------------------------------------------
     println!("{:#?}", struct_attrs);
     println!("{:#?}", field_attrs);
+    let something = gen_xcoder_impls(&struct_attrs, &field_attrs);
     // --------------------------------------------------
     // generate code
     // --------------------------------------------------
-    // let expanded = quote! {
-    //     // #[derive(Clone, Copy)]
-    //     // #input
-    //     // #field_attrs
-    //     // #struct_attrs
+    let expanded = quote! {
+        #something
+        // #[derive(Clone, Copy)]
+        // #input
+        // #field_attrs
+        // #struct_attrs
+    };
+    TokenStream::from(expanded)
+    // unimplemented!()
+}
+
+fn gen_xcoder_impls(struct_attrs: &KlvStructAttr, field_attrs: &Vec<KlvFieldAttr>) -> proc_macro2::TokenStream {
+    let key_dec = struct_attrs.key_dec.as_ref().unwrap_or_else(|| panic!("{}", Error::MissingFunc(KlvStructAttrValue::KeyDec.value().into())));
+    let key_dec_ty = key_dec.typ.to_token_stream();
+    let key_dec_fn = key_dec.func.to_token_stream();
+    let key_dec_ts = quote! {
+        impl tinyklv::KeyDecoder<#key_dec_ty> for fn(&[u8]) -> nom::IResult<&[u8], #key_dec_ty> {
+            fn key_decode(&self, input: &[u8]) -> nom::IResult<&[u8], #key_dec_ty> {
+                (self)(input)
+            }
+        }
+    };
+    let key_enc = struct_attrs.key_enc.as_ref().unwrap_or_else(|| panic!("{}", Error::MissingFunc(KlvStructAttrValue::KeyEnc.value().into())));
+    let key_enc_ty = key_enc.typ.to_token_stream();
+    let key_enc_fn = key_enc.func.to_token_stream();
+    let key_enc_ts = quote! {
+        impl tinyklv::KeyEncoder<#key_enc_ty> for fn(#key_enc_ty) -> Vec<u8> {
+            fn key_encode(&self, input: #key_enc_ty) -> Vec<u8> {
+                (self)(input)
+            }
+        }
+    };
+    let len_dec = struct_attrs.len_dec.as_ref().unwrap_or_else(|| panic!("{}", Error::MissingFunc(KlvStructAttrValue::LenDec.value().into())));
+    let len_dec_ty = len_dec.typ.to_token_stream();
+    let len_dec_fn = len_dec.func.to_token_stream();
+    let len_dec_ts = quote! {
+        impl tinyklv::LenDecoder<#len_dec_ty> for fn(#len_dec_ty) -> nom::IResult<&[u8], #len_dec_ty> {
+            fn len_decode(&self, input: &[u8]) -> nom::IResult<&[u8], #len_dec_ty> {
+                (self)(input)
+            }
+        }
+    };
+    let len_enc = struct_attrs.len_enc.as_ref().unwrap_or_else(|| panic!("{}", Error::MissingFunc(KlvStructAttrValue::LenEnc.value().into())));
+    let len_enc_ty = len_enc.typ.to_token_stream();
+    let len_enc_fn = len_enc.func.to_token_stream();
+    let len_enc_ts = quote! {
+        impl tinyklv::LenEncoder<#len_enc_ty> for fn(#len_enc_ty) -> Vec<u8> {
+            fn len_encode(&self, input: #len_enc_ty) -> Vec<u8> {
+                (self)(input)
+            }
+        }
+    };
+    // let len_dec = struct_attrs.len_dec.as_ref().unwrap();
+    // let len_enc = struct_attrs.len_enc.as_ref().unwrap();
+    // let res = quote! {
+    //     impl tinyklv::Encoder<#typ> for fn(#typ) -> Vec<u8> {
+    //         fn encode(&self, input: #typ) -> Vec<u8> {
+    //             (self)(input)
+    //         }
+    //     }
+    //     impl tinyklv::FixedDecoder<#typ> for fn(&[u8; #len]) -> #typ {
+    //         const LEN: usize = #len;
+    //         fn decode(&self, input: &[u8; #len]) -> #typ {
+    //             (self)(input)
+    //         }
+    //     }
     // };
-    // TokenStream::from(expanded)
-    unimplemented!()
+    return quote! {
+        #key_dec_ts
+        #key_enc_ts
+        #len_dec_ts
+        #len_enc_ts
+    };
 }
 
 /// Parses a struct-level attribute and pushes it to the
