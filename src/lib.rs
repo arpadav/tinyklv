@@ -1,37 +1,37 @@
 #![feature(generic_const_exprs)]
 pub use tinyklv_macros::*;
 
-pub trait Encoder<V> {
-    fn encode(&self, input: V) -> Vec<u8>;
+pub trait Encoder<T> {
+    fn encode(&self, input: T) -> Vec<u8>;
 }
 
-pub trait KeyEncoder<V> {
-    fn key_encode(&self, input: V) -> Vec<u8>;
+pub trait KeyEncoder<T> {
+    fn key_encode(&self, input: T) -> Vec<u8>;
 }
 
-pub trait LenEncoder<V> {
-    fn len_encode(&self, input: V) -> Vec<u8>;
+pub trait LenEncoder<T> {
+    fn len_encode(&self, input: T) -> Vec<u8>;
 }
 
-pub trait KeyDecoder<V> {
-    fn key_decode(&self, input: &[u8]) -> nom::IResult<&[u8], V>;
+pub trait KeyDecoder<T> {
+    fn key_decode(&self, input: &[u8]) -> nom::IResult<&[u8], T>;
 }
 
-pub trait LenDecoder<V> {
-    fn len_decode(&self, input: &[u8]) -> nom::IResult<&[u8], V>;
+pub trait LenDecoder<T> {
+    fn len_decode(&self, input: &[u8]) -> nom::IResult<&[u8], T>;
 }
 
-pub trait FixedDecoder<V> {
+pub trait FixedDecoder<T> {
     const LEN: usize;
-    fn decode(&self, input: &[u8; Self::LEN]) -> V;
+    fn decode(&self, input: &[u8; Self::LEN]) -> T;
 }
 
-pub fn check_encoder<V, F: Encoder<V>>(_func: F) {}
-pub fn check_key_encoder<V, F: KeyEncoder<V>>(_func: F) {}
-pub fn check_len_encoder<V, F: LenEncoder<V>>(_func: F) {}
-pub fn check_key_decoder<V, F: KeyDecoder<V>>(_func: F) {}
-pub fn check_len_decoder<V, F: LenDecoder<V>>(_func: F) {}
-pub fn check_fixed_decoder<V, F: FixedDecoder<V>>(_func: F) {}
+pub fn check_encoder<T, F: Encoder<T>>(_func: F) {}
+pub fn check_key_encoder<T, F: KeyEncoder<T>>(_func: F) {}
+pub fn check_len_encoder<T, F: LenEncoder<T>>(_func: F) {}
+pub fn check_key_decoder<T, F: KeyDecoder<T>>(_func: F) {}
+pub fn check_len_decoder<T, F: LenDecoder<T>>(_func: F) {}
+pub fn check_fixed_decoder<T, F: FixedDecoder<T>>(_func: F) {}
 
 impl FixedDecoder<Vec<f32>> for fn(&[u8; 2]) -> Vec<f32> {
     const LEN: usize = 2;
