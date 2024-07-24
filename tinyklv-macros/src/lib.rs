@@ -14,7 +14,7 @@ use syn::{
     parse_macro_input,
 };
 use thiserror::Error;
-use proc_macro::TokenStream;
+use proc_macro2::TokenStream;
 
 // --------------------------------------------------
 // local
@@ -54,12 +54,12 @@ const NAME: &str = "Klv";
     encoder,
     decoder
 ))]
-pub fn klv(input: TokenStream) -> TokenStream {
+pub fn klv(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     // --------------------------------------------------
     // extract the name, variants, and values
     // --------------------------------------------------
-    let struct_name = &input.ident;
+    let struct_name = &input.ident.to_token_stream();
     let fields = match input.data {
         Data::Struct(DataStruct { fields, .. }) => fields,
         _ => panic!("{}", Error::DeriveForNonStruct(NAME.into())),
@@ -158,7 +158,7 @@ pub fn klv(input: TokenStream) -> TokenStream {
     // --------------------------------------------------
     println!("{:#?}", struct_attrs);
     println!("{:#?}", field_attrs);
-    let something = gen_xcoder_impls(&struct_attrs, &field_attrs);
+    let something = gen_xcoder_impls(&struct_name, &struct_attrs, &field_attrs);
     // --------------------------------------------------
     // generate code
     // --------------------------------------------------
@@ -169,28 +169,40 @@ pub fn klv(input: TokenStream) -> TokenStream {
         // #field_attrs
         // #struct_attrs
     };
-    TokenStream::from(expanded)
+    proc_macro::TokenStream::from(expanded)
     // unimplemented!()
 }
 
-fn gen_xcoder_impls(struct_attrs: &KlvStructAttr, field_attrs: &Vec<KlvFieldAttr>) -> proc_macro2::TokenStream {
+fn gen_xcoder_impls(struct_name: &TokenStream, struct_attrs: &KlvStructAttr, field_attrs: &Vec<KlvFieldAttr>) -> proc_macro2::TokenStream {
+    // --------------------------------------------------
+    // struct name
+    // --------------------------------------------------
+    let struct_name = struct_name.to_token_stream();
+    // --------------------------------------------------
+    // key decoder
+    // --------------------------------------------------
     let key_dec = struct_attrs.key_dec.as_ref().unwrap_or_else(|| panic!("{}", Error::MissingFunc(KlvStructAttrValue::KeyDec.value().into())));
     let key_dec_ty = key_dec.typ.to_token_stream();
     let key_dec_fn = key_dec.func.to_token_stream();
+    let key_dec_is = include_self_tokenstream(key_dec.include_self);
     let key_dec_ts = quote! {
-        impl tinyklv::KeyDecoder<#key_dec_ty> for fn(&[u8]) -> nom::IResult<&[u8], #key_dec_ty> {
+        impl tinyklv::KeyDecoder<#key_dec_ty> for #struct_name {
             fn key_decode(&self, input: &[u8]) -> nom::IResult<&[u8], #key_dec_ty> {
-                (self)(input)
+                #key_dec_fn(#key_dec_is input)
             }
         }
     };
+    // --------------------------------------------------
+    // key encoder
+    // --------------------------------------------------
     let key_enc = struct_attrs.key_enc.as_ref().unwrap_or_else(|| panic!("{}", Error::MissingFunc(KlvStructAttrValue::KeyEnc.value().into())));
     let key_enc_ty = key_enc.typ.to_token_stream();
     let key_enc_fn = key_enc.func.to_token_stream();
+    let key_enc_is = include_self_tokenstream(key_enc.include_self);
     let key_enc_ts = quote! {
         impl tinyklv::KeyEncoder<#key_enc_ty> for fn(#key_enc_ty) -> Vec<u8> {
             fn key_encode(&self, input: #key_enc_ty) -> Vec<u8> {
-                (self)(input)
+                #key_enc_fn(#key_enc_is input)
             }
         }
     };
@@ -235,6 +247,13 @@ fn gen_xcoder_impls(struct_attrs: &KlvStructAttr, field_attrs: &Vec<KlvFieldAttr
         #len_dec_ts
         #len_enc_ts
     };
+}
+
+fn include_self_tokenstream(include_self: bool) -> proc_macro2::TokenStream {
+    match include_self {
+        true => quote! { &self, },
+        false => quote! {},
+    }
 }
 
 /// Parses a struct-level attribute and pushes it to the

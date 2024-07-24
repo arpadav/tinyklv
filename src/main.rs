@@ -46,6 +46,9 @@ pub struct MyStruct {
 //     }
 // }
 
+// should do:
+// expand.rs
+// other files, similar to thiserror
 fn main() {
     let size = b"\x01".len();
 }

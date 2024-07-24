@@ -111,8 +111,8 @@ pub(crate) enum KlvXcoderArgValue {
     Type,
     #[value = "func"]
     Func,
-    #[value = "fixed"]
-    Fixed,
+    #[value = "include_self"]
+    IncludeSelf,
 }
 
 #[derive(Clone)]
@@ -122,7 +122,7 @@ pub(crate) enum KlvXcoderArgValue {
 pub(crate) struct KlvXcoderArg {
     pub typ: Option<syn::Type>,
     pub func: Option<syn::Path>,
-    pub fixed: bool,
+    pub include_self: bool,
 }
 /// [`KlvXcoderArg`] implementation
 impl KlvXcoderArg {
@@ -145,7 +145,7 @@ impl std::default::Default for KlvXcoderArg {
         Self {
             typ: None,
             func: None,
-            fixed: false,
+            include_self: false,
         }
     }
 }
@@ -171,8 +171,8 @@ impl From<Vec<nonlit2lit::KeyValPair>> for KlvXcoderArg {
                         ret.func = Some(val);
                     }
                 },
-                Ok(KlvXcoderArgValue::Fixed) => if val_rf.to_token_stream().to_string() == "true" {
-                    ret.fixed = true;
+                Ok(KlvXcoderArgValue::IncludeSelf) => if val_rf.to_token_stream().to_string() == "true" {
+                    ret.include_self = true;
                 },
                 _ => {},
             }
@@ -186,7 +186,7 @@ impl std::fmt::Debug for KlvXcoderArg {
         f.debug_struct("KlvXcoderArg")
             .field("typ", &self.typ.to_token_stream().to_string())
             .field("func", &self.func.to_token_stream().to_string())
-            .field("fixed", &self.fixed)
+            .field("include_self", &self.include_self)
             .finish()
     }
 }
