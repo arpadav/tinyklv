@@ -10,6 +10,7 @@ use convert_case::{
     Case,
     Casing,
 };
+use hashbrown::HashSet;
 use proc_macro2::TokenStream;
 
 // --------------------------------------------------
@@ -20,13 +21,44 @@ use crate::ast::{
     Input,
     KlvFieldAttr,
     KlvStructAttr,
-    KlvStructAttrValue,
 };
 
+/// Derive `Klv`
+pub fn derive(input: &syn::DeriveInput) -> proc_macro::TokenStream {
+    match Input::from_syn(input) {
+        Ok(parsed) => parsed.into(),
+        Err(err) => panic!("{}", err),
+    }
+}
+
+/// Derive `Klv` from [`Input`]
+pub fn from(mut input: crate::ast::Input) -> TokenStream {
+    // let Input { name, sattr, fattrs } = input;
+    // // --------------------------------------------------
+    // // debug
+    // // --------------------------------------------------
+    // println!("{:#?}", sattr);
+    // println!("{:#?}", fattrs);
+    let impls = gen_xcoder_impls(&mut input);
+    // --------------------------------------------------
+    // generate code
+    // --------------------------------------------------
+    let expanded = quote! {
+        #impls
+        // #[derive(Clone, Copy)]
+        // #input
+        // #field_attrs
+        // #struct_attrs
+    };
+    TokenStream::from(expanded)
+}
+
+/// Implementation of [`Functionify`] for all types that implement [`ToTokens`].
+/// 
+/// To be used to make trait names and function names more readable.
 trait Functionify {
     fn functionify(&self) -> String;
 }
-
 impl<T: ToTokens> Functionify for T {
     fn functionify(&self) -> String {
         self
@@ -110,7 +142,7 @@ where
         let typ = typ.into_token_stream();
         let trait_name = self.get_trait_name();
         let fn_name = self.get_fn_name();
-        let is = include_self_tokenstream(include_self);
+        let is = is_ts(include_self);
         match self {
             Xcoder::Encoder(_) => quote! {
                 impl #trait_name<#typ> for #name {
@@ -138,47 +170,15 @@ where
     }
 }
 
-/// Derive `Klv`
-pub fn derive(input: &syn::DeriveInput) -> proc_macro::TokenStream {
-    match Input::from_syn(input) {
-        Ok(parsed) => parsed.into(),
-        Err(err) => panic!("{}", err),
-    }
-}
-
-/// Derive `Klv` from [`Input`]
-pub fn from(input: crate::ast::Input) -> TokenStream {
+fn gen_xcoder_impls(input: &mut crate::ast::Input) -> proc_macro2::TokenStream {
     let Input { name, sattr, fattrs } = input;
-    // --------------------------------------------------
-    // debug
-    // --------------------------------------------------
-    // println!("{:#?}", sattr);
-    println!("{:#?}", sattr.key_dec);
-    // println!("{:#?}", fattrs);
-    let something = gen_xcoder_impls(&name.to_token_stream(), &sattr, &fattrs);
-    // --------------------------------------------------
-    // generate code
-    // --------------------------------------------------
-    let expanded = quote! {
-        #something
-        // #[derive(Clone, Copy)]
-        // #input
-        // #field_attrs
-        // #struct_attrs
-    };
-    TokenStream::from(expanded)
-}
-
-fn gen_xcoder_impls(struct_name: &proc_macro2::TokenStream, struct_attrs: &KlvStructAttr, field_attrs: &Vec<KlvFieldAttr>) -> proc_macro2::TokenStream {
     // --------------------------------------------------
     // key decoder
     // --------------------------------------------------
-    let key_dec = struct_attrs.key_dec.as_ref().unwrap();
-    let key_dec_ty = key_dec.typ.to_token_stream();
-    let key_dec_fn = key_dec.func.to_token_stream();
-    let key_dec_is = include_self_tokenstream(key_dec.include_self);
+    let key_dec = sattr.key_dec.as_ref().unwrap();
+    let (key_dec_ty, key_dec_fn, key_dec_is) = ty_fn_is(key_dec);
     let key_dec_ts = quote! {
-        impl tinyklv::KeyDecoder<#key_dec_ty> for #struct_name {
+        impl tinyklv::KeyDecoder<#key_dec_ty> for #name {
             fn key_decode<'a>(&self, input: &'a[u8]) -> nom::IResult<&'a[u8], #key_dec_ty> {
                 match #key_dec_fn(#key_dec_is input) {
                     Ok((i, o)) => Ok((i, o.into())),
@@ -190,12 +190,10 @@ fn gen_xcoder_impls(struct_name: &proc_macro2::TokenStream, struct_attrs: &KlvSt
     // --------------------------------------------------
     // key encoder
     // --------------------------------------------------
-    let key_enc = struct_attrs.key_enc.as_ref().unwrap();
-    let key_enc_ty = key_enc.typ.to_token_stream();
-    let key_enc_fn = key_enc.func.to_token_stream();
-    let key_enc_is = include_self_tokenstream(key_enc.include_self);
+    let key_enc = sattr.key_enc.as_ref().unwrap();
+    let (key_enc_ty, key_enc_fn, key_enc_is) = ty_fn_is(key_enc);
     let key_enc_ts = quote! {
-        impl tinyklv::KeyEncoder<#key_enc_ty> for #struct_name {
+        impl tinyklv::KeyEncoder<#key_enc_ty> for #name {
             fn key_encode(&self, input: #key_enc_ty) -> Vec<u8> {
                 #key_enc_fn(#key_enc_is input)
             }
@@ -204,12 +202,10 @@ fn gen_xcoder_impls(struct_name: &proc_macro2::TokenStream, struct_attrs: &KlvSt
     // --------------------------------------------------
     // len decoder
     // --------------------------------------------------
-    let len_dec = struct_attrs.len_dec.as_ref().unwrap();
-    let len_dec_ty = len_dec.typ.to_token_stream();
-    let len_dec_fn = len_dec.func.to_token_stream();
-    let len_dec_is = include_self_tokenstream(len_dec.include_self);
+    let len_dec = sattr.len_dec.as_ref().unwrap();
+    let (len_dec_ty, len_dec_fn, len_dec_is) = ty_fn_is(len_dec);
     let len_dec_ts = quote! {
-        impl tinyklv::LenDecoder<#len_dec_ty> for #struct_name {
+        impl tinyklv::LenDecoder<#len_dec_ty> for #name {
             fn len_decode<'a>(&self, input: &'a[u8]) -> nom::IResult<&'a[u8], #len_dec_ty> {
                 match #len_dec_fn(#len_dec_is input) {
                     Ok((i, o)) => Ok((i, o.into())),
@@ -221,40 +217,71 @@ fn gen_xcoder_impls(struct_name: &proc_macro2::TokenStream, struct_attrs: &KlvSt
     // --------------------------------------------------
     // len encoder
     // --------------------------------------------------
-    let len_enc = struct_attrs.len_enc.as_ref().unwrap();
-    let len_enc_ty = len_enc.typ.to_token_stream();
-    let len_enc_fn = len_enc.func.to_token_stream();
-    let len_enc_is = include_self_tokenstream(len_enc.include_self);
+    let len_enc = sattr.len_enc.as_ref().unwrap();
+    let (len_enc_ty, len_enc_fn, len_enc_is) = ty_fn_is(len_enc);
     let len_enc_ts = quote! {
-        impl tinyklv::LenEncoder<#len_enc_ty> for #struct_name {
+        impl tinyklv::LenEncoder<#len_enc_ty> for #name {
             fn len_encode(&self, input: #len_enc_ty) -> Vec<u8> {
                 #len_enc_fn(#len_enc_is input)
             }
         }
     };
     // --------------------------------------------------
+    // get all unique required encoder and decoder
+    // implementations
+    // --------------------------------------------------
+    let mut encoder_arg_set = HashSet::new();
+    let mut decoder_arg_set = HashSet::new();
+    fattrs
+        .iter()
+        .for_each(|field_attr| {
+            encoder_arg_set.insert(field_attr.enc.as_ref().unwrap());
+            decoder_arg_set.insert(field_attr.dec.as_ref().unwrap());
+        });
+    // --------------------------------------------------
     // loop through the field attributes
     // --------------------------------------------------
-    let imp = field_attrs
+    let mut enc_pairs = Vec::new();
+    let enc_imp = encoder_arg_set
         .iter()
-        .map(|field_attr| {
-            let enc = field_attr.enc.as_ref().unwrap();
+        .map(|enc| {
             let (typ, func, include_self) = (
                 enc.typ.as_ref().unwrap(),
                 enc.func.as_ref().unwrap(),
                 enc.include_self
             );
-
             let typ_string = typ.functionify();
             let func_string = func.functionify();
             let uid = format!("{}_{}", func_string, typ_string).to_case(Case::Snake);
-            let eq = Xcoder::Encoder(&uid).trait_definition();
-            let ei = Xcoder::Encoder(&uid).implementation(struct_name, func, typ, include_self);
-            let dq = Xcoder::Decoder(&uid).trait_definition();
-            let di = Xcoder::Decoder(&uid).implementation(struct_name, func, typ, include_self);
+            let enc_impl = Xcoder::Encoder(&uid);
+            let efn = enc_impl.get_fn_name();
+            enc_pairs.push((enc.clone(), efn));
+            let eq = enc_impl.trait_definition();
+            let ei = enc_impl.implementation(name.clone(), func, typ, include_self);
             quote! {
                 #eq
                 #ei
+            }
+        })
+        .collect::<proc_macro2::TokenStream>();
+    let mut dec_pairs = Vec::new();
+    let dec_imp = decoder_arg_set
+        .iter()
+        .map(|dec| {
+            let (typ, func, include_self) = (
+                dec.typ.as_ref().unwrap(),
+                dec.func.as_ref().unwrap(),
+                dec.include_self
+            );
+            let typ_string = typ.functionify();
+            let func_string = func.functionify();
+            let uid = format!("{}_{}", func_string, typ_string).to_case(Case::Snake);
+            let dec_impl = Xcoder::Decoder(&uid);
+            let dfn = dec_impl.get_fn_name();
+            dec_pairs.push((dec.clone(), dfn));
+            let dq = dec_impl.trait_definition();
+            let di = dec_impl.implementation(name.clone(), func, typ, include_self);
+            quote! {
                 #dq
                 #di
             }
@@ -265,11 +292,21 @@ fn gen_xcoder_impls(struct_name: &proc_macro2::TokenStream, struct_attrs: &KlvSt
         #key_enc_ts
         #len_dec_ts
         #len_enc_ts
-        #imp
-    };
+        #enc_imp
+        #dec_imp
+    }
 }
 
-fn include_self_tokenstream(include_self: bool) -> proc_macro2::TokenStream {
+/// Type, Function, Include-Self -> TokenStream
+fn ty_fn_is(item: &crate::ast::KlvXcoderArg) -> (TokenStream, TokenStream, TokenStream) {
+    let _ty = item.typ.to_token_stream();
+    let _fn = item.func.to_token_stream();
+    let _is = is_ts(item.include_self);
+    (_ty, _fn, _is)
+}
+
+/// Include-Self -> TokenStream
+fn is_ts(include_self: bool) -> proc_macro2::TokenStream {
     match include_self {
         true => quote! { &self, },
         false => quote! {},

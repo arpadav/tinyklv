@@ -1,4 +1,3 @@
-#![feature(generic_const_exprs)]
 pub use tinyklv_impl::*;
 
 pub trait KeyEncoder<T> {
@@ -16,6 +15,8 @@ pub trait KeyDecoder<T> {
 pub trait LenDecoder<T> {
     fn len_decode<'a>(&self, input: &'a[u8]) -> nom::IResult<&'a[u8], T>;
 }
+
+// pub type IResult<I, O, E = std::error::Error<I>> = Result<(I, O), Err<E>>;
 
 // fn default_kl_decoder(input: &[u8]) -> nom::IResult<&[u8], &[u8]> {
 //     let (n, _) = nom::bytes::complete::take(1usize)(input)?;
