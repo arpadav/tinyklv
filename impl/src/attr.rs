@@ -93,15 +93,6 @@ impl ListedAttr {
         })
     }
 
-    /// Convert to [`syn::Attribute`]
-    pub fn _as_attr(&self) -> syn::Attribute {
-        let token_stream = self.to_token_stream();
-        let result: syn::Attribute = syn::parse_quote! {
-            #token_stream
-        };
-        result
-    }
-
     /// Export the path as a [`String`]
     pub fn path(&self) -> String {
         self.path.to_token_stream().to_string()

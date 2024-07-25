@@ -10,41 +10,37 @@ use tinyklv::Klv;
 // - e.g. FixedDecoder
 
 #[derive(Klv)]
+// #[seek = b"\x00"]
 #[key_encoder(func = key_encoder_example)]
 #[key_decoder(func = key_decoder_example)]
 #[len_encoder(func = len_encoder_example)]
 #[len_decoder(func = len_decoder_example)]
 // optional, as many as you like
-#[default_encoder(typ = u8, func = serialize_u8)]
-#[default_decoder(typ = u8, func = deserialize_u8)]
-// #[default_encoder(typ = Vec<f32>, func = serialize_u8)]
+// #[default_encoder(typ = u8, func = serialize_u8)]
+// #[default_decoder(typ = u8, func = deserialize_u8)]
+#[default_encoder(typ = Vec<f32>, func = serialize_vec_f32)]
 // #[default_decoder(typ = Vec<f64>, func = deserialize_u8)]
 pub struct MyStruct {
     #[key = b"\x01"]
     #[len = 2]
-    // #[encoder(func = key_encoder_vf)]   // input: u8, output: &[u8; 2]
-    // #[decoder(func = key_decoder_vf)]   // input: &[u8; 2], output: u8
+    #[encoder(func = serialize_u8)]   // input: u8, output: &[u8; 2]
+    #[decoder(func = deserialize_u8)]   // input: &[u8; 2], output: u8
     pub BRUHHH: u8,
 
     #[key = b"\x02"]
     #[len = 1]
-    // #[encoder(func = key_encoder_vf)]   // input: u8, output: &[u8; 1]
-    // #[decoder(func = key_decoder_vf)]   // input: &[u8; 1], output: u8
+    #[encoder(func = serialize_u8)]   // input: u8, output: &[u8; 2]
+    #[decoder(func = deserialize_u8)]   // input: &[u8; 2], output: u8
     pub b: u8,
 
-    // #[key = b"\x03"]
-    // #[len = 1]
-    // #[encoder(func = len_encoder_MEME)] // input: Vec<f32>, output: &[u8; 1]
-    // #[decoder(func = len_decoder_MEME)] // input: &[u8; 1], output: Vec<f32>
-    // pub c: Vec<f32>,
+    #[key = b"\x03"]
+    #[len = 1]
+    // #[encoder(func = serialize_vec_f32)] // input: Vec<f32>, output: &[u8; 1]
+    #[decoder(func = deserialize_vec_f32)] // input: &[u8; 1], output: Vec<f32>
+    pub someting: Vec<f32>,
 }
 
-// should do
-// impl LenDecoder<T> for MyStruct {
-//     fn len_decoder(&self, input: &[u8]) -> nom::IResult<&[u8], T> {
-//         #attr_func (input)
-//     }
-// }
+
 
 // should do:
 // expand.rs
@@ -109,6 +105,18 @@ fn serialize_u8(input: u8) -> Vec<u8> {
     vec![input]
 }
 
-fn deserialize_u8(input: &[u8]) -> u8 {
-    input[0]
+fn deserialize_u8(input: &[u8]) -> nom::IResult<&[u8], u8> {
+    Ok((input[1..].as_ref(), input[0]))
+}
+
+
+fn serialize_vec_f32(input: Vec<f32>) -> Vec<u8> {
+    input
+        .iter()
+        .flat_map(|x| x.to_le_bytes().to_vec())
+        .collect::<Vec<u8>>()
+}
+
+fn deserialize_vec_f32(input: &[u8]) -> nom::IResult<&[u8], Vec<f32>> {
+    Ok((input, Vec::new()))
 }

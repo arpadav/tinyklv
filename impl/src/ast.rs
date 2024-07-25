@@ -33,7 +33,7 @@ impl Input {
         let name = input.ident.clone();
         let fields = match &input.data {
             Data::Struct(DataStruct { fields, .. }) => fields,
-            _ => panic!("{}", crate::Error::DeriveForNonStruct(crate::NAME.into())),
+            _ => panic!("{}", crate::Error::DeriveForNonStruct(crate::NAME.into(), name.to_string())),
         };
         let sattr = KlvStructAttr::from_syn(&input);
         let fattrs = KlvFieldAttr::from_syn(&fields);
@@ -106,24 +106,28 @@ impl Input {
     }
 
     fn verify(self) -> Result<Self, Error> {
-        if self.sattr.key_dec.is_none() { return Err(Error::MissingFunc(KlvStructAttrValue::KeyDec.value().into())) }
-        if self.sattr.key_enc.is_none() { return Err(Error::MissingFunc(KlvStructAttrValue::KeyEnc.value().into())) }
-        if self.sattr.len_dec.is_none() { return Err(Error::MissingFunc(KlvStructAttrValue::LenDec.value().into())) }
-        if self.sattr.len_enc.is_none() { return Err(Error::MissingFunc(KlvStructAttrValue::LenEnc.value().into())) }
+        let name = self.name.to_token_stream().to_string();
+        if self.sattr.key_dec.is_none() { return Err(Error::MissingFunc(KlvStructAttrValue::KeyDec.value().into(), name)) }
+        if self.sattr.key_enc.is_none() { return Err(Error::MissingFunc(KlvStructAttrValue::KeyEnc.value().into(), name)) }
+        if self.sattr.len_dec.is_none() { return Err(Error::MissingFunc(KlvStructAttrValue::LenDec.value().into(), name)) }
+        if self.sattr.len_enc.is_none() { return Err(Error::MissingFunc(KlvStructAttrValue::LenEnc.value().into(), name)) }
         for fa in &self.fattrs {
+            let var = fa.name.as_ref().unwrap().to_token_stream().to_string();
+            if fa.key.is_none() { return Err(Error::MissingKey(var)) }
+            if fa.len.is_none() { return Err(Error::MissingLength(var)) }
             match fa.enc {
                 Some(ref enc) => {
-                    if enc.typ.is_none() { return Err(Error::MissingType(KlvStructAttrValue::DefaultEnc.value().into())) }
-                    if enc.func.is_none() { return Err(Error::MissingFunc(KlvStructAttrValue::DefaultEnc.value().into())) }
+                    if enc.typ.is_none() { return Err(Error::MissingType(KlvFieldAttrValue::Enc.value().into(), var)) }
+                    if enc.func.is_none() { return Err(Error::MissingFunc(KlvFieldAttrValue::Enc.value().into(), var)) }
                 },
-                None => return Err(Error::MissingFunc(KlvStructAttrValue::DefaultEnc.value().into())),
+                None => return Err(Error::MissingFunc(KlvFieldAttrValue::Enc.value().into(), var)),
             }
             match fa.dec {
                 Some(ref dec) => {
-                    if dec.typ.is_none() { return Err(Error::MissingType(KlvStructAttrValue::DefaultDec.value().into())) }
-                    if dec.func.is_none() { return Err(Error::MissingFunc(KlvStructAttrValue::DefaultDec.value().into())) }
+                    if dec.typ.is_none() { return Err(Error::MissingType(KlvFieldAttrValue::Dec.value().into(), var)) }
+                    if dec.func.is_none() { return Err(Error::MissingFunc(KlvFieldAttrValue::Dec.value().into(), var)) }
                 },
-                None => return Err(Error::MissingFunc(KlvStructAttrValue::DefaultDec.value().into())),
+                None => return Err(Error::MissingFunc(KlvFieldAttrValue::Dec.value().into(), var)),
             }
         }
         Ok(self)
@@ -224,34 +228,26 @@ impl Push<attr::ListedAttr> for KlvStructAttr {
         match KlvStructAttrValue::try_from(x.path().as_str()) {
             Ok(KlvStructAttrValue::KeyEnc) => self.key_enc = {
                 let res: KlvXcoderArg = x.contents.into();
-                if res.func.is_none() { panic!("{}", crate::Error::MissingFunc(KlvStructAttrValue::KeyEnc.value().into())) }
                 Some(res.deftype())
             },
             Ok(KlvStructAttrValue::KeyDec) => self.key_dec = {
                 let res: KlvXcoderArg = x.contents.into();
-                if res.func.is_none() { panic!("{}", crate::Error::MissingFunc(KlvStructAttrValue::KeyDec.value().into())) }
                 Some(res.deftype())
             },
             Ok(KlvStructAttrValue::LenEnc) => self.len_enc = {
                 let res: KlvXcoderArg = x.contents.into();
-                if res.func.is_none() { panic!("{}", crate::Error::MissingFunc(KlvStructAttrValue::LenEnc.value().into())) }
                 Some(res.deftype())
             },
             Ok(KlvStructAttrValue::LenDec) => self.len_dec = {
                 let res: KlvXcoderArg = x.contents.into();
-                if res.func.is_none() { panic!("{}", crate::Error::MissingFunc(KlvStructAttrValue::LenDec.value().into())) }
                 Some(res.deftype())
             },
             Ok(KlvStructAttrValue::DefaultEnc) => {
                 let res: KlvXcoderArg = x.contents.into();
-                if res.func.is_none() { panic!("{}", crate::Error::MissingFunc(KlvStructAttrValue::DefaultEnc.value().into())) }
-                if res.typ.is_none() { panic!("{}", crate::Error::MissingType(KlvStructAttrValue::DefaultEnc.value().into())) }
                 self.default_enc.insert(res.typ.clone().unwrap().to_token_stream().to_string(), res);
             },
             Ok(KlvStructAttrValue::DefaultDec) => {
                 let res: KlvXcoderArg = x.contents.into();
-                if res.func.is_none() { panic!("{}", crate::Error::MissingFunc(KlvStructAttrValue::DefaultDec.value().into())) }
-                if res.typ.is_none() { panic!("{}", crate::Error::MissingType(KlvStructAttrValue::DefaultDec.value().into())) }
                 self.default_dec.insert(res.typ.clone().unwrap().to_token_stream().to_string(), res);
             },
             Err(_) => {}
@@ -305,6 +301,24 @@ impl std::default::Default for KlvXcoderArg {
             func: None,
             include_self: false,
         }
+    }
+}
+/// [`KlvXcoderArg`] implementation of [`PartialEq`]
+impl PartialEq for KlvXcoderArg {
+    fn eq(&self, other: &Self) -> bool {
+        self.typ.to_token_stream().to_string() == other.typ.to_token_stream().to_string()
+            && self.func.to_token_stream().to_string() == other.func.to_token_stream().to_string()
+            && self.include_self == other.include_self
+    }
+}
+/// [`KlvXcoderArg`] implementation of [`Eq`]
+impl Eq for KlvXcoderArg {}
+/// [`KlvXcoderArg`] implementation of [`Hash`]
+impl std::hash::Hash for KlvXcoderArg {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.typ.to_token_stream().to_string().hash(state);
+        self.func.to_token_stream().to_string().hash(state);
+        self.include_self.hash(state);
     }
 }
 /// [`KlvXcoderArg`] implementation of [`std::convert::From<Vec<attr::KeyValPair>>`](attr::KeyValPair)
@@ -417,16 +431,17 @@ impl Push<attr::ListedAttr> for KlvFieldAttr {
     /// Panics if the function attribute for `encoder` or `decoder`
     /// within [`KlvFieldAttr`] is missing
     fn push(&mut self, x: attr::ListedAttr) {
+        let name = self.name.to_token_stream().to_string();
         match KlvFieldAttrValue::try_from(x.path().as_str()) {
             Ok(KlvFieldAttrValue::Enc) => self.enc = {
                 let mut res: KlvXcoderArg = x.contents.into();
-                if res.func.is_none() { panic!("{}", crate::Error::MissingFunc(KlvFieldAttrValue::Enc.value().into())) }
+                if res.func.is_none() { panic!("{}", crate::Error::MissingFunc(KlvFieldAttrValue::Enc.value().into(), name)) }
                 res.typ = self.typ.clone();
                 Some(res)
             },
             Ok(KlvFieldAttrValue::Dec) => self.dec = {
                 let mut res: KlvXcoderArg = x.contents.into();
-                if res.func.is_none() { panic!("{}", crate::Error::MissingFunc(KlvFieldAttrValue::Dec.value().into())) }
+                if res.func.is_none() { panic!("{}", crate::Error::MissingFunc(KlvFieldAttrValue::Dec.value().into(), name)) }
                 res.typ = self.typ.clone();
                 Some(res)
             },
@@ -443,17 +458,18 @@ impl Push<attr::KeyValPair> for KlvFieldAttr {
     /// Panics if the function attribute for values for `key` or `len`
     /// [`KlvFieldAttr`] are invalid formats
     fn push(&mut self, x: attr::KeyValPair) {
+        let name = self.name.to_token_stream().to_string();
         match KlvFieldAttrValue::try_from(x.key().as_str()) {
             Ok(KlvFieldAttrValue::Key) => match x.val {
                 syn::Lit::ByteStr(lit) => self.key = Some(lit.value()),
-                _ => panic!("{}", crate::Error::NonByteStrKey(x.val())),
+                _ => panic!("{}", crate::Error::NonByteStrKey(x.val(), name)),
             },
             Ok(KlvFieldAttrValue::Len) => match x.val {
                 syn::Lit::Int(lit) => self.len = Some(match lit.base10_parse() {
                     Ok(val) => val,
-                    Err(_) => panic!("{}", crate::Error::NonIntLength(lit.to_token_stream().to_string())),
+                    Err(_) => panic!("{}", crate::Error::NonIntLength(lit.to_token_stream().to_string(), name)),
                 }),
-                _ => panic!("{}", crate::Error::NonIntLength(x.val())),
+                _ => panic!("{}", crate::Error::NonIntLength(x.val(), name)),
             },
             _ => {}
         }
