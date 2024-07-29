@@ -40,6 +40,39 @@ pub struct MyStruct {
     pub someting: Vec<f32>,
 }
 
+// key/len xcoder, fixed ALWAYS false
+// variants: fixed ALWAYS true
+//
+// TODO: think about include_self terminology.
+//
+// include self NEVER in key/len, optional in variant
+
+#[derive(Klv)]
+#[klv(
+    stream = u8, // input is a slice/vec of this
+                 // non-configurable, for now. but make
+                 // type-agnostic.
+    
+    sentinel = b"\x01", // sentinal / keys always slice / vec of dtype stream
+
+    // type defaults to stream type, any length
+    key(enc = someting, dec = someting2), // both required
+    // type will ALWAYS be usize
+    len(enc = lsometing, dec = lsometing2), // both required
+    default(ty = u8, enc = this, dec = that), // ty required, enc OR dec required
+    default(ty = f32, enc = foo, dec = bar),  // ty required, enc OR dec required
+    default(ty = Vec<f64>, enc = me), // ty required, enc OR dec required
+)]
+struct Bruh {
+    #[klv(
+        key = b"\x02",
+        len = 3,
+        enc = my_str_enc,
+        dec = my_str_dec,
+    )]
+    val: String,
+}
+
 
 
 // should do:
