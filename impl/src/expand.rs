@@ -17,22 +17,35 @@ use proc_macro2::TokenStream;
 // local
 // --------------------------------------------------
 use crate::Error;
-use crate::ast::{
-    Input,
+use crate::archive_ast::{
+    self,
+    // Input,
     KlvFieldAttr,
     KlvStructAttr,
 };
+use crate::kst;
 
 /// Derive `Klv`
-pub fn derive(input: &syn::DeriveInput) -> proc_macro::TokenStream {
-    match Input::from_syn(input) {
+pub fn derive_old(input: &syn::DeriveInput) -> proc_macro::TokenStream {
+    match archive_ast::Input::from_syn(input) {
         Ok(parsed) => parsed.into(),
         Err(err) => panic!("{}", err),
     }
 }
 
+/// Derive `Klv`
+pub fn derive(input: &syn::DeriveInput) -> proc_macro::TokenStream {
+    match kst::Input::from_syn(input) {
+        Ok(parsed) => {},
+        Err(err) => panic!("{}", err),
+    }
+    // println!("{:#?}", input.to_token_stream().to_string());
+    // panic!("test");
+    TokenStream::new().into()
+}
+
 /// Derive `Klv` from [`Input`]
-pub fn from(mut input: crate::ast::Input) -> TokenStream {
+pub fn from(mut input: crate::archive_ast::Input) -> TokenStream {
     // let Input { name, sattr, fattrs } = input;
     // // --------------------------------------------------
     // // debug
@@ -170,8 +183,8 @@ where
     }
 }
 
-fn gen_xcoder_impls(input: &mut crate::ast::Input) -> proc_macro2::TokenStream {
-    let Input { name, sattr, fattrs } = input;
+fn gen_xcoder_impls(input: &mut crate::archive_ast::Input) -> proc_macro2::TokenStream {
+    let archive_ast::Input { name, sattr, fattrs } = input;
     // --------------------------------------------------
     // key decoder
     // --------------------------------------------------
@@ -298,7 +311,7 @@ fn gen_xcoder_impls(input: &mut crate::ast::Input) -> proc_macro2::TokenStream {
 }
 
 /// Type, Function, Include-Self -> TokenStream
-fn ty_fn_is(item: &crate::ast::KlvXcoderArg) -> (TokenStream, TokenStream, TokenStream) {
+fn ty_fn_is(item: &crate::archive_ast::KlvXcoderArg) -> (TokenStream, TokenStream, TokenStream) {
     let _ty = item.typ.to_token_stream();
     let _fn = item.func.to_token_stream();
     let _is = is_ts(item.include_self);

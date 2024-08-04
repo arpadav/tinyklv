@@ -10,10 +10,10 @@ use thiserror::Error;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-mod ast;
+mod archive_ast;
 mod kst;
 mod ast2;
-mod attr;
+mod archive_attr;
 mod expand;
 
 #[derive(Error, Debug)]
@@ -48,17 +48,19 @@ enum Error {
 // }
 
 const NAME: &str = "Klv";
+const ATTR: &str = "klv";
 #[proc_macro_derive(Klv, attributes(
-    key_encoder,
-    key_decoder,
-    len_encoder,
-    len_decoder,
-    default_encoder,
-    default_decoder,
-    key,
-    len,
-    encoder,
-    decoder
+    // key_encoder,
+    // key_decoder,
+    // len_encoder,
+    // len_decoder,
+    // default_encoder,
+    // default_decoder,
+    // key,
+    // len,
+    // encoder,
+    // decoder,
+    klv
 ))]
 pub fn klv(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
