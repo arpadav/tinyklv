@@ -1,5 +1,3 @@
-use core::str;
-
 // --------------------------------------------------
 // external
 // --------------------------------------------------
@@ -94,20 +92,16 @@ impl TryFrom<syn::Attribute> for MetaTuple {
         })
     }
 }
-// /// [`MetaTuple`] implementation of [`TryFrom`] for [`ToTokens`]
-// impl<T: ToTokens> TryFrom<T> for MetaTuple {
-//     type Error = syn::Error;
-//     fn try_from(value: T) -> Result<Self, Self::Error> {
-//         let value = value.to_token_stream();
-//         syn::parse2::<MetaTuple>(value)
-//     }
-// }
 /// [`MetaTuple`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for MetaTuple {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let name = Self::pop_name(input.clone());
-        let contents;
-        syn::parenthesized!(contents in input);
+        let (n, input2) = Self::pop_name(input.to_string());
+        let n = match n {
+            Some(name) => syn::parse2::<syn::Ident>(name.to_token_stream())?,
+            None => return Err(syn::Error::new(input.span(), "msg2")),
+        };
+        let v = syn::parse2::<MetaTupleContents>(input2.to_token_stream())?;
+        Ok(MetaTuple { n, v })
     }
 }
 
@@ -159,8 +153,8 @@ impl<T: From<MetaNameValue>> Default for NameValue<T> {
 /// ```
 pub struct MetaNameValue {
     pub n: syn::Ident,
-    pub v: syn::Ident,
     eq: syn::token::Eq,
+    pub v: syn::Ident,
 }
 macro_rules! impl_from_mnv {
     ($t:ty) => {
@@ -175,6 +169,41 @@ macro_rules! impl_from_mnv {
 impl_from_mnv!(syn::Lit);
 impl_from_mnv!(syn::Path);
 impl_from_mnv!(syn::Type);
+/// [`MetaNameValue`] implementation of [`syn::parse::Parse`]
+impl syn::parse::Parse for MetaNameValue {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(MetaNameValue {
+            n: input.parse()?,
+            eq: input.parse()?,
+            v: input.parse()?,
+        })
+    }
+}
+
+/// // Parse a simplified tuple struct syntax like:
+/// //
+/// //     struct S(A, B);
+/// struct TupleStruct {
+///     struct_token: Token![struct],
+///     ident: Ident,
+///     paren_token: token::Paren,
+///     fields: Punctuated<Type, Token![,]>,
+///     semi_token: Token![;],
+/// }
+///
+/// impl Parse for TupleStruct {
+///     fn parse(input: ParseStream) -> Result<Self> {
+///         let content;
+///         Ok(TupleStruct {
+///             struct_token: input.parse()?,
+///             ident: input.parse()?,
+///             paren_token: parenthesized!(content in input),
+///             fields: content.parse_terminated(Type::parse)?,
+///             semi_token: input.parse()?,
+///         })
+///     }
+/// }
+
 
 #[derive(Default)]
 /// [`MetaUnorderedContents`]
@@ -203,9 +232,10 @@ impl syn::parse::Parse for MetaUnorderedContents {
         let second = input.to_string();
         let mut prev = String::new();
         loop {
-            let (first, second) = Self::step(second.as_ref(), sep.as_str());
+            let (first, second) = Self::step(second.as_ref(), sep.into());
+            prev.push_str(&sep);
             prev.push_str(first);
-            match MetaTuple::status(prev) {
+            match MetaTuple::status(prev.clone()) {
                 MetaTupleStatus::Complete => {
                     let item = syn::parse2::<MetaTuple>(prev.to_token_stream())?;
                     prev.clear();
@@ -213,7 +243,7 @@ impl syn::parse::Parse for MetaUnorderedContents {
                 },
                 MetaTupleStatus::Partial => prev.push_str(first),
                 MetaTupleStatus::None => {
-                    let item = MetaNameValue::try_from(prev)?;
+                    let item = syn::parse2::<MetaNameValue>(prev.to_token_stream())?;
                     prev.clear();
                     result.nvs.push(item)
                 },
@@ -226,7 +256,7 @@ impl syn::parse::Parse for MetaUnorderedContents {
 }
 /// [`MetaUnorderedContents`] implementation
 impl MetaUnorderedContents {
-    fn step<'a>(input: &'a str, sep: &'static str) -> (&'a str, &'a str) {
+    fn step<'a>(input: &'a str, sep: &'b str) -> (&'a str, &'a str) {
         match input.split_once(sep) {
             Some((x, y)) => (x, y),
             None => (input, "")
