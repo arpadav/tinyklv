@@ -14,7 +14,7 @@ use crate::ast2::{
     NameValue,
     MetaTuple,
     MetaNameValue,
-    MetaUnorderedContents,
+    // MetaUnorderedContents,
 };
 use super::ATTR;
 
@@ -52,8 +52,8 @@ impl Input {
 pub(crate) struct StructAttrSchema {
     stream: NameValue<syn::Type>,
     sentinel: Option<NameValue<syn::Lit>>,
-    key: Tuple<RequiredXcoder>,
-    len: Tuple<RequiredXcoder>,
+    // key: Tuple<RequiredXcoder>,
+    // len: Tuple<RequiredXcoder>,
     // defaults: HashSet<Tuple<DefaultXcoder>>
 }
 /// [`StructAttrSchema`] implementation
@@ -73,6 +73,15 @@ impl StructAttrSchema {
                         println!("tokens: {:#?}", attr.tokens.to_string());
                         let result = StructNames::try_from(ident.to_string().as_str());
                         println!("result: {:?}, ident: {:?}", result, ident.to_string());
+                        // contents:
+                        let contents = attr.tokens.to_string();
+                        println!("contents: {:#?}", contents);
+                        let concat = format!("{}{}", ident.to_string(), contents);
+                        println!("concat: {:#?}", concat);
+                        let parsed = MetaTuple::from(concat);
+                        println!("parsed: {}", parsed);
+                        // let raw = attr.to_token_stream().to_string();
+                        // println!("raw: {:#?}", raw);
                         result.is_ok()
                         // StructNames::try_from(ident.to_string().as_str()).is_ok()
                     },
@@ -152,30 +161,30 @@ pub struct RequiredXcoder {
     enc: syn::Path,
     dec: syn::Path,
 }
-/// [`MetaTuple`] implementation of [`From`] for [`RequiredXcoder`]
-impl From<MetaTuple> for RequiredXcoder {
-    fn from(x: MetaTuple) -> Self {
-        let mut enc: Option<syn::Path> = None;
-        let mut dec: Option<syn::Path> = None;
-        for val in x.v.v.nvs {
-            // --------------------------------------------------
-            // if both are set, stop
-            // --------------------------------------------------
-            if enc.is_some() && dec.is_some() { break; }
-            match FieldNames::try_from(val.n.to_string().as_str()) {
-                Ok(FieldNames::Encoder) => enc = Some(syn::parse_str::<syn::Path>(val.v.to_string().as_str()).unwrap()),
-                Ok(FieldNames::Decoder) => dec = Some(syn::parse_str::<syn::Path>(val.v.to_string().as_str()).unwrap()),
-                _ => {}
-            }
-        }
-        if enc.is_none() { panic!("Missing encoder") }
-        if dec.is_none() { panic!("Missing decoder") }
-        RequiredXcoder {
-            enc: enc.unwrap(),
-            dec: dec.unwrap(),
-        }
-    }
-}
+// /// [`MetaTuple`] implementation of [`From`] for [`RequiredXcoder`]
+// impl From<MetaTuple> for RequiredXcoder {
+//     fn from(x: MetaTuple) -> Self {
+//         let mut enc: Option<syn::Path> = None;
+//         let mut dec: Option<syn::Path> = None;
+//         for val in x.v.v.nvs {
+//             // --------------------------------------------------
+//             // if both are set, stop
+//             // --------------------------------------------------
+//             if enc.is_some() && dec.is_some() { break; }
+//             match FieldNames::try_from(val.n.to_string().as_str()) {
+//                 Ok(FieldNames::Encoder) => enc = Some(syn::parse_str::<syn::Path>(val.v.to_string().as_str()).unwrap()),
+//                 Ok(FieldNames::Decoder) => dec = Some(syn::parse_str::<syn::Path>(val.v.to_string().as_str()).unwrap()),
+//                 _ => {}
+//             }
+//         }
+//         if enc.is_none() { panic!("Missing encoder") }
+//         if dec.is_none() { panic!("Missing decoder") }
+//         RequiredXcoder {
+//             enc: enc.unwrap(),
+//             dec: dec.unwrap(),
+//         }
+//     }
+// }
 
 /// [`OptionalXcoder`]
 /// 
