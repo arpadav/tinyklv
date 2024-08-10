@@ -67,10 +67,14 @@ impl StructAttrSchema {
             .filter(|attr|
                 match attr.path.get_ident() {
                     Some(ident) => {
+                        // TODO: handle the "klv" string first, then parse the tokens as a MetaContents
                         println!("i am true");
                         println!("ident: {:#?}", ident.to_string());
                         println!("tokens: {:#?}", attr.tokens.to_string());
-                        StructNames::try_from(ident.to_string().as_str()).is_ok()
+                        let result = StructNames::try_from(ident.to_string().as_str());
+                        println!("result: {:?}, ident: {:?}", result, ident.to_string());
+                        result.is_ok()
+                        // StructNames::try_from(ident.to_string().as_str()).is_ok()
                     },
                     None => {
                         println!("i am false");
@@ -83,7 +87,7 @@ impl StructAttrSchema {
                 // Self::parse_struct_attr(attr, &mut me)
             });
         // me
-        panic!("not implemented")
+        panic!("not implemented: kst.rs::line 86")
     }
 }
 
@@ -95,7 +99,7 @@ pub(crate)struct FieldAttrSchema {
     enc: Option<NameValue<syn::Path>>,
 }
 
-#[derive(Const)]
+#[derive(Const, Debug)]
 #[armtype(&str)]
 /// Struct Attribute Names
 /// 
@@ -153,7 +157,7 @@ impl From<MetaTuple> for RequiredXcoder {
     fn from(x: MetaTuple) -> Self {
         let mut enc: Option<syn::Path> = None;
         let mut dec: Option<syn::Path> = None;
-        for val in x.v.nvs {
+        for val in x.v.v.nvs {
             // --------------------------------------------------
             // if both are set, stop
             // --------------------------------------------------
