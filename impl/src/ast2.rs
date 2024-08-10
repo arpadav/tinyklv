@@ -104,6 +104,15 @@ impl syn::parse::Parse for MetaTuple {
         Ok(MetaTuple { n, v })
     }
 }
+/// [`MetaTuple`] implementation of [`std::fmt::Debug`]
+impl std::fmt::Debug for MetaTuple {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MetaTuple")
+            .field("n", &self.n)
+            .field("v", &self.v)
+            .finish()
+    }
+}
 
 /// [`MetaTupleContents`]
 /// 
@@ -115,7 +124,7 @@ impl syn::parse::Parse for MetaTuple {
 /// ```ignore
 /// (a = 1, b(x = 2), c = 3)
 /// ```
-struct MetaTupleContents {
+pub struct MetaTupleContents {
     pub v: MetaUnorderedContents,
 }
 /// [`MetaTupleContents`] implementation of [`syn::parse::Parse`]
@@ -125,6 +134,14 @@ impl syn::parse::Parse for MetaTupleContents {
         syn::parenthesized!(content in input);
         let v = content.parse::<MetaUnorderedContents>()?;
         Ok(MetaTupleContents { v })
+    }
+}
+/// [`MetaTupleContents`] implementation of [`std::fmt::Debug`]
+impl std::fmt::Debug for MetaTupleContents {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MetaTupleContents")
+            .field("v", &self.v)
+            .finish()
     }
 }
 
@@ -177,6 +194,16 @@ impl syn::parse::Parse for MetaNameValue {
             eq: input.parse()?,
             v: input.parse()?,
         })
+    }
+}
+/// [`MetaNameValue`] implementation of [`std::fmt::Debug`]
+impl std::fmt::Debug for MetaNameValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MetaNameValue")
+            .field("n", &self.n)
+            .field("eq", &"=")
+            .field("v", &self.v)
+            .finish()
     }
 }
 
@@ -232,7 +259,7 @@ impl syn::parse::Parse for MetaUnorderedContents {
         let second = input.to_string();
         let mut prev = String::new();
         loop {
-            let (first, second) = Self::step(second.as_ref(), sep.into());
+            let (first, second) = Self::step(second.as_ref(), sep.as_ref());
             prev.push_str(&sep);
             prev.push_str(first);
             match MetaTuple::status(prev.clone()) {
@@ -250,16 +277,27 @@ impl syn::parse::Parse for MetaUnorderedContents {
             }
             if second.is_empty() { break; }
         }
+        println!("result name values: {:#?}", result.nvs);
+        println!("result tuples: {:#?}", result.tps);
         // proc_macro2::TokenTree
         Err(syn::Error::new(input.span(), "msg"))
     }
 }
 /// [`MetaUnorderedContents`] implementation
 impl MetaUnorderedContents {
-    fn step<'a>(input: &'a str, sep: &'b str) -> (&'a str, &'a str) {
+    fn step<'a, 'b>(input: &'a str, sep: &'b str) -> (&'a str, &'a str) {
         match input.split_once(sep) {
             Some((x, y)) => (x, y),
             None => (input, "")
         }
+    }
+}
+/// [`MetaUnorderedContents`] implementation of [`std::fmt::Debug`]
+impl std::fmt::Debug for MetaUnorderedContents {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MetaUnorderedContents")
+            .field("nvs", &self.nvs)
+            .field("tps", &self.tps)
+            .finish()
     }
 }
