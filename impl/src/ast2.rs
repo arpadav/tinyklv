@@ -16,6 +16,7 @@ impl<T: From<MetaTuple>> Default for Tuple<T> {
     }
 }
 
+#[derive(Clone)]
 /// [`MetaTuple`]
 /// 
 /// Data structure which is consists of a name [`syn::Ident`]
@@ -57,6 +58,21 @@ impl From<String> for MetaTuple {
         }
     }
 }
+// /// [`MetaTuple`] implementation of [`Iterator`]
+// impl Iterator for MetaTuple {
+//     type Item = MetaItem;
+//     fn next(&mut self) -> Option<Self::Item> {
+//         self.contents.next()
+//     }
+// }
+/// [`MetaTuple`] implementation of [`IntoIterator`]
+impl<'a> IntoIterator for &'a MetaTuple {
+    type Item = &'a MetaItem;
+    type IntoIter = MetaContentsIterator<'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.contents.into_iter()
+    }
+}
 /// [`MetaTuple`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for MetaTuple {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -77,6 +93,7 @@ impl<T: From<MetaNameValue>> Default for NameValue<T> {
     }
 }
 
+#[derive(Clone)]
 /// [`MetaNameValue`]
 /// 
 /// Data structure which is consists of a name [`syn::Ident`] 
@@ -126,6 +143,7 @@ impl std::fmt::Display for MetaNameValue {
     }
 }
 
+#[derive(Clone)]
 pub(crate) enum MetaValue {
     Lit(syn::Lit),
     Type(syn::Type),
@@ -156,6 +174,7 @@ impl quote::ToTokens for MetaValue {
     }
 }
 
+#[derive(Clone)]
 /// Enum to handle both [`MetaNameValue`] and [`MetaTuple`]
 /// 
 /// # Example
@@ -194,7 +213,7 @@ impl std::fmt::Display for MetaItem {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 /// [`MetaContents`]
 /// 
 /// Listed contents inside a tuple, delimited
@@ -219,10 +238,35 @@ impl syn::parse::Parse for MetaContents {
         })
     }
 }
+/// [`MetaContents`] implementation of [`IntoIterator`]
+impl<'a> IntoIterator for &'a MetaContents {
+    type Item = &'a MetaItem;
+    type IntoIter = MetaContentsIterator<'a>;
+    fn into_iter(self) -> Self::IntoIter {
+        MetaContentsIterator::new(&self.items)
+    }
+}
 /// [`MetaContents`] implementation of [`std::fmt::Debug`]
 impl std::fmt::Display for MetaContents {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let items: Vec<String> = self.items.iter().map(|item| format!("{}", item)).collect();
         write!(f, "{}", items.join(", "))
+    }
+}
+
+pub(crate) struct MetaContentsIterator<'a> {
+    iter: syn::punctuated::Iter<'a, MetaItem>,
+}
+impl<'a> MetaContentsIterator<'a> {
+    fn new(items: &'a syn::punctuated::Punctuated<MetaItem, syn::token::Comma>) -> Self {
+        MetaContentsIterator {
+            iter: items.iter(),
+        }
+    }
+}
+impl<'a> Iterator for MetaContentsIterator<'a> {
+    type Item = &'a MetaItem;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next()
     }
 }

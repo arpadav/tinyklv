@@ -59,7 +59,7 @@ use tinyklv::Klv;
     key(enc = someting, dec = someting2), // both required
     // type will ALWAYS be usize
     len(enc = lsometing, dec = lsometing2), // both required
-    default(ty = u8, enc = this, dec = that), // ty required, enc OR dec required
+    default(ty = u16, enc = this, dec = that), // ty required, enc OR dec required
     default(ty = f32, enc = foo, dec = bar),  // ty required, enc OR dec required
     default(ty = Vec<f64>, enc = me), // ty required, enc OR dec required
 )]
@@ -72,7 +72,6 @@ struct Bruh {
     )]
     val: String,
 }
-
 
 
 // should do:
