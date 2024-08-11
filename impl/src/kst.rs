@@ -1,19 +1,16 @@
-use quote::ToTokens;
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use thisenum::Const;
 use thiserror::Error;
+use quote::ToTokens;
 use hashbrown::HashSet;
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::ast2::{
-    Tuple,
-    NameValue,
-    MetaTuple,
-    MetaNameValue,
+    MetaItem, MetaNameValue, MetaTuple, NameValue, Tuple
     // MetaUnorderedContents,
 };
 use super::ATTR;
@@ -41,7 +38,10 @@ impl Input {
             syn::Data::Struct(syn::DataStruct { fields, .. }) => fields,
             _ => panic!("{}", crate::Error::DeriveForNonStruct(crate::NAME.into(), name.to_string())),
         };
-        let sattr = StructAttrSchema::from_syn(&input);
+        let sattr = match StructAttrSchema::from_syn(&input) {
+            Some(sattr) => sattr,
+            None => return Err(Error::Missing),
+        };
         // let fattrs = FieldAttrSchema::from_syn(&fields);
         // Self { name, sattr, fattrs }.update().verify()
         Err(Error::Missing)
@@ -58,45 +58,50 @@ pub(crate) struct StructAttrSchema {
 }
 /// [`StructAttrSchema`] implementation
 impl StructAttrSchema {
-    pub fn from_syn(input: &syn::DeriveInput) -> Self {
-        // let mut me = StructAttrSchema::default();
-        // println!(" input: {:#?}", input.data);
-        input
+    pub fn from_syn(input: &syn::DeriveInput) -> Option<Self> {
+        let parsed: Option<MetaTuple> = input
             .attrs
             .iter()
-            .filter(|attr|
-                match attr.path.get_ident() {
-                    Some(ident) => {
-                        // TODO: handle the "klv" string first, then parse the tokens as a MetaContents
-                        println!("i am true");
-                        println!("ident: {:#?}", ident.to_string());
-                        println!("tokens: {:#?}", attr.tokens.to_string());
-                        let result = StructNames::try_from(ident.to_string().as_str());
-                        println!("result: {:?}, ident: {:?}", result, ident.to_string());
-                        // contents:
-                        let contents = attr.tokens.to_string();
-                        println!("contents: {:#?}", contents);
-                        let concat = format!("{}{}", ident.to_string(), contents);
-                        println!("concat: {:#?}", concat);
-                        let parsed = MetaTuple::from(concat);
-                        println!("parsed: {}", parsed);
-                        // let raw = attr.to_token_stream().to_string();
-                        // println!("raw: {:#?}", raw);
-                        result.is_ok()
-                        // StructNames::try_from(ident.to_string().as_str()).is_ok()
-                    },
-                    None => {
-                        println!("i am false");
-                        false
-                    },
-                }
-            )
-            .for_each(|attr| {
-                println!("attr: {:#?}", attr.to_token_stream().to_string());
-                // Self::parse_struct_attr(attr, &mut me)
-            });
+            .filter(|attr| match attr.path.get_ident() {
+                Some(ident) => ident.to_string() == ATTR,
+                None => false,
+            })
+            .next()
+            .map(|attr| MetaTuple::from(format!("{}{}", ATTR, attr.tokens.to_string())));
+
+        if let Some(parsed) = parsed {
+            println!("parsed: {}", parsed);
+            return Some(parsed.into());
+            // return None;
+            // return Some(Self::from(parsed));
+        } else {
+            return None;
+        }
         // me
         panic!("not implemented: kst.rs::line 86")
+    }
+}
+/// [`StructAttrSchema`] implementation of [`From<MetaTuple>`]
+impl From<MetaTuple> for StructAttrSchema {
+    fn from(meta: MetaTuple) -> Self {
+        let mut me = Self::default();
+        meta
+            .into_iter()
+            .for_each(|item| match item {
+                MetaItem::Tuple(t) => {
+                    println!("t: {}", t);
+                },
+                MetaItem::NameValue(x) => {
+                    match StructNames::try_from(x.name.into()) {
+                        Ok(StructNames::Stream) => me.stream = x.value.into(),
+                        Ok(StructNames::Sentinel) => me.sentinel = Some(x.value),
+                        Ok(StructNames::KeyTuple) => me.key = x.value,
+                        Ok(StructNames::LengthTuple) => me.len = x.value,
+                        Ok(StructNames::DefaultTuple) => me.defaults = x.value,
+                    }
+                },
+            });
+        me
     }
 }
 
