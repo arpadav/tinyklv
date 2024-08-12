@@ -35,9 +35,6 @@ pub(crate) struct MetaTuple {
 /// [`MetaTuple`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for MetaTuple {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        // println!("I AM HERE IN MetaTuple");
-        // println!("input: {}", input.to_string());
-        // println!("------------------------------------");
         let content;
         Ok(MetaTuple {
             name: input.parse()?, // Parse the identifier before the parentheses
@@ -58,13 +55,6 @@ impl From<String> for MetaTuple {
         }
     }
 }
-// /// [`MetaTuple`] implementation of [`Iterator`]
-// impl Iterator for MetaTuple {
-//     type Item = MetaItem;
-//     fn next(&mut self) -> Option<Self::Item> {
-//         self.contents.next()
-//     }
-// }
 /// [`MetaTuple`] implementation of [`IntoIterator`]
 impl<'a> IntoIterator for &'a MetaTuple {
     type Item = &'a MetaItem;
@@ -82,7 +72,17 @@ impl std::fmt::Display for MetaTuple {
 
 /// A [`MetaNameValue`] wrapper
 pub(crate) struct NameValue<T: From<MetaNameValue>> {
+    name: syn::Ident,
+    value: MetaValue,
     _marker: std::marker::PhantomData<T>,
+}
+/// [`NameValue`] implementation
+impl<T: From<MetaNameValue>> NameValue<T> {
+    fn new(name: syn::Ident, value: MetaValue) -> Self {
+        NameValue {
+            _marker: std::marker::PhantomData,
+        }
+    }
 }
 /// [`NameValue`] implementation of [`Default`]
 impl<T: From<MetaNameValue>> Default for NameValue<T> {
@@ -181,7 +181,7 @@ impl quote::ToTokens for MetaValue {
 /// 
 /// ```ignore
 /// name = value
-/// * OR
+/// OR
 /// tname(name = value, name = value)
 /// ```
 pub(crate) enum MetaItem {
@@ -230,9 +230,6 @@ pub(crate) struct MetaContents {
 /// [`MetaContents`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for MetaContents {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        // println!("I AM HERE IN MetaContents");
-        // println!("input: {}", input.to_string());
-        // println!("------------------------------------");
         Ok(MetaContents {
             items: syn::punctuated::Punctuated::parse_terminated(input)?,
         })
@@ -254,9 +251,11 @@ impl std::fmt::Display for MetaContents {
     }
 }
 
+/// [`MetaContentsIterator`]
 pub(crate) struct MetaContentsIterator<'a> {
     iter: syn::punctuated::Iter<'a, MetaItem>,
 }
+/// [`MetaContentsIterator`] implementation
 impl<'a> MetaContentsIterator<'a> {
     fn new(items: &'a syn::punctuated::Punctuated<MetaItem, syn::token::Comma>) -> Self {
         MetaContentsIterator {
@@ -264,6 +263,7 @@ impl<'a> MetaContentsIterator<'a> {
         }
     }
 }
+/// [`MetaContentsIterator`] implementation of [`Iterator`]
 impl<'a> Iterator for MetaContentsIterator<'a> {
     type Item = &'a MetaItem;
     fn next(&mut self) -> Option<Self::Item> {
