@@ -71,6 +71,38 @@ struct Bruh {
         dec = my_str_dec,
     )]
     val: String,
+
+    #[klv(
+        key = b"\x03",
+        len = 3,
+        enc = my_str_enc,
+        dec = my_str_dec,
+    )]
+    val2: String,
+
+    #[klv(
+        key = b"\x04",
+        len = 3,
+        enc = my_str_enc,
+        dec = my_str_dec,
+    )]
+    another_val: String,
+
+    #[klv(
+        key = b"\x05",
+        len = 3,
+        enc = my_str_enc,
+        dec = my_str_dec,
+    )]
+    yet_another_val: String,
+
+    #[klv(
+        key = b"\x06",
+        len = 3,
+        enc = my_str_enc,
+        dec = my_str_dec,
+    )]
+    yet_yet_another_val: String,
 }
 
 
