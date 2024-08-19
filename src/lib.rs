@@ -1,4 +1,5 @@
 pub use tinyklv_impl::*;
+pub mod defaults;
 
 pub trait KeyEncoder<T> {
     fn key_encode(&self, input: T) -> Vec<u8>;
