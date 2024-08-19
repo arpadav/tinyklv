@@ -22,30 +22,23 @@ use crate::ATTR;
 #[derive(Const, Debug)]
 #[armtype(&str)]
 /// Struct Attribute Names
-/// 
-/// # Arms
-/// 
-/// * `Stream` - The stream type. Defaults to [`u8`]
-/// * `Sentinal` - The sentinel value. Defaults to `None`
-/// * `KeyTuple` - The key xcoder tuple
-/// * `LengthTuple` - The length xcoder tuple
-/// * `DefaultTuple` - The default xcoder tuple
 enum StructNames {
-    #[value = "stream"]
-    Stream,
+    /// The sentinel value. Defaults to `None`
     #[value = "sentinel"]
     Sentinel,
+    /// The key xcoder tuple
     #[value = "key"]
     KeyTuple,
+    /// The length xcoder tuple
     #[value = "len"]
     LengthTuple,
+    /// The default xcoder tuple
     #[value = "default"]
     DefaultTuple,
 }
 
 #[derive(Default)]
 pub(crate) struct StructAttrSchema {
-    stream: NameValue<syn::Type>,
     sentinel: NameValue<syn::Lit>,
     key: Tuple<RequiredXcoder>,
     len: Tuple<RequiredXcoder>,
@@ -83,7 +76,6 @@ impl From<MetaTuple> for StructAttrSchema {
                     _ => (),
                 },
                 MetaItem::NameValue(x) => match StructNames::try_from(x.name.to_string().as_str()) {
-                    Ok(StructNames::Stream) => output.stream = x.into(),
                     Ok(StructNames::Sentinel) => output.sentinel = x.into(),
                     _ => (),
                 },
@@ -95,15 +87,7 @@ impl From<MetaTuple> for StructAttrSchema {
 /// [`StructAttrSchema`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for StructAttrSchema {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "
-        StructAttrSchema {{
-            stream: {},
-            sentinel: {},
-            key: {},
-            len: {},
-            defaults: {:#?}
-        }}
-        ", self.stream, self.sentinel, self.key, self.len, self.defaults)
+        write!(f, "StructAttrSchema {{ sentinel: {}, key: {}, len: {}, defaults: {:#?} }}", self.sentinel, self.key, self.len, self.defaults)
     }
 }
 crate::debug_from_display!(StructAttrSchema);

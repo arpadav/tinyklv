@@ -67,10 +67,7 @@ impl From<MetaContents> for RequiredXcoder {
 /// [`RequiredXcoder`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for RequiredXcoder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "
-            enc: {},
-            dec: {}
-        ", self.enc.to_token_stream().to_string(), self.dec.to_token_stream().to_string())
+        write!(f, "enc: {}, dec: {}", self.enc.to_token_stream().to_string(), self.dec.to_token_stream().to_string())
     }
 }
 crate::debug_from_display!(RequiredXcoder);
@@ -95,10 +92,7 @@ impl std::fmt::Display for OptionalXcoder {
             Some(x) => x.to_token_stream().to_string(),
             None => "None".to_string(),
         };
-        write!(f, "
-            enc: {},
-            dec: {}
-        ", enc_str, dec_str)
+        write!(f, "enc: {}, dec: {}", enc_str, dec_str)
     }
 }
 crate::debug_from_display!(OptionalXcoder);
@@ -143,10 +137,7 @@ impl From<MetaContents> for DefaultXcoder {
 /// [`DefaultXcoder`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for DefaultXcoder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "
-            ty: {},
-            {}
-        ", self.ty.to_token_stream().to_string(), self.xcoder)
+        write!(f, "ty: {}, {}", self.ty.to_token_stream().to_string(), self.xcoder)
     }
 }
 crate::debug_from_display!(DefaultXcoder);

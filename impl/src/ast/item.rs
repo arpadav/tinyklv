@@ -21,12 +21,8 @@ pub(crate) enum MetaItem {
 /// [`MetaItem`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for MetaItem {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        // println!("I AM HERE IN MetaItem::parse");
-        // println!("input: {}", input.to_string());
-        // println!("------------------------------------");
         // Attempt to parse as MetaTuple first
-        if true
-        && input.peek(syn::Ident)
+        if input.peek(syn::Ident)
         && input.peek2(syn::token::Paren)
         { Ok(MetaItem::Tuple(input.parse()?)) }
         // Otherwise, parse as MetaNameValue
