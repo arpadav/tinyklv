@@ -66,16 +66,14 @@ impl FieldAttrSchema {
 /// [`FieldAttrSchema`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for FieldAttrSchema {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "
-            name: {},
-            {}
-        ", self.name, self.contents)
+        write!(f, "name: {}, contents: {}", self.name, self.contents)
     }
 }
 crate::debug_from_display!(FieldAttrSchema);
 
 #[derive(Default)]
 pub(crate)struct FieldAttrContents {
+    // #[symple(rename = "key")]
     key: NameValue<syn::Lit>,
     len: NameValue<syn::Lit>,
     dec: Option<NameValue<syn::Path>>,
@@ -102,12 +100,7 @@ impl From<MetaTuple> for FieldAttrContents {
 /// [`FieldAttrContents`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for FieldAttrContents {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "
-            key: {},
-            len: {},
-            enc: {:?},
-            dec: {:?}
-        ", self.key, self.len, self.enc, self.dec)
+        write!(f, "key: {}, len: {}, enc: {:?}, dec: {:?}", self.key, self.len, self.enc, self.dec)
     }
 }
 crate::debug_from_display!(FieldAttrContents);

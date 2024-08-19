@@ -9,37 +9,6 @@ use tinyklv::Klv;
 // determined by the value of the `len` field
 // - e.g. FixedDecoder
 
-// #[derive(Klv)]
-// // #[seek = b"\x00"]
-// #[key_encoder(func = key_encoder_example)]
-// #[key_decoder(func = key_decoder_example)]
-// #[len_encoder(func = len_encoder_example)]
-// #[len_decoder(func = len_decoder_example)]
-// // optional, as many as you like
-// // #[default_encoder(typ = u8, func = serialize_u8)]
-// // #[default_decoder(typ = u8, func = deserialize_u8)]
-// #[default_encoder(typ = Vec<f32>, func = serialize_vec_f32)]
-// // #[default_decoder(typ = Vec<f64>, func = deserialize_u8)]
-// pub struct MyStruct {
-//     #[key = b"\x01"]
-//     #[len = 2]
-//     #[encoder(func = serialize_u8)]   // input: u8, output: &[u8; 2]
-//     #[decoder(func = deserialize_u8)]   // input: &[u8; 2], output: u8
-//     pub BRUHHH: u8,
-
-//     #[key = b"\x02"]
-//     #[len = 1]
-//     #[encoder(func = serialize_u8)]   // input: u8, output: &[u8; 2]
-//     #[decoder(func = deserialize_u8)]   // input: &[u8; 2], output: u8
-//     pub b: u8,
-
-//     #[key = b"\x03"]
-//     #[len = 1]
-//     // #[encoder(func = serialize_vec_f32)] // input: Vec<f32>, output: &[u8; 1]
-//     #[decoder(func = deserialize_vec_f32)] // input: &[u8; 1], output: Vec<f32>
-//     pub someting: Vec<f32>,
-// }
-
 // key/len xcoder, fixed ALWAYS false
 // variants: fixed ALWAYS true
 //
@@ -49,12 +18,7 @@ use tinyklv::Klv;
 
 #[derive(Klv)]
 #[klv(
-    stream = u8, // input is a slice/vec of this
-                 // non-configurable, for now. but make
-                 // type-agnostic.
-    
     sentinel = b"\x01", // sentinal / keys always slice / vec of dtype stream
-
     // type defaults to stream type, any length
     key(enc = someting, dec = someting2), // both required
     // type will ALWAYS be usize
@@ -63,14 +27,12 @@ use tinyklv::Klv;
     default(ty = f32, enc = foo, dec = bar),  // ty required, enc OR dec required
     default(ty = Vec<f64>, enc = me), // ty required, enc OR dec required
 )]
-struct Bruh {
+struct Misb0601 {
     #[klv(
         key = b"\x02",
         len = 3,
-        enc = my_str_enc,
-        dec = my_str_dec,
     )]
-    val: String,
+    checksum: u16,
 
     #[klv(
         key = b"\x03",
