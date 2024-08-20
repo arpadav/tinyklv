@@ -337,6 +337,7 @@ pub mod parsers {
         (b & 0x80) != 0
     }
 
+    #[inline]
     /// Parses out a specified number of bytes and combines them into a `u128` value
     pub fn parse_length<'s>(input: &mut crate::Stream<'s>, num_bytes: usize) -> winnow::PResult<u128> {
         take(num_bytes)
@@ -345,112 +346,6 @@ pub mod parsers {
     }
 }
 
-// /// Enum representing a BER Key-Length-Value structure.
-// struct BerKlv<K, L>
-// where 
-//     K: OfBerOid,
-//     L: OfBerLength
-// {
-//     key: K,
-//     len: std::marker::PhantomData<L>,
-//     val: Vec<u8>,
-// }
-
-// impl<K: OfBerOid, L: OfBerLength> BerKlv<K, L> {
-//     fn new(key: K, val: Vec<u8>) -> Self {
-//         Self { key, len: std::marker::PhantomData, val }
-//     }
-// }
-
-// impl<K: OfBerOid, L: OfBerLength> Encode for BerKlv<K, L> {
-//     fn encode(&self) -> Vec<u8> {
-//         BerOid::encode(self.key).into_iter()
-//             .chain(BerLength::encode(self.val.len()).into_iter())
-//             .chain(self.val.clone().into_iter())
-//             .collect()
-//     }
-// }
-
-// impl Decode for BERKLV {
-//     fn decode(bytes: &[u8], klv_type: KLVType) -> io::Result<Self> {
-//         match klv_type {
-//             KLVType::Key => Ok(BERKLV::Key(BEROIDTag::decode(bytes)?)),
-//             KLVType::Length => Ok(BERKLV::Length(BerLength::decode(bytes)?)),
-//             KLVType::Value => Ok(BERKLV::Value(bytes.to_vec())),
-//         }
-//     }
-// }
-
-// /// Enum to specify the type of Key-Length-Value decoding.
-// enum KLVType {
-//     Key,
-//     Length,
-//     Value,
-// }
-
-// /// Struct for encoding/decoding a BER object.
-// struct BERObject {
-//     klv: Vec<BERKLV>,
-// }
-
-// impl BERObject {
-//     fn new(klv: Vec<BERKLV>) -> Self {
-//         BERObject { klv }
-//     }
-
-//     /// Encode the entire BERObject.
-//     fn encode(&self) -> Vec<u8> {
-//         self.klv.iter().flat_map(|item| item.encode()).collect()
-//     }
-
-//     /// Decode the entire BERObject from bytes.
-//     fn decode(bytes: &[u8]) -> io::Result<Self> {
-//         let mut klv = Vec::new();
-//         let mut idx = 0;
-
-//         // Assuming a specific structure: Key, Length, and then Value.
-//         while idx < bytes.len() {
-//             // Decode Key
-//             let key = BERKLV::decode(&bytes[idx..], KLVType::Key)?;
-//             idx += match &key {
-//                 BERKLV::Key(BEROIDTag::SingleByte(_)) => 1,
-//                 BERKLV::Key(BEROIDTag::MultiByte(bytes)) => bytes.len(),
-//                 _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid key")),
-//             };
-
-//             // Decode Length
-//             let length = BERKLV::decode(&bytes[idx..], KLVType::Length)?;
-//             idx += match &length {
-//                 BERKLV::Length(BerLength::Short(_)) => 1,
-//                 BERKLV::Length(BerLength::Long(bytes)) => bytes.len() + 1,
-//                 _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid length")),
-//             };
-
-//             // Decode Value
-//             let value = match &length {
-//                 BERKLV::Length(BerLength::Short(len)) => BERKLV::decode(&bytes[idx..idx + (*len as usize)], KLVType::Value)?,
-//                 BERKLV::Length(BerLength::Long(len_bytes)) => {
-//                     let mut len = 0usize;
-//                     for byte in len_bytes {
-//                         len = (len << 8) | (*byte as usize);
-//                     }
-//                     BERKLV::decode(&bytes[idx..idx + len], KLVType::Value)?
-//                 }
-//                 _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid length")),
-//             };
-//             idx += match &value {
-//                 BERKLV::Value(v) => v.len(),
-//                 _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid value")),
-//             };
-
-//             klv.push(key);
-//             klv.push(length);
-//             klv.push(value);
-//         }
-
-//         Ok(BERObject::new(klv))
-//     }
-// }
 
 #[test]
 fn main() {
