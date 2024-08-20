@@ -39,15 +39,6 @@ enum Error {
     DecoderTypeMismatch(String, String, String),
 }
 
-// impl<T> Into<nom::IResult<T, T>> for IResult<T> {
-//     fn into(self) -> nom::IResult<T, T> {
-//         match self {
-//             KlvResult::Ok(t) => Ok((t, t)),
-//             KlvResult::Err(e) => Err(nom::Err::Error(e)),
-//         }
-//     }
-// }
-
 const NAME: &str = "Klv";
 const ATTR: &str = "klv";
 #[proc_macro_derive(Klv, attributes(klv))]

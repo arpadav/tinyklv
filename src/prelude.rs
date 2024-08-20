@@ -4,7 +4,9 @@ pub trait Encode {
 }
 
 /// Trait for decoding from bytes directly, without a stream of input data
-pub trait FixedDecode: Sized {
+/// 
+/// Advised against, keeping this internal to crate
+pub(crate) trait FixedDecode: Sized {
     type Error;
     fn fixed_decode(input: crate::Stream) -> Result<Self, Self::Error>;
 }
