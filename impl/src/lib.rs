@@ -50,19 +50,7 @@ enum Error {
 
 const NAME: &str = "Klv";
 const ATTR: &str = "klv";
-#[proc_macro_derive(Klv, attributes(
-    // key_encoder,
-    // key_decoder,
-    // len_encoder,
-    // len_decoder,
-    // default_encoder,
-    // default_decoder,
-    // key,
-    // len,
-    // encoder,
-    // decoder,
-    klv
-))]
+#[proc_macro_derive(Klv, attributes(klv))]
 pub fn klv(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     // println!("{}: {:#?}=========================================================================", NAME, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis());
