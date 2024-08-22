@@ -20,14 +20,11 @@ use crate::ATTR;
 /// # Arms
 /// 
 /// * `Key` - The key, as a slice of `stream` type (usually bytes)
-/// * `Length` - The length, as [`usize`]
 /// * `Encoder` - The encoder
 /// * `Decoder` - The decoder
 enum FieldNames {
     #[value = "key"]
     Key,
-    #[value = "len"]
-    Length,
     #[value = "enc"]
     Encoder,
     #[value = "dec"]
@@ -35,8 +32,9 @@ enum FieldNames {
 }
 
 pub(crate)struct FieldAttrSchema {
-    name: syn::Ident,
-    contents: FieldAttrContents,
+    pub name: syn::Ident,
+    pub ty: syn::Type,
+    pub contents: FieldAttrContents,
 }
 /// [`FieldAttrSchema`] implementation
 impl FieldAttrSchema {
@@ -57,6 +55,7 @@ impl FieldAttrSchema {
         match parsed {
             Some(parsed) => Some(FieldAttrSchema {
                 name: input.ident.clone().unwrap(),
+                ty: input.ty.clone(),
                 contents: parsed.into(),
             }),
             None => None,
@@ -73,11 +72,9 @@ crate::debug_from_display!(FieldAttrSchema);
 
 #[derive(Default)]
 pub(crate)struct FieldAttrContents {
-    // #[symple(rename = "key")]
-    key: NameValue<syn::Lit>,
-    len: NameValue<syn::Lit>,
-    dec: Option<NameValue<syn::Path>>,
-    enc: Option<NameValue<syn::Path>>,
+    pub key: NameValue<syn::Lit>,
+    pub dec: Option<NameValue<syn::Path>>,
+    pub enc: Option<NameValue<syn::Path>>,
 }
 /// [`FieldAttrContents`] implementation of [`From`] for [`MetaTuple`]
 impl From<MetaTuple> for FieldAttrContents {
@@ -88,7 +85,6 @@ impl From<MetaTuple> for FieldAttrContents {
             .for_each(|item| if let MetaItem::NameValue(x) = item {
                 match FieldNames::try_from(x.name.to_string().as_str()) {
                     Ok(FieldNames::Key) => output.key = x.into(),
-                    Ok(FieldNames::Length) => output.len = x.into(),
                     Ok(FieldNames::Encoder) => output.enc = Some(x.into()),
                     Ok(FieldNames::Decoder) => output.dec = Some(x.into()),
                     _ => (),
@@ -100,7 +96,7 @@ impl From<MetaTuple> for FieldAttrContents {
 /// [`FieldAttrContents`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for FieldAttrContents {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "key: {}, len: {}, enc: {:?}, dec: {:?}", self.key, self.len, self.enc, self.dec)
+        write!(f, "key: {}, enc: {:?}, dec: {:?}", self.key, self.enc, self.dec)
     }
 }
 crate::debug_from_display!(FieldAttrContents);

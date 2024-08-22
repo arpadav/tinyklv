@@ -46,6 +46,12 @@ crate::debug_from_display!(MetaNameValue);
 pub(crate) struct NameValue<T: From<MetaValue> + ToTokens> {
     value: Option<T>,
 }
+/// [`NameValue`] implementation
+impl<T: From<MetaValue> + ToTokens> NameValue<T> {
+    pub fn new(value: T) -> Self {
+        NameValue { value: Some(value) }
+    }
+}
 /// [`NameValue`] implementation of [`From`] for [`MetaNameValue`]
 impl<T: From<MetaValue> + ToTokens> From<&MetaNameValue> for NameValue<T> {
     fn from(meta: &MetaNameValue) -> Self {

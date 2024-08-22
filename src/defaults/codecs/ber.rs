@@ -75,7 +75,7 @@ impl<T: OfBerLength> BerLength<T> {
 }
 
 /// [BerLength] implementation of [Encode]
-impl<T: OfBerLength> Encode for BerLength<T> {
+impl<T: OfBerLength> Encode<Vec<u8>> for BerLength<T> {
     /// Encode a [BerLength] into a [Vec<u8>]
     /// 
     /// # Example
@@ -135,60 +135,60 @@ impl<T: OfBerLength> Encode for BerLength<T> {
     }
 }
 
-/// [BerLength] implementation of [FixedDecode]
-impl<T: OfBerLength> FixedDecode for BerLength<T> {
-    type Error = io::Error;
-    /// Decode a [BerLength] from a [Vec<u8>]
-    /// 
-    /// # Example
-    /// 
-    /// ```
-    /// use tinyklv::prelude::*;
-    /// use tinyklv::defaults::ber::BerLength;
-    /// 
-    /// assert_eq!(BerLength::fixed_decode(&[47]).unwrap(), BerLength::<u64>::Short(47_u8));
-    /// assert_eq!(BerLength::fixed_decode(&[128 + 1, 201]).unwrap(), BerLength::Long(201_u64));
-    /// assert_eq!(BerLength::fixed_decode(&[128 + 6, 112, 173, 208, 117, 220, 22]).unwrap(), BerLength::Long(123891829038102_u64));
-    /// ```
-    fn fixed_decode(input: &[u8]) -> Result<Self, Self::Error> {
-        // --------------------------------------------------
-        // err if no bytes
-        // --------------------------------------------------
-        if input.is_empty() {
-            return Result::Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "No bytes provided"
-            ));
-        }
-        let first_byte = input[0];
-        // --------------------------------------------------
-        // if MSB is not set, it's a short length (single byte)
-        // --------------------------------------------------
-        if first_byte & 0x80 == 0 { return Ok(BerLength::Short(first_byte)); }
-        // --------------------------------------------------
-        // extract the number of bytes used for length encoding
-        // --------------------------------------------------
-        let num_bytes = (first_byte & 0x7F) as usize;
-        if input.len() < num_bytes + 1 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Insufficient bytes for BER length decoding",
-            ));
-        }
-        // --------------------------------------------------
-        // decode the length from the specified number of bytes
-        // --------------------------------------------------
-        let mut output = 0u128;
-        for &byte in &input[1..=num_bytes] {
-            output = (output << 8) | byte as u128;
-        }
-        Ok(BerLength::Long(T::from_u128(output).unwrap()))
-    }
-}
+// /// [BerLength] implementation of [FixedDecode]
+// impl<T: OfBerLength> FixedDecode for BerLength<T> {
+//     type Error = io::Error;
+//     /// Decode a [BerLength] from a [Vec<u8>]
+//     /// 
+//     /// # Example
+//     /// 
+//     /// ```
+//     /// use tinyklv::prelude::*;
+//     /// use tinyklv::defaults::ber::BerLength;
+//     /// 
+//     /// assert_eq!(BerLength::fixed_decode(&[47]).unwrap(), BerLength::<u64>::Short(47_u8));
+//     /// assert_eq!(BerLength::fixed_decode(&[128 + 1, 201]).unwrap(), BerLength::Long(201_u64));
+//     /// assert_eq!(BerLength::fixed_decode(&[128 + 6, 112, 173, 208, 117, 220, 22]).unwrap(), BerLength::Long(123891829038102_u64));
+//     /// ```
+//     fn fixed_decode(input: &[u8]) -> Result<Self, Self::Error> {
+//         // --------------------------------------------------
+//         // err if no bytes
+//         // --------------------------------------------------
+//         if input.is_empty() {
+//             return Result::Err(io::Error::new(
+//                 io::ErrorKind::InvalidInput,
+//                 "No bytes provided"
+//             ));
+//         }
+//         let first_byte = input[0];
+//         // --------------------------------------------------
+//         // if MSB is not set, it's a short length (single byte)
+//         // --------------------------------------------------
+//         if first_byte & 0x80 == 0 { return Ok(BerLength::Short(first_byte)); }
+//         // --------------------------------------------------
+//         // extract the number of bytes used for length encoding
+//         // --------------------------------------------------
+//         let num_bytes = (first_byte & 0x7F) as usize;
+//         if input.len() < num_bytes + 1 {
+//             return Err(io::Error::new(
+//                 io::ErrorKind::InvalidInput,
+//                 "Insufficient bytes for BER length decoding",
+//             ));
+//         }
+//         // --------------------------------------------------
+//         // decode the length from the specified number of bytes
+//         // --------------------------------------------------
+//         let mut output = 0u128;
+//         for &byte in &input[1..=num_bytes] {
+//             output = (output << 8) | byte as u128;
+//         }
+//         Ok(BerLength::Long(T::from_u128(output).unwrap()))
+//     }
+// }
 
 /// [BerLength] implementation of [StreamDecode]
-impl<T: OfBerLength> StreamDecode for BerLength<T> {
-    fn decode(input: &mut crate::Stream) -> winnow::PResult<Self> {
+impl<T: OfBerLength> StreamDecode<&[u8]> for BerLength<T> {
+    fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
         // --------------------------------------------------
         // err if no bytes
         // --------------------------------------------------
@@ -210,7 +210,7 @@ impl<T: OfBerLength> StreamDecode for BerLength<T> {
         // decode the length from the specified number of bytes
         // --------------------------------------------------
         let output = parse_length(input, num_bytes)?;
-        Ok(BerLength::Long(T::from_u128(output).unwrap()))
+        Ok(BerLength::Long(T::from_u64(output).unwrap()))
     }
 }
 
@@ -224,7 +224,7 @@ pub struct BerOid<T>
 where 
     T: OfBerOid
 {
-    value: T,
+    pub value: T,
 }
 
 impl<T: OfBerOid> BerOid<T> {
@@ -240,7 +240,7 @@ impl<T: OfBerOid> BerOid<T> {
 }
 
 /// [BerOid] implementation of [Encode]
-impl<T: OfBerOid> Encode for BerOid<T> {
+impl<T: OfBerOid> Encode<Vec<u8>> for BerOid<T> {
     /// Encode a [BerOid] into a [Vec<u8>]
     /// 
     /// # Example
@@ -280,55 +280,59 @@ impl<T: OfBerOid> Encode for BerOid<T> {
     }
 }
 
-/// [BerOid] implementation of [FixedDecode]
-impl<T: OfBerOid> FixedDecode for BerOid<T> {
-    type Error = io::Error;
-    fn fixed_decode(input: &[u8]) -> io::Result<Self> {
-        let mut value = 0u64;
-        for &byte in input.iter() {
-            // --------------------------------------------------
-            // extract the 7 bits from the byte (ignoring the MSB)
-            // and insert to correct position
-            // --------------------------------------------------
-            value = (value << 7) | (byte & 0x7F) as u64;
-            // --------------------------------------------------
-            // if MSB is 0, return
-            // --------------------------------------------------
-            if byte & 0x80 == 0 { return Ok(BerOid::new(&T::from_u64(value).unwrap())); }
-        }
-        Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid BER OID"))
-    }
-}
+// /// [BerOid] implementation of [FixedDecode]
+// impl<T: OfBerOid> FixedDecode for BerOid<T> {
+//     type Error = io::Error;
+//     fn fixed_decode(input: &[u8]) -> io::Result<Self> {
+//         let mut value = 0u64;
+//         for &byte in input.iter() {
+//             // --------------------------------------------------
+//             // extract the 7 bits from the byte (ignoring the MSB)
+//             // and insert to correct position
+//             // --------------------------------------------------
+//             value = (value << 7) | (byte & 0x7F) as u64;
+//             // --------------------------------------------------
+//             // if MSB is 0, return
+//             // --------------------------------------------------
+//             if byte & 0x80 == 0 { return Ok(BerOid::new(&T::from_u64(value).unwrap())); }
+//         }
+//         Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid BER OID"))
+//     }
+// }
 
 /// [BerOid] implementation of [StreamDecode]
-impl<T: OfBerOid> StreamDecode for BerOid<T> {
-    fn decode(input: &mut crate::Stream) -> winnow::PResult<Self> {
+impl<T: OfBerOid> StreamDecode<&[u8]> for BerOid<T> {
+    fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
         // --------------------------------------------------
         // take while MSB = 1, then take last byte and exit
-        // if fails, return error
+        // if fails, it means it's a single byte with no
+        // MSB set
         // --------------------------------------------------
-        let output = take_while_msb_set(input)?
-            .iter()
-            .chain(take_one(input)?)
-            // --------------------------------------------------
-            // extract the 7 bits from the byte (ignoring the MSB)
-            // and insert to correct position
-            // --------------------------------------------------
-            .fold(0u64, |acc, &b| (acc << 7) | (b & 0x7F) as u64);
+        let output = match take_while_msb_set(input) {
+            Ok(packets) => packets
+                .iter()
+                .chain(take_one(input)?)
+                // --------------------------------------------------
+                // extract the 7 bits from the byte (ignoring the MSB)
+                // and insert to correct position
+                // --------------------------------------------------
+                .fold(0u64, |acc, &b| (acc << 7) | (b & 0x7F) as u64),
+            Err(_) => winnow::binary::be_u8(input)? as u64,
+        };
         Ok(BerOid::new(&T::from_u64(output).unwrap()))
     }
 }
 
 #[inline]
 /// Parses out all bytes while MSB is set to 1
-fn take_while_msb_set<'s>(input: &mut crate::Stream<'s>) -> winnow::PResult<crate::Stream<'s>> {
+fn take_while_msb_set<'s>(input: &mut &'s [u8]) -> winnow::PResult<&'s [u8]> {
     take_while(1.., msb_is_set).parse_next(input)
 }
 
 #[inline]
 /// Parses out a single byte. MSB is **assumed** set to 0, since
 /// this function is only called after [types::BerOid::take_while_msb_set]
-fn take_one<'s>(input: &mut crate::Stream<'s>) -> winnow::PResult<crate::Stream<'s>> {
+fn take_one<'s>(input: &mut &'s [u8]) -> winnow::PResult<&'s [u8]> {
     take(1usize).parse_next(input)
 }
 
@@ -339,10 +343,10 @@ fn msb_is_set(b: u8) -> bool {
 }
 
 #[inline]
-/// Parses out a specified number of bytes and combines them into a `u128` value
-fn parse_length<'s>(input: &mut crate::Stream<'s>, num_bytes: usize) -> winnow::PResult<u128> {
+/// Parses out a specified number of bytes and combines them into a `u64` value
+fn parse_length(input: &mut &[u8], num_bytes: usize) -> winnow::PResult<u64> {
     take(num_bytes)
-        .map(|bytes: &[u8]| bytes.iter().fold(0u128, |acc, &byte| (acc << 8) | byte as u128))
+        .map(|bytes: &[u8]| bytes.iter().fold(0u64, |acc, &byte| (acc << 8) | byte as u64))
         .parse_next(input)
 }
 

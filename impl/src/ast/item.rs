@@ -22,11 +22,15 @@ pub(crate) enum MetaItem {
 impl syn::parse::Parse for MetaItem {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         // Attempt to parse as MetaTuple first
-        if input.peek(syn::Ident)
-        && input.peek2(syn::token::Paren)
-        { Ok(MetaItem::Tuple(input.parse()?)) }
+        if input.peek(syn::Ident) && input.peek2(syn::token::Paren) {
+            let result: Result<MetaTuple, _> = input.parse();
+            match result {
+                Ok(x) => return Ok(MetaItem::Tuple(x)),
+                Err(_) => {},
+            };
+        }
         // Otherwise, parse as MetaNameValue
-        else { Ok(MetaItem::NameValue(input.parse()?)) }
+        Ok(MetaItem::NameValue(input.parse()?))
     }
 }
 /// [`MetaItem`] implementation of [`std::fmt::Display`]

@@ -62,10 +62,10 @@ impl std::fmt::Display for MetaTuple {
 }
 crate::debug_from_display!(MetaTuple);
 
-#[derive(Eq, Hash, PartialEq)]
+#[derive(Eq, Hash, Clone, PartialEq)]
 /// A [`MetaTuple`] wrapper
 pub(crate) struct Tuple<T: From<MetaContents> + std::fmt::Display> {
-    value: Option<T>,
+    pub value: Option<T>,
 }
 /// [`Tuple`] implementation of [`From<MetaTuple>`]
 impl <T: From<MetaContents> + std::fmt::Display> From<&MetaTuple> for Tuple<T> {

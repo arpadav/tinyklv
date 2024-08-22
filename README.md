@@ -18,21 +18,13 @@ This crate is predominately used for streams of packetized data, like from video
     /// Optional, default encoder or decoder for specified types
     default(ty = u16, enc = this, dec = that),
     default(ty = f32, enc = foo, dec = bar),
-    default(ty = Vec<f64>, enc = me),
+    default(ty = Vec<f64>, dyn = true, enc = me),
 )]
 struct ExampleStruct {
-    #[klv(
-        key = b"\x02",
-        len = 3,
-    )]
+    #[klv(key = b"\x02")]
     checksum: u16,
 
-    #[klv(
-        key = b"\x03",
-        len = 3,
-        enc = my_str_enc,
-        dec = my_str_dec,
-    )]
+    #[klv(key = b"\x03", dec = ::tinyklv::defaults::dec::to_string)]
     val2: String,
 
     #[klv(
