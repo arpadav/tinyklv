@@ -2,6 +2,7 @@
 // external
 // --------------------------------------------------
 use quote::ToTokens;
+use syn::ext::IdentExt;
 
 #[derive(Clone)]
 pub(crate) enum MetaValue {
@@ -15,7 +16,8 @@ impl syn::parse::Parse for MetaValue {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         match () {
             _ if input.peek(syn::Lit) => Ok(MetaValue::Lit(input.parse()?)),
-            _ if input.peek(syn::Ident) && input.peek2(syn::token::Colon2) => match input.parse::<syn::Type>() {
+            _ if (input.peek(syn::Ident) && input.peek2(syn::token::Colon2))
+              || (input.peek3(syn::Ident) && input.peek(syn::token::Colon2)) => match input.parse::<syn::Type>() {
                 Ok(x) => Ok(MetaValue::Type(x)),
                 _ => Ok(MetaValue::Path(input.parse()?)),
             },

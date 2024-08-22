@@ -15,18 +15,15 @@ use crate::ast::{
 #[derive(Const, Debug)]
 #[armtype(&str)]
 /// Xcoder Names
-/// 
-/// # Arms
-/// 
-/// * `Type` - The type associated with the xcoder
-/// * `Encoder` - The encoder
-/// * `Decoder` - The decoder
 enum XcoderNames {
     #[value = "ty"]
+    /// The type associated with the encoder and decoder
     Type,
     #[value = "enc"]
+    /// The encoder, a function which is `winnow` compatible
     Encoder,
     #[value = "dec"]
+    /// The decoder, a function which is `winnow` compatible
     Decoder,
 }
 

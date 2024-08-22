@@ -1,7 +1,7 @@
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use std::{io, num::NonZero};
+use std::{ io, num::NonZero };
 use num_traits::{
     ToBytes,
     Unsigned,
@@ -13,11 +13,26 @@ use winnow::error::{
     Needed,
     ErrMode,
 };
+use winnow::token::{
+    take,
+    take_while,
+};
+use winnow::prelude::*;
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::prelude::*;
+
+// --------------------------------------------------
+// traits
+// --------------------------------------------------
+pub trait OfBerCommon: Copy + ToBytes + Unsigned + PartialOrd + ToPrimitive + FromPrimitive {}
+impl<T> OfBerCommon for T where T: Copy + ToBytes + Unsigned + PartialOrd + ToPrimitive + FromPrimitive {}
+pub trait OfBerLength: OfBerCommon {}
+impl<T> OfBerLength for T where T: OfBerCommon {}
+pub trait OfBerOid: OfBerCommon + AsPrimitive<u64> {}
+impl<T> OfBerOid for T where T: OfBerCommon + AsPrimitive<u64> {}
 
 #[derive(Debug, PartialEq)]
 /// Enum representing BER Length Encoding.
@@ -32,8 +47,6 @@ where
     Short(u8),
     Long(T),
 }
-pub trait OfBerLength: ToBytes + Unsigned + PartialOrd + ToPrimitive + FromPrimitive {}
-impl<T> OfBerLength for T where T: ToBytes + Unsigned + PartialOrd + ToPrimitive + FromPrimitive {}
 
 /// [BerLength] implementation
 impl<T: OfBerLength> BerLength<T> {
@@ -46,17 +59,17 @@ impl<T: OfBerLength> BerLength<T> {
     /// # Panics
     /// 
     /// This should never panic, due to trait bounds
-    pub fn new(len: T) -> Self {
-        match len < T::from_u8(128).unwrap() {
+    pub fn new(len: &T) -> Self {
+        match len < &T::from_u8(128).unwrap() {
             true => BerLength::Short(len.to_u8().unwrap()),
-            false => BerLength::Long(len),
+            false => BerLength::Long(*len),
         }
     }
 
     /// Encodes a length of [BerLength] into a [Vec<u8>]
     /// 
     /// See [BerLength] implementation [Encode] [Self::encode]
-    pub fn encode(len: T) -> Vec<u8> {
+    pub fn encode(len: &T) -> Vec<u8> {
         Self::new(len).encode()
     }
 }
@@ -69,19 +82,19 @@ impl<T: OfBerLength> Encode for BerLength<T> {
     /// 
     /// ```
     /// use tinyklv::prelude::*;
-    /// use tinyklv::defaults::ber::BerLength;
+    /// use tinyklv::defaults::codecs::ber::BerLength;
     /// 
-    /// let value0 = BerLength::new(47_u64);
-    /// let value1 = BerLength::new(201_u64);
-    /// let value2 = BerLength::new(123891829038102_u64);
+    /// let value0 = BerLength::new(&47_u64);
+    /// let value1 = BerLength::new(&201_u64);
+    /// let value2 = BerLength::new(&123891829038102_u64);
     /// 
     /// assert_eq!(value0.encode(), vec![47]);
     /// assert_eq!(value1.encode(), vec![128 + 1, 201]);
     /// assert_eq!(value2.encode(), vec![128 + 6, 112, 173, 208, 117, 220, 22]);
     /// 
     /// // Can also directly encode:
-    /// let value0_encoded = BerLength::encode(47_u64);
-    /// let value1_encoded = BerLength::encode(201_u64);
+    /// let value0_encoded = BerLength::encode(&47_u64);
+    /// let value1_encoded = BerLength::encode(&201_u64);
     /// 
     /// assert_eq!(value0_encoded, vec![47]);
     /// assert_eq!(value1_encoded, vec![128 + 1, 201]);
@@ -95,7 +108,7 @@ impl<T: OfBerLength> Encode for BerLength<T> {
                 // --------------------------------------------------
                 // This should never happen: upon creation, length is checked to be < 128
                 // --------------------------------------------------
-                if len < &T::from_u8(128).unwrap() { return vec![len.to_u8().unwrap()]; }
+                if len < &&T::from_u8(128).unwrap() { return vec![len.to_u8().unwrap()]; }
                 // --------------------------------------------------
                 // skip leading zeroes
                 // --------------------------------------------------
@@ -179,7 +192,7 @@ impl<T: OfBerLength> StreamDecode for BerLength<T> {
         // --------------------------------------------------
         // err if no bytes
         // --------------------------------------------------
-        let first_byte = parsers::take_one(input)?;
+        let first_byte = take_one(input)?;
         let first_byte = first_byte[0];
         // --------------------------------------------------
         // if MSB is not set, it's a short length (single byte)
@@ -196,7 +209,7 @@ impl<T: OfBerLength> StreamDecode for BerLength<T> {
         // --------------------------------------------------
         // decode the length from the specified number of bytes
         // --------------------------------------------------
-        let output = parsers::parse_length(input, num_bytes)?;
+        let output = parse_length(input, num_bytes)?;
         Ok(BerLength::Long(T::from_u128(output).unwrap()))
     }
 }
@@ -213,17 +226,15 @@ where
 {
     value: T,
 }
-pub trait OfBerOid: ToBytes + Unsigned + PartialOrd + AsPrimitive<u64> + ToPrimitive + FromPrimitive {}
-impl<T> OfBerOid for T where T: ToBytes + Unsigned + PartialOrd + AsPrimitive<u64> + ToPrimitive + FromPrimitive {}
 
 impl<T: OfBerOid> BerOid<T> {
     /// Creates a new [BerOid] from an unsigned integer
-    pub fn new(value: T) -> Self {
-        Self { value }
+    pub fn new(value: &T) -> Self {
+        Self { value: *value }
     }
 
     /// Encodes a value of [BerOid] into a [Vec<u8>]
-    pub fn encode(value: T) -> Vec<u8> {
+    pub fn encode(value: &T) -> Vec<u8> {
         Self::new(value).encode()
     }
 }
@@ -283,7 +294,7 @@ impl<T: OfBerOid> FixedDecode for BerOid<T> {
             // --------------------------------------------------
             // if MSB is 0, return
             // --------------------------------------------------
-            if byte & 0x80 == 0 { return Ok(BerOid::new(T::from_u64(value).unwrap())); }
+            if byte & 0x80 == 0 { return Ok(BerOid::new(&T::from_u64(value).unwrap())); }
         }
         Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid BER OID"))
     }
@@ -296,62 +307,50 @@ impl<T: OfBerOid> StreamDecode for BerOid<T> {
         // take while MSB = 1, then take last byte and exit
         // if fails, return error
         // --------------------------------------------------
-        let output = parsers::take_while_msb_set(input)?
+        let output = take_while_msb_set(input)?
             .iter()
-            .chain(parsers::take_one(input)?)
+            .chain(take_one(input)?)
             // --------------------------------------------------
             // extract the 7 bits from the byte (ignoring the MSB)
             // and insert to correct position
             // --------------------------------------------------
             .fold(0u64, |acc, &b| (acc << 7) | (b & 0x7F) as u64);
-        Ok(BerOid::new(T::from_u64(output).unwrap()))
+        Ok(BerOid::new(&T::from_u64(output).unwrap()))
     }
 }
 
-pub mod parsers {
-    // --------------------------------------------------
-    // external
-    // --------------------------------------------------
-    use winnow::token::{
-        take,
-        take_while,
-    };
-    use winnow::prelude::*;
-
-    #[inline]
-    /// Parses out all bytes while MSB is set to 1
-    pub fn take_while_msb_set<'s>(input: &mut crate::Stream<'s>) -> winnow::PResult<crate::Stream<'s>> {
-        take_while(1.., msb_is_set).parse_next(input)
-    }
-
-    #[inline]
-    /// Parses out a single byte. MSB is **assumed** set to 0, since
-    /// this function is only called after [BerOid::take_while_msb_set]
-    pub fn take_one<'s>(input: &mut crate::Stream<'s>) -> winnow::PResult<crate::Stream<'s>> {
-        take(1usize).parse_next(input)
-    }
-
-    #[inline]
-    /// Checks if the MSB is set
-    pub fn msb_is_set(b: u8) -> bool {
-        (b & 0x80) != 0
-    }
-
-    #[inline]
-    /// Parses out a specified number of bytes and combines them into a `u128` value
-    pub fn parse_length<'s>(input: &mut crate::Stream<'s>, num_bytes: usize) -> winnow::PResult<u128> {
-        take(num_bytes)
-            .map(|bytes: &[u8]| bytes.iter().fold(0u128, |acc, &byte| (acc << 8) | byte as u128))
-            .parse_next(input)
-    }
+#[inline]
+/// Parses out all bytes while MSB is set to 1
+fn take_while_msb_set<'s>(input: &mut crate::Stream<'s>) -> winnow::PResult<crate::Stream<'s>> {
+    take_while(1.., msb_is_set).parse_next(input)
 }
 
+#[inline]
+/// Parses out a single byte. MSB is **assumed** set to 0, since
+/// this function is only called after [types::BerOid::take_while_msb_set]
+fn take_one<'s>(input: &mut crate::Stream<'s>) -> winnow::PResult<crate::Stream<'s>> {
+    take(1usize).parse_next(input)
+}
+
+#[inline]
+/// Checks if the MSB is set
+fn msb_is_set(b: u8) -> bool {
+    (b & 0x80) != 0
+}
+
+#[inline]
+/// Parses out a specified number of bytes and combines them into a `u128` value
+fn parse_length<'s>(input: &mut crate::Stream<'s>, num_bytes: usize) -> winnow::PResult<u128> {
+    take(num_bytes)
+        .map(|bytes: &[u8]| bytes.iter().fold(0u128, |acc, &byte| (acc << 8) | byte as u128))
+        .parse_next(input)
+}
 
 #[test]
 fn main() {
     // let value0 = BerLength::new(47 as u64);
     // let value1 = BerLength::new(201 as u64);
-    let value2 = BerLength::new(123891829038102 as u64);
+    let value2 = BerLength::new(&123891829038102_u64);
     
     // assert_eq!(value0.encode(), vec![47]);
     println!("{:?}", value2.encode());
@@ -359,7 +358,7 @@ fn main() {
     // println!("{:?}", value1.encode());  // Encoded long form of the number
 
     // let value3 = BerOid::new(23298 as u64);
-    let mut value4 = BerOid::encode(23298 as u64);
+    let value4 = BerOid::encode(&23298_u64);
     let value5 = BerOid::<u64>::decode(&mut value4.as_slice()).unwrap();
     println!("{:?}", value4);
     println!("{:?}", value5);

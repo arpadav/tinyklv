@@ -44,6 +44,5 @@ const ATTR: &str = "klv";
 #[proc_macro_derive(Klv, attributes(klv))]
 pub fn klv(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    // println!("{}: {:#?}=========================================================================", NAME, std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis());
     expand::derive(&input).into()
 }
