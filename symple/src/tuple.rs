@@ -42,7 +42,7 @@ impl From<String> for MetaTuple {
         // Attempt to parse the TokenStream as a MetaTuple
         match syn::parse2::<MetaTuple>(inner_tokens) {
             Ok(metatuple) => metatuple,
-            Err(err) => panic!("Failed to parse MetaTuple: {}", err),
+            Err(err) => panic!("Failed to parse MetaTuple from String: '{}'\n{}", s, err),
         }
     }
 }

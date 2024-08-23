@@ -7,22 +7,24 @@ use winnow::{prelude::*, token::take};
 
 #[derive(Klv)]
 #[klv(
-    // stream = &[u8],
+    stream = &[u8],
     sentinel = b"\x06\x0E\x2B\x34\x02\x0B\x01\x01\x0E\x01\x03\x01\x01\x00\x00\x00",
-    key(enc = tinyklv::enc::ber_oid, dec = tinyklv::dec::ber_oid),
-    len(enc = tinyklv::enc::ber_length, dec = tinyklv::dec::ber_length),
-    default(ty = String, dyn = true, dec = tinyklv::dec::to_string),
-    default(ty = u8, dec = crate::codecs::binary::dec::be_u8),
-    default(ty = u16, dec = crate::codecs::binary::dec::be_u16),
-    default(ty = u32, dec = crate::codecs::binary::dec::be_u32),
-    default(ty = i16, dec = crate::codecs::binary::dec::be_i16),
-    default(ty = i32, dec = crate::codecs::binary::dec::be_i32),
+    key(enc = tinyklv::codecs::ber::enc::ber_oid,
+        dec = tinyklv::codecs::ber::dec::ber_oid),
+    len(enc = tinyklv::codecs::ber::enc::ber_length,
+        dec = tinyklv::codecs::ber::dec::ber_length),
+    default(ty = u8, dec = tinyklv::codecs::binary::dec::be_u8),
+    default(ty = u16, dec = tinyklv::codecs::binary::dec::be_u16),
+    default(ty = u32, dec = tinyklv::codecs::binary::dec::be_u32),
+    default(ty = i16, dec = tinyklv::codecs::binary::dec::be_i16),
+    default(ty = i32, dec = tinyklv::codecs::binary::dec::be_i32),
+    default(ty = String, dec = tinyklv::codecs::binary::dec::to_string, dyn = true),
 )]
 pub struct Misb0601 {
     #[klv(key = b"\x01")]
     pub checksum: Option<u16>,
 
-    #[klv(key = b"\x02", dec = dec::precision_timestamp)]
+    #[klv(key = b"\x02", dec = misb::dec::precision_timestamp)]
     pub precision_timestamp: Option<chrono::DateTime<chrono::Utc>>,
 
     #[klv(key = b"\x03")]
@@ -78,7 +80,7 @@ pub struct Misb0601 {
     pub sensor_relative_azimuth_angle: Option<u32>,
 }
 
-// #[automatically_derived]
+#[automatically_derived]
 impl crate::prelude::StreamDecode<&[u8]> for Misb0601 {
     fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
         let checkpoint = input.checkpoint();

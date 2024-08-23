@@ -13,17 +13,20 @@ pub enum MetaValue {
 /// [`MetaValue`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for MetaValue {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        match () {
-            _ if input.peek(syn::Lit) => Ok(MetaValue::Lit(input.parse()?)),
-            _ if (input.peek(syn::Ident) && input.peek2(syn::token::Colon2))
-              || (input.peek3(syn::Ident) && input.peek(syn::token::Colon2)) => match input.parse::<syn::Type>() {
-                Ok(x) => Ok(MetaValue::Type(x)),
-                _ => Ok(MetaValue::Path(input.parse()?)),
-            },
-            _ if input.peek(syn::Ident) && input.peek2(syn::token::Lt) => Ok(MetaValue::Type(input.parse()?)),
-            _ if input.peek(syn::Ident) => Ok(MetaValue::Ident(input.parse()?)),
-            _ => Err(input.error("Expected a Lit, Type, Path, or Ident")),
-        }
+        // --------------------------------------------------
+        // - check for types
+        // - check for paths
+        // - check for literals
+        // - check for identifiers
+        // --------------------------------------------------
+        if let Ok(x) = input.parse::<syn::Type>() { return Ok(MetaValue::Type(x)); }
+        if let Ok(x) = input.parse::<syn::Path>() { return Ok(MetaValue::Path(x)); }
+        if let Ok(x) = input.parse::<syn::Lit>() { return Ok(MetaValue::Lit(x)); }
+        if let Ok(x) = input.parse::<syn::Ident>() { return Ok(MetaValue::Ident(x)); }
+        // --------------------------------------------------
+        // otherwise return an error
+        // --------------------------------------------------
+        Err(input.error("Expected a Lit, Type, Path, or Ident"))
     }
 }
 /// [`MetaValue`] implementation of [`From`]

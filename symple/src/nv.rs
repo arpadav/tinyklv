@@ -6,7 +6,7 @@ use quote::ToTokens;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::value::MetaValue;
+use crate::value::{self, MetaValue};
 
 #[derive(Clone)]
 /// [`MetaNameValue`]
@@ -27,6 +27,18 @@ pub struct MetaNameValue {
 /// [`MetaNameValue`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for MetaNameValue {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        // debugging
+        // let name: syn::Ident = input.parse()?;
+        // println!("{}", name.to_token_stream());
+        // let sep: syn::Token![=] = input.parse()?;
+        // let value: MetaValue = input.parse()?;
+        // println!("{}", value.to_token_stream());
+        // println!("\n");
+        // Ok(MetaNameValue {
+        //     name,
+        //     sep,
+        //     value,
+        // })
         Ok(MetaNameValue {
             name: input.parse()?,
             sep: input.parse()?,
@@ -42,9 +54,10 @@ impl std::fmt::Display for MetaNameValue {
 }
 crate::debug_from_display!(MetaNameValue);
 
+#[derive(Clone)]
 /// A [`MetaNameValue`] wrapper
 pub struct NameValue<T: From<MetaValue> + ToTokens> {
-    value: Option<T>,
+    pub value: Option<T>,
 }
 /// [`NameValue`] implementation
 impl<T: From<MetaValue> + ToTokens> NameValue<T> {

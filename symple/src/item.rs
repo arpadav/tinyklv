@@ -23,8 +23,7 @@ impl syn::parse::Parse for MetaItem {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         // Attempt to parse as MetaTuple first
         if input.peek(syn::Ident) && input.peek2(syn::token::Paren) {
-            let result: Result<MetaTuple, _> = input.parse();
-            match result {
+            match input.parse() {
                 Ok(x) => return Ok(MetaItem::Tuple(x)),
                 Err(_) => {},
             };
