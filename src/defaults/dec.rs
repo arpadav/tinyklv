@@ -5,13 +5,17 @@ use crate::prelude::*;
 use super::codecs::ber;
 
 /// See [ber::BerLength::decode]
-pub fn ber_length<T: ber::OfBerLength>(input: &mut &[u8]) -> winnow::PResult<ber::BerLength<T>> {
-    ber::BerLength::<T>::decode.parse_next(input)
+pub fn ber_length(input: &mut &[u8]) -> winnow::PResult<usize> {
+    ber::BerLength::<u64>::decode
+        .map(|value| value.as_u64() as usize)
+        .parse_next(input)
 }
 
 /// See [ber::BerOid::decode]
-pub fn ber_oid<T: ber::OfBerOid>(input: &mut &[u8]) -> winnow::PResult<ber::BerOid<T>> {
-    ber::BerOid::<T>::decode.parse_next(input)
+pub fn ber_oid<T: ber::OfBerOid>(input: &mut &[u8]) -> winnow::PResult<T> {
+    ber::BerOid::<T>::decode
+        .map(|value| value.value)
+        .parse_next(input)
 }
 
 /// Decodes a byte slice into a [String]

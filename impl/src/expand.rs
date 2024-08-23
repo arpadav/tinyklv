@@ -45,32 +45,42 @@ pub fn derive(input: &syn::DeriveInput) -> proc_macro::TokenStream {
 /// [From] implementation of [`proc_macro::TokenStream`] for [`kst::Input`]
 impl From<kst::Input> for proc_macro::TokenStream {
     fn from(mut input: kst::Input) -> Self {
+        let mut all_encoders_exist = true;
+        let mut all_decoders_exist = true;
         for f in input.fattrs.iter_mut() {
-            // f.contents.enc = match f.contents.enc {
-            //     Some(_) => continue,
-            //     None => Some(crate::ast::NameValue::new(match match input
-            //         .sattr
-            //         .defaults
-            //         .clone()
-            //         .into_iter()
-            //         .filter(|x| x.value.is_some())
-            //         .map(|x| {
-            //             let xcoder = x.value.unwrap();
-            //             (xcoder.ty, xcoder.xcoder)
-            //         })
-            //         .filter(|x| x.0 == f.ty)
-            //         .next() {
-            //             Some(x) => {
-            //                 println!("{}", x.1);
-            //                 x.1
-            //             },
-            //             None => panic!("no encoding allowed! not everything has an encoder"),
-            //         }.enc {
-            //             Some(x) => x,
-            //             None => panic!("no encoding allowed! not everything has an encoder"),
-            //         }
-            //     )),
-            // };
+            f.contents.enc = match f.contents.enc {
+                Some(_) => continue,
+                None => Some(crate::ast::NameValue::new(match match input
+                    .sattr
+                    .defaults
+                    .clone()
+                    .into_iter()
+                    .filter(|x| x.value.is_some())
+                    .map(|x| {
+                        let xcoder = x.value.unwrap();
+                        (xcoder.ty, xcoder.xcoder)
+                    })
+                    .filter(|x| x.0 == f.ty)
+                    .next() {
+                        Some(x) => {
+                            println!("{}", x.1);
+                            x.1
+                        },
+                        None => {
+                            all_encoders_exist = false;
+                            break;
+                            // panic!("no encoding allowed! not everything has an encoder"),
+                        },
+                    }.enc {
+                        Some(x) => x,
+                        None => {
+                            all_encoders_exist = false;
+                            break;
+                            // panic!("no encoding allowed! not everything has an encoder"),
+                        },
+                    }
+                )),
+            };
             f.contents.dec = match f.contents.dec {
                 Some(_) => continue,
                 None => Some(crate::ast::NameValue::new(match match input
@@ -86,16 +96,27 @@ impl From<kst::Input> for proc_macro::TokenStream {
                     .filter(|x| x.0 == f.ty)
                     .next() {
                         Some(x) => x.1,
-                        None => panic!("no decoding allowed! not everything has a decoder"),
+                        None => {
+                            all_decoders_exist = false;
+                            break;
+                            // panic!("no decoding allowed! not everything has a decoder"),
+                        }, 
                     }.dec {
                         Some(x) => x,
-                        None => panic!("no decoding allowed! not everything has a decoder"),
+                        None => {
+                            all_decoders_exist = false;
+                            break;
+                            // panic!("no decoding allowed! not everything has a decoder"),
+                        }, 
                     }
                 )),
             };
         };
         println!("{:?}", input.fattrs);
-        proc_macro2::TokenStream::from("omg!".to_token_stream()).into()
+        // proc_macro2::TokenStream::from("omg!".to_token_stream()).into()
+        proc_macro2::TokenStream::from(quote! {
+            struct IHaveExpanded;
+        }).into()
     }
 }
 
