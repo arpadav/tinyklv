@@ -1,7 +1,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::item::MetaItem;
+use crate::item::MetaItem;
 
 #[derive(Clone, Default)]
 /// [`MetaContents`]
@@ -14,7 +14,7 @@ use super::item::MetaItem;
 /// ```ignore
 /// a = 1, b(x = 2), c = 3
 /// ```
-pub(crate) struct MetaContents {
+pub struct MetaContents {
     items: syn::punctuated::Punctuated<MetaItem, syn::token::Comma>,
 }
 /// [`MetaContents`] implementation of [`syn::parse::Parse`]
@@ -45,7 +45,7 @@ crate::debug_from_display!(MetaContents);
 /// [`MetaContentsIterator`]
 /// 
 /// Iterator over [`MetaContents`] items
-pub(crate) struct MetaContentsIterator<'a> {
+pub struct MetaContentsIterator<'a> {
     iter: syn::punctuated::Iter<'a, MetaItem>,
 }
 /// [`MetaContentsIterator`] implementation

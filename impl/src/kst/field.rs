@@ -1,16 +1,16 @@
 // --------------------------------------------------
 // external
 // --------------------------------------------------
+use symple::{
+    MetaItem,
+    MetaTuple,
+    NameValue,
+};
 use thisenum::Const;
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::ast::{
-    NameValue,
-    MetaItem,
-    MetaTuple,
-};
 use crate::ATTR;
 
 #[derive(Const)]
@@ -68,7 +68,7 @@ impl std::fmt::Display for FieldAttrSchema {
         write!(f, "name: {}, contents: {}", self.name, self.contents)
     }
 }
-crate::debug_from_display!(FieldAttrSchema);
+symple::debug_from_display!(FieldAttrSchema);
 
 #[derive(Default)]
 pub(crate)struct FieldAttrContents {
@@ -99,4 +99,4 @@ impl std::fmt::Display for FieldAttrContents {
         write!(f, "key: {}, enc: {:?}, dec: {:?}", self.key, self.enc, self.dec)
     }
 }
-crate::debug_from_display!(FieldAttrContents);
+symple::debug_from_display!(FieldAttrContents);
