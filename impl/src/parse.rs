@@ -3,6 +3,14 @@
 // --------------------------------------------------
 
 pub(crate) fn unwrap_option_type(ty: &syn::Type) -> Option<&syn::Type> {
+    is_option_helper(ty).1
+}
+
+pub(crate) fn is_option(ty: &syn::Type) -> bool {
+    is_option_helper(ty).0
+}
+
+fn is_option_helper(ty: &syn::Type) -> (bool, Option<&syn::Type>) {
     if let syn::Type::Path(syn::TypePath {
         path,
         ..
@@ -15,15 +23,14 @@ pub(crate) fn unwrap_option_type(ty: &syn::Type) -> Option<&syn::Type> {
             })
         }) = path.segments.first() {
             if id == "Option" {
-                return args.first().and_then(|arg| match arg {
-                        syn::GenericArgument::Type(inner_ty) => Some(inner_ty),
-                        _ => None,
-                    }
-                )
+                return (true, args.first().and_then(|arg| match arg {
+                    syn::GenericArgument::Type(inner_ty) => Some(inner_ty),
+                    _ => None,
+                }))
             }
         }
     }
-    None
+    (false, None)
 }
 
 pub(crate) fn u8_slice() -> syn::Type {

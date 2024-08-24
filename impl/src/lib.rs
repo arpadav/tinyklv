@@ -40,6 +40,7 @@ const NAME: &str = "Klv";
 const ATTR: &str = "klv";
 #[proc_macro_derive(Klv, attributes(klv))]
 pub fn klv(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    // let input = input.to_string().replace('\n', "").parse().unwrap();
     let input = parse_macro_input!(input as DeriveInput);
     expand::derive(&input)
 }

@@ -25,77 +25,14 @@ impl From<kst::Input> for proc_macro::TokenStream {
         let mut all_encoders_exist = true;
         let mut all_decoders_exist = true;
         for f in input.fattrs.iter_mut() {
-            // --------------------------------------------------
-            // fill default encoders
-            // --------------------------------------------------
-            if f.contents.enc.is_none() {
-                f.contents.enc = (|| Some(symple::NameValue::new(
-                    match match input
-                        .sattr
-                        .defaults
-                        .clone()
-                        .into_iter()
-                        .filter(|x| x.value.is_some())
-                        .map(|x| {
-                            let xcoder = x.value.unwrap();
-                            (xcoder.ty, xcoder.xcoder)
-                        })
-                        .filter(|x| x.0 == f.ty || match crate::parse::unwrap_option_type(&f.ty) {
-                            Some(f) => &x.0 == f,
-                            None => false,
-                        })
-                        .next() {
-                            Some(x) => x.1,
-                            None => {
-                                all_encoders_exist = false;
-                                return None;
-                            }
-                        }.enc {
-                            Some(x) => x,
-                            None => {
-                                all_encoders_exist = false;
-                                return None;
-                            }
-                        }
-                    ))
-                )();
-            }
-            // --------------------------------------------------
-            // fill default decoders
-            // --------------------------------------------------
-            if f.contents.dec.is_none() {
-                f.contents.dec = (|| Some(symple::NameValue::new(
-                    match match input
-                        .sattr
-                        .defaults
-                        .clone()
-                        .into_iter()
-                        .filter(|x| x.value.is_some())
-                        .map(|x| {
-                            let xcoder = x.value.unwrap();
-                            (xcoder.ty, xcoder.xcoder)
-                        })
-                        .filter(|x| x.0 == f.ty || match crate::parse::unwrap_option_type(&f.ty) {
-                            Some(f) => &x.0 == f,
-                            None => false,
-                        })
-                        .next() {
-                            Some(x) => x.1,
-                            None => {
-                                all_decoders_exist = false;
-                                return None;
-                            }
-                        }.dec {
-                            Some(x) => x,
-                            None => {
-                                all_decoders_exist = false;
-                                return None;
-                            }
-                        }
-                    ))
-                )();
-            }
-        };
+            input
+                .sattr
+                .defaults
+                .clone()
+                .into_iter()
+                .filter(|x| x.value.is_some())
+                .for_each(|x| f.contents.update(&f.ty, &x));
+        }
         println!("all_encoders_exist: {}", all_encoders_exist);
         println!("all_decoders_exist: {}", all_decoders_exist);
         println!("{:#?}", input.fattrs);
@@ -115,6 +52,7 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
     let len_decoder = input.sattr.len.value.clone().unwrap_or_else(|| panic!("Length decoder is required")).dec;
     let items_init = gen_items_init(&input.fattrs);
     let items_match = gen_items_match(&input.fattrs);
+    println!("{}", items_match.to_string());
     quote! {
         #[automatically_derived]
         #[doc = concat!("[", stringify!($name), "] implementation of [tinyklv::prelude::StreamDecode] for [", stringify!($stream), "]")]
@@ -126,7 +64,7 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
                     #len_decoder
                 ).parse_next(input)?.0 as usize;
                 let mut packet = take(packet_len).parse_next(input)?;
-                let packet: &mut $stream = &mut packet;
+                let packet: &mut #stream = &mut packet;
                 #items_init
                 loop {
                     match (
@@ -140,6 +78,12 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
                         Err(_) => break,
                     }
                 }
+                Err(winnow::error::ErrMode::Backtrack(
+                    winnow::error::ContextError::new()
+                    .add_context(input, &checkpoint, 
+                        winnow::error::StrContext::Label("Misb0601")
+                    )
+                ))
             }
         }
     }
@@ -160,13 +104,15 @@ fn gen_items_match(fatts: &Vec<kst::FieldAttrSchema>) -> proc_macro2::TokenStrea
         let name = &field.name;
         let dec = field.contents.dec.clone().unwrap_or_else(|| panic!("Decoder is required")).value.unwrap_or_else(|| panic!("Decoder is required"));
         let dynlen = field.contents.dynlen;
-        let optional_len = if dynlen { quote! { len } } else { quote! { _ } };
-        let optional_len_arg = if dynlen { quote! { , len } } else { quote! {} };
+        let optional_len = if let Some(true) = dynlen { quote! { len } } else { quote! { _ } };
+        let optional_len_arg = if let Some(true) = dynlen { quote! { , len } } else { quote! {} };
         quote! {
-            (#key, #optional_len) => #name = #dec(packet #optional_len_arg).ok(),
+            (#key, #optional_len) => #name = #dec (packet #optional_len_arg).ok(),
         }
     });
     quote! {
         #(#arms)*
     }
 }
+
+// fn gen_item_set(fatts: &Vec<kst::FieldAttrSchema>) -> proc_macro2::TokenStream {

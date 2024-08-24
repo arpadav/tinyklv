@@ -2,6 +2,7 @@
 // external
 // --------------------------------------------------
 use symple::{
+    Tuple,
     MetaItem,
     MetaTuple,
     NameValue,
@@ -12,6 +13,7 @@ use thisenum::Const;
 // local
 // --------------------------------------------------
 use crate::ATTR;
+use crate::kst::xcoder::DefaultXcoder;
 
 #[derive(Const)]
 #[armtype(&str)]
@@ -77,7 +79,48 @@ pub(crate)struct FieldAttrContents {
     pub key: NameValue<syn::Lit>,
     pub dec: Option<NameValue<syn::Path>>,
     pub enc: Option<NameValue<syn::Path>>,
-    pub dynlen: bool,
+    pub dynlen: Option<bool>,
+}
+/// [`FieldAttrContents`] implementation
+impl FieldAttrContents {
+    pub fn update(&mut self, ty: &syn::Type, other: &Tuple<DefaultXcoder>) {
+        // --------------------------------------------------
+        // now can safely unwrap
+        // --------------------------------------------------
+        if other.value.is_none() { return }
+        let other = other.value.as_ref().unwrap();
+        // --------------------------------------------------
+        // return if types dont match
+        // --------------------------------------------------
+        if ty != &other.ty && match crate::parse::unwrap_option_type(&ty) {
+            Some(f) => &other.ty != f,
+            None => true,
+        } { return }
+        // --------------------------------------------------
+        // set
+        // --------------------------------------------------
+        match &other.xcoder.enc {
+            Some(enc) => match self.enc {
+                Some(_) => (),
+                None => self.enc = Some(symple::NameValue::new(enc.clone())),
+            }
+            None => (),
+        }
+        match &other.xcoder.dec {
+            Some(dec) => match self.dec {
+                Some(_) => (),
+                None => self.dec = Some(symple::NameValue::new(dec.clone())),
+            },
+            None => (),
+        }
+        match &other.dynlen {
+            Some(x) => match self.dynlen {
+                Some(_) => (),
+                None => self.dynlen = Some(*x),
+            }
+            None => (),
+        }
+    }
 }
 /// [`FieldAttrContents`] implementation of [`From`] for [`MetaTuple`]
 impl From<MetaTuple> for FieldAttrContents {
@@ -88,7 +131,7 @@ impl From<MetaTuple> for FieldAttrContents {
             .for_each(|item| if let MetaItem::NameValue(x) = item {
                 match FieldNames::try_from(x.name.to_string().as_str()) {
                     Ok(FieldNames::Key) => output.key = x.into(),
-                    Ok(FieldNames::DynLen) => output.dynlen = if let symple::MetaValue::Lit(syn::Lit::Bool(syn::LitBool { value: true, .. })) = x.value { true } else { false },
+                    Ok(FieldNames::DynLen) => output.dynlen = if let symple::MetaValue::Lit(syn::Lit::Bool(syn::LitBool { value: v, .. })) = x.value { Some(v) } else { None },
                     Ok(FieldNames::Encoder) => output.enc = Some(x.into()),
                     Ok(FieldNames::Decoder) => output.dec = Some(x.into()),
                     _ => (),
@@ -100,7 +143,7 @@ impl From<MetaTuple> for FieldAttrContents {
 /// [`FieldAttrContents`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for FieldAttrContents {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "key: {}, enc: {:?}, dec: {:?}, dyn: {}", self.key, self.enc, self.dec, self.dynlen)
+        write!(f, "key: {}, enc: {:?}, dec: {:?}, dyn: {:?}", self.key, self.enc, self.dec, self.dynlen)
     }
 }
 symple::debug_from_display!(FieldAttrContents);
