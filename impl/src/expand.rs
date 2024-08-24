@@ -26,22 +26,18 @@ use crate::archive_ast::{
 use crate::kst;
 
 /// Derive `Klv`
-pub fn derive_old(input: &syn::DeriveInput) -> proc_macro::TokenStream {
-    match archive_ast::Input::from_syn(input) {
+pub fn derive(input: &syn::DeriveInput) -> proc_macro::TokenStream {
+    match kst::Input::from_syn(input) {
         Ok(parsed) => parsed.into(),
         Err(err) => panic!("{}", err),
     }
 }
 
-/// Derive `Klv`
-pub fn derive(input: &syn::DeriveInput) -> proc_macro::TokenStream {
-    match kst::Input::from_syn(input) {
-        Ok(parsed) => {},
-        Err(err) => panic!("{}", err),
+/// [From] implementation of [`proc_macro::TokenStream`] for [`kst::Input`]
+impl From<kst::Input> for proc_macro::TokenStream {
+    fn from(input: kst::Input) -> Self {
+        unimplemented!();
     }
-    // println!("{:#?}", input.to_token_stream().to_string());
-    // panic!("test");
-    TokenStream::new().into()
 }
 
 /// Derive `Klv` from [`Input`]
