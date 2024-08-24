@@ -39,10 +39,10 @@ enum StructNames {
 
 #[derive(Default)]
 pub(crate) struct StructAttrSchema {
-    sentinel: NameValue<syn::Lit>,
-    key: Tuple<RequiredXcoder>,
-    len: Tuple<RequiredXcoder>,
-    defaults: HashSet<Tuple<DefaultXcoder>>
+    pub sentinel: NameValue<syn::Lit>,
+    pub key: Tuple<RequiredXcoder>,
+    pub len: Tuple<RequiredXcoder>,
+    pub defaults: HashSet<Tuple<DefaultXcoder>>
 }
 /// [`StructAttrSchema`] implementation
 impl StructAttrSchema {

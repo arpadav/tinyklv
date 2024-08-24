@@ -41,7 +41,6 @@ impl Input {
             Some(sattr) => sattr,
             None => return Err(Error::Missing),
         };
-        // println!("{}", sattr);
         // --------------------------------------------------
         // get the fields and their attributes
         // --------------------------------------------------
@@ -53,8 +52,6 @@ impl Input {
             .iter()
             .filter_map(|field| FieldAttrSchema::from_field(field))
             .collect::<Vec<_>>();
-        // println!("{:#?}", fattrs);
         Ok(Self { name, sattr, fattrs })
-        // Err(Error::Missing)
     }
 }

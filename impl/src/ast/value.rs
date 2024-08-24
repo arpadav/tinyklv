@@ -2,7 +2,6 @@
 // external
 // --------------------------------------------------
 use quote::ToTokens;
-use syn::ext::IdentExt;
 
 #[derive(Clone)]
 pub(crate) enum MetaValue {

@@ -1,66 +1,75 @@
 use tinyklv::Klv;
 
-// key / len encoder / decoder's will always
-// take the entire input buffer
-// - e.g. VariableDecoder
-
-// value encoder / decoder's will always
-// take a fixed slice of the input buffer,
-// determined by the value of the `len` field
-// - e.g. FixedDecoder
-
-// key/len xcoder, fixed ALWAYS false
-// variants: fixed ALWAYS true
-//
-// TODO: think about include_self terminology.
-//
-// include self NEVER in key/len, optional in variant
-
 #[derive(Klv)]
 #[klv(
-    sentinel = b"\x01",
-    key(enc = ::tinyklv::enc::ber_oid,
-        dec = ::tinyklv::dec::ber_oid),
-    len(enc = ::tinyklv::enc::ber_length,
-        dec = ::tinyklv::dec::ber_length),
-    default(ty = u16, enc = this, dec = that),
-    default(ty = f32, enc = foo, dec = bar),
-    default(ty = Vec<f64>, enc = me),
+    // sentinel = b"\x06\x0E\x2B\x34\x02\x0B\x01\x01\x0E\x01\x03\x01\x01\x00\x00\x00",
+    key(enc = ::tinyklv::enc::ber_oid, dec = ::tinyklv::dec::ber_oid),
+    len(enc = ::tinyklv::enc::ber_length, dec = ::tinyklv::dec::ber_length),
+    default(ty = String, dyn = true, dec = ::tinyklv::dec::to_string),
+    default(ty = u8, dec = winnow::binary::be_u8),
+    default(ty = u16, dec = winnow::binary::be_u16),
+    default(ty = u32, dec = winnow::binary::be_u32),
+    default(ty = i16, dec = winnow::binary::be_i16),
+    default(ty = i32, dec = winnow::binary::be_i32),
 )]
-struct Misb0601 {
-    #[klv(
-        key = b"\x02",
-        len = 3,
-    )]
-    checksum: u16,
+pub struct Misb0601 {
+    #[klv(key = b"\x01")]
+    pub checksum: u16,
 
-    #[klv(
-        key = b"\x03",
-        len = 3,
-        enc = my_str_enc,
-        dec = my_str_dec,
-    )]
-    val2: String,
+    #[klv(key = b"\x02", dec = dec::precision_timestamp)]
+    pub precision_timestamp: chrono::DateTime<chrono::Utc>,
 
-    #[klv(
-        key = b"\x04",
-        len = 3,
-        enc = custom_enc,
-        dec = my_str_dec,
-    )]
-    another_val: Vec<f64>,
+    #[klv(key = b"\x03")]
+    pub mission_id: String,
 
-    #[klv(
-        key = b"\x05",
-        len = 3,
-    )]
-    yet_another_val: String,
+    #[klv(key = b"\x04")]
+    pub platform_tail_numer: String,
 
-    #[klv(
-        key = b"\x06",
-        len = 3,
-    )]
-    yet_yet_another_val: String,
+    #[klv(key = b"\x05")]
+    pub platform_heading_angle: u16,
+
+    #[klv(key = b"\x06")]
+    pub platform_pitch_angle: i16,
+
+    #[klv(key = b"\x07")]
+    pub platform_roll_angle: i16,
+
+    #[klv(key = b"\x08")]
+    pub platform_true_airspeed: u8,
+
+    #[klv(key = b"\x09")]
+    pub platform_indicated_airspeed: u8,
+
+    #[klv(key = b"\x0a")]
+    pub platform_designation: String,
+
+    #[klv(key = b"\x0b")]
+    pub image_source_sensor: String,
+
+    #[klv(key = b"\x0c")]
+    pub image_coordinate_system: String,
+
+    #[klv(key = b"\x0d")]
+    pub sensor_latitude: i32,
+
+    #[klv(key = b"\x0e")]
+    pub sensor_longitude: i32,
+
+    #[klv(key = b"\x0f")]
+    /// Altitude of sensor above MSL (mean sea level).
+    pub sensor_true_altitude: u16,
+
+    #[klv(key = b"\x10")]
+    /// Horizontal field of view of selected imaging sensor
+    pub sensor_hfov: u16,
+
+    #[klv(key = b"\x11")]
+    /// Vertical field of view of selected imaging sensor
+    pub sensor_vfov: u16,
+
+    #[klv(key = b"\x12")]
+    /// Relative rotation angle of sensor to platform longitudinal axis
+    pub sensor_relative_azimuth_angle: u32,
 }
 
 fn main() {
