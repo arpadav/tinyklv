@@ -20,8 +20,13 @@ fn main() {
         data[idx].clone()
     };
     let input = &mut binding.as_slice();
-    
-    let _ = Misb0601::decode(input);
+
+    let res = Misb0601::decode(input);
+
+    match res {
+        Ok(m) => println!("{:?}", m),
+        Err(e) => println!("{:?}", e),
+    }
 
     println!("debug point");
 }
