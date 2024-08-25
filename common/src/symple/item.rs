@@ -4,8 +4,8 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::tuple::MetaTuple;
-use crate::nv::MetaNameValue;
+use super::tuple::MetaTuple;
+use super::nv::MetaNameValue;
 
 #[derive(Clone)]
 /// Enum to handle both [`MetaNameValue`] and [`MetaTuple`]

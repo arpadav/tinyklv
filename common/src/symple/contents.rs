@@ -1,7 +1,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::item::MetaItem;
+use super::item::MetaItem;
 
 // TODO: Create a wrapper to be used as [symple::Contents]
 

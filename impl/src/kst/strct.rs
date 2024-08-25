@@ -1,13 +1,13 @@
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use symple::{
+use tinyklv_common::StructNames;
+use tinyklv_common::symple::{
     Tuple,
     NameValue,
     MetaItem,
     MetaTuple,
 };
-use thisenum::Const;
 use hashbrown::HashSet;
 
 // --------------------------------------------------
@@ -18,27 +18,6 @@ use crate::kst::xcoder::{
     DefaultXcoder,
     RequiredXcoder,
 };
-
-#[derive(Const, Debug)]
-#[armtype(&str)]
-/// Struct Attribute Names
-enum StructNames {
-    /// The stream type. Defaults to &[u8]
-    #[value = "stream"]
-    Stream,
-    /// The sentinel value. Defaults to `None`
-    #[value = "sentinel"]
-    Sentinel,
-    /// The key xcoder tuple
-    #[value = "key"]
-    KeyTuple,
-    /// The length xcoder tuple
-    #[value = "len"]
-    LengthTuple,
-    /// The default xcoder tuple
-    #[value = "default"]
-    DefaultTuple,
-}
 
 #[derive(Default)]
 pub(crate) struct StructAttrSchema {
@@ -95,4 +74,5 @@ impl std::fmt::Display for StructAttrSchema {
         write!(f, "StructAttrSchema {{ stream: {}, sentinel: {}, key: {}, len: {}, defaults: {:#?} }}", self.stream, self.sentinel, self.key, self.len, self.defaults)
     }
 }
-symple::debug_from_display!(StructAttrSchema);
+// symple::debug_from_display!(StructAttrSchema);
+tinyklv_common::debug_from_display!(StructAttrSchema);

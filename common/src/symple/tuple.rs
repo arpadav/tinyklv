@@ -6,11 +6,11 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::contents::{
+use super::contents::{
     MetaContents,
     MetaContentsIterator,
 };
-use crate::item::MetaItem;
+use super::item::MetaItem;
 
 #[derive(Eq, Hash, Clone, PartialEq)]
 /// A [`MetaTuple`] wrapper, used as a utility for proc-macro parsing

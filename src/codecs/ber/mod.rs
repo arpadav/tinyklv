@@ -67,7 +67,7 @@ impl<T: OfBerLength> BerLength<T> {
         }
     }
 
-    /// Encodes a length of [BerLength] into a [Vec<u8>]
+    /// Encodes a length of [BerLength] into a [`Vec<u8>`]
     /// 
     /// See [BerLength] implementation [Encode]
     pub fn encode(len: &T) -> Vec<u8> {
@@ -85,7 +85,7 @@ impl<T: OfBerLength> BerLength<T> {
 
 /// [BerLength] implementation of [Encode]
 impl<T: OfBerLength> Encode<Vec<u8>> for BerLength<T> {
-    /// Encode a [BerLength] into a [Vec<u8>]
+    /// Encode a [BerLength] into a [`Vec<u8>`]
     /// 
     /// # Example
     /// 
@@ -192,7 +192,7 @@ impl<T: OfBerOid> BerOid<T> {
         Self { value: *value }
     }
 
-    /// Encodes a value of [BerOid] into a [Vec<u8>]
+    /// Encodes a value of [BerOid] into a [`Vec<u8>`]
     pub fn encode(value: &T) -> Vec<u8> {
         Self::new(value).encode()
     }
@@ -200,7 +200,7 @@ impl<T: OfBerOid> BerOid<T> {
 
 /// [BerOid] implementation of [Encode]
 impl<T: OfBerOid> Encode<Vec<u8>> for BerOid<T> {
-    /// Encode a [BerOid] into a [Vec<u8>]
+    /// Encode a [BerOid] into a [`Vec<u8>`]
     /// 
     /// # Example
     /// 
