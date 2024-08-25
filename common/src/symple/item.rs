@@ -1,14 +1,15 @@
-//! [`MetaItem`] definitions, implementations, and utils
+//! [MetaItem] definitions, implementations, and utils
 //! 
-//! A [`MetaItem`] can be either a [`MetaTuple`] or a [`MetaNameValue`]
+//! A [MetaItem] can be either a [MetaTuple] or a [MetaNameValue]
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use super::tuple::MetaTuple;
+use super::value::MetaValue;
 use super::nv::MetaNameValue;
 
 #[derive(Clone)]
-/// Enum to handle both [`MetaNameValue`] and [`MetaTuple`]
+/// Enum to handle both [MetaNameValue] and [MetaTuple]
 /// 
 /// # Example
 /// 
@@ -20,8 +21,9 @@ use super::nv::MetaNameValue;
 pub enum MetaItem {
     Tuple(MetaTuple),
     NameValue(MetaNameValue),
+    Value(MetaValue)
 }
-/// [`MetaItem`] implementation of [`syn::parse::Parse`]
+/// [MetaItem] implementation of [syn::parse::Parse]
 impl syn::parse::Parse for MetaItem {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         // Attempt to parse as MetaTuple first
@@ -35,12 +37,13 @@ impl syn::parse::Parse for MetaItem {
         Ok(MetaItem::NameValue(input.parse()?))
     }
 }
-/// [`MetaItem`] implementation of [`std::fmt::Display`]
+/// [MetaItem] implementation of [std::fmt::Display]
 impl std::fmt::Display for MetaItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MetaItem::Tuple(x) => write!(f, "{}", x),
             MetaItem::NameValue(x) => write!(f, "{}", x),
+            MetaItem::Value(x) => write!(f, "{}", x),
         }
     }
 }

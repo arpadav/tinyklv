@@ -5,8 +5,8 @@
 //! 
 //! This is essentially just a [syn] wrapper, which automatically parses attributes into the following formats:
 //! 
-//! * [crate::Tuple] - `name(a = 1, b(x = 2), c = 3)`
-//! * [crate::NameValue] - `name = value`
+//! * [Tuple] - `name(a = 1, b(x = 2), c = 3, value)`
+//! * [NameValue] - `name = value`
 //! 
 //! Therefore, to parse a tuple, you can do:
 //! 
@@ -62,8 +62,8 @@
 //! 
 //! The following types have yet to be implemented:
 //! 
-//! * [crate::Value] - `value`
-//! * [crate::Contents] - `a = 1, b(x = 2), c = 3`
+//! * [Value] - `value`
+//! * [Contents] - `a = 1, b(x = 2), c = 3, value`
 //! 
 //! Will likely release this crate once all of the above are implemented.
 //! 
