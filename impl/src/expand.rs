@@ -1,13 +1,16 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use quote::{quote, ToTokens};
+use quote::quote;
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::kst;
 
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
 const PACKET_LIFETIME_CHAR: char = 'z';
 
 /// Derive [crate::Klv]
@@ -76,35 +79,31 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
     let items_match = gen_items_match(&input.fattrs);
     let items_set = gen_item_set(name, &input.fattrs);
     let result = quote! {
-        // #[automatically_derived]
-        // #[doc = concat!(" [", stringify!(#name), "] implementation of [tinyklv::prelude::Seek] for [", stringify!(#stream), "]")]
-        // impl ::tinyklv::prelude::Seek<#stream> for #name {
-        //     // manually vvv remember this is PACKET_LIFETIME_CHAR
-        //     fn seek<'s, 'z>(input: &'s mut #stream_lifetimed) -> ::tinyklv::reexport::winnow::PResult<&'s mut #stream_lifetimed> {
-        //     // manually ^^^ remember this is PACKET_LIFETIME_CHAR
-        //         let checkpoint = input.checkpoint();
-        //         let packet_len = match ::tinyklv::reexport::winnow::combinator::seq!(_:
-        //             #sentinel,
-        //             #len_decoder,
-        //         ).parse_next(input) {
-        //             Ok(x) => x.0 as usize,
-        //             Err(e) => return Err(e.backtrack().add_context(
-        //                 input,
-        //                 &checkpoint,
-        //                 ::tinyklv::reexport::winnow::error::StrContext::Label(
-        //                     concat!("Unable to find recognition sentinal and packet length for initial parsing of `", stringify!(#name), "` packet")
-        //                 )
-        //             )),
-        //         };
-        //         ::tinyklv::reexport::winnow::token::take(packet_len)
-        //             .parse_next(input)
-        //             .map(move |slice| {
-        //                 let mut_ref: &mut #stream = input;
-        //                 *mut_ref = slice;
-        //                 mut_ref
-        //             })
-        //     }
-        // }
+        #[automatically_derived]
+        #[doc = concat!(" [", stringify!(#name), "] implementation of [tinyklv::prelude::Seek] for [", stringify!(#stream), "]")]
+        impl ::tinyklv::prelude::Seek<#stream> for #name {
+            // ---- vvv ---- remember this is PACKET_LIFETIME_CHAR
+            fn seek<'z>(input: &mut #stream_lifetimed) -> ::tinyklv::reexport::winnow::PResult<#stream_lifetimed> {
+            // ---- ^^^ ---- remember this is PACKET_LIFETIME_CHAR
+                let checkpoint = input.checkpoint();
+                let packet_len = match ::tinyklv::reexport::winnow::combinator::seq!(_:
+                    // ::winnow::token::take_until(0.., #sentinel),
+                    // ::winnow::token::take_till(0.., #sentinel),
+                    #sentinel,
+                    #len_decoder,
+                ).parse_next(input) {
+                    Ok(x) => x.0 as usize,
+                    Err(e) => return Err(e.backtrack().add_context(
+                        input,
+                        &checkpoint,
+                        ::tinyklv::reexport::winnow::error::StrContext::Label(
+                            concat!("Unable to find recognition sentinal and packet length for initial parsing of `", stringify!(#name), "` packet")
+                        )
+                    )),
+                };
+                ::tinyklv::reexport::winnow::token::take(packet_len).parse_next(input)
+            }
+        }
         #[automatically_derived]
         #[doc = concat!(" [", stringify!(#name), "] implementation of [tinyklv::prelude::Decode] for [", stringify!(#stream), "]")]
         impl ::tinyklv::prelude::Decode<#stream> for #name {

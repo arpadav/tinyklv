@@ -44,7 +44,7 @@ pub trait Seek<I>: Sized
 where
     I: winnow::stream::Stream,
 {
-    fn seek<'s>(input: &'s mut I) -> winnow::PResult<&'s mut I>;
+    fn seek(input: &mut I) -> winnow::PResult<I>;
 }
 
 /// Trait for extracting from stream-type T, of type [winnow::stream::Stream]
@@ -61,6 +61,50 @@ where
     T: Seek<I> + Decode<I>,
 {
     fn extract(input: &mut I) -> winnow::PResult<Self> {
-        T::seek(input).and_then(T::decode)
+        let mut sought = T::seek.parse_next(input)?;
+        let result = T::then_decode(&mut sought).parse_next(input);
+        result
+    }
+}
+
+/// Internal trait for parsing and decoding embedded data
+/// 
+/// See [Extract] for more information
+/// 
+/// Idea is: 
+/// 
+/// * [Decode] decodes the data of the packet, without finding it
+/// * [Seek] finds the data by the recognition sentinel
+/// * [Extract] performs [Seek] -> [Decode]. But upon failure, it has to return the
+///   checkpoint to the next item of input, rather than the checkpoint of the
+///   sub-slice used in the [Decode] call
+/// 
+/// [ThenDecode] solves this issue by taking the sub-slice as an input, passing it 
+/// to the [Decode] implementation, and upon failure, returning to the original 
+/// input checkpoint.
+trait ThenDecode<I>: Sized
+where
+    I: winnow::stream::Stream,
+{
+    fn then_decode(subslice: &mut I) -> impl FnMut(&mut I) -> winnow::PResult<Self>;
+}
+/// [ThenDecode] implementation for all types T that implement [Decode]
+impl<I, T> ThenDecode<I> for T
+where
+    I: winnow::stream::Stream,
+    T: Decode<I>,
+{
+    fn then_decode(subslice: &mut I) -> impl FnMut(&mut I) -> winnow::PResult<Self> {
+        move |input: &mut I| {
+            let checkpoint = input.checkpoint();
+            match Self::decode(subslice) {
+                Ok(parsed) => Ok(parsed),
+                Err(e) => Err(e.backtrack().add_context(
+                    input,
+                    &checkpoint,
+                    winnow::error::StrContext::Label("Unable to parse data embedded in packet"),
+                )),
+            }
+        }
     }
 }

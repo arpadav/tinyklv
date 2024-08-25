@@ -80,49 +80,48 @@ pub struct Misb0601 {
     pub sensor_relative_azimuth_angle: Option<u32>,
 }
 
-impl ::tinyklv::prelude::Seek<&[u8]> for Misb0601 {
-    fn seek<'s, 'z>(
-        input: &'s mut &'z [u8],
-    ) -> ::tinyklv::reexport::winnow::PResult<&'s mut &'z [u8]> {
-        let checkpoint = input.checkpoint();
-        let packet_len = match ::winnow::combinator::trace(
-                "",
-                move |input: &mut _| {
-                    (
-                        b"\x06\x0E\x2B\x34\x02\x0B\x01\x01\x0E\x01\x03\x01\x01\x00\x00\x00"
-                            .void(),
-                        tinyklv::codecs::ber::dec::ber_length,
-                    )
-                        .map(|t| { (t.1,) })
-                        .parse_next(input)
-                },
-            )
-            .parse_next(input)
-        {
-            Ok(x) => x.0 as usize,
-            Err(e) => {
-                return Err(
-                    e
-                        .backtrack()
-                        .add_context(
-                            input,
-                            &checkpoint,
-                            ::tinyklv::reexport::winnow::error::StrContext::Label(
-                                "Unable to find recognition sentinal and packet length for initial parsing of `Misb0601` packet",
-                            ),
-                        ),
-                );
-            }
-        };
-        ::tinyklv::reexport::winnow::token::take(packet_len)
-            .parse_next(input)
-            .map(move |slice| {
-                let mut_ref: &mut &[u8] = input;
-                *mut_ref = slice;
-                mut_ref
-            })
-    }
-}
+// impl ::tinyklv::prelude::Seek<&[u8]> for Misb0601 {
+//     fn seek<'z>(
+//         input: &mut &'z [u8],
+//     ) -> ::tinyklv::reexport::winnow::PResult<&'z [u8]> {
+//         let checkpoint = input.checkpoint();
+//         let packet_len = match ::winnow::combinator::trace(
+//                 "",
+//                 move |input: &mut _| {
+//                     (
+//                         b"\x06\x0E\x2B\x34\x02\x0B\x01\x01\x0E\x01\x03\x01\x01\x00\x00\x00"
+//                             .void(),
+//                         tinyklv::codecs::ber::dec::ber_length,
+//                     )
+//                         .map(|t| { (t.1,) })
+//                         .parse_next(input)
+//                 },
+//             )
+//             .parse_next(input)
+//         {
+//             Ok(x) => x.0 as usize,
+//             Err(e) => {
+//                 return Err(
+//                     e
+//                         .backtrack()
+//                         .add_context(
+//                             input,
+//                             &checkpoint,
+//                             ::tinyklv::reexport::winnow::error::StrContext::Label(
+//                                 "Unable to find recognition sentinal and packet length for initial parsing of `Misb0601` packet",
+//                             ),
+//                         ),
+//                 );
+//             }
+//         };
+//         ::tinyklv::reexport::winnow::token::take(packet_len).parse_next(input)
+//             // .map(move |slice| {
+//             //     let mut_ref: &mut &[u8] = input;
+//             //     *mut_ref = slice;
+//             //     mut_ref
+//             // })
+//     }
+// }
 
 // impl ::tinyklv::prelude::Seek<&[u8]> for Misb0601 {
 //     fn seek<'s, 'a>(input: &'s mut &'a [u8]) -> ::tinyklv::reexport::winnow::PResult<&'s mut &'a [u8]> {
