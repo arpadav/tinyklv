@@ -1,3 +1,6 @@
+//! [`MetaItem`] definitions, implementations, and utils
+//! 
+//! A [`MetaItem`] can be either a [`MetaTuple`] or a [`MetaNameValue`]
 // --------------------------------------------------
 // local
 // --------------------------------------------------
@@ -11,7 +14,7 @@ use crate::nv::MetaNameValue;
 /// 
 /// ```ignore
 /// name = value
-/// OR
+/// // OR
 /// tname(name = value, name = value)
 /// ```
 pub enum MetaItem {
