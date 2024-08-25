@@ -1,16 +1,12 @@
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use quote::ToTokens;
-use thisenum::Const;
-
-// --------------------------------------------------
-// local
-// --------------------------------------------------
-use crate::ast::{
+use symple::{
     MetaItem,
     MetaContents,
 };
+use quote::ToTokens;
+use thisenum::Const;
 
 #[derive(Const, Debug)]
 #[armtype(&str)]
@@ -70,7 +66,7 @@ impl std::fmt::Display for RequiredXcoder {
         write!(f, "enc: {}, dec: {}", self.enc.to_token_stream().to_string(), self.dec.to_token_stream().to_string())
     }
 }
-crate::debug_from_display!(RequiredXcoder);
+symple::debug_from_display!(RequiredXcoder);
 
 #[derive(Eq, Hash, Clone, PartialEq)]
 /// [`OptionalXcoder`]
@@ -95,7 +91,7 @@ impl std::fmt::Display for OptionalXcoder {
         write!(f, "enc: {}, dec: {}", enc_str, dec_str)
     }
 }
-crate::debug_from_display!(OptionalXcoder);
+symple::debug_from_display!(OptionalXcoder);
 
 #[derive(Eq, Hash, Clone, PartialEq)]
 /// [`DefaultXcoder`]
@@ -144,4 +140,4 @@ impl std::fmt::Display for DefaultXcoder {
         write!(f, "ty: {}, dyn: {}, {}", self.ty.to_token_stream().to_string(), self.dynlen, self.xcoder)
     }
 }
-crate::debug_from_display!(DefaultXcoder);
+symple::debug_from_display!(DefaultXcoder);

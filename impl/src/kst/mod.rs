@@ -1,7 +1,3 @@
-pub(crate) mod field;
-pub(crate) mod strct;
-pub(crate) mod xcoder;
-
 // --------------------------------------------------
 // external
 // --------------------------------------------------
@@ -14,6 +10,9 @@ use crate::kst::{
     field::FieldAttrSchema,
     strct::StructAttrSchema,
 };
+pub(crate) mod field;
+pub(crate) mod strct;
+pub(crate) mod xcoder;
 
 #[derive(Error, Debug)]
 pub(crate) enum Error {

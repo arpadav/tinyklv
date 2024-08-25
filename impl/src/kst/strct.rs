@@ -1,28 +1,31 @@
 // --------------------------------------------------
 // external
 // --------------------------------------------------
+use symple::{
+    Tuple,
+    NameValue,
+    MetaItem,
+    MetaTuple,
+};
 use thisenum::Const;
 use hashbrown::HashSet;
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::ast::{
-    Tuple,
-    NameValue,
-    MetaItem,
-    MetaTuple,
-};
-use super::xcoder::{
+use crate::ATTR;
+use crate::kst::xcoder::{
     DefaultXcoder,
     RequiredXcoder,
 };
-use crate::ATTR;
 
 #[derive(Const, Debug)]
 #[armtype(&str)]
 /// Struct Attribute Names
 enum StructNames {
+    /// The stream type. Defaults to &[u8]
+    #[value = "stream"]
+    Stream,
     /// The sentinel value. Defaults to `None`
     #[value = "sentinel"]
     Sentinel,
@@ -90,4 +93,4 @@ impl std::fmt::Display for StructAttrSchema {
         write!(f, "StructAttrSchema {{ sentinel: {}, key: {}, len: {}, defaults: {:#?} }}", self.sentinel, self.key, self.len, self.defaults)
     }
 }
-crate::debug_from_display!(StructAttrSchema);
+symple::debug_from_display!(StructAttrSchema);

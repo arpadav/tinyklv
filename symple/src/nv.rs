@@ -6,7 +6,7 @@ use quote::ToTokens;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::value::MetaValue;
+use crate::value::MetaValue;
 
 #[derive(Clone)]
 /// [`MetaNameValue`]
@@ -19,7 +19,7 @@ use super::value::MetaValue;
 /// ```ignore
 /// name = value
 /// ```
-pub(crate) struct MetaNameValue {
+pub struct MetaNameValue {
     pub name: syn::Ident,
     sep: syn::Token![=],
     pub value: MetaValue,
@@ -43,11 +43,12 @@ impl std::fmt::Display for MetaNameValue {
 crate::debug_from_display!(MetaNameValue);
 
 /// A [`MetaNameValue`] wrapper
-pub(crate) struct NameValue<T: From<MetaValue> + ToTokens> {
+pub struct NameValue<T: From<MetaValue> + ToTokens> {
     value: Option<T>,
 }
 /// [`NameValue`] implementation
 impl<T: From<MetaValue> + ToTokens> NameValue<T> {
+    #[allow(dead_code)]
     pub fn new(value: T) -> Self {
         NameValue { value: Some(value) }
     }

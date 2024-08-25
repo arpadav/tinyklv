@@ -10,12 +10,8 @@ use thiserror::Error;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-mod archive_ast;
-mod archive_attr;
 mod kst;
-mod ast;
 mod expand;
-use tinyklv_macros::*;
 
 #[derive(Error, Debug)]
 enum Error {
@@ -43,7 +39,6 @@ const NAME: &str = "Klv";
 const ATTR: &str = "klv";
 #[proc_macro_derive(Klv, attributes(klv))]
 pub fn klv(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    // let input = input.to_string().replace('\n', "").parse().unwrap();
     let input = parse_macro_input!(input as DeriveInput);
     expand::derive(&input)
 }

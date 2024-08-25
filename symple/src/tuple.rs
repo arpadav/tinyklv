@@ -1,11 +1,11 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::contents::{
+use crate::contents::{
     MetaContents,
     MetaContentsIterator,
 };
-use super::item::MetaItem;
+use crate::item::MetaItem;
 
 #[derive(Clone)]
 /// [`MetaTuple`]
@@ -18,7 +18,7 @@ use super::item::MetaItem;
 /// ```ignore
 /// name(a = 1, b(x = 2), c = 3)
 /// ```
-pub(crate) struct MetaTuple {
+pub struct MetaTuple {
     pub name: syn::Ident,
     _paren: syn::token::Paren,
     pub contents: MetaContents,
@@ -64,7 +64,7 @@ crate::debug_from_display!(MetaTuple);
 
 #[derive(Eq, Hash, Clone, PartialEq)]
 /// A [`MetaTuple`] wrapper
-pub(crate) struct Tuple<T: From<MetaContents> + std::fmt::Display> {
+pub struct Tuple<T: From<MetaContents> + std::fmt::Display> {
     pub value: Option<T>,
 }
 /// [`Tuple`] implementation of [`From<MetaTuple>`]

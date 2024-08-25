@@ -1,7 +1,7 @@
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use std::{ io, num::NonZero };
+use std::num::NonZero;
 use num_traits::{
     ToBytes,
     Unsigned,
@@ -22,6 +22,8 @@ use winnow::prelude::*;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+pub mod dec;
+pub mod enc;
 use crate::prelude::*;
 
 // --------------------------------------------------
@@ -143,57 +145,6 @@ impl<T: OfBerLength> Encode<Vec<u8>> for BerLength<T> {
     }
 }
 
-// /// [BerLength] implementation of [FixedDecode]
-// impl<T: OfBerLength> FixedDecode for BerLength<T> {
-//     type Error = io::Error;
-//     /// Decode a [BerLength] from a [Vec<u8>]
-//     /// 
-//     /// # Example
-//     /// 
-//     /// ```
-//     /// use tinyklv::prelude::*;
-//     /// use tinyklv::defaults::ber::BerLength;
-//     /// 
-//     /// assert_eq!(BerLength::fixed_decode(&[47]).unwrap(), BerLength::<u64>::Short(47_u8));
-//     /// assert_eq!(BerLength::fixed_decode(&[128 + 1, 201]).unwrap(), BerLength::Long(201_u64));
-//     /// assert_eq!(BerLength::fixed_decode(&[128 + 6, 112, 173, 208, 117, 220, 22]).unwrap(), BerLength::Long(123891829038102_u64));
-//     /// ```
-//     fn fixed_decode(input: &[u8]) -> Result<Self, Self::Error> {
-//         // --------------------------------------------------
-//         // err if no bytes
-//         // --------------------------------------------------
-//         if input.is_empty() {
-//             return Result::Err(io::Error::new(
-//                 io::ErrorKind::InvalidInput,
-//                 "No bytes provided"
-//             ));
-//         }
-//         let first_byte = input[0];
-//         // --------------------------------------------------
-//         // if MSB is not set, it's a short length (single byte)
-//         // --------------------------------------------------
-//         if first_byte & 0x80 == 0 { return Ok(BerLength::Short(first_byte)); }
-//         // --------------------------------------------------
-//         // extract the number of bytes used for length encoding
-//         // --------------------------------------------------
-//         let num_bytes = (first_byte & 0x7F) as usize;
-//         if input.len() < num_bytes + 1 {
-//             return Err(io::Error::new(
-//                 io::ErrorKind::InvalidInput,
-//                 "Insufficient bytes for BER length decoding",
-//             ));
-//         }
-//         // --------------------------------------------------
-//         // decode the length from the specified number of bytes
-//         // --------------------------------------------------
-//         let mut output = 0u128;
-//         for &byte in &input[1..=num_bytes] {
-//             output = (output << 8) | byte as u128;
-//         }
-//         Ok(BerLength::Long(T::from_u128(output).unwrap()))
-//     }
-// }
-
 /// [BerLength] implementation of [StreamDecode]
 impl<T: OfBerLength> StreamDecode<&[u8]> for BerLength<T> {
     fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
@@ -287,26 +238,6 @@ impl<T: OfBerOid> Encode<Vec<u8>> for BerOid<T> {
         output
     }
 }
-
-// /// [BerOid] implementation of [FixedDecode]
-// impl<T: OfBerOid> FixedDecode for BerOid<T> {
-//     type Error = io::Error;
-//     fn fixed_decode(input: &[u8]) -> io::Result<Self> {
-//         let mut value = 0u64;
-//         for &byte in input.iter() {
-//             // --------------------------------------------------
-//             // extract the 7 bits from the byte (ignoring the MSB)
-//             // and insert to correct position
-//             // --------------------------------------------------
-//             value = (value << 7) | (byte & 0x7F) as u64;
-//             // --------------------------------------------------
-//             // if MSB is 0, return
-//             // --------------------------------------------------
-//             if byte & 0x80 == 0 { return Ok(BerOid::new(&T::from_u64(value).unwrap())); }
-//         }
-//         Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid BER OID"))
-//     }
-// }
 
 /// [BerOid] implementation of [StreamDecode]
 impl<T: OfBerOid> StreamDecode<&[u8]> for BerOid<T> {

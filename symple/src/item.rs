@@ -1,8 +1,8 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::tuple::MetaTuple;
-use super::nv::MetaNameValue;
+use crate::tuple::MetaTuple;
+use crate::nv::MetaNameValue;
 
 #[derive(Clone)]
 /// Enum to handle both [`MetaNameValue`] and [`MetaTuple`]
@@ -14,7 +14,7 @@ use super::nv::MetaNameValue;
 /// OR
 /// tname(name = value, name = value)
 /// ```
-pub(crate) enum MetaItem {
+pub enum MetaItem {
     Tuple(MetaTuple),
     NameValue(MetaNameValue),
 }

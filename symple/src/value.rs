@@ -4,7 +4,7 @@
 use quote::ToTokens;
 
 #[derive(Clone)]
-pub(crate) enum MetaValue {
+pub enum MetaValue {
     Lit(syn::Lit),
     Type(syn::Type),
     Path(syn::Path),

@@ -12,16 +12,13 @@ publish = false
 proc-macro = true
 
 [dependencies]
-nom = "7.1"
 quote = "1.0"
-regex = "1.10"
 thisenum = "0.1"
 thiserror = "1.0"
 hashbrown = "0.14"
 proc-macro2 = "1.0"
-lazy_static = "1.5"
 convert_case = "0.6"
-tinyklv-macros = { version = "0.1", path = "../macros" }
+symple = { version = "0.1", path = "../symple" }
 syn = { version = "1.0", features = ["full", "extra-traits"] }
 
 [dev-dependencies]
