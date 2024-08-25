@@ -25,13 +25,15 @@ use crate::ATTR;
 enum FieldNames {
     #[value = "key"]
     Key,
+    #[value = "dyn"]
+    DynLen,
     #[value = "enc"]
     Encoder,
     #[value = "dec"]
     Decoder,
 }
 
-pub(crate)struct FieldAttrSchema {
+pub(crate) struct FieldAttrSchema {
     pub name: syn::Ident,
     pub ty: syn::Type,
     pub contents: FieldAttrContents,
@@ -75,6 +77,7 @@ pub(crate)struct FieldAttrContents {
     pub key: NameValue<syn::Lit>,
     pub dec: Option<NameValue<syn::Path>>,
     pub enc: Option<NameValue<syn::Path>>,
+    pub dynlen: bool,
 }
 /// [`FieldAttrContents`] implementation of [`From`] for [`MetaTuple`]
 impl From<MetaTuple> for FieldAttrContents {
@@ -85,6 +88,7 @@ impl From<MetaTuple> for FieldAttrContents {
             .for_each(|item| if let MetaItem::NameValue(x) = item {
                 match FieldNames::try_from(x.name.to_string().as_str()) {
                     Ok(FieldNames::Key) => output.key = x.into(),
+                    Ok(FieldNames::DynLen) => output.dynlen = if let symple::MetaValue::Lit(syn::Lit::Bool(syn::LitBool { value: true, .. })) = x.value { true } else { false },
                     Ok(FieldNames::Encoder) => output.enc = Some(x.into()),
                     Ok(FieldNames::Decoder) => output.dec = Some(x.into()),
                     _ => (),
@@ -96,7 +100,7 @@ impl From<MetaTuple> for FieldAttrContents {
 /// [`FieldAttrContents`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for FieldAttrContents {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "key: {}, enc: {:?}, dec: {:?}", self.key, self.enc, self.dec)
+        write!(f, "key: {}, enc: {:?}, dec: {:?}, dyn: {}", self.key, self.enc, self.dec, self.dynlen)
     }
 }
 symple::debug_from_display!(FieldAttrContents);

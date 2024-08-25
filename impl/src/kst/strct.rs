@@ -42,6 +42,7 @@ enum StructNames {
 
 #[derive(Default)]
 pub(crate) struct StructAttrSchema {
+    pub stream: NameValue<syn::Type>,
     pub sentinel: NameValue<syn::Lit>,
     pub key: Tuple<RequiredXcoder>,
     pub len: Tuple<RequiredXcoder>,
@@ -79,6 +80,7 @@ impl From<MetaTuple> for StructAttrSchema {
                     _ => (),
                 },
                 MetaItem::NameValue(x) => match StructNames::try_from(x.name.to_string().as_str()) {
+                    Ok(StructNames::Stream) => output.stream = x.into(),
                     Ok(StructNames::Sentinel) => output.sentinel = x.into(),
                     _ => (),
                 },
@@ -90,7 +92,7 @@ impl From<MetaTuple> for StructAttrSchema {
 /// [`StructAttrSchema`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for StructAttrSchema {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StructAttrSchema {{ sentinel: {}, key: {}, len: {}, defaults: {:#?} }}", self.sentinel, self.key, self.len, self.defaults)
+        write!(f, "StructAttrSchema {{ stream: {}, sentinel: {}, key: {}, len: {}, defaults: {:#?} }}", self.stream, self.sentinel, self.key, self.len, self.defaults)
     }
 }
 symple::debug_from_display!(StructAttrSchema);

@@ -26,13 +26,14 @@ enum XcoderNames {
     Decoder,
 }
 
+#[derive(Clone)]
 /// [`RequiredXcoder`]
 /// 
 /// This is an encoder/decoder pair
 /// which is **not** optional.
 pub struct RequiredXcoder {
-    enc: syn::Path,
-    dec: syn::Path,
+    pub enc: syn::Path,
+    pub dec: syn::Path,
 }
 /// [`RequiredXcoder`] implementation of [`From`] for [`MetaContents`]
 impl From<MetaContents> for RequiredXcoder {
@@ -119,7 +120,7 @@ impl From<MetaContents> for DefaultXcoder {
             if let MetaItem::NameValue(x) = val {
                 match XcoderNames::try_from(x.name.to_string().as_str()) {
                     Ok(XcoderNames::Type) => ty = Some(x.value.clone().into()),
-                    Ok(XcoderNames::DynLen) => dynlen = true,
+                    Ok(XcoderNames::DynLen) => dynlen = if let symple::MetaValue::Lit(syn::Lit::Bool(syn::LitBool { value: true, .. })) = x.value { true } else { false },
                     Ok(XcoderNames::Encoder) => enc = Some(x.value.clone().into()),
                     Ok(XcoderNames::Decoder) => dec = Some(x.value.clone().into()),
                     _ => continue,

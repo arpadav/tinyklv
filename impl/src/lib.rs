@@ -11,6 +11,7 @@ use thiserror::Error;
 // local
 // --------------------------------------------------
 mod kst;
+mod parse;
 mod expand;
 
 #[derive(Error, Debug)]

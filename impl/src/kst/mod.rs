@@ -6,7 +6,7 @@ use thiserror::Error;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::kst::{
+pub(crate) use crate::kst::{
     field::FieldAttrSchema,
     strct::StructAttrSchema,
 };
