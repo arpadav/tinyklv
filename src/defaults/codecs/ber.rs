@@ -27,17 +27,17 @@ use crate::prelude::*;
 // --------------------------------------------------
 // traits
 // --------------------------------------------------
-pub trait OfBerCommon: Copy + ToBytes + Unsigned + PartialOrd + ToPrimitive + FromPrimitive {}
-impl<T> OfBerCommon for T where T: Copy + ToBytes + Unsigned + PartialOrd + ToPrimitive + FromPrimitive {}
+pub trait OfBerCommon: Copy + ToBytes + Unsigned + PartialOrd + ToPrimitive + FromPrimitive + AsPrimitive<u64> {}
+impl<T> OfBerCommon for T where T: Copy + ToBytes + Unsigned + PartialOrd + ToPrimitive + FromPrimitive + AsPrimitive<u64> {}
 pub trait OfBerLength: OfBerCommon {}
 impl<T> OfBerLength for T where T: OfBerCommon {}
-pub trait OfBerOid: OfBerCommon + AsPrimitive<u64> {}
-impl<T> OfBerOid for T where T: OfBerCommon + AsPrimitive<u64> {}
+pub trait OfBerOid: OfBerCommon {}
+impl<T> OfBerOid for T where T: OfBerCommon {}
 
 #[derive(Debug, PartialEq)]
 /// Enum representing BER Length Encoding.
 /// 
-/// Maximum precision: [u128]
+/// Maximum precision: [u64]
 /// 
 /// See: https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf 
 pub enum BerLength<T>
@@ -71,6 +71,14 @@ impl<T: OfBerLength> BerLength<T> {
     /// See [BerLength] implementation [Encode] [Self::encode]
     pub fn encode(len: &T) -> Vec<u8> {
         Self::new(len).encode()
+    }
+
+    /// Returns the length as a [u64]
+    pub fn as_u64(&self) -> u64 {
+        match self {
+            BerLength::Short(len) => *len as u64,
+            BerLength::Long(len) => len.as_(),
+        }
     }
 }
 

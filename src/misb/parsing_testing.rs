@@ -9,25 +9,28 @@ fn uhl_take<'a>(input: &mut &'a [u8]) -> winnow::PResult<&'a [u8]> {
     winnow::token::literal(UHL).parse_next(input)
 }
 
-fn key_decode(input: &mut &[u8]) -> winnow::PResult<u64> {
-    match crate::defaults::dec::ber_oid::<u64>.parse_next(input) {
-        Ok(x) => Ok(x.value),
-        Err(x) => Err(x),
-    }
-}
+// fn key_decode(input: &mut &[u8]) -> winnow::PResult<u64> {
+//     match crate::defaults::dec::ber_oid::<u64>.parse_next(input) {
+//         Ok(x) => Ok(x.value),
+//         Err(x) => Err(x),
+//     }
+// }
 
-fn len_decode(input: &mut &[u8]) -> winnow::PResult<u64> {
-    match crate::defaults::dec::ber_length::<u64>.parse_next(input) {
-        Ok(x) => match x {
-            BerLength::Short(x) => Ok(x as u64),
-            BerLength::Long(x) => Ok(x),
-        },
-        Err(x) => Err(x),
-    }
-}
+// fn len_decode(input: &mut &[u8]) -> winnow::PResult<u64> {
+//     match crate::defaults::dec::ber_length::<u64>.parse_next(input) {
+//         Ok(x) => match x {
+//             BerLength::Short(x) => Ok(x as u64),
+//             BerLength::Long(x) => Ok(x),
+//         },
+//         Err(x) => Err(x),
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
+    use crate::prelude::*;
+    use crate::misbtest::Misb0601;
+
     use super::*;
     use rand::Rng;
 
@@ -40,26 +43,9 @@ mod tests {
             data[idx].clone()
         };
         let input = &mut binding.as_slice();
-        let _ = uhl_take.parse_next(input);
-        let packet_len = len_decode.parse_next(input);
-        loop {
-            let key = key_decode.parse_next(input);
-            let len = len_decode.parse_next(input);
-            match (&key, &len) {
-                (Ok(key), Ok(len)) => match (key, len) {
-                    (0x02, _) => {
-                        let ptimestamp = crate::misb::dec::precision_timestamp.parse_next(input);
-                        println!("ptimestamp: {:?}", ptimestamp);
-                    },
-                    (_, _) => {
-                        println!("key: {:?}, len: {:?}", key, len);
-                        let val = winnow::token::take::<u64, &[u8], winnow::error::ErrorKind>(*len).parse_next(input);
-                        println!("val: {:?}", val);
-                    }
-                },
-                _ => break,
-            }
-        }
+        
+        Misb0601::decode(input).unwrap();
+
         println!("debug point");
     }
 }

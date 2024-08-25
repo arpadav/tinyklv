@@ -1,10 +1,8 @@
 use num_traits::Unsigned;
 
-struct Klv<K, L, V>
-where 
-    L: Unsigned,
-{
+struct KeyValue<K, V> {
     key: K,
-    len: L,
     val: V,
 }
+
+// impl 

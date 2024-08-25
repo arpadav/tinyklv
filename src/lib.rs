@@ -4,4 +4,6 @@ pub mod primitives;
 pub use defaults::*;
 pub use tinyklv_impl::*;
 
+pub mod misbtest;
+
 pub mod misb;
