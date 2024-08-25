@@ -33,9 +33,34 @@ pub trait Encode<I> {
 /// 
 /// * static length: `fn <name>(input: &mut I) -> winnow::PResult<Self>;`
 /// * dynamic length: `fn <name>(input: &mut I, len: usize) -> winnow::PResult<Self>;`
-pub trait StreamDecode<I>: Sized
+pub trait Decode<I>: Sized
 where
     I: winnow::stream::Stream,
 {
     fn decode(input: &mut I) -> winnow::PResult<Self>;
+}
+
+pub trait Seek<I>: Sized
+where
+    I: winnow::stream::Stream,
+{
+    fn seek<'s>(input: &'s mut I) -> winnow::PResult<&'s mut I>;
+}
+
+/// Trait for extracting from stream-type T, of type [winnow::stream::Stream]
+pub trait Extract<I>: Sized
+where
+    I: winnow::stream::Stream,
+{
+    fn extract(input: &mut I) -> winnow::PResult<Self>;
+}
+/// [Extract] implementation for all types T that implement [Seek] and [Decode]
+impl<I, T> Extract<I> for T
+where
+    I: winnow::stream::Stream,
+    T: Seek<I> + Decode<I>,
+{
+    fn extract(input: &mut I) -> winnow::PResult<Self> {
+        T::seek(input).and_then(T::decode)
+    }
 }

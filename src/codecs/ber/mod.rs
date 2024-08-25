@@ -144,8 +144,8 @@ impl<T: OfBerLength> Encode<Vec<u8>> for BerLength<T> {
     }
 }
 
-/// [BerLength] implementation of [StreamDecode]
-impl<T: OfBerLength> StreamDecode<&[u8]> for BerLength<T> {
+/// [BerLength] implementation of [Decode]
+impl<T: OfBerLength> Decode<&[u8]> for BerLength<T> {
     fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
         // --------------------------------------------------
         // err if no bytes
@@ -239,8 +239,8 @@ impl<T: OfBerOid> Encode<Vec<u8>> for BerOid<T> {
     }
 }
 
-/// [BerOid] implementation of [StreamDecode]
-impl<T: OfBerOid> StreamDecode<&[u8]> for BerOid<T> {
+/// [BerOid] implementation of [Decode]
+impl<T: OfBerOid> Decode<&[u8]> for BerOid<T> {
     fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
         // --------------------------------------------------
         // take while MSB = 1, then take last byte and exit
