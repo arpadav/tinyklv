@@ -3,6 +3,8 @@
 // --------------------------------------------------
 use crate::item::MetaItem;
 
+// TODO: Create a wrapper to be used as [symple::Contents]
+
 #[derive(Clone, Default)]
 /// [`MetaContents`]
 /// 

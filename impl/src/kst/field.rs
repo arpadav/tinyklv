@@ -25,7 +25,7 @@ pub(crate) enum FieldNames {
     /// This is a required attribute, written using a literal (either bytes
     /// or str), to help identify the field during parsing.
     /// 
-    /// If a non-literal key
+    /// Non-literal keys are currently not supported.
     Key,
 
     #[value = "dyn"]
