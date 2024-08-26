@@ -57,18 +57,6 @@ impl<T: From<MetaValue> + ToTokens> NameValue<T> {
         NameValue { value: Some(value) }
     }
 }
-/// [NameValue] implementation of [From] for [MetaNameValue]
-impl<T: From<MetaValue> + ToTokens> From<&MetaNameValue> for NameValue<T> {
-    fn from(meta: &MetaNameValue) -> Self {
-        NameValue { value: Some(meta.value.clone().into()) }
-    }
-}
-/// [NameValue] implementation of [From] for any type T
-impl<T: From<MetaValue> + ToTokens> From<T> for NameValue<T> {
-    fn from(x: T) -> Self {
-        NameValue { value: Some(x.into()) }
-    }    
-}
 /// [NameValue] implementation of [Default]
 impl<T: From<MetaValue> + ToTokens> Default for NameValue<T> {
     fn default() -> Self {
@@ -85,6 +73,19 @@ impl<T: From<MetaValue> + ToTokens> std::fmt::Display for NameValue<T> {
     }
 }
 crate::debug_from_display!(NameValue, From<MetaValue> + ToTokens);
+
+/// [NameValue] implementation of [From] for [MetaNameValue]
+impl<T: From<MetaValue> + ToTokens> From<MetaNameValue> for NameValue<T> {
+    fn from(x: MetaNameValue) -> Self {
+        NameValue::new(x.value.into())
+    }
+}
+/// [NameValue] implementation of [From] for [MetaValue<T>]
+impl<T: From<MetaValue> + ToTokens> From<MetaValue> for NameValue<T> {
+    fn from(x: MetaValue) -> Self {
+        NameValue::new(x.into())
+    }
+}
 
 #[derive(Clone)]
 /// [MetaNameValue]

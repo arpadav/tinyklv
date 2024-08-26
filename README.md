@@ -7,7 +7,7 @@
 This crate is predominately used for streams of packetized data, like from video feeds or serial ports.
  <!-- Options for handling streams of partial packets is supported. TODO: implement this before adding to README -->
 
-```rust
+```rust ignore
 #[derive(Klv)]
 #[klv(
     /// Stream type. If not specified, defaults to `&[u8]`
@@ -65,4 +65,4 @@ If familiar with `nom` but not `winnow`, please refer to the links below.
 
 ## License
 
-`tinyklv` is licensed under the [MIT License](LICENSE) [http://opensource.org/licenses/MIT](http://opensource.org/licenses/MIT).
+`tinyklv` is licensed under the [MIT License](./LICENSE). [http://opensource.org/licenses/MIT](http://opensource.org/licenses/MIT).

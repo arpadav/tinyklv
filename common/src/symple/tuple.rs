@@ -1,4 +1,4 @@
-//! [Tuple] and [MetaTuple] definitions, implementations, and utils
+//! [Tuple] + [MetaTuple] definitions, implementations, and utils
 //! 
 //! A [MetaTuple] contains a key of type [syn::Ident] and a list of contents of type [MetaContents]
 //! 
@@ -7,10 +7,10 @@
 // local
 // --------------------------------------------------
 use super::contents::{
+    MetaItem,
     MetaContents,
     MetaContentsIterator,
 };
-use super::item::MetaItem;
 
 #[derive(Eq, Hash, Clone, PartialEq)]
 /// A [MetaTuple] wrapper, used as a utility for proc-macro parsing
@@ -63,15 +63,9 @@ use super::item::MetaItem;
 pub struct Tuple<T: From<MetaContents>> {
     pub value: Option<T>,
 }
-/// [Tuple] implementation of [From] for [MetaTuple]
-impl <T: From<MetaContents>> From<&MetaTuple> for Tuple<T> {
-    fn from(meta: &MetaTuple) -> Self {
-        Tuple { value: Some(meta.contents.clone().into()), }
-    }
-}
-/// [Tuple] implementation of [From] for T
-impl <T: From<MetaContents>> From<T> for Tuple<T> {
-    fn from(value: T) -> Self {
+/// [Tuple] implementation
+impl <T: From<MetaContents>> Tuple<T> {
+    pub fn new(value: T) -> Self {
         Tuple { value: Some(value) }
     }
 }
@@ -91,6 +85,19 @@ impl <T: From<MetaContents> + std::fmt::Display> std::fmt::Display for Tuple<T> 
     }
 }
 crate::debug_from_display!(Tuple, From<MetaContents> + std::fmt::Display);
+
+/// [Tuple] implementation of [From] for [MetaTuple]
+impl <T: From<MetaContents>> From<MetaTuple> for Tuple<T> {
+    fn from(meta: MetaTuple) -> Self {
+        Tuple::new(meta.contents.into())
+    }
+}
+/// [Tuple] implementation of [From] for T
+impl <T: From<MetaContents>> From<MetaContents> for Tuple<T> {
+    fn from(value: MetaContents) -> Self {
+        Tuple::new(value.into())
+    }
+}
 
 #[derive(Clone)]
 /// [MetaTuple]
@@ -159,12 +166,12 @@ mod tests {
         /// 
         /// See example below, and example in README.md
         struct StructAttributes {
-            values: Tuple<Values>,
+            values: symple::Tuple<Values>,
         }
         #[derive(Default)]
         struct Values {
-            value1: Option<syn::LitInt>,
-            value2: Option<syn::LitInt>,
+            value1: symple::NameValue<syn::LitInt>,
+            value2: symple::NameValue<syn::LitInt>,
         }
 
         /// Field attributes
@@ -175,7 +182,7 @@ mod tests {
             attr: symple::NameValue<syn::Lit>
         }
 
-        /// [Values] implementation of [From] for [symple::MetaValue]
+        /// [Values] implementation of [From] for [symple::MetaContents]
         /// 
         /// This is required for all items inside [symple::Tuple]
         /// 
@@ -185,26 +192,15 @@ mod tests {
         impl From<symple::MetaContents> for Values {
             fn from(x: symple::MetaContents) -> Self {
                 let mut output = Values::default();
-                let mut value1 = None;
-                let mut value2 = None;
                 for item in x.into_iter() {
                     match item {
                         symple::MetaItem::Tuple(tpl) => {
                             if tpl.name.to_string() != "my_proc_macro" { continue; }
                             for item in tpl.into_iter() {
                                 if let symple::MetaItem::NameValue(mnv) = item {
-                                    let value_as_str = mnv.value.to_string();
-                                    match &mnv.value {
-                                        symple::MetaValue::Lit(someting) => match someting {
-                                            syn::Lit::Str(s) => println!("{}: {}", mnv.name, s.value()),
-                                            syn::Lit::Int(i) => println!("{}: {}", mnv.name, i.base10_digits()),
-                                            _ => println!("{}: {}", mnv.name, value_as_str),
-                                        }
-                                        _ => println!("{}: {}", mnv.name, value_as_str),
-                                    }
                                     match mnv.name.to_string().as_str() {
-                                        "value1" => value1 = if let symple::MetaValue::Lit(syn::Lit::Int(lit_int)) = &mnv.value { Some(lit_int) } else { None },
-                                        "value2" => value2 = if let symple::MetaValue::Lit(syn::Lit::Int(lit_int)) = &mnv.value { Some(lit_int) } else { None },
+                                        "value1" => output.value1 = mnv.value.clone().into(),
+                                        "value2" => output.value2 = mnv.value.clone().into(),
                                         _ => (),
                                     }
                                 }
@@ -213,9 +209,23 @@ mod tests {
                         _ => (),
                     }
                 }
-                output.value1 = value1.cloned();
-                output.value2 = value2.cloned();
                 output
+            }
+        }
+
+        /// [syn::LitInt] implementation of [From] for [symple::MetaValue]
+        /// 
+        /// This is required for all items inside [symple::NameValue]
+        /// 
+        /// This is an example parsing implementation using [symple] types
+        /// 
+        /// See example below, and example in README.md
+        impl From<symple::MetaValue> for syn::LitInt {
+            fn from(x: symple::MetaValue) -> Self {
+                match x {
+                    symple::MetaValue::Lit(syn::Lit::Int(lit_int)) => lit_int,
+                    _ => panic!("Failed to convert MetaValue to LitInt"),
+                }
             }
         }
 
@@ -264,10 +274,10 @@ mod tests {
             assert!(meta.is_ok());
             let meta = meta.unwrap();
             let values = Values::from(meta);
-            assert!(values.value1.is_some());
-            assert!(values.value2.is_some());
-            assert_eq!(values.value1.unwrap().base10_digits(), "1");
-            assert_eq!(values.value2.unwrap().base10_digits(), "2");
+            assert!(values.value1.value.is_some());
+            assert!(values.value2.value.is_some());
+            assert_eq!(values.value1.value.unwrap().base10_digits(), "1");
+            assert_eq!(values.value2.value.unwrap().base10_digits(), "2");
         }
 
         #[test]

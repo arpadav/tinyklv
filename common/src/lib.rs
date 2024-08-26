@@ -73,7 +73,7 @@ pub enum FieldNames {
     /// 
     /// In practice, streams would look like:
     /// 
-    /// ```rust ignore
+    /// ```rust
     /// use tinyklv::Klv;
     /// use tinyklv::prelude::*;
     /// 
