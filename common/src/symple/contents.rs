@@ -15,7 +15,7 @@ use super::nv::MetaNameValue;
 /// 
 /// # Example
 /// 
-/// ```ignore
+/// ```no_run
 /// // inside of proc-macro lib
 /// struct Input {
 ///     struct_attributes: symple::Contents<SomeStructToParseTo>
@@ -27,10 +27,10 @@ use super::nv::MetaNameValue;
 /// }
 /// ```
 /// 
-/// ***Note that trait bounds for [From<MetaContents>] are required
+/// ***Note that trait bounds for [`From<MetaContents>`] are required
 /// for this to work.*** Custom parsing implementations are required.
 /// 
-/// See [MetaContents] for more details and examples
+/// See [`MetaContents`] for more details and examples
 pub struct Contents<T: From<MetaContents>> {
     pub value: Option<T>,
 }
@@ -52,7 +52,7 @@ where
 }
 crate::debug_from_display!(Contents, From<MetaContents> + std::fmt::Display);
 
-/// [Contents] implementation of [From<MetaContents>]
+/// [Contents] implementation of [From] for [MetaContents]
 impl<T: From<MetaContents>> From<MetaContents> for Contents<T> {
     fn from(x: MetaContents) -> Self {
         Contents::new(x.into())
@@ -66,13 +66,13 @@ impl<T: From<MetaContents>> From<MetaContents> for Contents<T> {
 /// 
 /// Contents can be of type:
 /// 
-/// * [super::MetaValue] - A single item of any types: [syn::Lit], [syn::Path], [syn::Type], [syn::Ident], [syn::Expr]
-/// * [super::MetaNameValue] - A name ([syn::Ident]) and value ([super::MetaValue])
-/// * [super::MetaTuple] - A key ([syn::Ident]) and value ([super::MetaContents])
+/// * [super::MetaValue] - A single item of any types: [enum@syn::Lit], [syn::Path], [syn::Type], [struct@syn::Ident], [syn::Expr]
+/// * [super::MetaNameValue] - A name ([struct@syn::Ident]) and value ([super::MetaValue])
+/// * [super::MetaTuple] - A key ([struct@syn::Ident]) and value ([super::MetaContents])
 /// 
 /// # Syntax
 /// 
-/// ```ignore
+/// ```no_run
 /// a = 1, b(x = 2), c = 3, ident, "str_literal"
 /// ```
 /// 
@@ -168,7 +168,7 @@ impl<'a> Iterator for MetaContentsIterator<'a> {
 /// 
 /// # Example
 /// 
-/// ```ignore
+/// ```no_run
 /// name = value // <- This is a [MetaNameValue]
 /// // OR
 /// tname(name = value, name = value) // <- This is a [MetaTuple]

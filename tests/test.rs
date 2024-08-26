@@ -6,9 +6,9 @@ use tinyklv::prelude::*;
     stream = &[u8],
     sentinel = b"\x00\x00\x00",
     key(dec = tinyklv::dec::binary::u8,
-        enc = tinyklv::enc::binary::u8),
+        enc = tinyklv::enc::binary::placeholder),
     len(dec = tinyklv::dec::binary::u8_as_usize,
-        enc = tinyklv::enc::binary::u8),
+        enc = tinyklv::enc::binary::placeholder),
 )]
 struct Foo {
     #[klv(key = 0x01, dyn = true, dec = tinyklv::dec::binary::to_string)]
@@ -36,7 +36,17 @@ fn main() {
         // value decoded: 258
         0x01, 0x02,
     ];
+    let stream1_ = stream1.clone();
+    // decode by seeking sentinel, then decoding data
     match Foo::extract(&mut stream1) {
+        Ok(foo) => {
+            assert_eq!(foo.name, "KLV");
+            assert_eq!(foo.number, 258);
+        },
+        Err(e) => panic!("{}", e),
+    }
+    // decode data directly (without seeking sentinel)
+    match Foo::decode(&mut &stream1_[4..]) {
         Ok(foo) => {
             assert_eq!(foo.name, "KLV");
             assert_eq!(foo.number, 258);
@@ -60,7 +70,17 @@ fn main() {
         // value decoded: 42
         0x00, 0x2A,
     ];
+    let stream2_ = stream2.clone();
+    // decode by seeking sentinel, then decoding data
     match Foo::extract(&mut stream2) {
+        Ok(foo) => {
+            assert_eq!(foo.name, "Hello World!");
+            assert_eq!(foo.number, 42);
+        },
+        Err(e) => panic!("{}", e),
+    }
+    // decode data directly (without seeking sentinel)
+    match Foo::decode(&mut &stream2_[4..]) {
         Ok(foo) => {
             assert_eq!(foo.name, "Hello World!");
             assert_eq!(foo.number, 42);

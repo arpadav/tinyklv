@@ -1,6 +1,6 @@
 //! [Tuple] + [MetaTuple] definitions, implementations, and utils
 //! 
-//! A [MetaTuple] contains a key of type [syn::Ident] and a list of contents of type [MetaContents]
+//! A [MetaTuple] contains a key of type [struct@syn::Ident] and a list of contents of type [MetaContents]
 //! 
 //! The [Tuple] struct is used to say "parse this token-stream as a [MetaTuple]"
 // --------------------------------------------------
@@ -34,7 +34,7 @@ use super::contents::{
 /// }
 /// ```
 /// 
-/// ***Note that trait bounds for [From<MetaContents>] are required
+/// ***Note that trait bounds for [`From<MetaContents>`] are required
 /// for this to work.***
 /// 
 /// This expects ***any*** attribute on the proc-macro derived
@@ -47,7 +47,7 @@ use super::contents::{
 /// struct SomeStruct;
 /// ```
 /// 
-/// Which can then be parsed using the [From<MetaContents>] implementation
+/// Which can then be parsed using the [`From<MetaContents>`] implementation
 /// into the following, to help with proc-macro parsing:
 /// 
 /// ```ignore
@@ -102,7 +102,7 @@ impl <T: From<MetaContents>> From<MetaContents> for Tuple<T> {
 #[derive(Clone)]
 /// [MetaTuple]
 /// 
-/// Innter data structure which is consists of a name [syn::Ident]
+/// Innter data structure which is consists of a name [struct@syn::Ident]
 /// and listed value(s) [MetaContents]
 /// 
 /// # Example
@@ -126,7 +126,7 @@ impl syn::parse::Parse for MetaTuple {
         })
     }
 }
-/// [MetaTuple] implementation of [From<String>]
+/// [MetaTuple] implementation of [From] for [String]
 impl From<String> for MetaTuple {
     fn from(s: String) -> Self {
         // Convert the string into a TokenStream

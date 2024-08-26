@@ -36,3 +36,4 @@ rustc*.txt
 # * src/_tutorial
 # --------------------------------------------------
 !src/_tutorial
+!src/_doc.rs

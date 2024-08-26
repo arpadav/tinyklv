@@ -7,35 +7,93 @@
 This crate is predominately used for streams of packetized data, like from video feeds or serial ports.
  <!-- Options for handling streams of partial packets is supported. TODO: implement this before adding to README -->
 
-```rust ignore
+```rust
+use tinyklv::Klv;
+use tinyklv::prelude::*;
+
 #[derive(Klv)]
 #[klv(
-    /// Stream type. If not specified, defaults to `&[u8]`
     stream = &[u8],
-    /// Recognition sentinel
-    sentinel = b"\x01",
-    /// Required
-    key(enc = ::tinyklv::parsers::ber_, dec = someting2),
-    /// Required
-    len(enc = lsometing, dec = lsometing2),
-    /// Optional, default encoder or decoder for specified types
-    default(ty = u16, enc = this, dec = that),
-    default(ty = f32, enc = foo, dec = bar),
-    default(ty = Vec<f64>, dyn = true, enc = me),
+    sentinel = b"\x00\x00\x00",
+    key(dec = tinyklv::dec::binary::u8,
+        enc = tinyklv::enc::binary::u8),
+    len(dec = tinyklv::dec::binary::u8_as_usize,
+        enc = tinyklv::enc::binary::u8),
 )]
-struct ExampleStruct {
-    #[klv(key = b"\x02")]
-    checksum: u16,
+struct Foo {
+    #[klv(key = 0x01, dyn = true, dec = tinyklv::dec::binary::to_string)]
+    name: String,
 
-    #[klv(key = b"\x03", dec = ::tinyklv::defaults::dec::to_string)]
-    val2: String,
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16)]
+    number: u16,
+}
 
-    #[klv(
-        key = b"\x04",
-        len = 3,
-        dec = my_str_dec,
-    )]
-    another_val: String,
+let mut stream1: &[u8] = &[
+    // sentinel: 0x00, 0x00, 0x00
+    0x00, 0x00, 0x00,
+    // packet length: 9 bytes
+    0x09,
+    // key: 0x01, len: 0x03
+    // since the len is dyn, it is used as an input in `tinyklv::dec::binary::to_string`
+    0x01, 0x03,
+    // value decoded: "KLV"
+    0x4B, 0x4C, 0x56,
+    // key: 0x02, len: 0x02
+    // since the len is not dyn, it is not used in `tinyklv::dec::binary::be_u16`
+    0x02, 0x02,
+    // value decoded: 258
+    0x01, 0x02,
+];
+let stream1_ = stream1.clone();
+// decode by seeking sentinel, then decoding data
+match Foo::extract(&mut stream1) {
+    Ok(foo) => {
+        assert_eq!(foo.name, "KLV");
+        assert_eq!(foo.number, 258);
+    },
+    Err(e) => panic!("{}", e),
+}
+// decode data directly (without seeking sentinel)
+match Foo::decode(&mut &stream1_[4..]) {
+    Ok(foo) => {
+        assert_eq!(foo.name, "KLV");
+        assert_eq!(foo.number, 258);
+    },
+    Err(e) => panic!("{}", e),
+}
+
+let mut stream2: &[u8] = &[
+    // sentinel: 0x00, 0x00, 0x00
+    0x00, 0x00, 0x00,
+    // packet length: 18 bytes
+    0x12,
+    // key: 0x01, len: 0x0C
+    // since the len is dyn, it is used as an input in `tinyklv::dec::binary::to_string`
+    0x01, 0x0C,
+    // value decoded: "Hello World!"
+    0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
+    // key: 0x02, len: 0x02
+    // since the len is not dyn, it is not used in `tinyklv::dec::binary::be_u16`
+    0x02, 0x02,
+    // value decoded: 42
+    0x00, 0x2A,
+];
+let stream2_ = stream2.clone();
+// decode by seeking sentinel, then decoding data
+match Foo::extract(&mut stream2) {
+    Ok(foo) => {
+        assert_eq!(foo.name, "Hello World!");
+        assert_eq!(foo.number, 42);
+    },
+    Err(e) => panic!("{}", e),
+}
+// decode data directly (without seeking sentinel)
+match Foo::decode(&mut &stream2_[4..]) {
+    Ok(foo) => {
+        assert_eq!(foo.name, "Hello World!");
+        assert_eq!(foo.number, 42);
+    },
+    Err(e) => panic!("{}", e),
 }
 ```
 
@@ -43,6 +101,10 @@ struct ExampleStruct {
 
 * This crate assumes you are familiar with Rust.
 * This crate assumes you are familiar with combinator parsers like `winnow` and `nom`. *This crate explicitly uses `winnow` as a backend, so all encoder and decoder functions must be `winnow` compatible*.
+
+## Usage
+
+Please see [tinyklv_common](../tinyklv_common/) for usage examples.
 
 ## Why `winnow`? And `winnow` Resources
 
@@ -58,10 +120,6 @@ If familiar with `nom` but not `winnow`, please refer to the links below.
 * [Rust Parser Benchmarks](https://github.com/rosetta-rs/parse-rosetta-rs/tree/main/examples)
 
 `winnow` uses a slightly different syntax for combinator parsers than `nom`, but it is pretty easy to learn one from the other, since `winnow` is a fork of `nom`. I personally can not speak on the design changes, but after reading some [articles from the `winnow` author (active `nom` contributor)](https://epage.github.io/blog/2023/07/winnow-0-5-the-fastest-rust-parser-combinator-library/) it seems that `winnow` has tried to refactor design decisions from `nom` to optimize for speed and developer experience.
-
-## Constraints
-
-* `tinyklv` only supports an byte slices as input, as it is meant for parsing of packet streams.
 
 ## License
 
