@@ -40,12 +40,6 @@ const NAME: &str = "Klv";
 const ATTR: &str = "klv";
 #[proc_macro_derive(Klv, attributes(klv))]
 pub fn klv(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let input2 = input.clone();
-    let test = syn::parse_macro_input!(input2 as syn::AttributeArgs);
-    for attr in test {
-        println!("{:?}", attr);
-    }
-    // panic!("{:?}", test);
     let input = parse_macro_input!(input as DeriveInput);
     expand::derive(&input)
 }
