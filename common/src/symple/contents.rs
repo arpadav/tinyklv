@@ -34,22 +34,7 @@ use super::nv::MetaNameValue;
 pub struct Contents<T: From<MetaContents>> {
     pub value: Option<T>,
 }
-/// [`Contents`] implementation
-impl <T: From<MetaContents>> Contents<T> {
-    pub fn new(value: T) -> Self {
-        Contents { value: Some(value) }
-    }
-}
-/// [`Contents`] implementation of [`std::fmt::Display`]
-impl<T> std::fmt::Display for Contents<T>
-where
-    T: std::fmt::Display,
-    T: From<MetaContents>,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value.as_ref().unwrap())
-    }   
-}
+crate::impl_hasvalue!(Contents, From<MetaContents>);
 crate::debug_from_display!(Contents, From<MetaContents> + std::fmt::Display);
 
 /// [`Contents`] implementation of [`From`] for [`MetaContents`]
@@ -66,9 +51,9 @@ impl<T: From<MetaContents>> From<MetaContents> for Contents<T> {
 /// 
 /// Contents can be of type:
 /// 
-/// * [super::MetaValue] - A single item of any types: [`enum@syn::Lit`], [`syn::Path`], [`syn::Type`], [`struct@syn::Ident`], [`syn::Expr`]
-/// * [super::MetaNameValue] - A name ([`struct@syn::Ident`]) and value ([`super::MetaValue`])
-/// * [super::MetaTuple] - A key ([`struct@syn::Ident`]) and value ([`super::MetaContents`])
+/// * [`super::MetaValue`] - A single item of any types: [`enum@syn::Lit`], [`syn::Path`], [`syn::Type`], [`struct@syn::Ident`], [`syn::Expr`]
+/// * [`super::MetaNameValue`] - A name ([`struct@syn::Ident`]) and value ([`super::MetaValue`])
+/// * [`super::MetaTuple`] - A key ([`struct@syn::Ident`]) and value ([`super::MetaContents`])
 /// 
 /// # Syntax
 /// 

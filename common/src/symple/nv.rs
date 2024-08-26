@@ -50,29 +50,14 @@ use super::value::MetaValue;
 pub struct NameValue<T: From<MetaValue> + ToTokens> {
     pub value: Option<T>,
 }
-/// [`NameValue`] implementation
-impl<T: From<MetaValue> + ToTokens> NameValue<T> {
-    #[allow(dead_code)]
-    pub fn new(value: T) -> Self {
-        NameValue { value: Some(value) }
-    }
-}
 /// [`NameValue`] implementation of [`Default`]
 impl<T: From<MetaValue> + ToTokens> Default for NameValue<T> {
     fn default() -> Self {
         NameValue { value: None }
     }
 }
-/// [`NameValue`] implementation of [`std::fmt::Display`]
-impl<T: From<MetaValue> + ToTokens> std::fmt::Display for NameValue<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.value {
-            Some(v) => write!(f, "{}", v.to_token_stream().to_string()),
-            None => write!(f, "None"),
-        }
-    }
-}
-crate::debug_from_display!(NameValue, From<MetaValue> + ToTokens);
+crate::impl_hasvalue!(NameValue, From<MetaValue> + ToTokens);
+crate::debug_from_display!(NameValue, From<MetaValue> + ToTokens + std::fmt::Display);
 
 /// [`NameValue`] implementation of [`From`] for [`MetaNameValue`]
 impl<T: From<MetaValue> + ToTokens> From<MetaNameValue> for NameValue<T> {
@@ -120,3 +105,23 @@ impl std::fmt::Display for MetaNameValue {
     }
 }
 crate::debug_from_display!(MetaNameValue);
+
+/// [`MetaNameValue`] implementation of [`From`]
+macro_rules! impl_from_mnv {
+    ($t:ty) => {
+        impl_from_mnv!($t, "");
+    };
+    ($t:ty, $prefix:expr) => {
+        #[doc = concat!(" [`MetaNameValue`] implementation of [`From`] for [`", stringify!($prefix), stringify!($t), "`]")]
+        impl From<MetaNameValue> for $t {
+            fn from(x: MetaNameValue) -> Self {
+                x.value.into()
+            }
+        }
+    };
+}
+impl_from_mnv!(syn::Lit, "enum@");
+impl_from_mnv!(syn::Path);
+impl_from_mnv!(syn::Expr);
+impl_from_mnv!(syn::Type);
+// impl_from_mnv!(syn::Ident); // do NOT UNCOMMENT

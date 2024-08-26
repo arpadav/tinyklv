@@ -1,9 +1,4 @@
 // --------------------------------------------------
-// external
-// --------------------------------------------------
-use thiserror::Error;
-
-// --------------------------------------------------
 // local
 // --------------------------------------------------
 pub(crate) use crate::kst::{
@@ -14,12 +9,6 @@ pub(crate) mod field;
 pub(crate) mod strct;
 pub(crate) mod xcoder;
 
-#[derive(Error, Debug)]
-pub(crate) enum Error {
-    #[error("Missing attribute BRUH")]
-    Missing
-}
-
 pub(crate) struct Input {
     pub name: syn::Ident,
     pub sattr: StructAttrSchema,
@@ -28,7 +17,7 @@ pub(crate) struct Input {
 
 /// [`Input`] implementation
 impl Input {
-    pub fn from_syn(input: &syn::DeriveInput) -> Result<Self, Error> {
+    pub fn from_syn(input: &syn::DeriveInput) -> Result<Self, crate::Error> {
         // --------------------------------------------------
         // extract the name, variants, and values
         // --------------------------------------------------
@@ -38,14 +27,14 @@ impl Input {
         // --------------------------------------------------
         let sattr = match StructAttrSchema::from_syn(&input) {
             Some(sattr) => sattr,
-            None => return Err(Error::Missing),
+            None => return Err(crate::Error::UnableToParseStructAttributes(name.to_string())),
         };
         // --------------------------------------------------
         // get the fields and their attributes
         // --------------------------------------------------
         let fields = match &input.data {
             syn::Data::Struct(syn::DataStruct { fields, .. }) => fields,
-            _ => panic!("{}", crate::Error::DeriveForNonStruct(crate::NAME.into(), name.to_string())),
+            _ => return Err(crate::Error::DeriveForNonStruct(crate::NAME.into(), name.to_string())),
         };
         let fattrs = fields
             .iter()

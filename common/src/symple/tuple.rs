@@ -63,27 +63,13 @@ use super::contents::{
 pub struct Tuple<T: From<MetaContents>> {
     pub value: Option<T>,
 }
-/// [`Tuple`] implementation
-impl <T: From<MetaContents>> Tuple<T> {
-    pub fn new(value: T) -> Self {
-        Tuple { value: Some(value) }
-    }
-}
 /// [`Tuple`] implementation of [`Default`]
 impl <T: From<MetaContents>> Default for Tuple<T> {
     fn default() -> Self {
         Tuple { value: None }
     }
 }
-/// [`Tuple`] implementation of [`std::fmt::Display`]
-impl <T: From<MetaContents> + std::fmt::Display> std::fmt::Display for Tuple<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.value {
-            Some(x) => write!(f, "{}", x),
-            None => write!(f, "None"),
-        }
-    }
-}
+crate::impl_hasvalue!(Tuple, From<MetaContents>);
 crate::debug_from_display!(Tuple, From<MetaContents> + std::fmt::Display);
 
 /// [`Tuple`] implementation of [`From`] for [`MetaTuple`]

@@ -37,13 +37,20 @@ impl From<kst::Input> for proc_macro::TokenStream {
                 .for_each(|x| f.contents.update(&f.ty, &x));
         }
         // --------------------------------------------------
+        // set default stream to &[u8], if not set
+        // --------------------------------------------------
+        // if match input.sattr.stream {
+        //     Some(_) => (),
+        //     None => input.sattr.stream.v
+        // }
+        // --------------------------------------------------
         // check to see if all encoders / decoders exist
         // --------------------------------------------------
         let mut all_encoders_exist = true;
         let mut all_decoders_exist = true;
         for f in input.fattrs.iter() {
-            all_encoders_exist &= f.contents.enc.is_some();
-            all_decoders_exist &= f.contents.dec.is_some();
+            all_encoders_exist &= f.contents.enc().is_some();
+            all_decoders_exist &= f.contents.dec().is_some();
         }
         let mut expanded = quote! {};
         if all_decoders_exist {
@@ -72,9 +79,17 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
     // --------------------------------------------------
     let stream = input.sattr.stream.value.clone().unwrap_or(crate::parse::u8_slice());
     let stream_lifetimed = crate::parse::insert_lifetime(&stream, PACKET_LIFETIME_CHAR);
-    let sentinel = input.sattr.sentinel.value.clone().unwrap_or_else(|| panic!("Sentinel is required"));
-    let key_decoder = input.sattr.key.value.clone().unwrap_or_else(|| panic!("Key decoder is required")).dec;
-    let len_decoder = input.sattr.len.value.clone().unwrap_or_else(|| panic!("Length decoder is required")).dec;
+    let sentinel = input.sattr.sentinel.as_ref().map_or(None, |x| Some(x.v().clone()));
+    let key_decoder = input
+        .sattr.key.value.clone()
+        .unwrap_or_else(|| panic!("{}", crate::Error::XcoderIsRequired("key".into(), "decoder".into(), "dec".into())))
+        .xcoder.dec
+        .unwrap_or_else(|| panic!("{}", crate::Error::XcoderIsRequired("key".into(), "decoder".into(), "dec".into())));
+    let len_decoder = input
+        .sattr.len.value.clone()
+        .unwrap_or_else(|| panic!("{}", crate::Error::XcoderIsRequired("len".into(), "decoder".into(), "dec".into())))
+        .xcoder.dec
+        .unwrap_or_else(|| panic!("{}", crate::Error::XcoderIsRequired("len".into(), "decoder".into(), "dec".into())));
     let items_init = gen_items_init(&input.fattrs);
     let items_match = gen_items_match(&input.fattrs);
     let items_set = gen_item_set(name, &input.fattrs);
