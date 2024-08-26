@@ -2,7 +2,7 @@
 
 Ever have trouble with `syn::Attribute::parse_args`, `syn::Attribute::parse_nested_meta`, etc.? Is this a skill issue? Definitely. But `symple` is simply a wrapper for `syn` to streamline processing of attributes.
 
-***Authors note: This is by no means a replacement for `syn`, nor is this planned to be anything "production" quality in any way. `symple`'s sole purpose is to get proc-macro attribute parsing from 0 -> 90%, with the more granular details required to being handled by `syn`. In addition, a lot of what `symple` accomplishes can be done with modern `syn` features.***
+***Authors note: This is by no means a replacement for `syn`, nor is this planned to be anything "production" quality in any way. `symple`'s sole purpose is to get proc-macro attribute parsing from 0 -> 80%, with the more granular details required to being handled by `syn`. In addition, a lot of what `symple` accomplishes can be done with modern `syn` features.***
 
 ## Idea
 
