@@ -4,7 +4,7 @@ pub mod string;
 
 /// Re-exports path from `codecs::name::dec/enc` -> `codecs::dec/enc::name`
 /// 
-/// For example: [crate::codecs::binary::dec] -> [crate::codecs::dec::binary]
+/// For example: [`crate::codecs::binary::dec`] -> [`crate::codecs::dec::binary`]
 macro_rules! re_export {
     ($($module:ident),*) => {
         pub mod dec {

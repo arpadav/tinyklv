@@ -16,9 +16,9 @@ use tinyklv::prelude::*;
     stream = &[u8],
     sentinel = b"\x00\x00\x00",
     key(dec = tinyklv::dec::binary::u8,
-        enc = tinyklv::enc::binary::u8),
+        enc = tinyklv::placeholder),
     len(dec = tinyklv::dec::binary::u8_as_usize,
-        enc = tinyklv::enc::binary::u8),
+        enc = tinyklv::placeholder),
 )]
 struct Foo {
     #[klv(key = 0x01, dyn = true, dec = tinyklv::dec::binary::to_string)]

@@ -18,7 +18,7 @@ use crate::kst::xcoder::DefaultXcoder;
 
 /// Field Attributes
 /// 
-/// See the [FieldNames] enum for the different attribute names.
+/// See the [`FieldNames`] enum for the different attribute names.
 /// 
 /// # Example
 /// 
@@ -40,7 +40,7 @@ pub(crate) struct FieldAttrSchema {
     pub ty: syn::Type,
     pub contents: FieldAttrContents,
 }
-/// [FieldAttrSchema] implementation
+/// [`FieldAttrSchema`] implementation
 impl FieldAttrSchema {
     pub fn from_field(input: &syn::Field) -> Option<Self> {
         // --------------------------------------------------
@@ -69,7 +69,7 @@ impl FieldAttrSchema {
         }
     }
 }
-/// [FieldAttrSchema] implementation of [std::fmt::Display]
+/// [`FieldAttrSchema`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for FieldAttrSchema {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "name: {}, contents: {}", self.name, self.contents)
@@ -85,7 +85,7 @@ pub(crate) struct FieldAttrContents {
     pub enc: Option<NameValue<syn::Path>>,
     pub dynlen: Option<bool>,
 }
-/// [FieldAttrContents] implementation
+/// [`FieldAttrContents`] implementation
 impl FieldAttrContents {
     pub fn update(&mut self, ty: &syn::Type, other: &Tuple<DefaultXcoder>) {
         // --------------------------------------------------
@@ -126,7 +126,7 @@ impl FieldAttrContents {
         }
     }
 }
-/// [FieldAttrContents] implementation of [From] for [MetaTuple]
+/// [`FieldAttrContents`] implementation of [`From`] for [`MetaTuple`]
 impl From<MetaTuple> for FieldAttrContents {
     fn from(input: MetaTuple) -> Self {
         let mut output = Self::default();
@@ -144,7 +144,7 @@ impl From<MetaTuple> for FieldAttrContents {
         output
     }
 }
-/// [FieldAttrContents] implementation of [std::fmt::Display]
+/// [`FieldAttrContents`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for FieldAttrContents {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "key: {}, enc: {:?}, dec: {:?}, dyn: {:?}", self.key, self.enc, self.dec, self.dynlen)

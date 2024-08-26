@@ -65,10 +65,10 @@ pub enum StructNames {
     /// When using a sentinel, it assumes that the stream starts with the
     /// sentinel value and is followed by the length of the remaining data within
     /// the packet. With the sentinel, it is recommended to use the `extract` method
-    /// (see [tinyklv::prelude::Extract](https://docs.rs/tinyklv/latest/tinyklv/prelude/extract/index.html))
+    /// (see [`tinyklv::prelude::Extract`](https://docs.rs/tinyklv/latest/tinyklv/prelude/extract/index.html))
     /// which performs a seek and then a decode.
     /// 
-    /// The [tinyklv::prelude::Decode](https://docs.rs/tinyklv/latest/tinyklv/prelude/decode/index.html) method
+    /// The [`tinyklv::prelude::Decode`](https://docs.rs/tinyklv/latest/tinyklv/prelude/decode/index.html) method
     /// only decodes the data which follows the sentinel, not the header itself.
     /// 
     /// When the sentinel is not set, it is assumed that the user is handling
