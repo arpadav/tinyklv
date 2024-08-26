@@ -1,6 +1,6 @@
 //! [MetaItem] definitions, implementations, and utils
 //! 
-//! A [MetaItem] can be either a [MetaTuple] or a [MetaNameValue]
+//! A [MetaItem] can be a [MetaValue], [MetaTuple], or [MetaNameValue]
 // --------------------------------------------------
 // local
 // --------------------------------------------------
@@ -9,14 +9,16 @@ use super::value::MetaValue;
 use super::nv::MetaNameValue;
 
 #[derive(Clone)]
-/// Enum to handle both [MetaNameValue] and [MetaTuple]
+/// Enum to handle various meta data types
 /// 
 /// # Example
 /// 
 /// ```ignore
-/// name = value
+/// name = value // <- This is a [MetaNameValue]
 /// // OR
-/// tname(name = value, name = value)
+/// tname(name = value, name = value) // <- This is a [MetaTuple]
+/// // OR
+/// value // <- This is a [MetaValue]
 /// ```
 pub enum MetaItem {
     Tuple(MetaTuple),

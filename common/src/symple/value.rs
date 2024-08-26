@@ -1,26 +1,18 @@
 //! [MetaValue] definitions, implementations, and utils
 //! 
-//! A [MetaValue] can be either a [syn::Lit], [syn::Type], [syn::Path], or [syn::Ident]
+//! A [MetaValue] can be either a [syn::Lit], [syn::Type], [syn::Path], [syn::Expr], or [syn::Ident]
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use quote::ToTokens;
 
 #[derive(Clone, Default)]
-/// [Value], which can be [syn::Lit], [syn::Type], [syn::Path], or [syn::Ident]
-pub struct Value<T>
-where
-    T: std::fmt::Display,
-    T: From<MetaValue>,
-{
+/// [Value], which can be [syn::Lit], [syn::Type], [syn::Path], [syn::Expr], or [syn::Ident]
+pub struct Value<T: From<MetaValue>> {
     pub value: Option<T>,
 }
 /// [Value] implementation of [From<MetaValue>]
-impl<T> From<MetaValue> for Value<T>
-where
-    T: std::fmt::Display,
-    T: From<MetaValue>,
-{
+impl<T: From<MetaValue>> From<MetaValue> for Value<T> {
     fn from(x: MetaValue) -> Self {
         Value { value: Some(x.into()) }
     }
@@ -51,21 +43,43 @@ pub enum MetaValue {
 impl syn::parse::Parse for MetaValue {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         // --------------------------------------------------
-        // - check for types
-        // - check for expressions
-        // - check for paths
-        // - check for literals
-        // - check for identifiers
+        // prioritize expressions first
         // --------------------------------------------------
-        if let Ok(x) = input.parse::<syn::Type>() { return Ok(MetaValue::Type(x)); }
-        if let Ok(x) = input.parse::<syn::Expr>() { return Ok(MetaValue::Expr(x)); }
-        if let Ok(x) = input.parse::<syn::Path>() { return Ok(MetaValue::Path(x)); }
-        if let Ok(x) = input.parse::<syn::Lit>() { return Ok(MetaValue::Lit(x)); }
-        if let Ok(x) = input.parse::<syn::Ident>() { return Ok(MetaValue::Ident(x)); }
+        if input.peek(syn::token::Paren) || input.peek(syn::token::Brace) || input.peek(syn::Token![if]) || input.peek(syn::Token![match]) {
+            if let Ok(x) = input.parse::<syn::Expr>() {
+                return Ok(MetaValue::Expr(x));
+            }
+        }
+        // --------------------------------------------------
+        // then prioritize literals
+        // --------------------------------------------------
+        if input.peek(syn::Lit) {
+            if let Ok(x) = input.parse::<syn::Lit>() {
+                return Ok(MetaValue::Lit(x));
+            }
+        }
+        // --------------------------------------------------
+        // check for types after expressions and literals
+        // --------------------------------------------------
+        if let Ok(x) = input.parse::<syn::Type>() {
+            return Ok(MetaValue::Type(x));
+        }
+        // --------------------------------------------------
+        // check for paths after types
+        // --------------------------------------------------
+        if let Ok(x) = input.parse::<syn::Path>() {
+            return Ok(MetaValue::Path(x));
+        }
+        // --------------------------------------------------
+        // check for identifiers as a last resort
+        // --------------------------------------------------
+        if let Ok(x) = input.parse::<syn::Ident>() {
+            return Ok(MetaValue::Ident(x));
+        }
         // --------------------------------------------------
         // otherwise return an error
         // --------------------------------------------------
-        Err(input.error("Expected a Lit, Type, Path, or Ident"))
+        Err(input.error("Expected a Expr, Lit, Type, Path, or Ident"))
     }
 }
 /// [MetaValue] implementation of [From]
