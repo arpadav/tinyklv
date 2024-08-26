@@ -73,7 +73,7 @@ pub enum FieldNames {
     /// 
     /// In practice, streams would look like:
     /// 
-    /// ```rust
+    /// ```rust ignore
     /// use tinyklv::Klv;
     /// use tinyklv::prelude::*;
     /// 
@@ -153,3 +153,7 @@ pub enum FieldNames {
     /// The decoder]
     Decoder,
 }
+
+// fn main() {
+//     syn::AttributeArgs::
+// }

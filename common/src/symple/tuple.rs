@@ -63,10 +63,16 @@ use super::item::MetaItem;
 pub struct Tuple<T: From<MetaContents> + std::fmt::Display> {
     pub value: Option<T>,
 }
-/// [Tuple] implementation of [From<MetaTuple>]
+/// [Tuple] implementation of [From] for [MetaTuple]
 impl <T: From<MetaContents> + std::fmt::Display> From<&MetaTuple> for Tuple<T> {
     fn from(meta: &MetaTuple) -> Self {
         Tuple { value: Some(meta.contents.clone().into()), }
+    }
+}
+/// [Tuple] implementation of [From] for T
+impl <T: From<MetaContents> + std::fmt::Display> From<T> for Tuple<T> {
+    fn from(value: T) -> Self {
+        Tuple { value: Some(value) }
     }
 }
 /// [Tuple] implementation of [Default]
@@ -140,3 +146,73 @@ impl std::fmt::Display for MetaTuple {
     }
 }
 crate::debug_from_display!(MetaTuple);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod readme_tuple_example {
+        use quote::ToTokens;
+
+        use super::*;
+        use crate::symple as symple;
+
+        #[derive(Default)]
+        // struct attributes
+        struct StructAttributes {
+            values: Tuple<Values>,
+        }
+        struct Values {
+            value1: syn::LitInt,
+            value2: syn::LitInt,
+        }
+
+        // field attributes
+        #[derive(Default)]
+        struct FieldAttribute {
+            attr: symple::NameValue<syn::Lit>
+        }
+
+        // required for all items inside `symple::Tuple`
+        impl From<symple::MetaContents> for StructAttributes {
+            fn from(x: symple::MetaContents) -> Self {
+                let mut output = StructAttributes::default();
+                let mut value1 = None;
+                let mut value2 = None;
+                for item in x.into_iter() {
+                    match item {
+                        symple::MetaItem::NameValue(mnv) => {
+                            match mnv.name.to_string().as_str() {
+                                "value1" => value1 = Some(mnv.value.clone()),
+                                "value2" => value2 = Some(mnv.value.clone()),
+                                _ => panic!("expected NameValue"),
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+                match (value1, value2) {
+                    (Some(v1), Some(v2)) => {
+                        let v1 = if let symple::MetaValue::Lit(syn::Lit::Int(lit_int)) = v1 { lit_int } else { panic!("expected a lit int") };
+                        let v2 = if let symple::MetaValue::Lit(syn::Lit::Int(lit_int)) = v2 { lit_int } else { panic!("expected a lit int") };
+                        output.values = Values {
+                            value1: v1
+                            value2: v2,
+                        };
+                    }
+                    _ => panic!("expected two values"),
+                }
+                output
+            }
+        }
+
+        // required for all items inside `symple::NameValue`
+        impl From<symple::MetaValue> for FieldAttribute {
+            fn from(x: symple::MetaValue) -> Self {
+                let mut output = FieldAttribute::default();
+                output.attr = x.into();
+                output
+            }
+        }
+    }
+}
