@@ -3,7 +3,7 @@
 // --------------------------------------------------
 use quote::ToTokens;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum MetaValue {
     Lit(syn::Lit),
     Type(syn::Type),

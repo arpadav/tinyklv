@@ -1,21 +1,22 @@
 [package]
-name = "tinyklv"
+name = "misb"
 version = "0.1.0"
 authors = ["Arpad Voros <arpadav@gmail.com>"]
 license = "MIT"
 description = ""
-repository = "https://github.com/arpadav/tinyklv"
-documentation = "https://docs.rs/tinyklv"
+repository = "https://github.com/arpadav/misb"
+documentation = "https://docs.rs/misb"
 readme = "README.md"
 # keywords = ["enum", "const", "literals", "macro", "parsing"]
 # categories = ["parsing", "memory-management"]
 edition = "2021"
+publish = false
 
 [dependencies]
-paste = "1.0"
+rand = "0.8"
+chrono = "0.4"
 winnow = "0.6"
-num-traits = "0.2"
-tinyklv-impl = { version = "0.1", path = "impl" }
+tinyklv = { version = "0.1", path = "../../tinyklv" }
 
 [profile.dev]
 opt-level = 0

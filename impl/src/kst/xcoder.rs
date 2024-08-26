@@ -102,14 +102,14 @@ symple::debug_from_display!(OptionalXcoder);
 /// types without a specified encoder/decoder.
 pub(crate) struct DefaultXcoder {
     pub ty: syn::Type,
-    pub dynlen: bool,
+    pub dynlen: Option<bool>,
     pub xcoder: OptionalXcoder,
 }
 /// [`DefaultXcoder`] implementation of [`From`] for [`MetaContents`]
 impl From<MetaContents> for DefaultXcoder {
     fn from(x: MetaContents) -> Self {
         let mut ty: Option<syn::Type> = None;
-        let mut dynlen: bool = false;
+        let mut dynlen = None;
         let mut enc: Option<syn::Path> = None;
         let mut dec: Option<syn::Path> = None;
         for val in x.into_iter() {
@@ -120,7 +120,7 @@ impl From<MetaContents> for DefaultXcoder {
             if let MetaItem::NameValue(x) = val {
                 match XcoderNames::try_from(x.name.to_string().as_str()) {
                     Ok(XcoderNames::Type) => ty = Some(x.value.clone().into()),
-                    Ok(XcoderNames::DynLen) => dynlen = if let symple::MetaValue::Lit(syn::Lit::Bool(syn::LitBool { value: true, .. })) = x.value { true } else { false },
+                    Ok(XcoderNames::DynLen) => dynlen = if let symple::MetaValue::Lit(syn::Lit::Bool(syn::LitBool { value: v, .. })) = x.value { Some(v) } else { None },
                     Ok(XcoderNames::Encoder) => enc = Some(x.value.clone().into()),
                     Ok(XcoderNames::Decoder) => dec = Some(x.value.clone().into()),
                     _ => continue,
@@ -138,7 +138,7 @@ impl From<MetaContents> for DefaultXcoder {
 /// [`DefaultXcoder`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for DefaultXcoder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ty: {}, dyn: {}, {}", self.ty.to_token_stream().to_string(), self.dynlen, self.xcoder)
+        write!(f, "ty: {}, dyn: {:?}, {}", self.ty.to_token_stream().to_string(), self.dynlen, self.xcoder)
     }
 }
 symple::debug_from_display!(DefaultXcoder);
