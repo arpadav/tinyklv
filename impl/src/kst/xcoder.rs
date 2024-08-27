@@ -10,7 +10,7 @@ use tinyklv_common::symple::{
 use quote::ToTokens;
 
 #[derive(Clone)]
-/// [`RequiredXcoder`]
+/// [RequiredXcoder]
 /// 
 /// This is an encoder/decoder pair
 /// which is **not** optional.
@@ -18,7 +18,7 @@ pub struct RequiredXcoder {
     pub enc: syn::Path,
     pub dec: syn::Path,
 }
-/// [`RequiredXcoder`] implementation of [`From`] for [`MetaContents`]
+/// [RequiredXcoder] implementation of [From] for [MetaContents]
 impl From<MetaContents> for RequiredXcoder {
     fn from(x: MetaContents) -> Self {
         let mut enc: Option<syn::Path> = None;
@@ -44,7 +44,7 @@ impl From<MetaContents> for RequiredXcoder {
         }
     }
 }
-/// [`RequiredXcoder`] implementation of [`std::fmt::Display`]
+/// [RequiredXcoder] implementation of [std::fmt::Display]
 impl std::fmt::Display for RequiredXcoder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "enc: {}, dec: {}", self.enc.to_token_stream().to_string(), self.dec.to_token_stream().to_string())
@@ -54,7 +54,7 @@ impl std::fmt::Display for RequiredXcoder {
 tinyklv_common::debug_from_display!(RequiredXcoder);
 
 #[derive(Eq, Hash, Clone, PartialEq)]
-/// [`OptionalXcoder`]
+/// [OptionalXcoder]
 /// 
 /// This is an encoder/decoder pair
 /// where **either** is optional.
@@ -62,7 +62,7 @@ pub(crate) struct OptionalXcoder {
     pub enc: Option<syn::Path>,
     pub dec: Option<syn::Path>,
 }
-/// [`OptionalXcoder`] implementation of [`std::fmt::Display`]
+/// [OptionalXcoder] implementation of [std::fmt::Display]
 impl std::fmt::Display for OptionalXcoder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let enc_str = match &self.enc {
@@ -80,7 +80,7 @@ impl std::fmt::Display for OptionalXcoder {
 tinyklv_common::debug_from_display!(OptionalXcoder);
 
 #[derive(Eq, Hash, Clone, PartialEq)]
-/// [`DefaultXcoder`]
+/// [DefaultXcoder]
 /// 
 /// This is an optional encoder/decoder pair
 /// that is defaultly used for all associated
@@ -90,7 +90,7 @@ pub(crate) struct DefaultXcoder {
     pub dynlen: Option<bool>,
     pub xcoder: OptionalXcoder,
 }
-/// [`DefaultXcoder`] implementation of [`From`] for [`MetaContents`]
+/// [DefaultXcoder] implementation of [From] for [MetaContents]
 impl From<MetaContents> for DefaultXcoder {
     fn from(x: MetaContents) -> Self {
         let mut ty: Option<syn::Type> = None;
@@ -120,7 +120,7 @@ impl From<MetaContents> for DefaultXcoder {
         }
     }
 }
-/// [`DefaultXcoder`] implementation of [`std::fmt::Display`]
+/// [DefaultXcoder] implementation of [std::fmt::Display]
 impl std::fmt::Display for DefaultXcoder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "ty: {}, dyn: {:?}, {}", self.ty.to_token_stream().to_string(), self.dynlen, self.xcoder)

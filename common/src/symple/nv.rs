@@ -10,7 +10,7 @@ use quote::ToTokens;
 use super::value::MetaValue;
 
 #[derive(Clone)]
-/// A [`MetaNameValue`] wrapper, used as a utility for proc-macro parsing
+/// A [MetaNameValue] wrapper, used as a utility for proc-macro parsing
 /// 
 /// # Example
 /// 
@@ -49,26 +49,26 @@ use super::value::MetaValue;
 pub struct NameValue<T: From<MetaValue> + ToTokens> {
     pub value: Option<T>,
 }
-/// [`NameValue`] implementation
+/// [NameValue] implementation
 impl<T: From<MetaValue> + ToTokens> NameValue<T> {
     #[allow(dead_code)]
     pub fn new(value: T) -> Self {
         NameValue { value: Some(value) }
     }
 }
-/// [`NameValue`] implementation of [`From`] for [`MetaNameValue`]
+/// [NameValue] implementation of [From] for [MetaNameValue]
 impl<T: From<MetaValue> + ToTokens> From<&MetaNameValue> for NameValue<T> {
     fn from(meta: &MetaNameValue) -> Self {
         NameValue { value: Some(meta.value.clone().into()) }
     }
 }
-/// [`NameValue`] implementation of [`Default`]
+/// [NameValue] implementation of [Default]
 impl<T: From<MetaValue> + ToTokens> Default for NameValue<T> {
     fn default() -> Self {
         NameValue { value: None }
     }
 }
-/// [`NameValue`] implementation of [`std::fmt::Display`]
+/// [NameValue] implementation of [std::fmt::Display]
 impl<T: From<MetaValue> + ToTokens> std::fmt::Display for NameValue<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.value {
@@ -80,10 +80,10 @@ impl<T: From<MetaValue> + ToTokens> std::fmt::Display for NameValue<T> {
 crate::debug_from_display!(NameValue, From<MetaValue> + ToTokens);
 
 #[derive(Clone)]
-/// [`MetaNameValue`]
+/// [MetaNameValue]
 /// 
-/// Data structure which is consists of a name [`syn::Ident`] 
-/// and a value [`syn::Ident`], separated by an equal sign `=`
+/// Data structure which is consists of a name [syn::Ident] 
+/// and a value [syn::Ident], separated by an equal sign `=`
 /// 
 /// # Example
 /// 
@@ -95,7 +95,7 @@ pub struct MetaNameValue {
     sep: syn::Token![=],
     pub value: MetaValue,
 }
-/// [`MetaNameValue`] implementation of [`syn::parse::Parse`]
+/// [MetaNameValue] implementation of [syn::parse::Parse]
 impl syn::parse::Parse for MetaNameValue {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         Ok(MetaNameValue {
@@ -105,7 +105,7 @@ impl syn::parse::Parse for MetaNameValue {
         })
     }
 }
-/// [`MetaNameValue`] implementation of [`std::fmt::Display`]
+/// [MetaNameValue] implementation of [std::fmt::Display]
 impl std::fmt::Display for MetaNameValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {} {}", self.name, self.sep.to_token_stream(), self.value.to_token_stream())

@@ -26,7 +26,7 @@ pub(crate) struct Input {
     pub fattrs: Vec<FieldAttrSchema>,
 }
 
-/// [`Input`] implementation
+/// [Input] implementation
 impl Input {
     pub fn from_syn(input: &syn::DeriveInput) -> Result<Self, Error> {
         // --------------------------------------------------

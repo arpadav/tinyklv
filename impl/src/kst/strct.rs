@@ -27,7 +27,7 @@ pub(crate) struct StructAttrSchema {
     pub len: Tuple<RequiredXcoder>,
     pub defaults: HashSet<Tuple<DefaultXcoder>>
 }
-/// [`StructAttrSchema`] implementation
+/// [StructAttrSchema] implementation
 impl StructAttrSchema {
     pub fn from_syn(input: &syn::DeriveInput) -> Option<Self> {
         let parsed: Option<MetaTuple> = input
@@ -45,7 +45,7 @@ impl StructAttrSchema {
         }
     }
 }
-/// [`StructAttrSchema`] implementation of [`From<MetaTuple>`]
+/// [StructAttrSchema] implementation of [From<MetaTuple>]
 impl From<MetaTuple> for StructAttrSchema {
     fn from(input: MetaTuple) -> Self {
         let mut output = Self::default();
@@ -63,12 +63,13 @@ impl From<MetaTuple> for StructAttrSchema {
                     Ok(StructNames::Sentinel) => output.sentinel = x.into(),
                     _ => (),
                 },
+                _ => (),
             }
         );
         output
     }
 }
-/// [`StructAttrSchema`] implementation of [`std::fmt::Display`]
+/// [StructAttrSchema] implementation of [std::fmt::Display]
 impl std::fmt::Display for StructAttrSchema {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "StructAttrSchema {{ stream: {}, sentinel: {}, key: {}, len: {}, defaults: {:#?} }}", self.stream, self.sentinel, self.key, self.len, self.defaults)
