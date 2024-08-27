@@ -4,11 +4,14 @@
 
 `tinyklv` is a Rust implementation of a KLV framework to reduce the amount of boilerplate code required for parsing and encoding KLV data in an agnostic, human-defined manner.
 
-This crate is predominately used for streams of packetized data, like from video feeds or serial ports. Options for handling streams of partial packets is supported.
+This crate is predominately used for streams of packetized data, like from video feeds or serial ports.
+ <!-- Options for handling streams of partial packets is supported. TODO: implement this before adding to README -->
 
 ```rust
 #[derive(Klv)]
 #[klv(
+    /// Stream type. If not specified, defaults to `&[u8]`
+    stream = &[u8],
     /// Recognition sentinel
     sentinel = b"\x01",
     /// Required
