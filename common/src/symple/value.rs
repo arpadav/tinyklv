@@ -35,12 +35,41 @@ pub enum MetaValue {
     Expr(syn::Expr),
     Type(syn::Type),
     Ident(syn::Ident),
+    Macro(syn::Macro),
+    // MacroCall(proc_macro2::TokenStream),
 }
 /// [`MetaValue`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for MetaValue {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        println!("{}", input.to_string());
         // --------------------------------------------------
-        // prioritize expressions first
+        // prioritize macro: check for a path followed by '!'
+        // --------------------------------------------------
+        let fork = input.fork();
+        if let Ok(_) = fork.parse::<syn::Path>() {
+            if fork.peek(syn::Token![!]) {
+                let macro_: syn::Macro = input.parse()?;
+                println!("{}", macro_.to_token_stream().to_string());
+                return Ok(MetaValue::Macro(macro_));
+                // // let parsed_path: syn::Path = input.parse()?;
+                // // let bang_token: syn::Token![!] = input.parse()?;
+                // let content;
+                // syn::parenthesized!(content in input);
+                // let macro_contents: Result<proc_macro2::TokenStream, syn::Error> = content.parse();
+                // match macro_contents {
+                //     Ok(x) => return Ok(MetaValue::MacroCall(quote::quote! {
+                //         #macro_ ( #x )
+                //     })),
+                //     Err(_) => return Ok(MetaValue::Macro(macro_)),
+                // }
+                // // return Ok(MetaValue::Macro(quote::quote! {
+                // //     #parsed_path #bang_token ( #macro_contents )
+                // // }));
+            }
+        }
+        drop(fork);
+        // --------------------------------------------------
+        // prioritize expressions
         // --------------------------------------------------
         if input.peek(syn::token::Paren) || input.peek(syn::token::Brace) || input.peek(syn::Token![if]) || input.peek(syn::Token![match]) {
             if let Ok(x) = input.parse::<syn::Expr>() {
@@ -76,7 +105,7 @@ impl syn::parse::Parse for MetaValue {
         // --------------------------------------------------
         // otherwise return an error
         // --------------------------------------------------
-        Err(input.error("Expected a Expr, Lit, Type, Path, or Ident"))
+        Err(input.error("Expected a Expr, Lit, Type, Path, Ident, or Macro call"))
     }
 }
 /// [`MetaValue`] implementation of [`From`]
@@ -94,6 +123,8 @@ macro_rules! impl_from_mv {
                     MetaValue::Expr(x) => syn::parse_str::<$t>(x.to_token_stream().to_string().as_str()).unwrap(),
                     MetaValue::Type(x) => syn::parse_str::<$t>(x.to_token_stream().to_string().as_str()).unwrap(),
                     MetaValue::Ident(x) => syn::parse_str::<$t>(x.to_token_stream().to_string().as_str()).unwrap(),
+                    MetaValue::Macro(x) => syn::parse_str::<$t>(x.to_token_stream().to_string().as_str()).unwrap(),
+                    // MetaValue::MacroCall(x) => syn::parse_str::<$t>(x.to_string().as_str()).unwrap(),
                 }
             }
         }
@@ -114,6 +145,8 @@ impl quote::ToTokens for MetaValue {
             MetaValue::Expr(x) => x.to_tokens(tokens),
             MetaValue::Type(x) => x.to_tokens(tokens),
             MetaValue::Ident(x) => x.to_tokens(tokens),
+            MetaValue::Macro(x) => x.to_tokens(tokens),
+            // MetaValue::MacroCall(x) => x.to_tokens(tokens),
         }
     }
 }
@@ -126,6 +159,8 @@ impl std::fmt::Display for MetaValue {
             MetaValue::Expr(x) => std::fmt::Display::fmt(&x.to_token_stream().to_string(), f),
             MetaValue::Type(x) => std::fmt::Display::fmt(&x.to_token_stream().to_string(), f),
             MetaValue::Ident(x) => std::fmt::Display::fmt(&x.to_string(), f),
+            MetaValue::Macro(x) => std::fmt::Display::fmt(&x.to_token_stream().to_string(), f),
+            // MetaValue::MacroCall(x) => std::fmt::Display::fmt(&x.to_string(), f),
         }
     }
 }

@@ -17,37 +17,51 @@ use tinyklv::prelude::*;
     default(ty = String, dec = tinyklv::codecs::binary::dec::to_string, dyn = true),
 )]
 pub struct Misb0601 {
-    #[feature("misb0601-19")]
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x01)]
     /// Checksum used to detect errors within a UAS Datalink LS packet
     pub checksum: u16,
 
-    #[feature("misb0601-19")]
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x02, dec = crate::dec::to_precision_timestamp)]
     /// Timestamp for all metadata in this Local Set; used to coordinate with Motion Imagery
     pub precision_timestamp: Option<chrono::DateTime<chrono::Utc>>,
 
-    #[feature("misb0601-19")]
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x03)]
     /// Descriptive mission identifier to distinguish event or sortie
     pub mission_id: Option<String>,
 
-    #[feature("misb0601-19")]
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x04)]
     /// Identifier of platform as posted
     pub platform_tail_number: Option<String>,
 
-    #[feature("misb0601-19")]
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x05, dec = crate::dec::to_platform_heading)]
     /// Aircraft heading angle
     pub platform_heading_angle: Option<f64>,
 
-    #[feature("misb0601-19")]
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x06, dec = crate::dec::to_platform_pitch)]
     /// Aircraft pitch angle
     pub platform_pitch_angle: Option<f64>,
 
-    #[feature("misb0601-19")]
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x07, dec = crate::dec::to_platform_roll)]
     /// Platform roll angle
     pub platform_roll_angle: Option<f64>,
@@ -56,9 +70,9 @@ pub struct Misb0601 {
     /// True airspeed (TAS) of platform
     pub platform_true_airspeed: Option<u8>,
 
-    #[klv(key = 0x09)]
+    #[klv(key = 0x09, dec = tinyklv::dec_as!(tinyklv::codecs::binary::dec::be_u8, f64))] //, dec = tinyklv::p_as!(tinyklv::codecs::binary::dec::be_u8, f64))]
     /// Indicated airspeed (IAS) of platform
-    pub platform_indicated_airspeed: Option<u8>,
+    pub platform_indicated_airspeed: Option<f64>,
 
     #[klv(key = 0x0a)]
     /// Model name for the platform
