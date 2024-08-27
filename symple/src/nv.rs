@@ -1,3 +1,4 @@
+//! [NameValue] and [MetaNameValue] definitions, implementations, and utils
 // --------------------------------------------------
 // external
 // --------------------------------------------------
@@ -6,56 +7,45 @@ use quote::ToTokens;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::value::{self, MetaValue};
+use crate::value::MetaValue;
 
 #[derive(Clone)]
-/// [`MetaNameValue`]
-/// 
-/// Data structure which is consists of a name [`syn::Ident`] 
-/// and a value [`syn::Ident`], separated by an equal sign `=`
+/// A [`MetaNameValue`] wrapper, used as a utility for proc-macro parsing
 /// 
 /// # Example
 /// 
 /// ```ignore
-/// name = value
+/// // inside of proc-macro lib
+/// struct Input {
+///     struct_attribute_identifier: symple::NameValue<syn::Lit>
+/// }
 /// ```
-pub struct MetaNameValue {
-    pub name: syn::Ident,
-    sep: syn::Token![=],
-    pub value: MetaValue,
-}
-/// [`MetaNameValue`] implementation of [`syn::parse::Parse`]
-impl syn::parse::Parse for MetaNameValue {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        // debugging
-        // let name: syn::Ident = input.parse()?;
-        // println!("{}", name.to_token_stream());
-        // let sep: syn::Token![=] = input.parse()?;
-        // let value: MetaValue = input.parse()?;
-        // println!("{}", value.to_token_stream());
-        // println!("\n");
-        // Ok(MetaNameValue {
-        //     name,
-        //     sep,
-        //     value,
-        // })
-        Ok(MetaNameValue {
-            name: input.parse()?,
-            sep: input.parse()?,
-            value: input.parse()?,
-        })
-    }
-}
-/// [`MetaNameValue`] implementation of [`std::fmt::Display`]
-impl std::fmt::Display for MetaNameValue {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {} {}", self.name, self.sep.to_token_stream(), self.value.to_token_stream())
-    }
-}
-crate::debug_from_display!(MetaNameValue);
-
-#[derive(Clone)]
-/// A [`MetaNameValue`] wrapper
+/// 
+/// ***Note that trait bounds for [From<MetaValue>] are required
+/// for this to work.*** Custom implementations are possible, but currently
+/// [From<MetaValue>] is implemented for:
+/// 
+/// * [syn::Lit]
+/// * [syn::Type]
+/// * [syn::Path]
+/// * [syn::Ident]
+/// 
+/// ```ignore
+/// // outisde of proc-macro lib
+/// #[derive(MyProcMacro)]
+/// #[identifier = "Hello World!"]
+/// struct SomeStruct;
+/// ```
+/// 
+/// Which can then be parsed using the [From<MetaValue>] implementation
+/// into the following, to help with proc-macro parsing:
+/// 
+/// ```ignore
+/// Input {
+///     // note that this is called using `struct_attribute_identifier.value`
+///     struct_attribute_identifier: Some(syn::Lit::new(syn::IntSuffix::None, "Hello World!")),
+/// }
+/// ```
 pub struct NameValue<T: From<MetaValue> + ToTokens> {
     pub value: Option<T>,
 }
@@ -88,3 +78,37 @@ impl<T: From<MetaValue> + ToTokens> std::fmt::Display for NameValue<T> {
     }
 }
 crate::debug_from_display!(NameValue, From<MetaValue> + ToTokens);
+
+#[derive(Clone)]
+/// [`MetaNameValue`]
+/// 
+/// Data structure which is consists of a name [`syn::Ident`] 
+/// and a value [`syn::Ident`], separated by an equal sign `=`
+/// 
+/// # Example
+/// 
+/// ```ignore
+/// name = value
+/// ```
+pub struct MetaNameValue {
+    pub name: syn::Ident,
+    sep: syn::Token![=],
+    pub value: MetaValue,
+}
+/// [`MetaNameValue`] implementation of [`syn::parse::Parse`]
+impl syn::parse::Parse for MetaNameValue {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(MetaNameValue {
+            name: input.parse()?,
+            sep: input.parse()?,
+            value: input.parse()?,
+        })
+    }
+}
+/// [`MetaNameValue`] implementation of [`std::fmt::Display`]
+impl std::fmt::Display for MetaNameValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {} {}", self.name, self.sep.to_token_stream(), self.value.to_token_stream())
+    }
+}
+crate::debug_from_display!(MetaNameValue);

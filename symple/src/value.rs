@@ -1,9 +1,15 @@
+//! [`MetaValue`] definitions, implementations, and utils
+//! 
+//! A [`MetaValue`] can be either a [`syn::Lit`], [`syn::Type`], [`syn::Path`], or [`syn::Ident`]
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use quote::ToTokens;
 
+// TODO: Create a wrapper to be used as [symple::Value]
+
 #[derive(Clone, Debug)]
+/// [MetaValue], which can be [syn::Lit], [syn::Type], [syn::Path], or [syn::Ident]
 pub enum MetaValue {
     Lit(syn::Lit),
     Type(syn::Type),

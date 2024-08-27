@@ -1,7 +1,6 @@
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use std::num::NonZero;
 use num_traits::{
     ToBytes,
     Unsigned,
@@ -17,7 +16,6 @@ use winnow::token::{
     take,
     take_while,
 };
-use winnow::prelude::*;
 
 // --------------------------------------------------
 // local
@@ -37,11 +35,12 @@ pub trait OfBerOid: OfBerCommon {}
 impl<T> OfBerOid for T where T: OfBerCommon {}
 
 #[derive(Debug, PartialEq)]
-/// Enum representing BER Length Encoding.
+/// Enum representing Basic-Encoding-Rules (BER) Length Encoding.
 /// 
 /// Maximum precision: [u64]
 /// 
-/// See: https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf 
+/// See: [https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf)
+/// See: [https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf](https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf) page 7
 pub enum BerLength<T>
 where 
     T: OfBerLength
@@ -70,7 +69,7 @@ impl<T: OfBerLength> BerLength<T> {
 
     /// Encodes a length of [BerLength] into a [Vec<u8>]
     /// 
-    /// See [BerLength] implementation [Encode] [Self::encode]
+    /// See [BerLength] implementation [Encode]
     pub fn encode(len: &T) -> Vec<u8> {
         Self::new(len).encode()
     }
@@ -92,7 +91,7 @@ impl<T: OfBerLength> Encode<Vec<u8>> for BerLength<T> {
     /// 
     /// ```
     /// use tinyklv::prelude::*;
-    /// use tinyklv::defaults::codecs::ber::BerLength;
+    /// use tinyklv::codecs::ber::BerLength;
     /// 
     /// let value0 = BerLength::new(&47_u64);
     /// let value1 = BerLength::new(&201_u64);
@@ -164,21 +163,22 @@ impl<T: OfBerLength> StreamDecode<&[u8]> for BerLength<T> {
         // --------------------------------------------------
         // ensure there are enough bytes in the stream
         // --------------------------------------------------
-        if input.len() < num_bytes + 1 { return Err(ErrMode::Incomplete(Needed::Size(NonZero::new(num_bytes + 1).unwrap()))); }
+        if input.len() < num_bytes + 1 { return Err(ErrMode::Incomplete(Needed::Size(std::num::NonZero::new(num_bytes + 1).unwrap()))); }
         // --------------------------------------------------
         // decode the length from the specified number of bytes
         // --------------------------------------------------
-        let output = parse_length(input, num_bytes)?;
+        let output = parse_length_u64(input, num_bytes)?;
         Ok(BerLength::Long(T::from_u64(output).unwrap()))
     }
 }
 
 #[derive(Debug, PartialEq)]
-/// Struct representing BER-OID encoding for tags.
+/// Struct representing Basic Encoding Rules (BER) Object Identifier (OID) encoding.
 /// 
 /// Maximum precision: [u64]
 /// 
-/// See: https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf
+/// See: [https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf)
+/// See: [https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf](https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf) page 7
 pub struct BerOid<T>
 where 
     T: OfBerOid
@@ -206,9 +206,9 @@ impl<T: OfBerOid> Encode<Vec<u8>> for BerOid<T> {
     /// 
     /// ```
     /// use tinyklv::prelude::*;
-    /// use tinyklv::defaults::ber::BerOid;
+    /// use tinyklv::codecs::ber::BerOid;
     /// 
-    /// assert_eq!(vec![129, 182, 2], BerOid::encode(23298 as u64));
+    /// assert_eq!(vec![129, 182, 2], BerOid::encode(&23298_u64));
     /// ```
     fn encode(&self) -> Vec<u8> {
         let mut output = Vec::new();
@@ -262,54 +262,29 @@ impl<T: OfBerOid> StreamDecode<&[u8]> for BerOid<T> {
     }
 }
 
-#[inline]
+#[inline(always)]
 /// Parses out all bytes while MSB is set to 1
 fn take_while_msb_set<'s>(input: &mut &'s [u8]) -> winnow::PResult<&'s [u8]> {
     take_while(1.., msb_is_set).parse_next(input)
 }
 
-#[inline]
+#[inline(always)]
 /// Parses out a single byte. MSB is **assumed** set to 0, since
 /// this function is only called after [types::BerOid::take_while_msb_set]
 fn take_one<'s>(input: &mut &'s [u8]) -> winnow::PResult<&'s [u8]> {
     take(1usize).parse_next(input)
 }
 
-#[inline]
+#[inline(always)]
 /// Checks if the MSB is set
 fn msb_is_set(b: u8) -> bool {
     (b & 0x80) != 0
 }
 
-#[inline]
-/// Parses out a specified number of bytes and combines them into a `u64` value
-fn parse_length(input: &mut &[u8], num_bytes: usize) -> winnow::PResult<u64> {
+#[inline(always)]
+/// Parses out a specified number of bytes and combines them into a [u64] value
+fn parse_length_u64(input: &mut &[u8], num_bytes: usize) -> winnow::PResult<u64> {
     take(num_bytes)
         .map(|bytes: &[u8]| bytes.iter().fold(0u64, |acc, &byte| (acc << 8) | byte as u64))
         .parse_next(input)
-}
-
-#[test]
-fn main() {
-    // let value0 = BerLength::new(47 as u64);
-    // let value1 = BerLength::new(201 as u64);
-    let value2 = BerLength::new(&123891829038102_u64);
-    
-    // assert_eq!(value0.encode(), vec![47]);
-    println!("{:?}", value2.encode());
-    // println!("{:?}", value0.encode()); // Should return [201]
-    // println!("{:?}", value1.encode());  // Encoded long form of the number
-
-    // let value3 = BerOid::new(23298 as u64);
-    let value4 = BerOid::encode(&23298_u64);
-    let value5 = BerOid::<u64>::decode(&mut value4.as_slice()).unwrap();
-    println!("{:?}", value4);
-    println!("{:?}", value5);
-    // let value5 = value5.unwrap();
-
-    // [129, 182, 2]
-    // println!("{:?}", value4);
-
-    // let encoded = value3.encode();
-    // println!("{:?}", value3.encode());
 }

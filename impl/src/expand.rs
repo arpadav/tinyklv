@@ -7,9 +7,8 @@ use quote::quote;
 // local
 // --------------------------------------------------
 use crate::kst;
-// use crate::Error;
 
-/// Derive `Klv`
+/// Derive [crate::Klv]
 pub fn derive(input: &syn::DeriveInput) -> proc_macro::TokenStream {
     match kst::Input::from_syn(input) {
         Ok(parsed) => parsed.into(),
@@ -17,7 +16,7 @@ pub fn derive(input: &syn::DeriveInput) -> proc_macro::TokenStream {
     }
 }
 
-/// [From] implementation of [`proc_macro::TokenStream`] for [`kst::Input`]
+/// [From] implementation of [proc_macro::TokenStream] for [kst::Input]
 impl From<kst::Input> for proc_macro::TokenStream {
     fn from(mut input: kst::Input) -> Self {
         // --------------------------------------------------
@@ -60,7 +59,7 @@ impl From<kst::Input> for proc_macro::TokenStream {
     }
 }
 
-/// Generates the tokens for the entire [crate::prelude::StreamDecode] implementation
+/// Generates the tokens for the entire [tinyklv::prelude::StreamDecode](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.StreamDecode.html) implementation
 fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
     let name = &input.name;
     // --------------------------------------------------
@@ -77,9 +76,9 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
         #[automatically_derived]
         #[doc = concat!(" [", stringify!(#name), "] implementation of [tinyklv::prelude::StreamDecode] for [", stringify!(#stream), "]")]
         impl ::tinyklv::prelude::StreamDecode<#stream> for #name {
-            fn decode(input: &mut #stream) -> ::winnow::PResult<Self> {
+            fn decode(input: &mut #stream) -> ::tinyklv::reexport::winnow::PResult<Self> {
                 let checkpoint = input.checkpoint();
-                let packet_len = match seq!(_:
+                let packet_len = match ::tinyklv::reexport::winnow::combinator::seq!(_:
                     #sentinel,
                     #len_decoder,
                 ).parse_next(input) {
@@ -87,13 +86,15 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
                     Err(e) => return Err(e.backtrack().add_context(
                         input,
                         &checkpoint,
-                        winnow::error::StrContext::Label(concat!("Unable to find recognition sentinal and packet length for initial parsing of `", stringify!(#name), "` packet"))
+                        ::tinyklv::reexport::winnow::error::StrContext::Label(
+                            concat!("Unable to find recognition sentinal and packet length for initial parsing of `", stringify!(#name), "` packet")
+                        )
                     )),
                 };
-                let mut packet = match take(packet_len).parse_next(input) {
+                let mut packet = match ::tinyklv::reexport::winnow::token::take(packet_len).parse_next(input) {
                     Ok(x) => x,
                     Err(e) => match e.is_incomplete() {
-                        true => return Err(winnow::error::ErrMode::Incomplete(winnow::error::Needed::Unknown)),
+                        true => return Err(::tinyklv::reexport::winnow::error::ErrMode::Incomplete(::tinyklv::reexport::winnow::error::Needed::Unknown)),
                         false => return Err(e.backtrack()),
                     },
                 };
@@ -107,7 +108,7 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
                     ).parse_next(packet) {
                         Ok((key, len)) => match (key, len) {
                             #items_match
-                            (_, len) => { let _ = take::<usize, #stream, winnow::error::ContextError>(len).parse_next(packet); },
+                            (_, len) => { let _ = ::tinyklv::reexport::winnow::token::take::<usize, #stream, ::tinyklv::reexport::winnow::error::ContextError>(len).parse_next(packet); },
                         },
                         Err(_) => break,
                     }
@@ -161,11 +162,15 @@ fn gen_item_set(struct_name: &syn::Ident, fatts: &Vec<kst::FieldAttrSchema>) -> 
         match crate::parse::is_option(ty) {
             false => quote! {
                 #name: #name.ok_or_else(|| {
-                    winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new().add_context(
-                        input,
-                        &checkpoint,
-                        winnow::error::StrContext::Label(concat!("`", stringify!(#name), "` is a required value missing from the `", stringify!(#struct_name), "` packet. To prevent this, set this field as optional."))
-                    ))
+                    ::tinyklv::reexport::winnow::error::ErrMode::Backtrack(
+                        ::tinyklv::reexport::winnow::error::ContextError::new().add_context(
+                            input,
+                            &checkpoint,
+                            ::tinyklv::reexport::winnow::error::StrContext::Label(
+                                concat!("`", stringify!(#name), "` is a required value missing from the `", stringify!(#struct_name), "` packet. To prevent this, set this field as optional.")
+                            )
+                        )
+                    )
                 })?,
             },
             true => quote! { #name, },

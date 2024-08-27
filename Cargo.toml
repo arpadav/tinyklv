@@ -8,7 +8,7 @@ repository = "https://github.com/arpadav/tinyklv"
 documentation = "https://docs.rs/tinyklv"
 readme = "README.md"
 # keywords = ["enum", "const", "literals", "macro", "parsing"]
-# categories = ["parsing", "memory-management"]
+# categories = ["parsing"]
 edition = "2021"
 
 [dependencies]
