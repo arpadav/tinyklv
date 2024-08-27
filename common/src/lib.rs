@@ -116,8 +116,8 @@ pub enum StructNames {
     /// 
     /// Used args:
     /// 
-    /// * [`XcoderNames::Encoder`]
-    /// * [`XcoderNames::Decoder`]
+    /// * [`XcoderNames::Encoder`] (Optional)
+    /// * [`XcoderNames::Decoder`] (Optional)
     /// 
     /// Unused args:
     /// 
@@ -149,8 +149,8 @@ pub enum StructNames {
     /// 
     /// Used args:
     /// 
-    /// * [`XcoderNames::Encoder`]
-    /// * [`XcoderNames::Decoder`]
+    /// * [`XcoderNames::Encoder`] (Optional)
+    /// * [`XcoderNames::Decoder`] (Optional)
     /// 
     /// Unused args:
     /// 
@@ -167,7 +167,34 @@ pub enum StructNames {
     LengthTuple,
 
     #[value = "default"]
-    /// The default xcoder tuple
+    /// `default` ***(Optional)***: The default decoder/encoder for a specified type
+    /// 
+    /// This describes the function used to encode values of stream `S` for a default type
+    /// and the function used to decode values from stream `S` for a default type.
+    /// 
+    /// One of the `enc` or `dec` attributes must be set for traits to be automatically
+    /// generated for encoding or decoding of the stream. ***If neither are set,
+    /// then this does nothing.***
+    /// 
+    /// # Syntax
+    /// 
+    /// `default(ty = <type>, enc = <path-to-encoder>, dec = <path-to-decoder>)`
+    /// 
+    /// Used args:
+    /// 
+    /// * [`XcoderNames::Type`] (Required)
+    /// * [`XcoderNames::Encoder`] (Optional)
+    /// * [`XcoderNames::Decoder`] (Optional)
+    /// 
+    /// Unused args:
+    /// 
+    /// * [`XcoderNames::DynLen`] - This flag is only used for encoders/decoders for
+    /// ***values***. For the encoders/decoders for the keys and lengths itself, this
+    /// 
+    /// # Example usage
+    /// 
+    /// Please refer to [`XcoderNames::Encoder`] and [`XcoderNames::Decoder`] for 
+    /// example usage for setting the `enc` and `dec` arguments.
     DefaultTuple,
 }
 

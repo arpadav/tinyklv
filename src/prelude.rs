@@ -5,7 +5,7 @@ pub use winnow::prelude::*;
 pub use winnow::stream::Stream;
 pub use winnow::error::AddContext;
 
-/// Trait for encoding types T to stream-type I, of type [`winnow::stream::Stream`]
+/// Trait for encoding types T to stream-type S, of type [`winnow::stream::Stream`]
 /// 
 /// Common examples include `&[u8]` and `&str`. Note that due to borrowing rules, the
 /// return type of encoding is likely going to be an owned value like [`Vec<u8>`] or
@@ -16,9 +16,9 @@ pub use winnow::error::AddContext;
 /// For custom encoding functions, ***no need to use this trait***. Instead, please ensure
 /// the functions signature matches the following:
 /// 
-/// `fn <name>(&T) -> I;` or `fn <name>(T) -> I;`
-pub trait Encode<I> {
-    fn encode(&self) -> I;
+/// `fn <name>(&T) -> S;` or `fn <name>(T) -> S;`
+pub trait Encode<S> {
+    fn encode(&self) -> S;
 }
 
 /// Trait for decoding from stream-type T, of type [`winnow::stream::Stream`]
@@ -31,36 +31,36 @@ pub trait Encode<I> {
 /// For custom decoding functions, ***no need to use this trait***. Instead, please ensure
 /// the functions signature matches the following:
 /// 
-/// * static length: `fn <name>(input: &mut I) -> winnow::PResult<Self>;`
-/// * dynamic length: `fn <name>(input: &mut I, len: usize) -> winnow::PResult<Self>;`
-pub trait Decode<I>: Sized
+/// * static length: `fn <name>(input: &mut S) -> winnow::PResult<Self>;`
+/// * dynamic length: `fn <name>(input: &mut S, len: usize) -> winnow::PResult<Self>;`
+pub trait Decode<S>: Sized
 where
-    I: winnow::stream::Stream,
+    S: winnow::stream::Stream,
 {
-    fn decode(input: &mut I) -> winnow::PResult<Self>;
+    fn decode(input: &mut S) -> winnow::PResult<Self>;
 }
 
-pub trait Seek<I>: Sized
+pub trait Seek<S>: Sized
 where
-    I: winnow::stream::Stream,
+    S: winnow::stream::Stream,
 {
-    fn seek(input: &mut I) -> winnow::PResult<I>;
+    fn seek(input: &mut S) -> winnow::PResult<S>;
 }
 
 /// Trait for extracting from stream-type T, of type [`winnow::stream::Stream`]
-pub trait Extract<I>: Sized
+pub trait Extract<S>: Sized
 where
-    I: winnow::stream::Stream,
+    S: winnow::stream::Stream,
 {
-    fn extract(input: &mut I) -> winnow::PResult<Self>;
+    fn extract(input: &mut S) -> winnow::PResult<Self>;
 }
 /// [Extract] implementation for all types T that implement [Seek] and [`Decode`]
-impl<I, T> Extract<I> for T
+impl<S, T> Extract<S> for T
 where
-    I: winnow::stream::Stream,
-    T: Seek<I> + Decode<I>,
+    S: winnow::stream::Stream,
+    T: Seek<S> + Decode<S>,
 {
-    fn extract(input: &mut I) -> winnow::PResult<Self> {
+    fn extract(input: &mut S) -> winnow::PResult<Self> {
         let mut sought = T::seek.parse_next(input)?;
         let result = T::then_decode(&mut sought).parse_next(input);
         result
@@ -82,20 +82,20 @@ where
 /// [`ThenDecode`] solves this issue by taking the sub-slice as an input, passing it 
 /// to the [`Decode`] implementation, and upon failure, returning to the original 
 /// input checkpoint.
-trait ThenDecode<I>: Sized
+trait ThenDecode<S>: Sized
 where
-    I: winnow::stream::Stream,
+    S: winnow::stream::Stream,
 {
-    fn then_decode(subslice: &mut I) -> impl FnMut(&mut I) -> winnow::PResult<Self>;
+    fn then_decode(subslice: &mut S) -> impl FnMut(&mut S) -> winnow::PResult<Self>;
 }
 /// [`ThenDecode`] implementation for all types T that implement [`Decode`]
-impl<I, T> ThenDecode<I> for T
+impl<S, T> ThenDecode<S> for T
 where
-    I: winnow::stream::Stream,
-    T: Decode<I>,
+    S: winnow::stream::Stream,
+    T: Decode<S>,
 {
-    fn then_decode(subslice: &mut I) -> impl FnMut(&mut I) -> winnow::PResult<Self> {
-        move |input: &mut I| {
+    fn then_decode(subslice: &mut S) -> impl FnMut(&mut S) -> winnow::PResult<Self> {
+        move |input: &mut S| {
             let checkpoint = input.checkpoint();
             match Self::decode(subslice) {
                 Ok(parsed) => Ok(parsed),
