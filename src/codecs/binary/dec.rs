@@ -63,12 +63,12 @@ pub fn to_string_strict(input: &mut &[u8], len: usize) -> winnow::PResult<String
 macro_rules! wrap {
     ($ty:ty) => { paste::paste! {
         #[inline(always)]
-        #[doc = concat!(" Wrapper for [winnow::binary::be_", stringify!($ty), "] with implied generics <&[u8], winnow::error::ContextError>")]
+        #[doc = concat!(" Wrapper for [winnow::binary::be_", stringify!($ty), "] with implied generics <&[prim@u8], winnow::error::ContextError>")]
         pub fn [<be_ $ty>](input: &mut &[u8]) -> winnow::PResult<$ty> {
             winnow::binary::[<be_ $ty>].parse_next(input)
         }
         #[inline(always)]
-        #[doc = concat!(" Wrapper for [winnow::binary::le_", stringify!($ty), "] with implied generics <&[u8], winnow::error::ContextError>")]
+        #[doc = concat!(" Wrapper for [winnow::binary::le_", stringify!($ty), "] with implied generics <&[prim@u8], winnow::error::ContextError>")]
         pub fn [<le_ $ty>](input: &mut &[u8]) -> winnow::PResult<$ty> {
             winnow::binary::[<le_ $ty>].parse_next(input)
         }
@@ -77,14 +77,14 @@ macro_rules! wrap {
 macro_rules! wrap_native {
     ($ty:ty) => { paste::paste! {
         #[inline(always)]
-        #[doc = concat!(" Wrapper for [winnow::binary::", stringify!($ty), "] with implied native-endianness generics <&[u8], winnow::error::ContextError>")]
+        #[doc = concat!(" Wrapper for [winnow::binary::", stringify!($ty), "] with implied native-endianness generics <&[prim@u8], winnow::error::ContextError>")]
         pub fn [<$ty>](input: &mut &[u8]) -> winnow::PResult<$ty> {
             winnow::binary::$ty(winnow::binary::Endianness::Native).parse_next(input)
         }
     }};
     (simple $ty:ty) => { paste::paste! {
         #[inline(always)]
-        #[doc = concat!(" Wrapper for [winnow::binary::", stringify!($ty), "] with implied native-endianness generics <&[u8], winnow::error::ContextError>")]
+        #[doc = concat!(" Wrapper for [winnow::binary::", stringify!($ty), "] with implied native-endianness generics <&[prim@u8], winnow::error::ContextError>")]
         pub fn [<$ty>](input: &mut &[u8]) -> winnow::PResult<$ty> {
             winnow::binary::$ty.parse_next(input)
         }
@@ -106,23 +106,23 @@ wrap!(f64);     wrap_native!(f64);
 macro_rules! as_usize {
     ($parser:ident) => { paste::paste! {
         #[inline(always)]
-        #[doc = concat!(" [usize] wrapper for [winnow::binary::", stringify!($parser), "] with implied generics <&[u8], winnow::error::ContextError>")]
+        #[doc = concat!(" [usize] wrapper for [winnow::binary::", stringify!($parser), "] with implied generics <&[prim@u8], winnow::error::ContextError>")]
         #[doc = ""]
-        #[doc = concat!(" See: [", stringify!($parser), "] for the direct [", stringify!($parser), "] implementation.")]
+        #[doc = concat!(" See: [", stringify!($parser), "()] for the direct [", stringify!($parser), "()] implementation.")]
         pub fn [<$parser _as_usize>](input: &mut &[u8]) -> winnow::PResult<usize> {
             $parser(input).map(|val| val as usize)
         }
         #[inline(always)]
-        #[doc = concat!(" [usize] wrapper for [winnow::binary::be_", stringify!($parser), "] with implied generics <&[u8], winnow::error::ContextError>")]
+        #[doc = concat!(" [usize] wrapper for [winnow::binary::be_", stringify!($parser), "] with implied generics <&[prim@u8], winnow::error::ContextError>")]
         #[doc = ""]
-        #[doc = concat!(" See: [be_", stringify!($parser), "] for the direct [", stringify!($parser), "] implementation.")]
+        #[doc = concat!(" See: [be_", stringify!($parser), "] for the direct [", stringify!($parser), "()] implementation.")]
         pub fn [<be_ $parser _as_usize>](input: &mut &[u8]) -> winnow::PResult<usize> {
             [<be_ $parser>](input).map(|val| val as usize)
         }
         #[inline(always)]
-        #[doc = concat!(" [usize] wrapper for [winnow::binary::le_", stringify!($parser), "] with implied generics <&[u8], winnow::error::ContextError>")]
+        #[doc = concat!(" [usize] wrapper for [winnow::binary::le_", stringify!($parser), "] with implied generics <&[prim@u8], winnow::error::ContextError>")]
         #[doc = ""]
-        #[doc = concat!(" See: [le_", stringify!($parser), "] for the direct [", stringify!($parser), "] implementation.")]
+        #[doc = concat!(" See: [le_", stringify!($parser), "] for the direct [", stringify!($parser), "()] implementation.")]
         pub fn [<le_ $parser _as_usize>](input: &mut &[u8]) -> winnow::PResult<usize> {
             [<le_ $parser>](input).map(|val| val as usize)
         }

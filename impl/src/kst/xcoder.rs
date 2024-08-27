@@ -1,30 +1,13 @@
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use symple::{
+use tinyklv_common::XcoderNames;
+use tinyklv_common::symple::{
+    self,
     MetaItem,
     MetaContents,
 };
 use quote::ToTokens;
-use thisenum::Const;
-
-#[derive(Const, Debug)]
-#[armtype(&str)]
-/// Xcoder Names
-enum XcoderNames {
-    #[value = "ty"]
-    /// The type associated with the encoder and decoder
-    Type,
-    #[value = "dyn"]
-    /// Determines whether or not the length is dynamically determined
-    DynLen,
-    #[value = "enc"]
-    /// The encoder, a function which is `winnow` compatible
-    Encoder,
-    #[value = "dec"]
-    /// The decoder, a function which is `winnow` compatible
-    Decoder,
-}
 
 #[derive(Clone)]
 /// [`RequiredXcoder`]
@@ -67,7 +50,8 @@ impl std::fmt::Display for RequiredXcoder {
         write!(f, "enc: {}, dec: {}", self.enc.to_token_stream().to_string(), self.dec.to_token_stream().to_string())
     }
 }
-symple::debug_from_display!(RequiredXcoder);
+// symple::debug_from_display!(RequiredXcoder);
+tinyklv_common::debug_from_display!(RequiredXcoder);
 
 #[derive(Eq, Hash, Clone, PartialEq)]
 /// [`OptionalXcoder`]
@@ -92,7 +76,8 @@ impl std::fmt::Display for OptionalXcoder {
         write!(f, "enc: {}, dec: {}", enc_str, dec_str)
     }
 }
-symple::debug_from_display!(OptionalXcoder);
+// symple::debug_from_display!(OptionalXcoder);
+tinyklv_common::debug_from_display!(OptionalXcoder);
 
 #[derive(Eq, Hash, Clone, PartialEq)]
 /// [`DefaultXcoder`]
@@ -141,4 +126,5 @@ impl std::fmt::Display for DefaultXcoder {
         write!(f, "ty: {}, dyn: {:?}, {}", self.ty.to_token_stream().to_string(), self.dynlen, self.xcoder)
     }
 }
-symple::debug_from_display!(DefaultXcoder);
+// symple::debug_from_display!(DefaultXcoder);
+tinyklv_common::debug_from_display!(DefaultXcoder);

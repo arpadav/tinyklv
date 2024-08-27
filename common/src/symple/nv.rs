@@ -7,7 +7,7 @@ use quote::ToTokens;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::value::MetaValue;
+use super::value::MetaValue;
 
 #[derive(Clone)]
 /// A [`MetaNameValue`] wrapper, used as a utility for proc-macro parsing
