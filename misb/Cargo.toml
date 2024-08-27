@@ -16,10 +16,12 @@ publish = false
 rand = "0.8"
 chrono = "0.4"
 winnow = "0.6"
-tinyklv = { version = "0.1", path = "../../tinyklv" }
+tinyklv = { version = "0.0.1-alpha.1", path = "../../tinyklv" }
 
 [features]
-misb0601-latest = []
+misb0601-19 = []
+
+misb0601-latest = [ "misb0601-19" ]
 latest = [ "misb0601-latest" ]
 
 [profile.dev]

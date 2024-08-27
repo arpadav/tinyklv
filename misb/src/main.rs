@@ -9,7 +9,7 @@ fn uhl_take<'a>(input: &mut &'a [u8]) -> winnow::PResult<&'a [u8]> {
 }
 
 use tinyklv::prelude::*;
-use misb::misbtest::Misb0601;
+use misb::misb0601::Misb0601;
 use rand::Rng;
 
 fn main() {
