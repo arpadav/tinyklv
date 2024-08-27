@@ -2,6 +2,7 @@
 // local
 // --------------------------------------------------
 use quote::quote;
+use tinyklv_common::symple::prelude::*;
 
 // --------------------------------------------------
 // local
@@ -67,6 +68,8 @@ impl From<kst::Input> for proc_macro::TokenStream {
         //         #encode_impl
         //     }
         // }
+        println!("{}", input.sattr);
+        println!("{:?}", input.fattrs);
         expanded.into()
     }
 }
@@ -79,23 +82,23 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
     // --------------------------------------------------
     let stream = input.sattr.stream.value.clone().unwrap_or(crate::parse::u8_slice());
     let stream_lifetimed = crate::parse::insert_lifetime(&stream, PACKET_LIFETIME_CHAR);
-    let sentinel = input.sattr.sentinel.as_ref().map_or(None, |x| Some(x.v().clone()));
+    let sentinel = input.sattr.sentinel.as_ref().map_or(None, |x| x.get().clone());
     let key_decoder = input
         .sattr.key.value.clone()
-        .unwrap_or_else(|| panic!("{}", crate::Error::XcoderIsRequired("key".into(), "decoder".into(), "dec".into())))
+        .unwrap_or_else(|| panic!("{}", crate::Error::MissingFunc("struct".into(), "key".into(), "dec".into(), "decoder".into())))
         .xcoder.dec
-        .unwrap_or_else(|| panic!("{}", crate::Error::XcoderIsRequired("key".into(), "decoder".into(), "dec".into())));
+        .unwrap_or_else(|| panic!("{}", crate::Error::MissingFunc("struct".into(), "key".into(), "dec".into(), "decoder".into())));
     let len_decoder = input
         .sattr.len.value.clone()
-        .unwrap_or_else(|| panic!("{}", crate::Error::XcoderIsRequired("len".into(), "decoder".into(), "dec".into())))
+        .unwrap_or_else(|| panic!("{}", crate::Error::MissingFunc("struct".into(), "len".into(), "dec".into(), "decoder".into())))
         .xcoder.dec
-        .unwrap_or_else(|| panic!("{}", crate::Error::XcoderIsRequired("len".into(), "decoder".into(), "dec".into())));
+        .unwrap_or_else(|| panic!("{}", crate::Error::MissingFunc("struct".into(), "len".into(), "dec".into(), "decoder".into())));
     let items_init = gen_items_init(&input.fattrs);
     let items_match = gen_items_match(&input.fattrs);
     let items_set = gen_item_set(name, &input.fattrs);
     let result = quote! {
         #[automatically_derived]
-        #[doc = concat!(" [", stringify!(#name), "] implementation of [tinyklv::prelude::Seek] for [", stringify!(#stream), "]")]
+        #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::Seek`] for [`", stringify!(#stream), "`]")]
         impl ::tinyklv::prelude::Seek<#stream> for #name {
             // ---- vvv ---- remember this is PACKET_LIFETIME_CHAR
             fn seek<'z>(input: &mut #stream_lifetimed) -> ::tinyklv::reexport::winnow::PResult<#stream_lifetimed> {
@@ -120,7 +123,7 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
             }
         }
         #[automatically_derived]
-        #[doc = concat!(" [", stringify!(#name), "] implementation of [tinyklv::prelude::Decode] for [", stringify!(#stream), "]")]
+        #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::Decode`] for [`", stringify!(#stream), "`]")]
         impl ::tinyklv::prelude::Decode<#stream> for #name {
             fn decode(input: &mut #stream) -> ::tinyklv::reexport::winnow::PResult<Self> {
                 let checkpoint = input.checkpoint();
@@ -162,10 +165,14 @@ fn gen_items_init(fatts: &Vec<kst::FieldAttrSchema>) -> proc_macro2::TokenStream
 /// `(#key, #optional_len) => #name = #dec (input #optional_len_arg).ok(),`
 fn gen_items_match(fatts: &Vec<kst::FieldAttrSchema>) -> proc_macro2::TokenStream {
     let arms = fatts.iter().map(|field| {
-        let key = &field.contents.key.value.clone().unwrap_or_else(|| panic!("Key is required"));
         let name = &field.name;
-        let dec = field.contents.dec.clone().unwrap_or_else(|| panic!("Decoder is required")).value.unwrap_or_else(|| panic!("Decoder is required"));
-        let dynlen = field.contents.dynlen;
+        let key = &field.contents.key.value.clone().unwrap_or_else(||
+            panic!("{}", crate::Error::MissingKey(name.to_string()))
+        );
+        let dec = field.contents.dec().clone().unwrap_or_else(||
+            panic!("{}", crate::Error::MissingFunc(format!("field `{}`", name), "value".into(), "dec".into(), "decoder".into()))
+        );
+        let dynlen = field.contents.dynlen();
         let optional_len = if let Some(true) = dynlen { quote! { len } } else { quote! { _ } };
         let optional_len_arg = if let Some(true) = dynlen { quote! { , len } } else { quote! {} };
         quote! {

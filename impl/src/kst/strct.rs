@@ -74,7 +74,13 @@ impl From<MetaTuple> for StructAttrSchema {
 /// [`StructAttrSchema`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for StructAttrSchema {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StructAttrSchema {{ stream: {}, sentinel: {}, key: {}, len: {}, defaults: {:#?} }}", self.stream.v().to_token_stream().to_string(), self.sentinel.clone().map_or("None".to_string(), |v| v.v().to_token_stream().to_string()), self.key, self.len, self.defaults)
+        write!(f, "StructAttrSchema {{ stream: {}, sentinel: {}, key: {}, len: {}, defaults: {:#?} }}",
+            self.stream.get().to_token_stream().to_string(),
+            self.sentinel.clone().map_or("None".to_string(), |v| v.get().to_token_stream().to_string()),
+            self.key,
+            self.len,
+            self.defaults,
+        )
     }
 }
 // symple::debug_from_display!(StructAttrSchema);

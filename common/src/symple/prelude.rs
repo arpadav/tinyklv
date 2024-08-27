@@ -1,14 +1,14 @@
 pub trait HasValue<T> {
-    fn v(&self) -> &T;
-    fn v_mut(&mut self) -> &mut T;
+    fn get(&self) -> Option<&T>;
+    fn get_mut(&mut self) -> Option<&mut T>;
     fn set(&mut self, v: T);
 }
 impl<T> HasValue<T> for Option<T> {
-    fn v(&self) -> &T {
-        self.as_ref().unwrap()
+    fn get(&self) -> Option<&T> {
+        self.as_ref()
     }
-    fn v_mut(&mut self) -> &mut T {
-        self.as_mut().unwrap()
+    fn get_mut(&mut self) -> Option<&mut T> {
+        self.as_mut()
     }
     fn set(&mut self, v: T) {
         *self = Some(v);
