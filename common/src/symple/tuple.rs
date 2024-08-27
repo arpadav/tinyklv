@@ -63,10 +63,10 @@ use super::contents::{
 pub struct Tuple<T: From<MetaContents>> {
     pub value: Option<T>,
 }
-/// [`Tuple`] implementation of [`Default`]
-impl <T: From<MetaContents>> Default for Tuple<T> {
-    fn default() -> Self {
-        Tuple { value: None }
+/// [`Tuple`] implementation of [`std::fmt::Display`]
+impl<T: From<MetaContents> + std::fmt::Display> std::fmt::Display for Tuple<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        format!("{}", self.value.as_ref().map_or("None".to_string(), |v| v.to_string())).fmt(f)
     }
 }
 crate::impl_hasvalue!(Tuple, From<MetaContents>);

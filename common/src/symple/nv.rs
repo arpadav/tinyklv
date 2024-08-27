@@ -14,7 +14,7 @@ use super::value::MetaValue;
 /// 
 /// # Example
 /// 
-/// ```no_run
+/// ```no_run ignore
 /// // inside of proc-macro lib
 /// struct Input {
 ///     struct_attribute_identifier: symple::NameValue<syn::Lit>
@@ -31,29 +31,29 @@ use super::value::MetaValue;
 /// * [`syn::Expr`]
 /// * [`struct@syn::Ident`]
 /// 
-/// ```no_run
+/// ```no_run ignore
 /// // outisde of proc-macro lib
-/// #[`derive(MyProcMacro)`]
-/// #[`identifier = "Hello World!"`]
+/// #[derive(MyProcMacro)]
+/// #[identifier = "Hello World!"]
 /// struct SomeStruct;
 /// ```
 /// 
 /// Which can then be parsed using the [`From<MetaValue>`] implementation
 /// into the following, to help with proc-macro parsing:
 /// 
-/// ```no_run
+/// ```no_run ignore
 /// Input {
 ///     // note that this is called using `struct_attribute_identifier.value`
-///     struct_attribute_identifier: Some(syn::Lit::new(syn::IntSuffix::None, "Hello World!")),
+///     struct_attribute_identifier: Some(syn::LitStr::new("Hello World!".into(), proc_macro2::Span::call_site())),
 /// }
 /// ```
 pub struct NameValue<T: From<MetaValue> + ToTokens> {
     pub value: Option<T>,
 }
-/// [`NameValue`] implementation of [`Default`]
-impl<T: From<MetaValue> + ToTokens> Default for NameValue<T> {
-    fn default() -> Self {
-        NameValue { value: None }
+/// [`NameValue`] implementation of [`std::fmt::Display`]
+impl<T: From<MetaValue> + ToTokens> std::fmt::Display for NameValue<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        format!("{}", self.value.as_ref().map_or("None".to_string(), |x| x.to_token_stream().to_string())).fmt(f)
     }
 }
 crate::impl_hasvalue!(NameValue, From<MetaValue> + ToTokens);
@@ -80,7 +80,7 @@ impl<T: From<MetaValue> + ToTokens> From<MetaValue> for NameValue<T> {
 /// 
 /// # Example
 /// 
-/// ```no_run
+/// ```no_run ignore
 /// name = value
 /// ```
 pub struct MetaNameValue {

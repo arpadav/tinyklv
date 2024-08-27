@@ -6,10 +6,16 @@
 // --------------------------------------------------
 use quote::ToTokens;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 /// [`Value`], which can be [`enum@syn::Lit`], [`syn::Type`], [`syn::Path`], [`syn::Expr`], or [`struct@syn::Ident`]
 pub struct Value<T: From<MetaValue>> {
     pub value: Option<T>,
+}
+/// [`Value`] implementation of [`std::fmt::Display`]
+impl<T: From<MetaValue> + std::fmt::Display> std::fmt::Display for Value<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        format!("{}", self.value.as_ref().map_or("None".to_string(), |x| x.to_string())).fmt(f)
+    }
 }
 crate::impl_hasvalue!(Value, From<MetaValue>);
 crate::debug_from_display!(Value, From<MetaValue> + std::fmt::Display);

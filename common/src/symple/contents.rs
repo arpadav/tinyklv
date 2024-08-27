@@ -10,12 +10,12 @@ use super::tuple::MetaTuple;
 use super::value::MetaValue;
 use super::nv::MetaNameValue;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 /// A [`MetaContents`] wrapper, used as a utility for proc-macro parsing
 /// 
 /// # Example
 /// 
-/// ```no_run
+/// ```no_run ignore
 /// // inside of proc-macro lib
 /// struct Input {
 ///     struct_attributes: symple::Contents<SomeStructToParseTo>
@@ -33,6 +33,12 @@ use super::nv::MetaNameValue;
 /// See [`MetaContents`] for more details and examples
 pub struct Contents<T: From<MetaContents>> {
     pub value: Option<T>,
+}
+/// [`Contents`] implementation of [`std::fmt::Display`]
+impl<T: From<MetaContents> + std::fmt::Display> std::fmt::Display for Contents<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        format!("{}", self.value.as_ref().map_or("None".to_string(), |v| v.to_string())).fmt(f)
+    }
 }
 crate::impl_hasvalue!(Contents, From<MetaContents>);
 crate::debug_from_display!(Contents, From<MetaContents> + std::fmt::Display);
@@ -57,7 +63,7 @@ impl<T: From<MetaContents>> From<MetaContents> for Contents<T> {
 /// 
 /// # Syntax
 /// 
-/// ```no_run
+/// ```no_run ignore
 /// a = 1, b(x = 2), c = 3, ident, "str_literal"
 /// ```
 /// 
@@ -153,7 +159,7 @@ impl<'a> Iterator for MetaContentsIterator<'a> {
 /// 
 /// # Example
 /// 
-/// ```no_run
+/// ```no_run ignore
 /// name = value // <- This is a [`MetaNameValue`]
 /// // OR
 /// tname(name = value, name = value) // <- This is a [`MetaTuple`]
@@ -254,7 +260,7 @@ mod tests {
         impl std::fmt::Display for KeysWithValues {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 let values_string: String = self.values.iter().map(|v| format!("{}, ", v.to_string())).collect();
-                write!(f, "key: {}\n vals: [ {}]", self.key, values_string)
+                write!(f, "key: {}\n vals: [ {}]", self.key.to_string(), values_string)
             }
         }
         
