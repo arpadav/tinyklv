@@ -6,7 +6,6 @@ pub mod reexport {
 }
 pub use tinyklv_impl::*;
 
-
 /// The dynamic length. Optional: defaults to `false`.
 /// 
 /// This is an optional attribute, which indicates the length of the field is dynamic.
