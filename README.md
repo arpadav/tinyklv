@@ -62,3 +62,7 @@ If familiar with `nom` but not `winnow`, please refer to the links below.
 ## Constraints
 
 * `tinyklv` only supports an byte slices as input, as it is meant for parsing of packet streams.
+
+## License
+
+`tinyklv` is licensed under the [MIT License](LICENSE) [http://opensource.org/licenses/MIT](http://opensource.org/licenses/MIT).

@@ -1,12 +1,14 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use quote::quote;
+use quote::{quote, ToTokens};
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::kst;
+
+const PACKET_LIFETIME_CHAR: char = 'z';
 
 /// Derive [crate::Klv]
 pub fn derive(input: &syn::DeriveInput) -> proc_macro::TokenStream {
@@ -66,6 +68,7 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
     // default stream -> &[u8]
     // --------------------------------------------------
     let stream = input.sattr.stream.value.clone().unwrap_or(crate::parse::u8_slice());
+    let stream_lifetimed = crate::parse::insert_lifetime(&stream, PACKET_LIFETIME_CHAR);
     let sentinel = input.sattr.sentinel.value.clone().unwrap_or_else(|| panic!("Sentinel is required"));
     let key_decoder = input.sattr.key.value.clone().unwrap_or_else(|| panic!("Key decoder is required")).dec;
     let len_decoder = input.sattr.len.value.clone().unwrap_or_else(|| panic!("Length decoder is required")).dec;
@@ -73,42 +76,49 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
     let items_match = gen_items_match(&input.fattrs);
     let items_set = gen_item_set(name, &input.fattrs);
     let result = quote! {
+        // #[automatically_derived]
+        // #[doc = concat!(" [", stringify!(#name), "] implementation of [tinyklv::prelude::Seek] for [", stringify!(#stream), "]")]
+        // impl ::tinyklv::prelude::Seek<#stream> for #name {
+        //     // manually vvv remember this is PACKET_LIFETIME_CHAR
+        //     fn seek<'s, 'z>(input: &'s mut #stream_lifetimed) -> ::tinyklv::reexport::winnow::PResult<&'s mut #stream_lifetimed> {
+        //     // manually ^^^ remember this is PACKET_LIFETIME_CHAR
+        //         let checkpoint = input.checkpoint();
+        //         let packet_len = match ::tinyklv::reexport::winnow::combinator::seq!(_:
+        //             #sentinel,
+        //             #len_decoder,
+        //         ).parse_next(input) {
+        //             Ok(x) => x.0 as usize,
+        //             Err(e) => return Err(e.backtrack().add_context(
+        //                 input,
+        //                 &checkpoint,
+        //                 ::tinyklv::reexport::winnow::error::StrContext::Label(
+        //                     concat!("Unable to find recognition sentinal and packet length for initial parsing of `", stringify!(#name), "` packet")
+        //                 )
+        //             )),
+        //         };
+        //         ::tinyklv::reexport::winnow::token::take(packet_len)
+        //             .parse_next(input)
+        //             .map(move |slice| {
+        //                 let mut_ref: &mut #stream = input;
+        //                 *mut_ref = slice;
+        //                 mut_ref
+        //             })
+        //     }
+        // }
         #[automatically_derived]
-        #[doc = concat!(" [", stringify!(#name), "] implementation of [tinyklv::prelude::StreamDecode] for [", stringify!(#stream), "]")]
-        impl ::tinyklv::prelude::StreamDecode<#stream> for #name {
+        #[doc = concat!(" [", stringify!(#name), "] implementation of [tinyklv::prelude::Decode] for [", stringify!(#stream), "]")]
+        impl ::tinyklv::prelude::Decode<#stream> for #name {
             fn decode(input: &mut #stream) -> ::tinyklv::reexport::winnow::PResult<Self> {
-                let checkpoint = input.checkpoint();
-                let packet_len = match ::tinyklv::reexport::winnow::combinator::seq!(_:
-                    #sentinel,
-                    #len_decoder,
-                ).parse_next(input) {
-                    Ok(x) => x.0 as usize,
-                    Err(e) => return Err(e.backtrack().add_context(
-                        input,
-                        &checkpoint,
-                        ::tinyklv::reexport::winnow::error::StrContext::Label(
-                            concat!("Unable to find recognition sentinal and packet length for initial parsing of `", stringify!(#name), "` packet")
-                        )
-                    )),
-                };
-                let mut packet = match ::tinyklv::reexport::winnow::token::take(packet_len).parse_next(input) {
-                    Ok(x) => x,
-                    Err(e) => match e.is_incomplete() {
-                        true => return Err(::tinyklv::reexport::winnow::error::ErrMode::Incomplete(::tinyklv::reexport::winnow::error::Needed::Unknown)),
-                        false => return Err(e.backtrack()),
-                    },
-                };
-                let packet: &mut #stream = &mut packet;
                 let checkpoint = input.checkpoint();
                 #items_init
                 loop {
                     match (
                         #key_decoder,
                         #len_decoder,
-                    ).parse_next(packet) {
+                    ).parse_next(input) {
                         Ok((key, len)) => match (key, len) {
                             #items_match
-                            (_, len) => { let _ = ::tinyklv::reexport::winnow::token::take::<usize, #stream, ::tinyklv::reexport::winnow::error::ContextError>(len).parse_next(packet); },
+                            (_, len) => { let _ = ::tinyklv::reexport::winnow::token::take::<usize, #stream, ::tinyklv::reexport::winnow::error::ContextError>(len).parse_next(input); },
                         },
                         Err(_) => break,
                     }
@@ -135,7 +145,7 @@ fn gen_items_init(fatts: &Vec<kst::FieldAttrSchema>) -> proc_macro2::TokenStream
 
 /// Generates the tokens for matching the key/len's with fields and parsers
 /// 
-/// `(#key, #optional_len) => #name = #dec (packet #optional_len_arg).ok(),`
+/// `(#key, #optional_len) => #name = #dec (input #optional_len_arg).ok(),`
 fn gen_items_match(fatts: &Vec<kst::FieldAttrSchema>) -> proc_macro2::TokenStream {
     let arms = fatts.iter().map(|field| {
         let key = &field.contents.key.value.clone().unwrap_or_else(|| panic!("Key is required"));
@@ -145,7 +155,7 @@ fn gen_items_match(fatts: &Vec<kst::FieldAttrSchema>) -> proc_macro2::TokenStrea
         let optional_len = if let Some(true) = dynlen { quote! { len } } else { quote! { _ } };
         let optional_len_arg = if let Some(true) = dynlen { quote! { , len } } else { quote! {} };
         quote! {
-            (#key, #optional_len) => #name = #dec (packet #optional_len_arg).ok(),
+            (#key, #optional_len) => #name = #dec (input #optional_len_arg).ok(),
         }
     });
     quote! {
