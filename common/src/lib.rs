@@ -110,7 +110,7 @@ pub enum FieldNames {
     ///         // value decoded: 258
     ///         0x01, 0x02,
     ///     ];
-    ///     match Foo::decode(&mut stream1) {
+    ///     match Foo::extract(&mut stream1) {
     ///         Ok(foo) => {
     ///             assert_eq!(foo.name, "KLV");
     ///             assert_eq!(foo.number, 258);
@@ -134,7 +134,7 @@ pub enum FieldNames {
     ///         // value decoded: 42
     ///         0x00, 0x2A,
     ///     ];
-    ///     match Foo::decode(&mut stream2) {
+    ///     match Foo::extract(&mut stream2) {
     ///         Ok(foo) => {
     ///             assert_eq!(foo.name, "Hello World!");
     ///             assert_eq!(foo.number, 42);
@@ -153,7 +153,3 @@ pub enum FieldNames {
     /// The decoder]
     Decoder,
 }
-
-// fn main() {
-//     syn::AttributeArgs::
-// }
