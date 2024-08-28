@@ -4,20 +4,31 @@
 use super::item::MetaItem;
 
 #[derive(Clone, Default)]
-// TODO: Create a wrapper to be used as [symple::Contents]
-pub struct Contents<T>
-where
-    T: std::fmt::Display,
-    T: From<MetaContents>,
-{
+/// A [MetaContents] wrapper, used as a utility for proc-macro parsing
+/// 
+/// # Example
+/// 
+/// ```ignore
+/// // inside of proc-macro lib
+/// struct Input {
+///     struct_attributes: symple::Contents<SomeStructToParseTo>
+/// }
+/// impl From<symple::MetaContents> for SomeStructToParseTo {
+///     fn from(meta: symple::MetaContents) -> Self {
+///         todo!()
+///     }
+/// }
+/// ```
+/// 
+/// ***Note that trait bounds for [From<MetaContents>] are required
+/// for this to work.*** Custom parsing implementations are required.
+/// 
+/// See [MetaContents] for more details and examples
+pub struct Contents<T: From<MetaContents>> {
     pub value: Option<T>,
 }
 /// [Contents] implementation of [From<MetaContents>]
-impl<T> From<&MetaContents> for Contents<T>
-where
-    T: std::fmt::Display,
-    T: From<MetaContents>,
-{
+impl<T: From<MetaContents>> From<&MetaContents> for Contents<T> {
     fn from(meta: &MetaContents) -> Self {
         Contents {
             value: Some(T::from(meta.clone())),
@@ -127,15 +138,13 @@ impl<'a> Iterator for MetaContentsIterator<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::symple::NameValue;
-
     use super::*;
+    use crate::symple as symple;
 
     #[test]
     fn meta_contents_doc() {
-        use quote::quote;
-        let input = quote! { "str_literal", a = 1, b(x = 2), c = 3, ident, };
-        let meta = syn::parse2::<MetaContents>(input);
+        let input = quote::quote! { "str_literal", a = 1, b(x = 2), c = 3, ident, };
+        let meta = syn::parse2::<symple::MetaContents>(input);
         assert!(meta.is_ok());
         let meta = meta.unwrap();
         for (idx, item) in meta.into_iter().enumerate() {
@@ -152,9 +161,8 @@ mod tests {
 
     #[test]
     fn meta_contents_nested() {
-        use quote::quote;
-        let input = quote! { a(b(c(d(e = "str_literal")))), b(some_ident, test = 2) };
-        let meta = syn::parse2::<MetaContents>(input);
+        let input = quote::quote! { a(b(c(d(e = "str_literal")))), b(some_ident, test = 2) };
+        let meta = syn::parse2::<symple::MetaContents>(input);
         assert!(meta.is_ok());
         let meta = meta.unwrap();
         for (idx, item) in meta.into_iter().enumerate() {
@@ -170,27 +178,36 @@ mod tests {
         use super::*;
 
         #[derive(Default)]
+        /// Example struct to be parsed using [symple] types
         struct KeysWithValues {
-            key: NameValue<syn::Lit>,
-            values: Vec<NameValue<syn::Lit>>,
+            key: symple::NameValue<syn::Lit>,
+            values: Vec<symple::NameValue<syn::Lit>>,
         }
+
+        /// [KeysWithValues] implementation of [std::fmt::Display]
         impl std::fmt::Display for KeysWithValues {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 let values_string: String = self.values.iter().map(|v| format!("{}, ", v.to_string())).collect();
                 write!(f, "key: {}\n vals: [ {}]", self.key, values_string)
             }
         }
+        
+        /// [KeysWithValues] implementation of [From] for [symple::MetaContents]
+        /// 
+        /// This is an example parsing implementation using [symple] types
+        /// 
+        /// See example below, and example in README.md
         impl From<MetaContents> for KeysWithValues {
             fn from(value: MetaContents) -> Self {
                 let mut output = Self::default();
                 for item in value.into_iter() {
                     match item {
-                        MetaItem::NameValue(x) => {
+                        symple::MetaItem::NameValue(x) => {
                             if x.name.to_string() == "key" {
-                                output.key = NameValue::new(x.value.clone().into())
+                                output.key = symple::NameValue::new(x.value.clone().into())
                             }
                             if x.name.to_string() == "val" {
-                                output.values.push(NameValue::new(x.value.clone().into()))
+                                output.values.push(symple::NameValue::new(x.value.clone().into()))
                             }
                         },
                         _ => continue,
@@ -201,10 +218,12 @@ mod tests {
         }
 
         #[test]
+        /// Example for doc comments in `contents.rs`
+        /// 
+        /// Input: `key = 0x01, val=2, val="3", val=0x04`
         fn contents_doc() {
-            use quote::quote;
-            let input = quote! { key = 0x01, val=2, val="3", val=0x04 };
-            let meta = syn::parse2::<MetaContents>(input);
+            let input = quote::quote! { key = 0x01, val=2, val="3", val=0x04 };
+            let meta = syn::parse2::<symple::MetaContents>(input);
             assert!(meta.is_ok());
             let meta = meta.unwrap();
             let struct_attribute = KeysWithValues::from(meta);

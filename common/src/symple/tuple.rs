@@ -60,23 +60,23 @@ use super::item::MetaItem;
 ///     })
 /// }
 /// ```
-pub struct Tuple<T: From<MetaContents> + std::fmt::Display> {
+pub struct Tuple<T: From<MetaContents>> {
     pub value: Option<T>,
 }
 /// [Tuple] implementation of [From] for [MetaTuple]
-impl <T: From<MetaContents> + std::fmt::Display> From<&MetaTuple> for Tuple<T> {
+impl <T: From<MetaContents>> From<&MetaTuple> for Tuple<T> {
     fn from(meta: &MetaTuple) -> Self {
         Tuple { value: Some(meta.contents.clone().into()), }
     }
 }
 /// [Tuple] implementation of [From] for T
-impl <T: From<MetaContents> + std::fmt::Display> From<T> for Tuple<T> {
+impl <T: From<MetaContents>> From<T> for Tuple<T> {
     fn from(value: T) -> Self {
         Tuple { value: Some(value) }
     }
 }
 /// [Tuple] implementation of [Default]
-impl <T: From<MetaContents> + std::fmt::Display> Default for Tuple<T> {
+impl <T: From<MetaContents>> Default for Tuple<T> {
     fn default() -> Self {
         Tuple { value: None }
     }
@@ -150,68 +150,164 @@ crate::debug_from_display!(MetaTuple);
 #[cfg(test)]
 mod tests {
     use super::*;
-
     mod readme_tuple_example {
-        use quote::ToTokens;
-
+        #![allow(dead_code)]
         use super::*;
         use crate::symple as symple;
 
-        #[derive(Default)]
-        // struct attributes
+        /// Struct attributes
+        /// 
+        /// See example below, and example in README.md
         struct StructAttributes {
             values: Tuple<Values>,
         }
+        #[derive(Default)]
         struct Values {
-            value1: syn::LitInt,
-            value2: syn::LitInt,
+            value1: Option<syn::LitInt>,
+            value2: Option<syn::LitInt>,
         }
 
-        // field attributes
+        /// Field attributes
+        /// 
+        /// See example below, and example in README.md
         #[derive(Default)]
         struct FieldAttribute {
             attr: symple::NameValue<syn::Lit>
         }
 
-        // required for all items inside `symple::Tuple`
-        impl From<symple::MetaContents> for StructAttributes {
+        /// [Values] implementation of [From] for [symple::MetaValue]
+        /// 
+        /// This is required for all items inside [symple::Tuple]
+        /// 
+        /// This is an example parsing implementation using [symple] types
+        /// 
+        /// See example below, and example in README.md
+        impl From<symple::MetaContents> for Values {
             fn from(x: symple::MetaContents) -> Self {
-                let mut output = StructAttributes::default();
+                let mut output = Values::default();
                 let mut value1 = None;
                 let mut value2 = None;
                 for item in x.into_iter() {
                     match item {
-                        symple::MetaItem::NameValue(mnv) => {
-                            match mnv.name.to_string().as_str() {
-                                "value1" => value1 = Some(mnv.value.clone()),
-                                "value2" => value2 = Some(mnv.value.clone()),
-                                _ => panic!("expected NameValue"),
+                        symple::MetaItem::Tuple(tpl) => {
+                            if tpl.name.to_string() != "my_proc_macro" { continue; }
+                            for item in tpl.into_iter() {
+                                if let symple::MetaItem::NameValue(mnv) = item {
+                                    let value_as_str = mnv.value.to_string();
+                                    match &mnv.value {
+                                        symple::MetaValue::Lit(someting) => match someting {
+                                            syn::Lit::Str(s) => println!("{}: {}", mnv.name, s.value()),
+                                            syn::Lit::Int(i) => println!("{}: {}", mnv.name, i.base10_digits()),
+                                            _ => println!("{}: {}", mnv.name, value_as_str),
+                                        }
+                                        _ => println!("{}: {}", mnv.name, value_as_str),
+                                    }
+                                    match mnv.name.to_string().as_str() {
+                                        "value1" => value1 = if let symple::MetaValue::Lit(syn::Lit::Int(lit_int)) = &mnv.value { Some(lit_int) } else { None },
+                                        "value2" => value2 = if let symple::MetaValue::Lit(syn::Lit::Int(lit_int)) = &mnv.value { Some(lit_int) } else { None },
+                                        _ => (),
+                                    }
+                                }
                             }
                         }
                         _ => (),
                     }
                 }
-                match (value1, value2) {
-                    (Some(v1), Some(v2)) => {
-                        let v1 = if let symple::MetaValue::Lit(syn::Lit::Int(lit_int)) = v1 { lit_int } else { panic!("expected a lit int") };
-                        let v2 = if let symple::MetaValue::Lit(syn::Lit::Int(lit_int)) = v2 { lit_int } else { panic!("expected a lit int") };
-                        output.values = Values {
-                            value1: v1
-                            value2: v2,
-                        };
-                    }
-                    _ => panic!("expected two values"),
-                }
+                output.value1 = value1.cloned();
+                output.value2 = value2.cloned();
                 output
             }
         }
 
-        // required for all items inside `symple::NameValue`
+        /// [FieldAttribute] implementation of [From] for [symple::MetaValue]
+        /// 
+        /// This is required for all items inside [symple::NameValue]
+        /// 
+        /// This is an example parsing implementation using [symple] types
+        /// 
+        /// See example below, and example in README.md
         impl From<symple::MetaValue> for FieldAttribute {
             fn from(x: symple::MetaValue) -> Self {
                 let mut output = FieldAttribute::default();
                 output.attr = x.into();
                 output
+            }
+        }
+
+        #[test]
+        /// Parses the struct attributes of the following:
+        /// 
+        /// ```ignore
+        /// #[derive(MyProcMacro)]
+        /// #[my_proc_macro(value1 = 1, value2 = 2)]
+        /// // ^^ This is a `symple::Tuple` ^^
+        /// // key: my_proc_macro
+        /// // contents: { nv: { name = value1, value = 1 }, nv: { name = value2, value = 2 } }
+        /// struct SomeStruct {
+        ///     #[my_proc_macro(attr = "foo")]
+        ///     // ^^ This is a `symple::Tuple` ^^
+        ///     // key: my_proc_macro
+        ///     // contents: { nv: { name = attr, value = "foo" } }
+        ///     name: String,
+        ///     #[my_proc_macro(attr = "bar")]
+        ///     // ^^ This is a `symple::Tuple` ^^
+        ///     // key: my_proc_macro
+        ///     // contents: { nv: { name = attr, value = "bar" } }
+        ///     age: u32,
+        /// }
+        /// ```
+        fn parse_struct_attributes() {
+            let input = quote::quote! {
+                my_proc_macro(value1 = 1, value2 = 2)
+            };
+            let meta = syn::parse2::<MetaContents>(input);
+            assert!(meta.is_ok());
+            let meta = meta.unwrap();
+            let values = Values::from(meta);
+            assert!(values.value1.is_some());
+            assert!(values.value2.is_some());
+            assert_eq!(values.value1.unwrap().base10_digits(), "1");
+            assert_eq!(values.value2.unwrap().base10_digits(), "2");
+        }
+
+        #[test]
+        /// Parses the field attributes of the following:
+        /// 
+        /// ```ignore
+        /// #[derive(MyProcMacro)]
+        /// #[my_proc_macro(value1 = 1, value2 = 2)]
+        /// // ^^ This is a `symple::Tuple` ^^
+        /// // key: my_proc_macro
+        /// // contents: { nv: { name = value1, value = 1 }, nv: { name = value2, value = 2 } }
+        /// struct SomeStruct {
+        ///     #[my_proc_macro(attr = "foo")]
+        ///     // ^^ This is a `symple::Tuple` ^^
+        ///     // key: my_proc_macro
+        ///     // contents: { nv: { name = attr, value = "foo" } }
+        ///     name: String,
+        ///     #[my_proc_macro(attr = "bar")]
+        ///     // ^^ This is a `symple::Tuple` ^^
+        ///     // key: my_proc_macro
+        ///     // contents: { nv: { name = attr, value = "bar" } }
+        ///     age: u32,
+        /// }
+        /// ```
+        fn parse_field_attributes() {
+            let input = quote::quote! {
+                my_proc_macro(attr = "foo")
+            };
+            let meta = syn::parse2::<MetaTuple>(input);
+            assert!(meta.is_ok());
+            let meta = meta.unwrap();
+            for item in meta.contents.into_iter() {
+                if let MetaItem::NameValue(mnv) = item {
+                    assert_eq!(mnv.name.to_string(), "attr");
+                    assert_eq!(mnv.value.to_string(), "\"foo\"");
+                    let field_attribute = FieldAttribute::from(mnv.value.clone());
+                    assert!(true);
+                    assert_eq!(field_attribute.attr.to_string(), "\"foo\"");
+                    break;
+                }
             }
         }
     }

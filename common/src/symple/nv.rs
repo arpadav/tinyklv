@@ -28,6 +28,7 @@ use super::value::MetaValue;
 /// * [syn::Lit]
 /// * [syn::Type]
 /// * [syn::Path]
+/// * [syn::Expr]
 /// * [syn::Ident]
 /// 
 /// ```ignore
