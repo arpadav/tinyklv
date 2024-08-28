@@ -1,6 +1,9 @@
 use tinyklv::Klv;
 use tinyklv::prelude::*;
 
+#[cfg(any(
+    feature = "misb0601-19",
+))]
 #[derive(Klv, Debug)]
 #[klv(
     stream = &[u8],
@@ -70,7 +73,7 @@ pub struct Misb0601 {
     /// True airspeed (TAS) of platform
     pub platform_true_airspeed: Option<u8>,
 
-    #[klv(key = 0x09, dec = tinyklv::_as!(tinyklv::codecs::binary::dec::be_u8, f64))] //, dec = tinyklv::p_as!(tinyklv::codecs::binary::dec::be_u8, f64))]
+    #[klv(key = 0x09, dec = tinyklv::cast!(tinyklv::codecs::binary::dec::be_u8, f64))] //, dec = tinyklv::p_as!(tinyklv::codecs::binary::dec::be_u8, f64))]
     /// Indicated airspeed (IAS) of platform
     pub platform_indicated_airspeed: Option<f64>,
 

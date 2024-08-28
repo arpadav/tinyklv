@@ -17,42 +17,40 @@ macro_rules! blank_err {
     () => { winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()) };
 }
 
-#[macro_export]
-/// Perform some operation on a parsed value of some defined precision
-/// 
-/// # Example
-/// 
-/// ```rust no_run ignore
-/// tinyklv::op!(input, parser, f64, * 100.0, - 10.0);
-/// // expands to:
-/// let _ = (parser.parse_next(input)? * 100.0) - 10.0;
-/// 
-/// tinyklv::op!(input, parser, f64, * 100.0, - 10.0, + 12.0, / 2.0, + 1.0);
-/// // expands to:
-/// let _ = (((parser.parse_next(input)? * 100.0) - 10.0 + 12.0) / 2.0) + 1.0;
-/// ```
-macro_rules! op {
-    // Base case: single operation
-    ($input:tt, $parser:path, $precision:ty, $op:tt $val:expr) => {
-        $parser.parse_next($input)? $op $val
-    };
+// #[macro_export]
+// /// Perform some operation on a parsed value of some defined precision
+// /// 
+// /// # Example
+// /// 
+// /// ```rust no_run ignore
+// /// tinyklv::op!(input, parser, f64, * 100.0, - 10.0);
+// /// // expands to:
+// /// let _ = (parser.parse_next(input)? * 100.0) - 10.0;
+// /// 
+// /// tinyklv::op!(input, parser, f64, * 100.0, - 10.0, + 12.0, / 2.0, + 1.0);
+// /// // expands to:
+// /// let _ = (((parser.parse_next(input)? * 100.0) - 10.0 + 12.0) / 2.0) + 1.0;
+// /// ```
+// macro_rules! op {
+//     // Base case: single operation
+//     ($input:tt, $parser:path, $precision:ty, $op:tt $val:expr) => {
+//         $parser.parse_next($input)? $op $val
+//     };
 
-    // Recursive case: multiple operations
-    ($input:tt, $parser:path, $precision:ty, $op1:tt $val1:expr, $($op2:tt $val2:expr),*) => {
-        $crate::op!(@apply $input, $parser, $precision, $op1 $val1, $($op2 $val2),*)
-    };
+//     // Recursive case: multiple operations
+//     ($input:tt, $parser:path, $precision:ty, $op1:tt $val1:expr, $($op2:tt $val2:expr),*) => {
+//         $crate::op!(@apply $input, $parser, $precision, $op1 $val1, $($op2 $val2),*)
+//     };
 
-    // Helper to apply remaining operations
-    (@apply $input:tt, $parser:path, $precision:ty, $op1:tt $val1:expr) => {
-        $parser.parse_next($input)? $op1 $val1
-    };
+//     // Helper to apply remaining operations
+//     (@apply $input:tt, $parser:path, $precision:ty, $op1:tt $val1:expr) => {
+//         $parser.parse_next($input)? $op1 $val1
+//     };
 
-    (@apply $input:tt, $parser:path, $precision:ty, $op1:tt $val1:expr, $($op2:tt $val2:expr),*) => {
-        $crate::op!(@apply $input, $parser, $precision, ($parser.parse_next($input)? as $precision $op1 $val1) $($op2 $val2),*)
-    };
-}
-
-
+//     (@apply $input:tt, $parser:path, $precision:ty, $op1:tt $val1:expr, $($op2:tt $val2:expr),*) => {
+//         $crate::op!(@apply $input, $parser, $precision, ($parser.parse_next($input)? as $precision $op1 $val1) $($op2 $val2),*)
+//     };
+// }
 // Example Usage
 // tinyklv::op!(input, parser, f64, * 100.0, - 10.0, + 12.0, / 2.0, + 1.0);
 
@@ -88,11 +86,11 @@ macro_rules! scale_fn {
 /// # Example
 /// 
 /// ```rust no_run ignore
-/// tinyklv::_as!(tinyklv::codecs::binary::dec::be_u16, f64)(input)
+/// tinyklv::cast!(tinyklv::codecs::binary::dec::be_u16, f64)(input)
 /// // OR
-/// #[klv(dec = tinyklv::_as!(tinyklv::codecs::binary::dec::be_u16, f64))]
+/// #[klv(dec = tinyklv::cast!(tinyklv::codecs::binary::dec::be_u16, f64))]
 /// ```
-macro_rules! _as {
+macro_rules! cast {
     ($parser:expr, $precision:ty) => {
         |input| -> winnow::PResult<$precision> {
             Ok($parser.parse_next(input)? as $precision)
@@ -100,10 +98,10 @@ macro_rules! _as {
     };
 }
 #[macro_export]
-/// Function version of [`_as`]
-macro_rules! _as_fn {
+/// Function version of [`cast`]
+macro_rules! cast_fn {
     ($input:tt, $parser:path, $precision:ty) => {
-        ::tinyklv::_as!($parser, $precision)($input)
+        ::tinyklv::cast!($parser, $precision)($input)
     };
 }
 
