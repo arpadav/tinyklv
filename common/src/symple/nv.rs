@@ -62,6 +62,12 @@ impl<T: From<MetaValue> + ToTokens> From<&MetaNameValue> for NameValue<T> {
         NameValue { value: Some(meta.value.clone().into()) }
     }
 }
+/// [NameValue] implementation of [From] for any type T
+impl<T: From<MetaValue> + ToTokens> From<T> for NameValue<T> {
+    fn from(x: T) -> Self {
+        NameValue { value: Some(x.into()) }
+    }    
+}
 /// [NameValue] implementation of [Default]
 impl<T: From<MetaValue> + ToTokens> Default for NameValue<T> {
     fn default() -> Self {
