@@ -40,5 +40,8 @@ fn main() {
 
     println!("debug point");
 
+    // fn main() {
+    //     let bruh = tinyklv::scale!();
+    // }
     // let bruh = winnow::
 }

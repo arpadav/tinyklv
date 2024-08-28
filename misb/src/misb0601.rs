@@ -70,7 +70,7 @@ pub struct Misb0601 {
     /// True airspeed (TAS) of platform
     pub platform_true_airspeed: Option<u8>,
 
-    #[klv(key = 0x09, dec = tinyklv::dec_as!(tinyklv::codecs::binary::dec::be_u8, f64))] //, dec = tinyklv::p_as!(tinyklv::codecs::binary::dec::be_u8, f64))]
+    #[klv(key = 0x09, dec = tinyklv::_as!(tinyklv::codecs::binary::dec::be_u8, f64))] //, dec = tinyklv::p_as!(tinyklv::codecs::binary::dec::be_u8, f64))]
     /// Indicated airspeed (IAS) of platform
     pub platform_indicated_airspeed: Option<f64>,
 
@@ -98,7 +98,16 @@ pub struct Misb0601 {
     /// Altitude of sensor above from Mean Sea Level (MSL)
     pub sensor_true_altitude: Option<f64>,
 
-    #[klv(key = 0x10, dec = crate::dec::to_sensor_hvfov)]
+    // tinyklv::scale!(input, tinyklv::codecs::binary::dec::be_u16, f64, KLV_2_SENSOR_HVFOV)
+    // #[klv(key = 0x10, dec = crate::dec::to_sensor_hvfov)]
+    #[klv(
+        key = 0x10,
+        dec = tinyklv::scale!(
+            tinyklv::codecs::binary::dec::be_u16,
+            f64,
+            crate::dec::KLV_2_SENSOR_HVFOV
+        ),
+    )]
     /// Horizontal field of view of selected imaging sensor
     pub sensor_hfov: Option<f64>,
 

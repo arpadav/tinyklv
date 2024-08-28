@@ -85,16 +85,16 @@ impl syn::parse::Parse for MetaValue {
             }
         }
         // --------------------------------------------------
-        // check for types after expressions and literals
-        // --------------------------------------------------
-        if let Ok(x) = input.parse::<syn::Type>() {
-            return Ok(MetaValue::Type(x));
-        }
-        // --------------------------------------------------
         // check for paths after types
         // --------------------------------------------------
         if let Ok(x) = input.parse::<syn::Path>() {
             return Ok(MetaValue::Path(x));
+        }
+        // --------------------------------------------------
+        // check for types after expressions and literals
+        // --------------------------------------------------
+        if let Ok(x) = input.parse::<syn::Type>() {
+            return Ok(MetaValue::Type(x));
         }
         // --------------------------------------------------
         // check for identifiers as a last resort

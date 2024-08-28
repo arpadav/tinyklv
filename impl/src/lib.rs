@@ -30,6 +30,8 @@ enum Error {
     MissingFunc(String, String, String, String),
     #[error("Missing required key for field `{0}`: `#[key = ?]`.")]
     MissingKey(String),
+    #[error("Unable to parse path-like type for enc/dec.")]
+    XcoderIsNotPathLike
 }
 
 const NAME: &str = "Klv";

@@ -14,14 +14,14 @@ use quote::ToTokens;
 /// 
 /// This is an encoder/decoder pair where **either** is optional.
 pub(crate) struct OptionalXcoder {
-    pub enc: Option<syn::Path>,
-    pub dec: Option<syn::Path>,
+    pub enc: Option<PathLike>,
+    pub dec: Option<PathLike>,
 }
 /// [`OptionalXcoder`] implementation of [`From`] for [`MetaContents`]
 impl From<MetaContents> for OptionalXcoder {
     fn from(x: MetaContents) -> Self {
-        let mut enc: Option<syn::Path> = None;
-        let mut dec: Option<syn::Path> = None;
+        let mut enc: Option<PathLike> = None;
+        let mut dec: Option<PathLike> = None;
         for val in x.into_iter() {
             // --------------------------------------------------
             // if both are set, stop
@@ -91,8 +91,8 @@ tinyklv_common::debug_from_display!(KeyLenXcoder);
 pub(crate) struct DefaultXcoder {
     pub ty: syn::Type,
     pub dynlen: Option<bool>,
-    pub enc: Option<syn::Path>,
-    pub dec: Option<syn::Path>,
+    pub enc: Option<PathLike>,
+    pub dec: Option<PathLike>,
 }
 /// [`DefaultXcoder`] implementation of [`From`] for [`MetaContents`]
 impl From<MetaContents> for DefaultXcoder {
@@ -143,8 +143,8 @@ tinyklv_common::debug_from_display!(DefaultXcoder);
 /// that is associated to a specific value
 pub(crate) struct ValueXcoder {
     pub dynlen: Option<bool>,
-    pub enc: Option<syn::Path>,
-    pub dec: Option<syn::Path>,
+    pub enc: Option<PathLike>,
+    pub dec: Option<PathLike>,
 }
 /// [`ValueXcoder`] implementation of [`From`] for [`MetaContents`]
 impl From<MetaContents> for ValueXcoder {
@@ -182,3 +182,56 @@ impl std::fmt::Display for ValueXcoder {
 }
 // symple::debug_from_display!(ValueXcoder);
 tinyklv_common::debug_from_display!(ValueXcoder);
+
+#[derive(Eq, Hash, Clone, PartialEq)]
+pub(crate) enum PathLike {
+    Path(syn::Path),
+    Expr(syn::Expr),
+    Macro(syn::Macro),
+}
+/// [`PathLike`] implementation of [`ToTokens`]
+impl ToTokens for PathLike {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            PathLike::Path(x) => x.to_tokens(tokens),
+            PathLike::Expr(x) => x.to_tokens(tokens),
+            PathLike::Macro(x) => x.to_tokens(tokens),
+        }
+    }
+}
+/// [`PathLike`] implementation of [`From`] for [`syn::Path`]
+impl From<syn::Path> for PathLike {
+    fn from(x: syn::Path) -> Self {
+        PathLike::Path(x)
+    }
+}
+/// [`PathLike`] implementation of [`From`] for [`syn::Expr`]
+impl From<syn::Expr> for PathLike {
+    fn from(x: syn::Expr) -> Self {
+        PathLike::Expr(x)
+    }
+}
+/// [`PathLike`] implementation of [`From`] for [`syn::Macro`]
+impl From<syn::Macro> for PathLike {
+    fn from(x: syn::Macro) -> Self {
+        PathLike::Macro(x)
+    }
+}
+/// [`PathLike`] implementation of [`From`] for [`symple::MetaValue`]
+impl From<symple::MetaValue> for PathLike {
+    fn from(x: symple::MetaValue) -> Self {
+        println!(" IM IN HERE {}", x);
+        match x {
+            // symple::MetaValue::Path(x) => PathLike::Path(x),
+            // symple::MetaValue::Expr(x) => PathLike::Expr(x),
+            // symple::MetaValue::Macro(x) => PathLike::Macro(x),
+            symple::MetaValue::Path(x) => { println!("am path: {}", x.to_token_stream().to_string()); PathLike::Path(x) },
+            symple::MetaValue::Expr(x) => { println!("am expr: {}", x.to_token_stream().to_string()); PathLike::Expr(x) },
+            symple::MetaValue::Macro(x) => { println!("am macro: {}", x.to_token_stream().to_string()); PathLike::Macro(x) },
+            symple::MetaValue::Ident(_) => { panic!("i am ident") },
+            symple::MetaValue::Lit(_) => { panic!("i am lit") },
+            symple::MetaValue::Type(_) => { panic!("i am type") },
+            _ => panic!("{}", crate::Error::XcoderIsNotPathLike),
+        }
+    }
+}
