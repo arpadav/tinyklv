@@ -11,22 +11,7 @@ use quote::ToTokens;
 pub struct Value<T: From<MetaValue>> {
     pub value: Option<T>,
 }
-/// [`Value`] implementation
-impl<T: From<MetaValue>> Value<T> {
-    pub fn new(value: T) -> Self {
-        Value { value: Some(value) }
-    }
-}
-/// [`Value`] implementation of [`std::fmt::Display`]
-impl<T> std::fmt::Display for Value<T>
-where
-    T: std::fmt::Display,
-    T: From<MetaValue>,
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.value.as_ref().unwrap())
-    }
-}
+crate::impl_hasvalue!(Value, From<MetaValue>);
 crate::debug_from_display!(Value, From<MetaValue> + std::fmt::Display);
 
 /// [`Value`] implementation of [`From`] for [`MetaValue`]
@@ -89,12 +74,12 @@ impl syn::parse::Parse for MetaValue {
     }
 }
 /// [`MetaValue`] implementation of [`From`]
-macro_rules! impl_from_mnv {
+macro_rules! impl_from_mv {
     ($t:ty) => {
-        impl_from_mnv!($t, "");
+        impl_from_mv!($t, "");
     };
     ($t:ty, $prefix:expr) => {
-        #[doc = concat!(" [`MetaValue`] implementation of [`From`] for [", stringify!($prefix), stringify!($t), "]")]
+        #[doc = concat!(" [`MetaValue`] implementation of [`From`] for [`", stringify!($prefix), stringify!($t), "`]")]
         impl From<MetaValue> for $t {
             fn from(x: MetaValue) -> Self {
                 match x {
@@ -108,11 +93,11 @@ macro_rules! impl_from_mnv {
         }
     };
 }
-impl_from_mnv!(syn::Lit, "enum@");
-impl_from_mnv!(syn::Path);
-impl_from_mnv!(syn::Expr);
-impl_from_mnv!(syn::Type);
-// impl_from_mnv!(syn::Ident); // do NOT UNCOMMENT
+impl_from_mv!(syn::Lit, "enum@");
+impl_from_mv!(syn::Path);
+impl_from_mv!(syn::Expr);
+impl_from_mv!(syn::Type);
+// impl_from_mv!(syn::Ident); // do NOT UNCOMMENT
 
 /// [`MetaValue`] implementation of [`quote::ToTokens`]
 impl quote::ToTokens for MetaValue {

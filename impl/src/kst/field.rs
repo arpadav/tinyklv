@@ -14,27 +14,14 @@ use tinyklv_common::symple::{
 // local
 // --------------------------------------------------
 use crate::ATTR;
-use crate::kst::xcoder::DefaultXcoder;
+use crate::kst::xcoder::{
+    ValueXcoder,
+    DefaultXcoder,
+};
 
 /// Field Attributes
 /// 
 /// See the [`FieldNames`] enum for the different attribute names.
-/// 
-/// # Example
-/// 
-/// ```rust ignore
-/// use tinyklv_impl::Klv;
-///
-/// #[derive(Klv)]
-/// #[klv(stream = &str, ...)]
-/// struct Foo {
-///     #[key = "01"]
-///     checksum: u8,
-///     
-///     #[key = "02"]
-///     name: String,
-/// }
-/// ```
 pub(crate) struct FieldAttrSchema {
     pub name: syn::Ident,
     pub ty: syn::Type,
@@ -81,9 +68,7 @@ tinyklv_common::debug_from_display!(FieldAttrSchema);
 #[derive(Default)]
 pub(crate) struct FieldAttrContents {
     pub key: NameValue<syn::Lit>,
-    pub dec: Option<NameValue<syn::Path>>,
-    pub enc: Option<NameValue<syn::Path>>,
-    pub dynlen: Option<bool>,
+    pub valxcoder: Tuple<ValueXcoder>,
 }
 /// [`FieldAttrContents`] implementation
 impl FieldAttrContents {
@@ -104,50 +89,80 @@ impl FieldAttrContents {
         // set
         // --------------------------------------------------
         match &other.xcoder.enc {
-            Some(enc) => match self.enc {
+            Some(enc) => match self.valxcoder.v().xcoder.enc {
                 Some(_) => (),
-                None => self.enc = Some(symple::NameValue::new(enc.clone())),
+                None => self.set_enc(enc.clone()),
             }
             None => (),
         }
         match &other.xcoder.dec {
-            Some(dec) => match self.dec {
+            Some(dec) => match self.valxcoder.v().xcoder.dec {
                 Some(_) => (),
-                None => self.dec = Some(symple::NameValue::new(dec.clone())),
+                None => self.set_dec(dec.clone()),
             },
             None => (),
         }
         match &other.dynlen {
-            Some(x) => match self.dynlen {
+            Some(x) => match self.valxcoder.v().dynlen {
                 Some(_) => (),
-                None => self.dynlen = Some(*x),
+                None => self.set_dynlen(*x),
             }
             None => (),
         }
+    }
+
+    fn set_enc(&mut self, enc: syn::Path) {
+        self.valxcoder.v_mut().xcoder.enc = Some(enc);
+    }
+
+    pub fn enc(&self) -> Option<&syn::Path> {
+        self.valxcoder.v().xcoder.enc.as_ref()
+    }
+
+    fn set_dec(&mut self, dec: syn::Path) {
+        self.valxcoder.v_mut().xcoder.dec = Some(dec);
+    }
+
+    pub fn dec(&self) -> Option<&syn::Path> {
+        self.valxcoder.v().xcoder.dec.as_ref()
+    }
+
+    fn set_dynlen(&mut self, dynlen: bool) {
+        self.valxcoder.v_mut().dynlen = Some(dynlen);
+    }
+
+    pub fn dynlen(&self) -> Option<bool> {
+        self.valxcoder.v().dynlen
     }
 }
 /// [`FieldAttrContents`] implementation of [`From`] for [`MetaTuple`]
 impl From<MetaTuple> for FieldAttrContents {
     fn from(input: MetaTuple) -> Self {
         let mut output = Self::default();
+        let mut dynlen = None;
+        let mut enc = None;
+        let mut dec = None;
         input
             .into_iter()
             .for_each(|item| if let MetaItem::NameValue(x) = item.clone() {
                 match FieldNames::try_from(x.name.to_string().as_str()) {
                     Ok(FieldNames::Key) => output.key = x.into(),
-                    Ok(FieldNames::DynLen) => output.dynlen = if let symple::MetaValue::Lit(syn::Lit::Bool(syn::LitBool { value: v, .. })) = x.value { Some(v) } else { None },
-                    Ok(FieldNames::Encoder) => output.enc = Some(x.into()),
-                    Ok(FieldNames::Decoder) => output.dec = Some(x.into()),
+                    Ok(FieldNames::DynLen) => dynlen = if let symple::MetaValue::Lit(syn::Lit::Bool(syn::LitBool { value: v, .. })) = x.value { Some(v) } else { None },
+                    Ok(FieldNames::Encoder) => enc = Some(x.into()),
+                    Ok(FieldNames::Decoder) => dec = Some(x.into()),
                     _ => (),
                 }
             });
+        output.valxcoder.v_mut().dynlen = dynlen;
+        output.valxcoder.v_mut().xcoder.enc = enc;
+        output.valxcoder.v_mut().xcoder.dec = dec;
         output
     }
 }
 /// [`FieldAttrContents`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for FieldAttrContents {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "key: {}, enc: {:?}, dec: {:?}, dyn: {:?}", self.key, self.enc, self.dec, self.dynlen)
+        write!(f, "key: {}, {}", self.key, self.valxcoder)
     }
 }
 // symple::debug_from_display!(FieldAttrContents);

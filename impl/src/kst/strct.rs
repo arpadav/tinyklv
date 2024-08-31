@@ -1,3 +1,4 @@
+use quote::ToTokens;
 // --------------------------------------------------
 // external
 // --------------------------------------------------
@@ -7,6 +8,7 @@ use tinyklv_common::symple::{
     NameValue,
     MetaItem,
     MetaTuple,
+    prelude::*,
 };
 use hashbrown::HashSet;
 
@@ -15,16 +17,16 @@ use hashbrown::HashSet;
 // --------------------------------------------------
 use crate::ATTR;
 use crate::kst::xcoder::{
+    KeyLenXcoder,
     DefaultXcoder,
-    RequiredXcoder,
 };
 
 #[derive(Default)]
 pub(crate) struct StructAttrSchema {
     pub stream: NameValue<syn::Type>,
-    pub sentinel: NameValue<syn::Lit>,
-    pub key: Tuple<RequiredXcoder>,
-    pub len: Tuple<RequiredXcoder>,
+    pub sentinel: Option<NameValue<syn::Lit>>,
+    pub key: Tuple<KeyLenXcoder>,
+    pub len: Tuple<KeyLenXcoder>,
     pub defaults: HashSet<Tuple<DefaultXcoder>>
 }
 /// [`StructAttrSchema`] implementation
@@ -60,7 +62,7 @@ impl From<MetaTuple> for StructAttrSchema {
                 },
                 MetaItem::NameValue(x) => match StructNames::try_from(x.name.to_string().as_str()) {
                     Ok(StructNames::Stream) => output.stream = x.into(),
-                    Ok(StructNames::Sentinel) => output.sentinel = x.into(),
+                    Ok(StructNames::Sentinel) => output.sentinel = Some(x.into()),
                     _ => (),
                 },
                 _ => (),
@@ -72,7 +74,7 @@ impl From<MetaTuple> for StructAttrSchema {
 /// [`StructAttrSchema`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for StructAttrSchema {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StructAttrSchema {{ stream: {}, sentinel: {}, key: {}, len: {}, defaults: {:#?} }}", self.stream, self.sentinel, self.key, self.len, self.defaults)
+        write!(f, "StructAttrSchema {{ stream: {}, sentinel: {}, key: {}, len: {}, defaults: {:#?} }}", self.stream.v().to_token_stream().to_string(), self.sentinel.clone().map_or("None".to_string(), |v| v.v().to_token_stream().to_string()), self.key, self.len, self.defaults)
     }
 }
 // symple::debug_from_display!(StructAttrSchema);
