@@ -8,7 +8,7 @@ pub use winnow::error::AddContext;
 /// Trait for encoding types T to stream-type I, of type [winnow::stream::Stream]
 /// 
 /// Common examples include [&[u8]] and [&[str]]. Note that due to borrowing rules, the
-/// return type of encoding is likely going to be an owned value like [Vec<u8>] or
+/// return type of encoding is likely going to be an owned value like [`Vec<u8>`] or
 /// [String], but is requireed referenced as a slice upon decoding.
 /// 
 /// Automatically implemented for structs deriving the [tinyklv::Klv](crate::Klv) trait.

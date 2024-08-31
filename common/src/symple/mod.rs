@@ -1,12 +1,10 @@
-#![doc = include_str!("README.md")]
+#![doc = include_str!("./README.md")]
 pub mod nv;
-pub mod item;
 pub mod tuple;
 pub mod value;
 pub mod contents;
 
 pub use nv::*;
-pub use item::*;
 pub use tuple::*;
 pub use value::*;
 pub use contents::*;

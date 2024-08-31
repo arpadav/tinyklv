@@ -132,7 +132,7 @@ impl From<MetaTuple> for FieldAttrContents {
         let mut output = Self::default();
         input
             .into_iter()
-            .for_each(|item| if let MetaItem::NameValue(x) = item {
+            .for_each(|item| if let MetaItem::NameValue(x) = item.clone() {
                 match FieldNames::try_from(x.name.to_string().as_str()) {
                     Ok(FieldNames::Key) => output.key = x.into(),
                     Ok(FieldNames::DynLen) => output.dynlen = if let symple::MetaValue::Lit(syn::Lit::Bool(syn::LitBool { value: v, .. })) = x.value { Some(v) } else { None },

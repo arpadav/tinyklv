@@ -11,10 +11,10 @@ use quote::ToTokens;
 pub struct Value<T: From<MetaValue>> {
     pub value: Option<T>,
 }
-/// [Value] implementation of [From<MetaValue>]
-impl<T: From<MetaValue>> From<MetaValue> for Value<T> {
-    fn from(x: MetaValue) -> Self {
-        Value { value: Some(x.into()) }
+/// [Value] implementation
+impl<T: From<MetaValue>> Value<T> {
+    pub fn new(value: T) -> Self {
+        Value { value: Some(value) }
     }
 }
 /// [Value] implementation of [std::fmt::Display]
@@ -29,6 +29,12 @@ where
 }
 crate::debug_from_display!(Value, From<MetaValue> + std::fmt::Display);
 
+/// [Value] implementation of [From<MetaValue>]
+impl<T: From<MetaValue>> From<MetaValue> for Value<T> {
+    fn from(x: MetaValue) -> Self {
+        Value::new(x.into())
+    }
+}
 
 #[derive(Clone, Debug)]
 /// [MetaValue], which can be [syn::Lit], [syn::Type], [syn::Path], or [syn::Ident]
@@ -99,26 +105,11 @@ macro_rules! impl_from_mnv {
         }
     };
 }
-macro_rules! impl_from_mnv_wrapped {
-    ($t:ty) => {
-        #[doc = concat!(" [MetaValue] implementation of [From] for [symple::NameValue<", stringify!($t), ">]")]
-        impl From<MetaValue> for crate::symple::NameValue<$t> {
-            fn from(x: MetaValue) -> Self {
-                crate::symple::NameValue::new(x.into())
-            }
-        }
-    };
-}
 impl_from_mnv!(syn::Lit);
 // impl_from_mnv!(syn::Path); // already implemented upon syn::Ident implementation
 impl_from_mnv!(syn::Expr);
 impl_from_mnv!(syn::Type);
 impl_from_mnv!(syn::Ident);
-impl_from_mnv_wrapped!(syn::Lit);
-impl_from_mnv_wrapped!(syn::Path);
-impl_from_mnv_wrapped!(syn::Expr);
-impl_from_mnv_wrapped!(syn::Type);
-impl_from_mnv_wrapped!(syn::Ident);
 
 /// [MetaValue] implementation of [quote::ToTokens]
 impl quote::ToTokens for MetaValue {

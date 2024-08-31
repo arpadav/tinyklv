@@ -1,7 +1,14 @@
+//! [Contents] + [MetaContents] + [MetaItem] definitions, implementations, and utils
+//! 
+//! A [MetaContents] is a list of [MetaItem]
+//! 
+//! A [MetaItem] can be a [MetaValue], [MetaTuple], or [MetaNameValue]
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::item::MetaItem;
+use super::tuple::MetaTuple;
+use super::value::MetaValue;
+use super::nv::MetaNameValue;
 
 #[derive(Clone, Default)]
 /// A [MetaContents] wrapper, used as a utility for proc-macro parsing
@@ -27,12 +34,10 @@ use super::item::MetaItem;
 pub struct Contents<T: From<MetaContents>> {
     pub value: Option<T>,
 }
-/// [Contents] implementation of [From<MetaContents>]
-impl<T: From<MetaContents>> From<&MetaContents> for Contents<T> {
-    fn from(meta: &MetaContents) -> Self {
-        Contents {
-            value: Some(T::from(meta.clone())),
-        }
+/// [Contents] implementation
+impl <T: From<MetaContents>> Contents<T> {
+    pub fn new(value: T) -> Self {
+        Contents { value: Some(value) }
     }
 }
 /// [Contents] implementation of [std::fmt::Display]
@@ -47,6 +52,13 @@ where
 }
 crate::debug_from_display!(Contents, From<MetaContents> + std::fmt::Display);
 
+/// [Contents] implementation of [From<MetaContents>]
+impl<T: From<MetaContents>> From<MetaContents> for Contents<T> {
+    fn from(x: MetaContents) -> Self {
+        Contents::new(x.into())
+    }
+}
+
 #[derive(Clone, Default)]
 /// [MetaContents]
 /// 
@@ -54,7 +66,7 @@ crate::debug_from_display!(Contents, From<MetaContents> + std::fmt::Display);
 /// 
 /// Contents can be of type:
 /// 
-/// * [super::MetaValue] - A single item of any types: [syn::Lit], [syn::Path], [syn::Type], [syn::Ident]
+/// * [super::MetaValue] - A single item of any types: [syn::Lit], [syn::Path], [syn::Type], [syn::Ident], [syn::Expr]
 /// * [super::MetaNameValue] - A name ([syn::Ident]) and value ([super::MetaValue])
 /// * [super::MetaTuple] - A key ([syn::Ident]) and value ([super::MetaContents])
 /// 
@@ -113,6 +125,21 @@ impl std::fmt::Display for MetaContents {
 }
 crate::debug_from_display!(MetaContents);
 
+/// [MetaContents] implementation of [From] for [MetaTuple]
+impl From<MetaTuple> for MetaContents {
+    fn from(x: MetaTuple) -> Self {
+        MetaItem::Tuple(x).into()
+    }
+}
+/// [MetaContents] implementation of [From] for [MetaItem]
+impl From<MetaItem> for MetaContents {
+    fn from(x: MetaItem) -> Self {
+        let mut items = syn::punctuated::Punctuated::new();
+        items.push_value(x);
+        MetaContents { items }
+    }
+}
+
 #[derive(Clone)]
 /// [MetaContentsIterator]
 /// 
@@ -136,6 +163,60 @@ impl<'a> Iterator for MetaContentsIterator<'a> {
     }
 }
 
+#[derive(Clone)]
+/// Enum to handle various meta data types
+/// 
+/// # Example
+/// 
+/// ```ignore
+/// name = value // <- This is a [MetaNameValue]
+/// // OR
+/// tname(name = value, name = value) // <- This is a [MetaTuple]
+/// // OR
+/// value // <- This is a [MetaValue]
+/// ```
+pub enum MetaItem {
+    Tuple(MetaTuple),
+    Value(MetaValue),
+    NameValue(MetaNameValue),
+}
+/// [MetaItem] implementation of [syn::parse::Parse]
+impl syn::parse::Parse for MetaItem {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        // Attempt to parse as MetaValue
+        if input.peek2(syn::token::Comma) {
+            return Ok(MetaItem::Value(input.parse()?))
+        }
+        // Attempt to parse as MetaTuple
+        if input.peek(syn::Ident) && input.peek2(syn::token::Paren) {
+            match input.parse() {
+                Ok(x) => return Ok(MetaItem::Tuple(x)),
+                Err(_) => (),
+            };
+        }
+        // Attempt to parse as MetaNameValue
+        if input.peek(syn::Ident) && input.peek2(syn::token::Eq) {
+            match input.parse() {
+                Ok(x) => return Ok(MetaItem::NameValue(x)),
+                Err(_) => (),
+            };
+        }
+        // Attempt to parse as MetaValue
+        Ok(MetaItem::Value(input.parse()?))
+    }
+}
+/// [MetaItem] implementation of [std::fmt::Display]
+impl std::fmt::Display for MetaItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MetaItem::Tuple(x) => write!(f, "{}", x),
+            MetaItem::Value(x) => write!(f, "{}", x),
+            MetaItem::NameValue(x) => write!(f, "{}", x),
+        }
+    }
+}
+crate::debug_from_display!(MetaItem);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,7 +230,7 @@ mod tests {
         let meta = meta.unwrap();
         for (idx, item) in meta.into_iter().enumerate() {
             match idx {
-                0 => assert_eq!(format!("{}", item), "\"value\""),
+                0 => assert_eq!(format!("{}", item), "\"str_literal\""),
                 1 => assert_eq!(format!("{}", item), "a = 1"),
                 2 => assert_eq!(format!("{}", item), "b(x = 2)"),
                 3 => assert_eq!(format!("{}", item), "c = 3"),
@@ -204,10 +285,10 @@ mod tests {
                     match item {
                         symple::MetaItem::NameValue(x) => {
                             if x.name.to_string() == "key" {
-                                output.key = symple::NameValue::new(x.value.clone().into())
+                                output.key = x.clone().into()
                             }
                             if x.name.to_string() == "val" {
-                                output.values.push(symple::NameValue::new(x.value.clone().into()))
+                                output.values.push(x.clone().into())
                             }
                         },
                         _ => continue,

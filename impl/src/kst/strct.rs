@@ -51,7 +51,7 @@ impl From<MetaTuple> for StructAttrSchema {
         let mut output = Self::default();
         input
             .into_iter()
-            .for_each(|item| match item {
+            .for_each(|item| match item.clone() {
                 MetaItem::Tuple(x) => match StructNames::try_from(x.name.to_string().as_str()) {
                     Ok(StructNames::KeyTuple) => output.key = x.into(),
                     Ok(StructNames::LengthTuple) => output.len = x.into(),
