@@ -1,13 +1,13 @@
 //! [MetaValue] definitions, implementations, and utils
 //! 
-//! A [MetaValue] can be either a [syn::Lit], [syn::Type], [syn::Path], [syn::Expr], or [syn::Ident]
+//! A [MetaValue] can be either a [enum@syn::Lit], [syn::Type], [syn::Path], [syn::Expr], or [struct@syn::Ident]
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use quote::ToTokens;
 
 #[derive(Clone, Default)]
-/// [Value], which can be [syn::Lit], [syn::Type], [syn::Path], [syn::Expr], or [syn::Ident]
+/// [Value], which can be [enum@syn::Lit], [syn::Type], [syn::Path], [syn::Expr], or [struct@syn::Ident]
 pub struct Value<T: From<MetaValue>> {
     pub value: Option<T>,
 }
@@ -29,7 +29,7 @@ where
 }
 crate::debug_from_display!(Value, From<MetaValue> + std::fmt::Display);
 
-/// [Value] implementation of [From<MetaValue>]
+/// [Value] implementation of [From] for [MetaValue]
 impl<T: From<MetaValue>> From<MetaValue> for Value<T> {
     fn from(x: MetaValue) -> Self {
         Value::new(x.into())
@@ -37,7 +37,7 @@ impl<T: From<MetaValue>> From<MetaValue> for Value<T> {
 }
 
 #[derive(Clone, Debug)]
-/// [MetaValue], which can be [syn::Lit], [syn::Type], [syn::Path], or [syn::Ident]
+/// [MetaValue], which can be [enum@syn::Lit], [syn::Type], [syn::Path], or [struct@syn::Ident]
 pub enum MetaValue {
     Lit(syn::Lit),
     Path(syn::Path),
@@ -91,7 +91,10 @@ impl syn::parse::Parse for MetaValue {
 /// [MetaValue] implementation of [From]
 macro_rules! impl_from_mnv {
     ($t:ty) => {
-        #[doc = concat!(" [MetaValue] implementation of [From] for [", stringify!($t), "]")]
+        impl_from_mnv!($t, "");
+    };
+    ($t:ty, $prefix:expr) => {
+        #[doc = concat!(" [MetaValue] implementation of [From] for [", stringify!($prefix), stringify!($t), "]")]
         impl From<MetaValue> for $t {
             fn from(x: MetaValue) -> Self {
                 match x {
@@ -105,7 +108,7 @@ macro_rules! impl_from_mnv {
         }
     };
 }
-impl_from_mnv!(syn::Lit);
+impl_from_mnv!(syn::Lit, "enum@");
 impl_from_mnv!(syn::Path);
 impl_from_mnv!(syn::Expr);
 impl_from_mnv!(syn::Type);

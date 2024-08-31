@@ -14,34 +14,34 @@ use super::value::MetaValue;
 /// 
 /// # Example
 /// 
-/// ```ignore
+/// ```no_run
 /// // inside of proc-macro lib
 /// struct Input {
 ///     struct_attribute_identifier: symple::NameValue<syn::Lit>
 /// }
 /// ```
 /// 
-/// ***Note that trait bounds for [From<MetaValue>] are required
+/// ***Note that trait bounds for [`From<MetaValue>`] are required
 /// for this to work.*** Custom implementations are possible, but currently
-/// [From<MetaValue>] is implemented for:
+/// [`From<MetaValue>`] is implemented for:
 /// 
-/// * [syn::Lit]
+/// * [enum@syn::Lit]
 /// * [syn::Type]
 /// * [syn::Path]
 /// * [syn::Expr]
-/// * [syn::Ident]
+/// * [struct@syn::Ident]
 /// 
-/// ```ignore
+/// ```no_run
 /// // outisde of proc-macro lib
 /// #[derive(MyProcMacro)]
 /// #[identifier = "Hello World!"]
 /// struct SomeStruct;
 /// ```
 /// 
-/// Which can then be parsed using the [From<MetaValue>] implementation
+/// Which can then be parsed using the [`From<MetaValue>`] implementation
 /// into the following, to help with proc-macro parsing:
 /// 
-/// ```ignore
+/// ```no_run
 /// Input {
 ///     // note that this is called using `struct_attribute_identifier.value`
 ///     struct_attribute_identifier: Some(syn::Lit::new(syn::IntSuffix::None, "Hello World!")),
@@ -80,7 +80,7 @@ impl<T: From<MetaValue> + ToTokens> From<MetaNameValue> for NameValue<T> {
         NameValue::new(x.value.into())
     }
 }
-/// [NameValue] implementation of [From] for [MetaValue<T>]
+/// [NameValue] implementation of [From] for [`MetaValue<T>`]
 impl<T: From<MetaValue> + ToTokens> From<MetaValue> for NameValue<T> {
     fn from(x: MetaValue) -> Self {
         NameValue::new(x.into())
@@ -90,12 +90,12 @@ impl<T: From<MetaValue> + ToTokens> From<MetaValue> for NameValue<T> {
 #[derive(Clone)]
 /// [MetaNameValue]
 /// 
-/// Data structure which is consists of a name [syn::Ident] 
-/// and a value [syn::Ident], separated by an equal sign `=`
+/// Data structure which is consists of a name [struct@syn::Ident] 
+/// and a value [struct@syn::Ident], separated by an equal sign `=`
 /// 
 /// # Example
 /// 
-/// ```ignore
+/// ```no_run
 /// name = value
 /// ```
 pub struct MetaNameValue {
