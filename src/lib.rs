@@ -8,5 +8,5 @@ pub mod reexport {
 }
 pub use tinyklv_impl::*;
 
-#[doc(inline)]
-pub use tinyklv_common::FieldNames::DynLen;
+// #[doc(inline)]
+// pub use tinyklv_common::FieldNames::DynLen;
