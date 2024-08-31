@@ -106,10 +106,10 @@ macro_rules! impl_from_mnv {
     };
 }
 impl_from_mnv!(syn::Lit);
-// impl_from_mnv!(syn::Path); // already implemented upon syn::Ident implementation
+impl_from_mnv!(syn::Path);
 impl_from_mnv!(syn::Expr);
 impl_from_mnv!(syn::Type);
-impl_from_mnv!(syn::Ident);
+// impl_from_mnv!(syn::Ident); // do NOT UNCOMMENT
 
 /// [MetaValue] implementation of [quote::ToTokens]
 impl quote::ToTokens for MetaValue {
