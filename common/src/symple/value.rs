@@ -1,23 +1,23 @@
-//! [MetaValue] definitions, implementations, and utils
+//! [`MetaValue`] definitions, implementations, and utils
 //! 
-//! A [MetaValue] can be either a [enum@syn::Lit], [syn::Type], [syn::Path], [syn::Expr], or [struct@syn::Ident]
+//! A [`MetaValue`] can be either a [`enum@syn::Lit`], [`syn::Type`], [`syn::Path`], [`syn::Expr`], or [`struct@syn::Ident`]
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use quote::ToTokens;
 
 #[derive(Clone, Default)]
-/// [Value], which can be [enum@syn::Lit], [syn::Type], [syn::Path], [syn::Expr], or [struct@syn::Ident]
+/// [`Value`], which can be [`enum@syn::Lit`], [`syn::Type`], [`syn::Path`], [`syn::Expr`], or [`struct@syn::Ident`]
 pub struct Value<T: From<MetaValue>> {
     pub value: Option<T>,
 }
-/// [Value] implementation
+/// [`Value`] implementation
 impl<T: From<MetaValue>> Value<T> {
     pub fn new(value: T) -> Self {
         Value { value: Some(value) }
     }
 }
-/// [Value] implementation of [std::fmt::Display]
+/// [`Value`] implementation of [`std::fmt::Display`]
 impl<T> std::fmt::Display for Value<T>
 where
     T: std::fmt::Display,
@@ -29,7 +29,7 @@ where
 }
 crate::debug_from_display!(Value, From<MetaValue> + std::fmt::Display);
 
-/// [Value] implementation of [From] for [MetaValue]
+/// [`Value`] implementation of [`From`] for [`MetaValue`]
 impl<T: From<MetaValue>> From<MetaValue> for Value<T> {
     fn from(x: MetaValue) -> Self {
         Value::new(x.into())
@@ -37,7 +37,7 @@ impl<T: From<MetaValue>> From<MetaValue> for Value<T> {
 }
 
 #[derive(Clone, Debug)]
-/// [MetaValue], which can be [enum@syn::Lit], [syn::Type], [syn::Path], or [struct@syn::Ident]
+/// [`MetaValue`], which can be [`enum@syn::Lit`], [`syn::Type`], [`syn::Path`], or [`struct@syn::Ident`]
 pub enum MetaValue {
     Lit(syn::Lit),
     Path(syn::Path),
@@ -45,7 +45,7 @@ pub enum MetaValue {
     Type(syn::Type),
     Ident(syn::Ident),
 }
-/// [MetaValue] implementation of [syn::parse::Parse]
+/// [`MetaValue`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for MetaValue {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         // --------------------------------------------------
@@ -88,13 +88,13 @@ impl syn::parse::Parse for MetaValue {
         Err(input.error("Expected a Expr, Lit, Type, Path, or Ident"))
     }
 }
-/// [MetaValue] implementation of [From]
+/// [`MetaValue`] implementation of [`From`]
 macro_rules! impl_from_mnv {
     ($t:ty) => {
         impl_from_mnv!($t, "");
     };
     ($t:ty, $prefix:expr) => {
-        #[doc = concat!(" [MetaValue] implementation of [From] for [", stringify!($prefix), stringify!($t), "]")]
+        #[doc = concat!(" [`MetaValue`] implementation of [`From`] for [", stringify!($prefix), stringify!($t), "]")]
         impl From<MetaValue> for $t {
             fn from(x: MetaValue) -> Self {
                 match x {
@@ -114,7 +114,7 @@ impl_from_mnv!(syn::Expr);
 impl_from_mnv!(syn::Type);
 // impl_from_mnv!(syn::Ident); // do NOT UNCOMMENT
 
-/// [MetaValue] implementation of [quote::ToTokens]
+/// [`MetaValue`] implementation of [`quote::ToTokens`]
 impl quote::ToTokens for MetaValue {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         match self {
@@ -126,7 +126,7 @@ impl quote::ToTokens for MetaValue {
         }
     }
 }
-/// [MetaValue] implementation of [std::fmt::Display]
+/// [`MetaValue`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for MetaValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

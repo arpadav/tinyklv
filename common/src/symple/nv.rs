@@ -1,4 +1,4 @@
-//! [NameValue] and [MetaNameValue] definitions, implementations, and utils
+//! [`NameValue`] and [`MetaNameValue`] definitions, implementations, and utils
 // --------------------------------------------------
 // external
 // --------------------------------------------------
@@ -10,7 +10,7 @@ use quote::ToTokens;
 use super::value::MetaValue;
 
 #[derive(Clone)]
-/// A [MetaNameValue] wrapper, used as a utility for proc-macro parsing
+/// A [`MetaNameValue`] wrapper, used as a utility for proc-macro parsing
 /// 
 /// # Example
 /// 
@@ -25,16 +25,16 @@ use super::value::MetaValue;
 /// for this to work.*** Custom implementations are possible, but currently
 /// [`From<MetaValue>`] is implemented for:
 /// 
-/// * [enum@syn::Lit]
-/// * [syn::Type]
-/// * [syn::Path]
-/// * [syn::Expr]
-/// * [struct@syn::Ident]
+/// * [`enum@syn::Lit`]
+/// * [`syn::Type`]
+/// * [`syn::Path`]
+/// * [`syn::Expr`]
+/// * [`struct@syn::Ident`]
 /// 
 /// ```no_run
 /// // outisde of proc-macro lib
-/// #[derive(MyProcMacro)]
-/// #[identifier = "Hello World!"]
+/// #[`derive(MyProcMacro)`]
+/// #[`identifier = "Hello World!"`]
 /// struct SomeStruct;
 /// ```
 /// 
@@ -50,20 +50,20 @@ use super::value::MetaValue;
 pub struct NameValue<T: From<MetaValue> + ToTokens> {
     pub value: Option<T>,
 }
-/// [NameValue] implementation
+/// [`NameValue`] implementation
 impl<T: From<MetaValue> + ToTokens> NameValue<T> {
     #[allow(dead_code)]
     pub fn new(value: T) -> Self {
         NameValue { value: Some(value) }
     }
 }
-/// [NameValue] implementation of [Default]
+/// [`NameValue`] implementation of [`Default`]
 impl<T: From<MetaValue> + ToTokens> Default for NameValue<T> {
     fn default() -> Self {
         NameValue { value: None }
     }
 }
-/// [NameValue] implementation of [std::fmt::Display]
+/// [`NameValue`] implementation of [`std::fmt::Display`]
 impl<T: From<MetaValue> + ToTokens> std::fmt::Display for NameValue<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.value {
@@ -74,13 +74,13 @@ impl<T: From<MetaValue> + ToTokens> std::fmt::Display for NameValue<T> {
 }
 crate::debug_from_display!(NameValue, From<MetaValue> + ToTokens);
 
-/// [NameValue] implementation of [From] for [MetaNameValue]
+/// [`NameValue`] implementation of [`From`] for [`MetaNameValue`]
 impl<T: From<MetaValue> + ToTokens> From<MetaNameValue> for NameValue<T> {
     fn from(x: MetaNameValue) -> Self {
         NameValue::new(x.value.into())
     }
 }
-/// [NameValue] implementation of [From] for [`MetaValue<T>`]
+/// [`NameValue`] implementation of [`From`] for [`MetaValue<T>`]
 impl<T: From<MetaValue> + ToTokens> From<MetaValue> for NameValue<T> {
     fn from(x: MetaValue) -> Self {
         NameValue::new(x.into())
@@ -88,10 +88,10 @@ impl<T: From<MetaValue> + ToTokens> From<MetaValue> for NameValue<T> {
 }
 
 #[derive(Clone)]
-/// [MetaNameValue]
+/// [`MetaNameValue`]
 /// 
-/// Data structure which is consists of a name [struct@syn::Ident] 
-/// and a value [struct@syn::Ident], separated by an equal sign `=`
+/// Data structure which is consists of a name [`struct@syn::Ident`] 
+/// and a value [`struct@syn::Ident`], separated by an equal sign `=`
 /// 
 /// # Example
 /// 
@@ -103,7 +103,7 @@ pub struct MetaNameValue {
     sep: syn::Token![=],
     pub value: MetaValue,
 }
-/// [MetaNameValue] implementation of [syn::parse::Parse]
+/// [`MetaNameValue`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for MetaNameValue {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         Ok(MetaNameValue {
@@ -113,7 +113,7 @@ impl syn::parse::Parse for MetaNameValue {
         })
     }
 }
-/// [MetaNameValue] implementation of [std::fmt::Display]
+/// [`MetaNameValue`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for MetaNameValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {} {}", self.name, self.sep.to_token_stream(), self.value.to_token_stream())

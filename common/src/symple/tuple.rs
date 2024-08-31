@@ -1,8 +1,8 @@
-//! [Tuple] + [MetaTuple] definitions, implementations, and utils
+//! [`Tuple`] + [`MetaTuple`] definitions, implementations, and utils
 //! 
-//! A [MetaTuple] contains a key of type [struct@syn::Ident] and a list of contents of type [MetaContents]
+//! A [`MetaTuple`] contains a key of type [`struct@syn::Ident`] and a list of contents of type [`MetaContents`]
 //! 
-//! The [Tuple] struct is used to say "parse this token-stream as a [MetaTuple]"
+//! The [`Tuple`] struct is used to say "parse this token-stream as a [`MetaTuple`]"
 // --------------------------------------------------
 // local
 // --------------------------------------------------
@@ -13,7 +13,7 @@ use super::contents::{
 };
 
 #[derive(Eq, Hash, Clone, PartialEq)]
-/// A [MetaTuple] wrapper, used as a utility for proc-macro parsing
+/// A [`MetaTuple`] wrapper, used as a utility for proc-macro parsing
 /// 
 /// # Example
 /// 
@@ -42,8 +42,8 @@ use super::contents::{
 /// 
 /// ```ignore
 /// // outside of proc-macro lib
-/// #[derive(MyProcMacro)]
-/// #[my_proc_macro(value1 = 1, value2 = 2, inside_tuple(value3 = 3))]
+/// #[`derive(MyProcMacro)`]
+/// #[`my_proc_macro(value1 = 1, value2 = 2, inside_tuple(value3 = 3))`]
 /// struct SomeStruct;
 /// ```
 /// 
@@ -63,19 +63,19 @@ use super::contents::{
 pub struct Tuple<T: From<MetaContents>> {
     pub value: Option<T>,
 }
-/// [Tuple] implementation
+/// [`Tuple`] implementation
 impl <T: From<MetaContents>> Tuple<T> {
     pub fn new(value: T) -> Self {
         Tuple { value: Some(value) }
     }
 }
-/// [Tuple] implementation of [Default]
+/// [`Tuple`] implementation of [`Default`]
 impl <T: From<MetaContents>> Default for Tuple<T> {
     fn default() -> Self {
         Tuple { value: None }
     }
 }
-/// [Tuple] implementation of [std::fmt::Display]
+/// [`Tuple`] implementation of [`std::fmt::Display`]
 impl <T: From<MetaContents> + std::fmt::Display> std::fmt::Display for Tuple<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.value {
@@ -86,13 +86,13 @@ impl <T: From<MetaContents> + std::fmt::Display> std::fmt::Display for Tuple<T> 
 }
 crate::debug_from_display!(Tuple, From<MetaContents> + std::fmt::Display);
 
-/// [Tuple] implementation of [From] for [MetaTuple]
+/// [`Tuple`] implementation of [`From`] for [`MetaTuple`]
 impl <T: From<MetaContents>> From<MetaTuple> for Tuple<T> {
     fn from(meta: MetaTuple) -> Self {
         Tuple::new(meta.contents.into())
     }
 }
-/// [Tuple] implementation of [From] for T
+/// [`Tuple`] implementation of [`From`] for T
 impl <T: From<MetaContents>> From<MetaContents> for Tuple<T> {
     fn from(value: MetaContents) -> Self {
         Tuple::new(value.into())
@@ -100,10 +100,10 @@ impl <T: From<MetaContents>> From<MetaContents> for Tuple<T> {
 }
 
 #[derive(Clone)]
-/// [MetaTuple]
+/// [`MetaTuple`]
 /// 
-/// Innter data structure which is consists of a name [struct@syn::Ident]
-/// and listed value(s) [MetaContents]
+/// Innter data structure which is consists of a name [`struct@syn::Ident`]
+/// and listed value(s) [`MetaContents`]
 /// 
 /// # Example
 /// 
@@ -115,7 +115,7 @@ pub struct MetaTuple {
     _paren: syn::token::Paren,
     pub contents: MetaContents,
 }
-/// [MetaTuple] implementation of [syn::parse::Parse]
+/// [`MetaTuple`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for MetaTuple {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let content;
@@ -126,7 +126,7 @@ impl syn::parse::Parse for MetaTuple {
         })
     }
 }
-/// [MetaTuple] implementation of [From] for [String]
+/// [`MetaTuple`] implementation of [`From`] for [`String`]
 impl From<String> for MetaTuple {
     fn from(s: String) -> Self {
         // Convert the string into a TokenStream
@@ -138,7 +138,7 @@ impl From<String> for MetaTuple {
         }
     }
 }
-/// [MetaTuple] implementation of [IntoIterator]
+/// [`MetaTuple`] implementation of [`IntoIterator`]
 impl<'a> IntoIterator for &'a MetaTuple {
     type Item = &'a MetaItem;
     type IntoIter = MetaContentsIterator<'a>;
@@ -146,7 +146,7 @@ impl<'a> IntoIterator for &'a MetaTuple {
         self.contents.into_iter()
     }
 }
-/// [MetaTuple] implementation of [std::fmt::Display]
+/// [`MetaTuple`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for MetaTuple {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}({})", self.name, self.contents)
@@ -182,11 +182,11 @@ mod tests {
             attr: symple::NameValue<syn::Lit>
         }
 
-        /// [Values] implementation of [From] for [symple::MetaContents]
+        /// [Values] implementation of [`From`] for [`symple::MetaContents`]
         /// 
-        /// This is required for all items inside [symple::Tuple]
+        /// This is required for all items inside [`symple::Tuple`]
         /// 
-        /// This is an example parsing implementation using [symple] types
+        /// This is an example parsing implementation using [`symple`] types
         /// 
         /// See example below, and example in README.md
         impl From<symple::MetaContents> for Values {
@@ -213,11 +213,11 @@ mod tests {
             }
         }
 
-        /// [syn::LitInt] implementation of [From] for [symple::MetaValue]
+        /// [syn::LitInt] implementation of [`From`] for [`symple::MetaValue`]
         /// 
-        /// This is required for all items inside [symple::NameValue]
+        /// This is required for all items inside [`symple::NameValue`]
         /// 
-        /// This is an example parsing implementation using [symple] types
+        /// This is an example parsing implementation using [`symple`] types
         /// 
         /// See example below, and example in README.md
         impl From<symple::MetaValue> for syn::LitInt {
@@ -229,11 +229,11 @@ mod tests {
             }
         }
 
-        /// [FieldAttribute] implementation of [From] for [symple::MetaValue]
+        /// [FieldAttribute] implementation of [`From`] for [`symple::MetaValue`]
         /// 
-        /// This is required for all items inside [symple::NameValue]
+        /// This is required for all items inside [`symple::NameValue`]
         /// 
-        /// This is an example parsing implementation using [symple] types
+        /// This is an example parsing implementation using [`symple`] types
         /// 
         /// See example below, and example in README.md
         impl From<symple::MetaValue> for FieldAttribute {
@@ -248,18 +248,18 @@ mod tests {
         /// Parses the struct attributes of the following:
         /// 
         /// ```ignore
-        /// #[derive(MyProcMacro)]
-        /// #[my_proc_macro(value1 = 1, value2 = 2)]
+        /// #[`derive(MyProcMacro)`]
+        /// #[`my_proc_macro(value1 = 1, value2 = 2)`]
         /// // ^^ This is a `symple::Tuple` ^^
         /// // key: my_proc_macro
         /// // contents: { nv: { name = value1, value = 1 }, nv: { name = value2, value = 2 } }
         /// struct SomeStruct {
-        ///     #[my_proc_macro(attr = "foo")]
+        ///     #[`my_proc_macro(attr = "foo")`]
         ///     // ^^ This is a `symple::Tuple` ^^
         ///     // key: my_proc_macro
         ///     // contents: { nv: { name = attr, value = "foo" } }
         ///     name: String,
-        ///     #[my_proc_macro(attr = "bar")]
+        ///     #[`my_proc_macro(attr = "bar")`]
         ///     // ^^ This is a `symple::Tuple` ^^
         ///     // key: my_proc_macro
         ///     // contents: { nv: { name = attr, value = "bar" } }
@@ -284,18 +284,18 @@ mod tests {
         /// Parses the field attributes of the following:
         /// 
         /// ```ignore
-        /// #[derive(MyProcMacro)]
-        /// #[my_proc_macro(value1 = 1, value2 = 2)]
+        /// #[`derive(MyProcMacro)`]
+        /// #[`my_proc_macro(value1 = 1, value2 = 2)`]
         /// // ^^ This is a `symple::Tuple` ^^
         /// // key: my_proc_macro
         /// // contents: { nv: { name = value1, value = 1 }, nv: { name = value2, value = 2 } }
         /// struct SomeStruct {
-        ///     #[my_proc_macro(attr = "foo")]
+        ///     #[`my_proc_macro(attr = "foo")`]
         ///     // ^^ This is a `symple::Tuple` ^^
         ///     // key: my_proc_macro
         ///     // contents: { nv: { name = attr, value = "foo" } }
         ///     name: String,
-        ///     #[my_proc_macro(attr = "bar")]
+        ///     #[`my_proc_macro(attr = "bar")`]
         ///     // ^^ This is a `symple::Tuple` ^^
         ///     // key: my_proc_macro
         ///     // contents: { nv: { name = attr, value = "bar" } }

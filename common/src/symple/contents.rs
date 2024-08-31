@@ -1,8 +1,8 @@
-//! [Contents] + [MetaContents] + [MetaItem] definitions, implementations, and utils
+//! [`Contents`] + [`MetaContents`] + [`MetaItem`] definitions, implementations, and utils
 //! 
-//! A [MetaContents] is a list of [MetaItem]
+//! A [`MetaContents`] is a list of [`MetaItem`]
 //! 
-//! A [MetaItem] can be a [MetaValue], [MetaTuple], or [MetaNameValue]
+//! A [`MetaItem`] can be a [`MetaValue`], [`MetaTuple`], or [`MetaNameValue`]
 // --------------------------------------------------
 // local
 // --------------------------------------------------
@@ -11,7 +11,7 @@ use super::value::MetaValue;
 use super::nv::MetaNameValue;
 
 #[derive(Clone, Default)]
-/// A [MetaContents] wrapper, used as a utility for proc-macro parsing
+/// A [`MetaContents`] wrapper, used as a utility for proc-macro parsing
 /// 
 /// # Example
 /// 
@@ -34,13 +34,13 @@ use super::nv::MetaNameValue;
 pub struct Contents<T: From<MetaContents>> {
     pub value: Option<T>,
 }
-/// [Contents] implementation
+/// [`Contents`] implementation
 impl <T: From<MetaContents>> Contents<T> {
     pub fn new(value: T) -> Self {
         Contents { value: Some(value) }
     }
 }
-/// [Contents] implementation of [std::fmt::Display]
+/// [`Contents`] implementation of [`std::fmt::Display`]
 impl<T> std::fmt::Display for Contents<T>
 where
     T: std::fmt::Display,
@@ -52,7 +52,7 @@ where
 }
 crate::debug_from_display!(Contents, From<MetaContents> + std::fmt::Display);
 
-/// [Contents] implementation of [From] for [MetaContents]
+/// [`Contents`] implementation of [`From`] for [`MetaContents`]
 impl<T: From<MetaContents>> From<MetaContents> for Contents<T> {
     fn from(x: MetaContents) -> Self {
         Contents::new(x.into())
@@ -60,15 +60,15 @@ impl<T: From<MetaContents>> From<MetaContents> for Contents<T> {
 }
 
 #[derive(Clone, Default)]
-/// [MetaContents]
+/// [`MetaContents`]
 /// 
 /// Listed contents delimited by a comma `,`
 /// 
 /// Contents can be of type:
 /// 
-/// * [super::MetaValue] - A single item of any types: [enum@syn::Lit], [syn::Path], [syn::Type], [struct@syn::Ident], [syn::Expr]
-/// * [super::MetaNameValue] - A name ([struct@syn::Ident]) and value ([super::MetaValue])
-/// * [super::MetaTuple] - A key ([struct@syn::Ident]) and value ([super::MetaContents])
+/// * [super::MetaValue] - A single item of any types: [`enum@syn::Lit`], [`syn::Path`], [`syn::Type`], [`struct@syn::Ident`], [`syn::Expr`]
+/// * [super::MetaNameValue] - A name ([`struct@syn::Ident`]) and value ([`super::MetaValue`])
+/// * [super::MetaTuple] - A key ([`struct@syn::Ident`]) and value ([`super::MetaContents`])
 /// 
 /// # Syntax
 /// 
@@ -100,7 +100,7 @@ impl<T: From<MetaContents>> From<MetaContents> for Contents<T> {
 pub struct MetaContents {
     items: syn::punctuated::Punctuated<MetaItem, syn::token::Comma>,
 }
-/// [MetaContents] implementation of [syn::parse::Parse]
+/// [`MetaContents`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for MetaContents {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         Ok(MetaContents {
@@ -108,7 +108,7 @@ impl syn::parse::Parse for MetaContents {
         })
     }
 }
-/// [MetaContents] implementation of [IntoIterator]
+/// [`MetaContents`] implementation of [`IntoIterator`]
 impl<'a> IntoIterator for &'a MetaContents {
     type Item = &'a MetaItem;
     type IntoIter = MetaContentsIterator<'a>;
@@ -116,7 +116,7 @@ impl<'a> IntoIterator for &'a MetaContents {
         MetaContentsIterator::new(&self.items)
     }
 }
-/// [MetaContents] implementation of [std::fmt::Display]
+/// [`MetaContents`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for MetaContents {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let items: Vec<String> = self.items.iter().map(|item| format!("{}", item)).collect();
@@ -125,13 +125,13 @@ impl std::fmt::Display for MetaContents {
 }
 crate::debug_from_display!(MetaContents);
 
-/// [MetaContents] implementation of [From] for [MetaTuple]
+/// [`MetaContents`] implementation of [`From`] for [`MetaTuple`]
 impl From<MetaTuple> for MetaContents {
     fn from(x: MetaTuple) -> Self {
         MetaItem::Tuple(x).into()
     }
 }
-/// [MetaContents] implementation of [From] for [MetaItem]
+/// [`MetaContents`] implementation of [`From`] for [`MetaItem`]
 impl From<MetaItem> for MetaContents {
     fn from(x: MetaItem) -> Self {
         let mut items = syn::punctuated::Punctuated::new();
@@ -141,13 +141,13 @@ impl From<MetaItem> for MetaContents {
 }
 
 #[derive(Clone)]
-/// [MetaContentsIterator]
+/// [`MetaContentsIterator`]
 /// 
-/// Iterator over [MetaContents] items
+/// Iterator over [`MetaContents`] items
 pub struct MetaContentsIterator<'a> {
     iter: syn::punctuated::Iter<'a, MetaItem>,
 }
-/// [MetaContentsIterator] implementation
+/// [`MetaContentsIterator`] implementation
 impl<'a> MetaContentsIterator<'a> {
     fn new(items: &'a syn::punctuated::Punctuated<MetaItem, syn::token::Comma>) -> Self {
         MetaContentsIterator {
@@ -155,7 +155,7 @@ impl<'a> MetaContentsIterator<'a> {
         }
     }
 }
-/// [MetaContentsIterator] implementation of [Iterator]
+/// [`MetaContentsIterator`] implementation of [`Iterator`]
 impl<'a> Iterator for MetaContentsIterator<'a> {
     type Item = &'a MetaItem;
     fn next(&mut self) -> Option<Self::Item> {
@@ -169,18 +169,18 @@ impl<'a> Iterator for MetaContentsIterator<'a> {
 /// # Example
 /// 
 /// ```no_run
-/// name = value // <- This is a [MetaNameValue]
+/// name = value // <- This is a [`MetaNameValue`]
 /// // OR
-/// tname(name = value, name = value) // <- This is a [MetaTuple]
+/// tname(name = value, name = value) // <- This is a [`MetaTuple`]
 /// // OR
-/// value // <- This is a [MetaValue]
+/// value // <- This is a [`MetaValue`]
 /// ```
 pub enum MetaItem {
     Tuple(MetaTuple),
     Value(MetaValue),
     NameValue(MetaNameValue),
 }
-/// [MetaItem] implementation of [syn::parse::Parse]
+/// [`MetaItem`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for MetaItem {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         // Attempt to parse as MetaValue
@@ -205,7 +205,7 @@ impl syn::parse::Parse for MetaItem {
         Ok(MetaItem::Value(input.parse()?))
     }
 }
-/// [MetaItem] implementation of [std::fmt::Display]
+/// [`MetaItem`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for MetaItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -259,13 +259,13 @@ mod tests {
         use super::*;
 
         #[derive(Default)]
-        /// Example struct to be parsed using [symple] types
+        /// Example struct to be parsed using [`symple`] types
         struct KeysWithValues {
             key: symple::NameValue<syn::Lit>,
             values: Vec<symple::NameValue<syn::Lit>>,
         }
 
-        /// [KeysWithValues] implementation of [std::fmt::Display]
+        /// [`KeysWithValues`] implementation of [`std::fmt::Display`]
         impl std::fmt::Display for KeysWithValues {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 let values_string: String = self.values.iter().map(|v| format!("{}, ", v.to_string())).collect();
@@ -273,9 +273,9 @@ mod tests {
             }
         }
         
-        /// [KeysWithValues] implementation of [From] for [symple::MetaContents]
+        /// [`KeysWithValues`] implementation of [`From`] for [`symple::MetaContents`]
         /// 
-        /// This is an example parsing implementation using [symple] types
+        /// This is an example parsing implementation using [`symple`] types
         /// 
         /// See example below, and example in README.md
         impl From<MetaContents> for KeysWithValues {

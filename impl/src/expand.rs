@@ -13,7 +13,7 @@ use crate::kst;
 // --------------------------------------------------
 const PACKET_LIFETIME_CHAR: char = 'z';
 
-/// Derive [crate::Klv]
+/// Derive [`crate::Klv`]
 pub fn derive(input: &syn::DeriveInput) -> proc_macro::TokenStream {
     match kst::Input::from_syn(input) {
         Ok(parsed) => parsed.into(),
@@ -21,7 +21,7 @@ pub fn derive(input: &syn::DeriveInput) -> proc_macro::TokenStream {
     }
 }
 
-/// [From] implementation of [proc_macro::TokenStream] for [kst::Input]
+/// [`From`] implementation of [`proc_macro::TokenStream`] for [`kst::Input`]
 impl From<kst::Input> for proc_macro::TokenStream {
     fn from(mut input: kst::Input) -> Self {
         // --------------------------------------------------
@@ -64,7 +64,7 @@ impl From<kst::Input> for proc_macro::TokenStream {
     }
 }
 
-/// Generates the tokens for the entire [tinyklv::prelude::StreamDecode](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.StreamDecode.html) implementation
+/// Generates the tokens for the entire [`tinyklv::prelude::Decode`](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.Decode.html) implementation
 fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
     let name = &input.name;
     // --------------------------------------------------

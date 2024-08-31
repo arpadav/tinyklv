@@ -37,7 +37,7 @@ impl<T> OfBerOid for T where T: OfBerCommon {}
 #[derive(Debug, PartialEq)]
 /// Enum representing Basic-Encoding-Rules (BER) Length Encoding.
 /// 
-/// Maximum precision: [u64]
+/// Maximum precision: [`u64`]
 /// 
 /// See: [https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf)
 /// See: [https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf](https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf) page 7
@@ -49,13 +49,13 @@ where
     Long(T),
 }
 
-/// [BerLength] implementation
+/// [`BerLength`] implementation
 impl<T: OfBerLength> BerLength<T> {
-    /// Creates a new [BerLength] from a [num_traits::Unsigned]
+    /// Creates a new [BerLength] from a [`num_traits::Unsigned`]
     /// 
     /// # Arguments
     /// 
-    /// * `len` - [num_traits::Unsigned]
+    /// * `len` - [`num_traits::Unsigned`]
     /// 
     /// # Panics
     /// 
@@ -67,14 +67,14 @@ impl<T: OfBerLength> BerLength<T> {
         }
     }
 
-    /// Encodes a length of [BerLength] into a [`Vec<u8>`]
+    /// Encodes a length of [`BerLength`] into a [`Vec<u8>`]
     /// 
-    /// See [BerLength] implementation [Encode]
+    /// See [`BerLength`] implementation [`Encode`]
     pub fn encode(len: &T) -> Vec<u8> {
         Self::new(len).encode()
     }
 
-    /// Returns the length as a [u64]
+    /// Returns the length as a [`u64`]
     pub fn as_u64(&self) -> u64 {
         match self {
             BerLength::Short(len) => *len as u64,
@@ -83,9 +83,9 @@ impl<T: OfBerLength> BerLength<T> {
     }
 }
 
-/// [BerLength] implementation of [Encode]
+/// [`BerLength`] implementation of [`Encode`]
 impl<T: OfBerLength> Encode<Vec<u8>> for BerLength<T> {
-    /// Encode a [BerLength] into a [`Vec<u8>`]
+    /// Encode a [`BerLength`] into a [`Vec<u8>`]
     /// 
     /// # Example
     /// 
@@ -97,16 +97,16 @@ impl<T: OfBerLength> Encode<Vec<u8>> for BerLength<T> {
     /// let value1 = BerLength::new(&201_u64);
     /// let value2 = BerLength::new(&123891829038102_u64);
     /// 
-    /// assert_eq!(value0.encode(), vec![47]);
-    /// assert_eq!(value1.encode(), vec![128 + 1, 201]);
-    /// assert_eq!(value2.encode(), vec![128 + 6, 112, 173, 208, 117, 220, 22]);
+    /// assert_eq!(value0.encode(), vec![`47`]);
+    /// assert_eq!(value1.encode(), vec![`128 + 1, 201`]);
+    /// assert_eq!(value2.encode(), vec![`128 + 6, 112, 173, 208, 117, 220, 22`]);
     /// 
     /// // Can also directly encode:
     /// let value0_encoded = BerLength::encode(&47_u64);
     /// let value1_encoded = BerLength::encode(&201_u64);
     /// 
-    /// assert_eq!(value0_encoded, vec![47]);
-    /// assert_eq!(value1_encoded, vec![128 + 1, 201]);
+    /// assert_eq!(value0_encoded, vec![`47`]);
+    /// assert_eq!(value1_encoded, vec![`128 + 1, 201`]);
     /// ```
     fn encode(&self) -> Vec<u8> {
         match self {
@@ -144,7 +144,7 @@ impl<T: OfBerLength> Encode<Vec<u8>> for BerLength<T> {
     }
 }
 
-/// [BerLength] implementation of [Decode]
+/// [`BerLength`] implementation of [`Decode`]
 impl<T: OfBerLength> Decode<&[u8]> for BerLength<T> {
     fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
         // --------------------------------------------------
@@ -175,7 +175,7 @@ impl<T: OfBerLength> Decode<&[u8]> for BerLength<T> {
 #[derive(Debug, PartialEq)]
 /// Struct representing Basic Encoding Rules (BER) Object Identifier (OID) encoding.
 /// 
-/// Maximum precision: [u64]
+/// Maximum precision: [`u64`]
 /// 
 /// See: [https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf)
 /// See: [https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf](https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf) page 7
@@ -187,20 +187,20 @@ where
 }
 
 impl<T: OfBerOid> BerOid<T> {
-    /// Creates a new [BerOid] from an unsigned integer
+    /// Creates a new [`BerOid`] from an unsigned integer
     pub fn new(value: &T) -> Self {
         Self { value: *value }
     }
 
-    /// Encodes a value of [BerOid] into a [`Vec<u8>`]
+    /// Encodes a value of [`BerOid`] into a [`Vec<u8>`]
     pub fn encode(value: &T) -> Vec<u8> {
         Self::new(value).encode()
     }
 }
 
-/// [BerOid] implementation of [Encode]
+/// [`BerOid`] implementation of [`Encode`]
 impl<T: OfBerOid> Encode<Vec<u8>> for BerOid<T> {
-    /// Encode a [BerOid] into a [`Vec<u8>`]
+    /// Encode a [`BerOid`] into a [`Vec<u8>`]
     /// 
     /// # Example
     /// 
@@ -208,7 +208,7 @@ impl<T: OfBerOid> Encode<Vec<u8>> for BerOid<T> {
     /// use tinyklv::prelude::*;
     /// use tinyklv::codecs::ber::BerOid;
     /// 
-    /// assert_eq!(vec![129, 182, 2], BerOid::encode(&23298_u64));
+    /// assert_eq!(vec![`129, 182, 2`], BerOid::encode(&23298_u64));
     /// ```
     fn encode(&self) -> Vec<u8> {
         let mut output = Vec::new();
@@ -239,7 +239,7 @@ impl<T: OfBerOid> Encode<Vec<u8>> for BerOid<T> {
     }
 }
 
-/// [BerOid] implementation of [Decode]
+/// [`BerOid`] implementation of [`Decode`]
 impl<T: OfBerOid> Decode<&[u8]> for BerOid<T> {
     fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
         // --------------------------------------------------
@@ -270,7 +270,7 @@ fn take_while_msb_set<'s>(input: &mut &'s [u8]) -> winnow::PResult<&'s [u8]> {
 
 #[inline(always)]
 /// Parses out a single byte. MSB is **assumed** set to 0, since
-/// this function is only called after [types::BerOid::take_while_msb_set]
+/// this function is only called after [`take_while_msb_set`]
 fn take_one<'s>(input: &mut &'s [u8]) -> winnow::PResult<&'s [u8]> {
     take(1usize).parse_next(input)
 }
@@ -282,7 +282,7 @@ fn msb_is_set(b: u8) -> bool {
 }
 
 #[inline(always)]
-/// Parses out a specified number of bytes and combines them into a [u64] value
+/// Parses out a specified number of bytes and combines them into a [`u64`] value
 fn parse_length_u64(input: &mut &[u8], num_bytes: usize) -> winnow::PResult<u64> {
     take(num_bytes)
         .map(|bytes: &[u8]| bytes.iter().fold(0u64, |acc, &byte| (acc << 8) | byte as u64))
