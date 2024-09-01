@@ -1,6 +1,6 @@
 [package]
 name = "tinyklv"
-version = "0.0.1-alpha-01"
+version = "0.0.1-alpha.1"
 authors = ["Arpad Voros <arpadav@gmail.com>"]
 license = "MIT"
 description = ""
