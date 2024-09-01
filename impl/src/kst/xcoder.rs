@@ -60,43 +60,6 @@ impl std::fmt::Display for OptionalXcoder {
 }
 // symple::debug_from_display!(OptionalXcoder);
 tinyklv_common::debug_from_display!(OptionalXcoder);
-
-// #[derive(Clone)]
-// /// [`RequiredXcoder`]
-// /// 
-// /// This is an encoder/decoder pair where both are required
-// pub(crate) struct RequiredXcoder {
-//     pub enc: syn::Path,
-//     pub dec: syn::Path,
-// }
-// /// [`RequiredXcoder`] implementation of [`From`] for [`OptionalXcoder`]
-// impl From<OptionalXcoder> for RequiredXcoder {
-//     fn from(x: OptionalXcoder) -> Self {
-//         let oxcoder = OptionalXcoder::from(x);
-//         if oxcoder.enc.is_none() { panic!("{}", crate::Error::MissingEncoder) }
-//         if oxcoder.dec.is_none() { panic!("{}", crate::Error::MissingDecoder) }
-//         RequiredXcoder {
-//             enc: oxcoder.enc.unwrap(),
-//             dec: oxcoder.dec.unwrap(),
-//         }
-//     }
-// }
-// /// [`RequiredXcoder`] implementation of [`From`] for [`MetaContents`]
-// impl From<MetaContents> for RequiredXcoder {
-//     fn from(x: MetaContents) -> Self {
-//         OptionalXcoder::from(x).into()
-//     }
-// }
-// /// [`RequiredXcoder`] implementation of [`std::fmt::Display`]
-// impl std::fmt::Display for RequiredXcoder {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         write!(f, "enc: {}, dec: {}", self.enc.to_token_stream().to_string(), self.dec.to_token_stream().to_string())
-//     }
-// }
-// // symple::debug_from_display!(RequiredXcoder);
-// tinyklv_common::debug_from_display!(RequiredXcoder);
-
-
 #[derive(Clone)]
 /// [`KeyLenXcoder`]
 /// 

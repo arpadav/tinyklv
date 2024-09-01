@@ -18,6 +18,10 @@ chrono = "0.4"
 winnow = "0.6"
 tinyklv = { version = "0.1", path = "../../tinyklv" }
 
+[features]
+misb0601-latest = []
+latest = [ "misb0601-latest" ]
+
 [profile.dev]
 opt-level = 0
 

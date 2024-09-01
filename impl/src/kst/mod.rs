@@ -9,13 +9,14 @@ pub(crate) mod field;
 pub(crate) mod strct;
 pub(crate) mod xcoder;
 
+/// [`Input`] of the [`crate::Klv`] derive macro
 pub(crate) struct Input {
     pub name: syn::Ident,
     pub sattr: StructAttrSchema,
     pub fattrs: Vec<FieldAttrSchema>,
 }
 
-/// [`Input`] implementation
+/// [`Input`] implementation of [`From`] for [`syn::DeriveInput`]
 impl Input {
     pub fn from_syn(input: &syn::DeriveInput) -> Result<Self, crate::Error> {
         // --------------------------------------------------

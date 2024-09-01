@@ -20,26 +20,16 @@ enum Error {
     DeriveForNonStruct(String, String),
     #[error("Unable to parse struct attributes for struct `{0}`")]
     UnableToParseStructAttributes(String),
-    #[error("Missing required encoder: `enc = ?`.")]
-    MissingEncoder,
-    #[error("Missing required decoder: `dec = ?`.")]
-    MissingDecoder,
+    // #[error("Missing required encoder: `enc = ?`.")]
+    // MissingEncoder,
+    // #[error("Missing required decoder: `dec = ?`.")]
+    // MissingDecoder,
     #[error("Missing required type for default encoder/decoder defined in struct attributes: `#[default(ty = ?)]`.")]
     MissingType,
     #[error("Missing required {1} {3} in {0} attributes: `{1}({2} = ?)`.")]
     MissingFunc(String, String, String, String),
     #[error("Missing required key for field `{0}`: `#[key = ?]`.")]
     MissingKey(String),
-    // #[error("Missing required attribute for `{1}`, function for `{0}`: `#[{0}(func = ?)]`.")]
-    // MissingFunc(String, String),
-    // #[error("Attemping to parse non-integer value for `len` for variant `{1}`: {0}")]
-    // NonIntLength(String, String),
-    // #[error("Attemping to parse non-byte string for `key` for variant `{1}`: {0}")]
-    // NonByteStrKey(String, String),
-    // #[error("Encoder type mismatch for variant `{2}`: `#[encoder(typ = {0})]`, but expected {1}.")]
-    // EncoderTypeMismatch(String, String, String),
-    // #[error("Decoder type mismatch for variant `{2}`: `#[decoder(typ = {0})]`, but expected {1}.")]
-    // DecoderTypeMismatch(String, String, String),
 }
 
 const NAME: &str = "Klv";
