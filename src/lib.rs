@@ -42,3 +42,19 @@ macro_rules! op {
 macro_rules! scale {
     ($input:tt, $parser:path, $precision:ty, $scale:tt) => { Ok(($parser.parse_next($input)? as $precision) * $scale) };
 }
+
+#[macro_export]
+/// Sets precision of a parsed value
+/// 
+/// # Example
+/// 
+/// ```rust no_run ignore
+/// tinyklv::dec_as!(input, tinyklv::codecs::binary::dec::be_u16, f64);
+/// ```
+macro_rules! dec_as {
+    ($parser:expr, $precision:ty) => {
+        |input: &mut &[u8]| {
+            $parser.parse_next(input)? as $precision
+        }
+    };
+}
