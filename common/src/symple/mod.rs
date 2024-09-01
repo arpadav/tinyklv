@@ -33,12 +33,12 @@ macro_rules! impl_hasvalue {
             T: $($constraint)+
         {
             /// Get the value, once set
-            fn v(&self) -> &T {
-                self.value.as_ref().unwrap()
+            fn get(&self) -> Option<&T> {
+                self.value.as_ref()
             }
             /// Get the value, as mut
-            fn v_mut(&mut self) -> &mut T {
-                self.value.as_mut().unwrap()
+            fn get_mut(&mut self) -> Option<&mut T> {
+                self.value.as_mut()
             }
             /// Set the value
             fn set(&mut self, value: T) {
