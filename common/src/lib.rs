@@ -14,7 +14,7 @@ pub mod symple;
 /// 
 /// # Syntax
 /// 
-/// ```no_run
+/// ```no_run ignore
 /// use tinyklv::Klv;
 /// use tinyklv::prelude::*;
 /// 
@@ -49,7 +49,7 @@ pub enum StructNames {
     /// 
     /// In practice, setting the stream would look like:
     /// 
-    /// ```no_run
+    /// ```no_run ignore
     /// use tinyklv::Klv;
     /// use tinyklv::prelude::*;
     /// 
@@ -90,7 +90,7 @@ pub enum StructNames {
     /// 
     /// In practice, setting the sentinel would look like:
     /// 
-    /// ```no_run
+    /// ```no_run ignore
     /// use tinyklv::Klv;
     /// use tinyklv::prelude::*;
     /// 
@@ -200,10 +200,34 @@ pub enum StructNames {
 
 #[derive(Const)]
 #[armtype(&str)]
-/// Xcoder Names
+/// Encoder / decoder attribute arguments
+/// 
+/// For shortening, the term "xcoder" is used throughout the documentation and code base
+/// to describe either encoder or decoder.
+/// 
+/// # Syntax
+/// 
+/// 
 pub enum XcoderNames {
     #[value = "ty"]
-    /// The type associated with the encoder and decoder
+    /// `ty` ***(Required for `default`)***: The type associated with the encoder / decoder
+    /// 
+    /// This describes the type of the xcoder. For key/length xcoder's, the type is implied:
+    /// 
+    /// * `key` type: slice of stream type `S`
+    /// * `len` type: Always [`usize`]
+    /// 
+    /// And for struct field items, the type is implied by the attribute field:
+    /// 
+    /// ```ignore no_run
+    /// #[klv(key = 0x01, dec = ...)]
+    /// item: String,           // <-- type is String
+    /// 
+    /// #[klv(key = 0x02, dec = ...)]
+    /// item: Option<String>,   // <-- type is String
+    /// ```
+    /// 
+    /// For `default` xcoders, if no `enc` or `dec` is 
     Type,
     #[value = "dyn"]
     /// Determines whether or not the length is dynamically determined
@@ -222,7 +246,7 @@ pub enum XcoderNames {
 /// 
 /// # Syntax
 /// 
-/// ```no_run
+/// ```no_run ignore
 /// use tinyklv::Klv;
 /// use tinyklv::prelude::*;
 /// 
@@ -268,14 +292,14 @@ pub enum FieldNames {
     /// For example, if the field is of type [`u16`], it will almost always be of ***constant*** length
     /// of two bytes. Therefore, instead of calling a decoder/parser with signature:
     /// 
-    /// ```no_run
+    /// ```no_run ignore
     /// // dyn = true
-    /// fn parse_u16(input: &mut &[u8], length: usize) -> winnow::PResult<u16>
+    /// fn parse_u16(input: &mut &[u8], length: usize) -> winnow::PResult<u16>;
     /// ```
     /// 
     /// It can be written as:
     /// 
-    /// ```no_run
+    /// ```no_run ignore
     /// // dyn = false
     /// fn parse_u16(input: &mut &[u8]) -> winnow::PResult<u16>
     /// // Implied length is 2
@@ -302,7 +326,7 @@ pub enum FieldNames {
     /// 
     /// In practice, streams would look like:
     /// 
-    /// ```no_run
+    /// ```no_run ignore
     /// use tinyklv::Klv;
     /// use tinyklv::prelude::*;
     /// 
@@ -331,16 +355,16 @@ pub enum FieldNames {
     /// 
     /// A path to the decoder function with signature:
     /// 
-    /// ```no_run
+    /// ```no_run ignore
     /// // dyn = false, length is implied
-    /// fn dec(input: &mut S) -> winnow::PResult<T>;
+    /// fn dec<T>(input: &mut S) -> winnow::PResult<T>;
     /// ```
     /// 
     /// OR
     /// 
-    /// ```no_run
+    /// ```no_run ignore
     /// // dyn = true, length is read from stream
-    /// fn dec(input: &mut S, length: usize) -> winnow::PResult<T>;
+    /// fn dec<T>(input: &mut S, length: usize) -> winnow::PResult<T>;
     /// ```
     /// 
     /// Where `S` is the type of the stream and `T` is the type of the
@@ -364,7 +388,7 @@ pub enum FieldNames {
     /// 
     /// In practice, streams would look like:
     /// 
-    /// ```no_run
+    /// ```no_run ignore
     /// use tinyklv::Klv;
     /// use tinyklv::prelude::*;
     /// 
@@ -385,8 +409,8 @@ pub enum FieldNames {
     /// 
     /// A path to the encoder function with signature:
     /// 
-    /// ```no_run
-    /// fn enc(input: T) -> Owned<S>;
+    /// ```no_run ignore
+    /// fn enc<S>(input: T) -> Owned<S>;
     /// ```
     /// 
     /// Where `T` is the type of your struct element, and `S` is the type
@@ -412,7 +436,7 @@ pub enum FieldNames {
     /// 
     /// In practice, streams would look like:
     /// 
-    /// ```no_run
+    /// ```no_run ignore
     /// use tinyklv::Klv;
     /// use tinyklv::prelude::*;
     /// 
