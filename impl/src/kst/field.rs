@@ -113,7 +113,7 @@ impl FieldAttrContents {
         }
     }
 
-    fn set_enc(&mut self, enc: syn::Path) {
+    fn set_enc(&mut self, enc: crate::kst::xcoder::PathLike) {
         match self.xcoder.get_mut() {
             Some(x) => x.enc = Some(enc),
             None => self.xcoder.value = Some(ValueXcoder{
@@ -123,11 +123,11 @@ impl FieldAttrContents {
         }
     }
 
-    pub fn enc(&self) -> Option<&syn::Path> {
+    pub fn enc(&self) -> Option<&crate::kst::xcoder::PathLike> {
         self.xcoder.get().map_or(None, |x| x.enc.as_ref())
     }
 
-    fn set_dec(&mut self, dec: syn::Path) {
+    fn set_dec(&mut self, dec: crate::kst::xcoder::PathLike) {
         match self.xcoder.get_mut() {
             Some(x) => x.dec = Some(dec),
             None => self.xcoder.value = Some(ValueXcoder{
@@ -137,7 +137,7 @@ impl FieldAttrContents {
         }
     }
 
-    pub fn dec(&self) -> Option<&syn::Path> {
+    pub fn dec(&self) -> Option<&crate::kst::xcoder::PathLike> {
         self.xcoder.get().map_or(None, |x| x.dec.as_ref())
     }
 
