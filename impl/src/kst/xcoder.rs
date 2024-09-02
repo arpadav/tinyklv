@@ -222,15 +222,9 @@ impl From<symple::MetaValue> for PathLike {
     fn from(x: symple::MetaValue) -> Self {
         println!(" IM IN HERE {}", x);
         match x {
-            // symple::MetaValue::Path(x) => PathLike::Path(x),
-            // symple::MetaValue::Expr(x) => PathLike::Expr(x),
-            // symple::MetaValue::Macro(x) => PathLike::Macro(x),
-            symple::MetaValue::Path(x) => { println!("am path: {}", x.to_token_stream().to_string()); PathLike::Path(x) },
-            symple::MetaValue::Expr(x) => { println!("am expr: {}", x.to_token_stream().to_string()); PathLike::Expr(x) },
-            symple::MetaValue::Macro(x) => { println!("am macro: {}", x.to_token_stream().to_string()); PathLike::Macro(x) },
-            symple::MetaValue::Ident(_) => { panic!("i am ident") },
-            symple::MetaValue::Lit(_) => { panic!("i am lit") },
-            symple::MetaValue::Type(_) => { panic!("i am type") },
+            symple::MetaValue::Path(x) => PathLike::Path(x),
+            symple::MetaValue::Expr(x) => PathLike::Expr(x),
+            symple::MetaValue::Macro(x) => PathLike::Macro(x),
             _ => panic!("{}", crate::Error::XcoderIsNotPathLike),
         }
     }
