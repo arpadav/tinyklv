@@ -14,11 +14,8 @@ use tinyklv::prelude::*;
         dec = tinyklv::codecs::ber::dec::ber_length),
     default(ty = u8, dec = tinyklv::codecs::binary::dec::be_u8),
     default(ty = u16, dec = tinyklv::codecs::binary::dec::be_u16),
-    default(ty = u32, dec = tinyklv::codecs::binary::dec::be_u32),
     default(ty = i8, dec = tinyklv::codecs::binary::dec::be_i8),
-    default(ty = i16, dec = tinyklv::codecs::binary::dec::be_i16),
-    default(ty = i32, dec = tinyklv::codecs::binary::dec::be_i32),
-    default(ty = String, dec = tinyklv::codecs::binary::dec::to_string, dyn = true),
+    default(ty = String, dec = tinyklv::codecs::binary::dec::to_string_utf8, dyn = true),
 )]
 /// UAS Datalink Local Set
 /// 
@@ -46,7 +43,7 @@ pub struct Misb0601 {
     /// Units: Microseconds (μs)
     /// 
     /// Resolution: 1 μs
-    pub precision_timestamp: Option<chrono::DateTime<chrono::Utc>>,
+    pub precision_timestamp: chrono::DateTime<chrono::Utc>,
 
     #[cfg(any(
         feature = "misb0601-19",
@@ -536,7 +533,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x2e, dec = crate::dec::to_generic_flag_data)]
+    #[klv(key = 0x2e, dec = GenericFlagData::decode)]
     /// (Optional) Generic metadata flags
     /// 
     /// Units: None
@@ -594,4 +591,30 @@ pub enum IrPolarity {
 pub enum SlantRangeSource {
     Measured,
     Calculated,
+}
+
+impl tinyklv::prelude::Decode<&[u8]> for GenericFlagData {
+    #[inline(always)]
+    #[cfg(feature = "misb0601-19")]
+    /// See [`crate::misb0601::Misb0601`] `generic_flag_data`
+    fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
+        let value = tinyklv::codecs::binary::dec::be_u8.parse_next(input)?;
+        Ok(crate::misb0601::GenericFlagData {
+            laser_range_on: (value >> 0) & 1 == 1,
+            auto_track_on: (value >> 1) & 1 == 1,
+            ir_polarity: match (value >> 2) & 1 == 1 {
+                false => crate::misb0601::IrPolarity::WhiteHot,
+                true => crate::misb0601::IrPolarity::BlackHot,
+            },
+            icing_status: match (value >> 3) & 1 == 1 {
+                false => crate::misb0601::Icing::NoIcingDetected,
+                true => crate::misb0601::Icing::IcingDetected,
+            },
+            slant_range_source: match (value >> 4) & 1 == 1 {
+                false => crate::misb0601::SlantRangeSource::Calculated,
+                true => crate::misb0601::SlantRangeSource::Measured,
+            },
+            is_image_invalid: (value >> 5) & 1 == 1,
+        })
+    }
 }
