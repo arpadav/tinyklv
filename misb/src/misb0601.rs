@@ -569,7 +569,13 @@ pub struct GenericFlagData {
     pub ir_polarity: IrPolarity,
     /// Indicates icing status
     pub icing_status: Icing,
+    /// Indicates if slant range is measured or calculated
     pub slant_range_source: SlantRangeSource,
+    /// An invalid image may result from a lens change,
+    /// bad focus or other camera issues which
+    /// significantly degrades the image
+    /// 
+    /// Indicates if image is invalid
     pub is_image_invalid: bool,
 }
 
