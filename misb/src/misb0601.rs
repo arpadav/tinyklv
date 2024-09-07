@@ -23,7 +23,7 @@ use tinyklv::prelude::*;
 /// 
 /// MISB Standard 0601
 /// 
-/// For more information, see [Motion Imagery Standards Board (MISB)]](https://nsgreg.nga.mil/misb.jsp)
+/// For more information, see [Motion Imagery Standards Board (MISB)](https://nsgreg.nga.mil/misb.jsp)
 pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
@@ -388,16 +388,16 @@ pub struct Misb0601 {
     /// Resolution: ~1.2 microdegrees
     pub offset_corner_lon_p4: Option<f32>,
 
-    #[cfg(any(
-        feature = "misb0601-19",
-    ))]
-    #[klv(key = 0x22, dec = crate::dec::to_icing_detected)]
-    /// (Optional) Flag for icing detected at aircraft location
-    /// 
-    /// Units: Icing Code (code)
-    /// 
-    /// Resolution: N/A
-    pub icing_detected: Option<Icing>,
+    // #[cfg(any(
+    //     feature = "misb0601-19",
+    // ))]
+    // #[klv(key = 0x22, dec = crate::dec::to_icing_detected)]
+    // /// (Optional) Flag for icing detected at aircraft location
+    // /// 
+    // /// Units: Icing Code (code)
+    // /// 
+    // /// Resolution: N/A
+    // pub icing_detected: Option<Icing>,
 
     #[cfg(any(
         feature = "misb0601-19",
@@ -431,11 +431,152 @@ pub struct Misb0601 {
     /// 
     /// Resolution: ~0.01 mbar
     pub static_pressure: Option<f32>,
+
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x26, dec = crate::dec::to_alt)]
+    /// (Optional) Density altitude at aircraft location
+    /// 
+    /// Units: Meters (m)
+    /// 
+    /// Resolution: ~0.3 meters
+    pub density_altitude: Option<f32>,
+
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x27)]
+    /// (Optional) Temperature outside of aircraft
+    /// 
+    /// Units: Celsius (°C)
+    /// 
+    /// Resolution: 1 °C
+    pub outside_air_temperature: Option<i8>,
+
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x28, dec = crate::dec::to_lat)]
+    /// (Optional) Calculated target latitude
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~42 nanodegrees
+    pub target_location_latitude: Option<f64>,
+
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x29, dec = crate::dec::to_lon)]
+    /// (Optional) Calculated target longitude
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~84 nanodegrees
+    pub target_location_longitude: Option<f64>,
+
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x2a, dec = crate::dec::to_alt)]
+    /// (Optional) Calculated target altitude
+    /// 
+    /// Units: Meters (m)
+    /// 
+    /// Resolution: ~0.3 meters
+    pub target_location_elevation: Option<f32>,
+
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x2b, dec = crate::dec::to_target_track_gate_hw)]
+    /// (Optional) Tracking gate width (x value) of tracked target within field of view
+    /// 
+    /// Units: Pixels
+    /// 
+    /// Resolution: 2 pixels
+    pub target_track_gate_width: Option<u16>,
+
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x2c, dec = crate::dec::to_target_track_gate_hw)]
+
+    /// (Optional) Tracking gate height (y value) of tracked target within field of view
+    /// 
+    /// Units: Pixels
+    /// 
+    /// Resolution: 2 pixels
+    pub target_track_gate_height: Option<u16>,
+
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x2d, dec = crate::dec::to_error_estimate)]
+    /// (Optional) Circular error 90 (CE90) is the estimated error distance in the horizontal direction
+    /// 
+    /// Units: Meters (m)
+    /// 
+    /// Resolution: ~0.0624 meters
+    pub target_error_estimate_ce90: Option<f32>,
+
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x2d, dec = crate::dec::to_error_estimate)]
+    /// (Optional) Lateral error 90 (LE90) is the estimated error distance in the vertical (or lateral) direction
+    /// 
+    /// Units: Meters (m)
+    /// 
+    /// Resolution: 0.0625 meters
+    pub target_error_estimate_le90: Option<f32>,
+
+    // #[cfg(any(
+    //     feature = "misb0601-19",
+    // ))]
+    // #[klv(key = 0x2e)]
+    // /// (Optional) Generic metadata flags
+    // /// 
+    // /// Units: None
+    // /// 
+    // /// Resolution: N/A
+    // pub generic_flag_data: Option<GenericFlagData>,
 }
 
 #[derive(Debug, PartialEq)]
+/// Icing status on the aircraft (i.e., the wings). Icing on
+/// wings can affect the continuation of the mission
 pub enum Icing {
     DetectorOff,
     NoIcingDetected,
     IcingDetected,
+}
+
+#[derive(Debug, PartialEq)]
+/// See [`crate::misb0601::Misb0601`] `generic_flag_data`
+pub struct GenericFlagData {
+    pub laser_range_on: bool,
+    pub auto_track_on: bool,
+    pub ir_polarity: IrPolarity,
+    pub icing_status: Icing,
+    pub slant_range_source: SlantRangeSource,
+    pub is_image_invalid: bool,
+}
+
+#[derive(Debug, PartialEq)]
+/// IR sensor images use either black values indicating
+/// hot or white values indicating hot
+pub enum IrPolarity {
+    BlackHot,
+    WhiteHot,
+}
+
+#[derive(Debug, PartialEq)]
+/// Slant range is measured (i.e., using Laser Range
+/// Finder) or calculated using gimbal/aircraft position
+/// and angles
+pub enum SlantRangeSource {
+    Measured,
+    Calculated,
 }
