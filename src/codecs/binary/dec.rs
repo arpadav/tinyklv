@@ -1,3 +1,5 @@
+use std::io::Read;
+
 // --------------------------------------------------
 // external
 // --------------------------------------------------
@@ -7,23 +9,23 @@ use winnow::token::take;
 #[inline(always)]
 /// Decodes a byte slice into a [`String`], using [`String::from_utf8_lossy`]
 /// 
-/// To decode in a more strict manner, please see [`to_string_strict`]
+/// To decode in a more strict manner, please see [`to_string_utf8_strict`]
 /// 
 /// # Example
 /// 
 /// ```
-/// use tinyklv::codecs::binary::dec::to_string;
+/// use tinyklv::codecs::binary::dec::to_string_utf8;
 /// 
 /// let mut val1: &[u8] = &[0x41, 0x46, 0x2D, 0x31, 0x30, 0x31];
 /// let mut val2: &[u8] = &[0x4D, 0x49, 0x53, 0x53, 0x49, 0x4F, 0x4E, 0x30, 0x31];
 /// 
-/// let res1 = to_string(&mut val1, 6);
-/// let res2 = to_string(&mut val2, 9);
+/// let res1 = to_string_utf8(&mut val1, 6);
+/// let res2 = to_string_utf8(&mut val2, 9);
 /// 
 /// assert_eq!(res1, Ok(String::from("AF-101")));
 /// assert_eq!(res2, Ok(String::from("MISSION01")));
 /// ```
-pub fn to_string(input: &mut &[u8], len: usize) -> winnow::PResult<String> {
+pub fn to_string_utf8(input: &mut &[u8], len: usize) -> winnow::PResult<String> {
     take(len)
         .map(|slice| String::from_utf8_lossy(slice).to_string())
         .parse_next(input)
@@ -32,23 +34,23 @@ pub fn to_string(input: &mut &[u8], len: usize) -> winnow::PResult<String> {
 #[inline(always)]
 /// Decodes a byte slice into a [`String`], using [`String::from_utf8`]
 /// 
-/// To decode in a more relaxed manner, please see [`to_string`]
+/// To decode in a more relaxed manner, please see [`to_string_utf8`]
 /// 
 /// # Example
 /// 
 /// ```
-/// use tinyklv::codecs::binary::dec::to_string_strict;
+/// use tinyklv::codecs::binary::dec::to_string_utf8_strict;
 ///
 /// let mut val1: &[u8] = &[0x41, 0x46, 0x2D, 0x31, 0x30, 0x31];
 /// let mut val2: &[u8] = &[0x4D, 0x49, 0x53, 0x53, 0x49, 0x4F, 0x4E, 0x30, 0x31];
 /// 
-/// let res1 = to_string_strict(&mut val1, 6);
-/// let res2 = to_string_strict(&mut val2, 9);
+/// let res1 = to_string_utf8_strict(&mut val1, 6);
+/// let res2 = to_string_utf8_strict(&mut val2, 9);
 /// 
 /// assert_eq!(res1, Ok(String::from("AF-101")));
 /// assert_eq!(res2, Ok(String::from("MISSION01")));
 /// ```
-pub fn to_string_strict(input: &mut &[u8], len: usize) -> winnow::PResult<String> {
+pub fn to_string_utf8_strict(input: &mut &[u8], len: usize) -> winnow::PResult<String> {
     let checkpoint = input.checkpoint();
     match String::from_utf8(take(len).parse_next(input)?.to_vec()) {
         Ok(s) => Ok(s),
@@ -56,6 +58,60 @@ pub fn to_string_strict(input: &mut &[u8], len: usize) -> winnow::PResult<String
             input,
             &checkpoint,
             winnow::error::StrContext::Label("Unable to decode string using `String::from_utf8`")
+        ))),
+    }
+}
+
+#[inline(always)]
+/// Decodes a byte slice into a [`String`], using [`String::from_utf16_lossy`]
+pub fn to_string_utf16(input: &mut &[u8], len: usize) -> winnow::PResult<String> {
+    let checkpoint = input.checkpoint();
+    if len % 2 != 0 {
+        return Err(winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new().add_context(
+            input,
+            &checkpoint,
+            winnow::error::StrContext::Label("Invalid UTF-16 slice length")
+        )))
+    }
+    take(len).map(|slice: &[u8]| {
+        let utf16: Vec<u16> = slice
+            .chunks_exact(2)
+            .map(|chunk| {
+                // safe to unwrap, since `chunks_exact` returns exactly
+                // 2 bytes
+                let array: [u8; 2] = chunk.try_into().unwrap();
+                u16::from_le_bytes(array)
+            })
+            .collect();
+        String::from_utf16_lossy(&utf16)
+    }).parse_next(input)
+}
+
+#[inline(always)]
+/// Decodes a byte slice into a [`String`], using [`ascii::AsciiString::from_ascii`]
+/// 
+/// # Example
+/// 
+/// ```
+/// use tinyklv::codecs::binary::dec::to_string_ascii;
+/// 
+/// let mut val1: &[u8] = &[0x41, 0x46, 0x2D, 0x31, 0x30, 0x31];
+/// let mut val2: &[u8] = &[0x4D, 0x49, 0x53, 0x53, 0x49, 0x4F, 0x4E, 0x30, 0x31];
+/// 
+/// let res1 = to_string_ascii(&mut val1, 6);
+/// let res2 = to_string_ascii(&mut val2, 9);
+/// 
+/// assert_eq!(res1, Ok(String::from("AF-101")));
+/// assert_eq!(res2, Ok(String::from("MISSION01")));
+/// ```
+pub fn to_string_ascii(input: &mut &[u8], len: usize) -> winnow::PResult<String> {
+    let checkpoint = input.checkpoint();
+    match ascii::AsciiString::from_ascii(take(len).parse_next(input)?) {
+        Ok(s) => Ok(s.to_string()),
+        Err(_) => Err(winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new().add_context(
+            input,
+            &checkpoint,
+            winnow::error::StrContext::Label("Unable to decode string using `ascii::AsciiString::from_ascii`")
         ))),
     }
 }

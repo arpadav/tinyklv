@@ -16,15 +16,21 @@ publish = false
 rand = "0.8"
 chrono = "0.4"
 winnow = "0.6"
+thisenum = "0.2"
 tinyklv = { version = "0.0.1-alpha.1", path = "../../tinyklv" }
 
 [features]
 default = [ "latest" ]
-latest = [ "misb0601-latest" ]
+latest = [
+    "misb0102-latest",
+    "misb0601-latest",
+]
 
-misb0601-18 = []
 misb0601-19 = []
 misb0601-latest = [ "misb0601-19" ]
+
+misb0102-12 = []
+misb0102-latest = [ "misb0102-12" ]
 
 [profile.dev]
 opt-level = 0

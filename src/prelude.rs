@@ -54,7 +54,7 @@ where
 {
     fn extract(input: &mut S) -> winnow::PResult<Self>;
 }
-/// [Extract] implementation for all types T that implement [Seek] and [`Decode`]
+/// [`Extract`] implementation for all types T that implement [`Seek`] and [`Decode`]
 impl<S, T> Extract<S> for T
 where
     S: winnow::stream::Stream,

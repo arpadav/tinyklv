@@ -85,8 +85,8 @@ pub(crate) fn to_precision_timestamp(input: &mut &[u8]) -> winnow::PResult<chron
 #[cfg(feature = "misb0601-19")]
 /// See [`crate::misb0601::Misb0601`]
 /// 
-/// * `sensor_latitude`
-/// * `frame_center_latitude`
+/// * [`crate::misb0601::Misb0601::sensor_latitude`]
+/// * [`crate::misb0601::Misb0601::frame_center_latitude`]
 pub(crate) fn to_lat(input: &mut &[u8]) -> winnow::PResult<f64> {
     let value = tinyklv::codecs::binary::dec::be_i32.parse_next(input)?;
     if value as u32 == 0x8000_0000 { return Err(tinyklv::err!()) } // "Reserved" - keep for backwards compatibility
@@ -97,8 +97,8 @@ pub(crate) fn to_lat(input: &mut &[u8]) -> winnow::PResult<f64> {
 #[cfg(feature = "misb0601-19")]
 /// See [`crate::misb0601::Misb0601`]
 /// 
-/// * `sensor_longitude`
-/// * `frame_center_longitude`
+/// * [`crate::misb0601::Misb0601::sensor_longitude`]
+/// * [`crate::misb0601::Misb0601::frame_center_longitude`]
 pub(crate) fn to_lon(input: &mut &[u8]) -> winnow::PResult<f64> {
     let value = tinyklv::codecs::binary::dec::be_i32.parse_next(input)?;
     if value as u32 == 0x8000_0000 { return Err(tinyklv::err!()) } // "Reserved" - keep for backwards compatibility
@@ -109,8 +109,8 @@ pub(crate) fn to_lon(input: &mut &[u8]) -> winnow::PResult<f64> {
 #[cfg(feature = "misb0601-19")]
 /// See [`crate::misb0601::Misb0601`]
 /// 
-/// * `sensor_true_altitude`
-/// * `frame_center_elevation`
+/// * [`crate::misb0601::Misb0601::sensor_true_altitude`]
+/// * [`crate::misb0601::Misb0601::frame_center_elevation`]
 pub(crate) fn to_alt(input: &mut &[u8]) -> winnow::PResult<f32> {
     let value = tinyklv::codecs::binary::dec::be_u16.parse_next(input)?;
     Ok((value as f32 * KLV_2_SENSOR_TRUE_ALT_P1) - SENSOR_TRUE_ALT_OFFSET_P2)
@@ -118,7 +118,7 @@ pub(crate) fn to_alt(input: &mut &[u8]) -> winnow::PResult<f32> {
 
 
 #[cfg(feature = "misb0601-19")]
-/// See [`crate::misb0601::Misb0601`] `platform_heading_angle`
+/// See [`crate::misb0601::Misb0601::platform_heading_angle`]
 pub(crate) const to_platform_heading_angle: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
     tinyklv::codecs::binary::dec::be_u16,
     f32,
@@ -127,7 +127,7 @@ pub(crate) const to_platform_heading_angle: fn(&mut &[u8]) -> winnow::PResult<f3
 
 #[inline(always)]
 #[cfg(feature = "misb0601-19")]
-/// See [`crate::misb0601::Misb0601`] `platform_pitch_angle`
+/// See [`crate::misb0601::Misb0601::platform_pitch_angle`]
 pub(crate) fn to_platform_pitch_angle(input: &mut &[u8]) -> winnow::PResult<f32> {
     let value = tinyklv::codecs::binary::dec::be_i16.parse_next(input)?;
     if value as u32 == 0x8000 { return Err(tinyklv::err!()) } // "Out of Range" - keep for backwards compatibility
@@ -136,7 +136,7 @@ pub(crate) fn to_platform_pitch_angle(input: &mut &[u8]) -> winnow::PResult<f32>
 
 #[inline(always)]
 #[cfg(feature = "misb0601-19")]
-/// See [`crate::misb0601::Misb0601`] `platform_roll_angle`
+/// See [`crate::misb0601::Misb0601::platform_roll_angle`]
 pub(crate) fn to_platform_roll_angle(input: &mut &[u8]) -> winnow::PResult<f32> {
     let value = tinyklv::codecs::binary::dec::be_i16.parse_next(input)?;
     if value as u32 == 0x8000 { return Err(tinyklv::err!()) } // "Out of Range" - keep for backwards compatibility
@@ -146,8 +146,8 @@ pub(crate) fn to_platform_roll_angle(input: &mut &[u8]) -> winnow::PResult<f32> 
 #[cfg(feature = "misb0601-19")]
 /// See [`crate::misb0601::Misb0601`]
 /// 
-/// * `sensor_hfov`
-/// * `sensor_vfov`
+/// * [`crate::misb0601::Misb0601::sensor_hfov`]
+/// * [`crate::misb0601::Misb0601::sensor_vfov`]
 pub(crate) const to_sensor_hvfov: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
     tinyklv::codecs::binary::dec::be_u16,
     f32,
@@ -155,7 +155,7 @@ pub(crate) const to_sensor_hvfov: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyk
 );
 
 #[cfg(feature = "misb0601-19")]
-/// See [`crate::misb0601::Misb0601`] `sensor_relative_azimuth_angle`
+/// See [`crate::misb0601::Misb0601::sensor_relative_azimuth_angle`]
 /// 
 /// Same as [`to_sensor_relative_roll_angle`]
 pub(crate) const to_sensor_relative_azimuth_angle: fn(&mut &[u8]) -> winnow::PResult<f64> = tinyklv::scale!(
@@ -165,14 +165,7 @@ pub(crate) const to_sensor_relative_azimuth_angle: fn(&mut &[u8]) -> winnow::PRe
 );
 
 #[cfg(feature = "misb0601-19")]
-/// See [`crate::misb0601::Misb0601`] `sensor_relative_elevation_angle`
-// pub(crate) fn to_sensor_relative_elevation_angle(input: &mut &[u8]) -> winnow::PResult<f64> {
-//     tinyklv::scale!(
-//         tinyklv::codecs::binary::dec::be_i32,
-//         f64,
-//         KLV_2_SENSOR_REL_ELV_ANGLE
-//     )(input)
-// }
+/// See [`crate::misb0601::Misb0601::sensor_relative_elevation_angle`]
 pub(crate) const to_sensor_relative_elevation_angle: fn(&mut &[u8]) -> winnow::PResult<f64> = tinyklv::scale!(
     tinyklv::codecs::binary::dec::be_i32,
     f64,
@@ -180,7 +173,7 @@ pub(crate) const to_sensor_relative_elevation_angle: fn(&mut &[u8]) -> winnow::P
 );
 
 #[cfg(feature = "misb0601-19")]
-/// See [`crate::misb0601::Misb0601`] `sensor_relative_roll_angle`
+/// See [`crate::misb0601::Misb0601::sensor_relative_roll_angle`]
 /// 
 /// Same as [`to_sensor_relative_azimuth_angle`]
 pub(crate) const to_sensor_relative_roll_angle: fn(&mut &[u8]) -> winnow::PResult<f64> = tinyklv::scale!(
@@ -190,7 +183,7 @@ pub(crate) const to_sensor_relative_roll_angle: fn(&mut &[u8]) -> winnow::PResul
 );
 
 #[cfg(feature = "misb0601-19")]
-/// See [`crate::misb0601::Misb0601`] `slant_range`
+/// See [`crate::misb0601::Misb0601::slant_range`]
 pub(crate) const to_slant_range: fn(&mut &[u8]) -> winnow::PResult<f64> = tinyklv::scale!(
     tinyklv::codecs::binary::dec::be_u32,
     f64,
@@ -198,7 +191,7 @@ pub(crate) const to_slant_range: fn(&mut &[u8]) -> winnow::PResult<f64> = tinykl
 );
 
 #[cfg(feature = "misb0601-19")]
-/// See [`crate::misb0601::Misb0601`] `target_width`
+/// See [`crate::misb0601::Misb0601::target_width`]
 pub(crate) const to_target_width: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
     tinyklv::codecs::binary::dec::be_u16,
     f32,
@@ -208,14 +201,14 @@ pub(crate) const to_target_width: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyk
 #[cfg(feature = "misb0601-19")]
 /// See [`crate::misb0601::Misb0601`]
 /// 
-/// * `offset_corner_lat_p1`
-/// * `offset_corner_lon_p1`
-/// * `offset_corner_lat_p2`
-/// * `offset_corner_lon_p2`
-/// * `offset_corner_lat_p3`
-/// * `offset_corner_lon_p3`
-/// * `offset_corner_lat_p4`
-/// * `offset_corner_lon_p4`
+/// * [`crate::misb0601::Misb0601::offset_corner_lat_p1`]
+/// * [`crate::misb0601::Misb0601::offset_corner_lon_p1`]
+/// * [`crate::misb0601::Misb0601::offset_corner_lat_p2`]
+/// * [`crate::misb0601::Misb0601::offset_corner_lon_p2`]
+/// * [`crate::misb0601::Misb0601::offset_corner_lat_p3`]
+/// * [`crate::misb0601::Misb0601::offset_corner_lon_p3`]
+/// * [`crate::misb0601::Misb0601::offset_corner_lat_p4`]
+/// * [`crate::misb0601::Misb0601::offset_corner_lon_p4`]
 pub(crate) const to_offset_ll: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
     tinyklv::codecs::binary::dec::be_i16,
     f32,
@@ -224,7 +217,7 @@ pub(crate) const to_offset_ll: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv:
 
 #[inline(always)]
 #[cfg(feature = "misb0601-19")]
-/// See [`crate::misb0601::Misb0601`] `icing_detected`
+/// See [`crate::misb0601::Misb0601::icing_detected`]
 pub(crate) fn to_icing_detected(input: &mut &[u8]) -> winnow::PResult<crate::misb0601::Icing> {
     match tinyklv::codecs::binary::dec::be_u8.parse_next(input)? {
         0 => Ok(crate::misb0601::Icing::DetectorOff),
@@ -235,7 +228,7 @@ pub(crate) fn to_icing_detected(input: &mut &[u8]) -> winnow::PResult<crate::mis
 }
 
 #[cfg(feature = "misb0601-19")]
-/// See [`crate::misb0601::Misb0601`] `wind_direction`
+/// See [`crate::misb0601::Misb0601::wind_direction`]
 pub(crate) const to_wind_direction: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
     tinyklv::codecs::binary::dec::be_u16,
     f32,
@@ -243,7 +236,7 @@ pub(crate) const to_wind_direction: fn(&mut &[u8]) -> winnow::PResult<f32> = tin
 );
 
 #[cfg(feature = "misb0601-19")]
-/// See [`crate::misb0601::Misb0601`] `wind_speed`
+/// See [`crate::misb0601::Misb0601::wind_speed`]
 pub(crate) const to_wind_speed: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
     tinyklv::codecs::binary::dec::be_u8,
     f32,
@@ -251,7 +244,7 @@ pub(crate) const to_wind_speed: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv
 );
 
 #[cfg(feature = "misb0601-19")]
-/// See [`crate::misb0601::Misb0601`] `static_pressure`
+/// See [`crate::misb0601::Misb0601::static_pressure`]
 pub(crate) const to_static_pressure: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
     tinyklv::codecs::binary::dec::be_u16,
     f32,
@@ -261,8 +254,8 @@ pub(crate) const to_static_pressure: fn(&mut &[u8]) -> winnow::PResult<f32> = ti
 #[cfg(feature = "misb0601-19")]
 /// See [`crate::misb0601::Misb0601`]
 /// 
-/// * `target_track_gate_width`
-/// * `target_track_gate_height`
+/// * [`crate::misb0601::Misb0601::target_track_gate_width`]
+/// * [`crate::misb0601::Misb0601::target_track_gate_height`]
 pub(crate) const to_target_track_gate_hw: fn(&mut &[u8]) -> winnow::PResult<u16> = tinyklv::scale!(
     tinyklv::codecs::binary::dec::be_u8,
     u16,
@@ -272,34 +265,10 @@ pub(crate) const to_target_track_gate_hw: fn(&mut &[u8]) -> winnow::PResult<u16>
 #[cfg(feature = "misb0601-19")]
 /// See [`crate::misb0601::Misb0601`]
 /// 
-/// * `target_error_estimate_ce90`
-/// * `target_error_estimate_le90`
+/// * [`crate::misb0601::Misb0601::target_error_estimate_ce90`]
+/// * [`crate::misb0601::Misb0601::target_error_estimate_le90`]
 pub(crate) const to_error_estimate: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
     tinyklv::codecs::binary::dec::be_u16,
     f32,
     KLV_2_ERROR_ESTIMATE,
 );
-
-#[inline(always)]
-#[cfg(feature = "misb0601-19")]
-/// See [`crate::misb0601::Misb0601`] `generic_flag_data`
-pub(crate) fn to_generic_flag_data(input: &mut &[u8]) -> winnow::PResult<crate::misb0601::GenericFlagData> {
-    let value = tinyklv::codecs::binary::dec::be_u8.parse_next(input)?;
-    Ok(crate::misb0601::GenericFlagData {
-        laser_range_on: (value >> 0) & 1 == 1,
-        auto_track_on: (value >> 1) & 1 == 1,
-        ir_polarity: match (value >> 2) & 1 == 1 {
-            false => crate::misb0601::IrPolarity::WhiteHot,
-            true => crate::misb0601::IrPolarity::BlackHot,
-        },
-        icing_status: match (value >> 3) & 1 == 1 {
-            false => crate::misb0601::Icing::NoIcingDetected,
-            true => crate::misb0601::Icing::IcingDetected,
-        },
-        slant_range_source: match (value >> 4) & 1 == 1 {
-            false => crate::misb0601::SlantRangeSource::Calculated,
-            true => crate::misb0601::SlantRangeSource::Measured,
-        },
-        is_image_invalid: (value >> 5) & 1 == 1,
-    })
-}
