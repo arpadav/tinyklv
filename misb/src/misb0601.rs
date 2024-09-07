@@ -19,266 +19,423 @@ use tinyklv::prelude::*;
     default(ty = i32, dec = tinyklv::codecs::binary::dec::be_i32),
     default(ty = String, dec = tinyklv::codecs::binary::dec::to_string, dyn = true),
 )]
+/// UAS Datalink Local Set
+/// 
+/// MISB Standard 0601
+/// 
+/// For more information, see [Motion Imagery Standards Board (MISB)]](https://nsgreg.nga.mil/misb.jsp)
 pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
     #[klv(key = 0x01)]
-    /// Checksum used to detect errors within a UAS Datalink LS packet
+    /// (Mandatory) Checksum used to detect errors within a UAS Datalink LS packet
+    /// 
+    /// Units: None
+    /// 
+    /// Resolution: N/A
     pub checksum: u16,
 
     #[cfg(any(
         feature = "misb0601-19",
     ))]
     #[klv(key = 0x02, dec = crate::dec::to_precision_timestamp)]
-    /// Timestamp for all metadata in this Local Set; used to coordinate with Motion Imagery
+    /// (Mandatory) Timestamp for all metadata in this Local Set; used to coordinate with Motion Imagery
+    /// 
+    /// Units: Microseconds (μs)
+    /// 
+    /// Resolution: 1 μs
     pub precision_timestamp: Option<chrono::DateTime<chrono::Utc>>,
 
     #[cfg(any(
         feature = "misb0601-19",
     ))]
     #[klv(key = 0x03)]
-    /// Descriptive mission identifier to distinguish event or sortie
+    /// (Optional) Descriptive mission identifier to distinguish event or sortie
+    /// 
+    /// Units: None
+    /// 
+    /// Resolution: N/A
     pub mission_id: Option<String>,
 
     #[cfg(any(
         feature = "misb0601-19",
     ))]
     #[klv(key = 0x04)]
-    /// Identifier of platform as posted
+    /// (Optional) Identifier of platform as posted
+    /// 
+    /// Units: None
+    /// 
+    /// Resolution: N/A
     pub platform_tail_number: Option<String>,
 
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x05, dec = crate::dec::to_platform_heading)]
-    /// Aircraft heading angle
-    pub platform_heading_angle: Option<f64>,
+    #[klv(key = 0x05, dec = crate::dec::to_platform_heading_angle)]
+    /// (Optional) Aircraft heading angle
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~5.5 millidegrees
+    pub platform_heading_angle: Option<f32>,
 
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x06, dec = crate::dec::to_platform_pitch)]
-    /// Aircraft pitch angle
-    pub platform_pitch_angle: Option<f64>,
+    #[klv(key = 0x06, dec = crate::dec::to_platform_pitch_angle)]
+    /// (Optional) Aircraft pitch angle
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~610 microdegrees
+    pub platform_pitch_angle: Option<f32>,
 
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x07, dec = crate::dec::to_platform_roll)]
-    /// Platform roll angle
-    pub platform_roll_angle: Option<f64>,
+    #[klv(key = 0x07, dec = crate::dec::to_platform_roll_angle)]
+    /// (Optional) Platform roll angle
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~1525 microdegrees
+    pub platform_roll_angle: Option<f32>,
 
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x08)]
-    /// True airspeed (TAS) of platform
+    /// (Optional) True airspeed (TAS) of platform
+    /// 
+    /// Units: Meters per second (m/s)
+    /// 
+    /// Resolution: 1 m/s
     pub platform_true_airspeed: Option<u8>,
 
-    #[klv(key = 0x09, dec = tinyklv::cast!(tinyklv::codecs::binary::dec::be_u8, f64))] //, dec = tinyklv::p_as!(tinyklv::codecs::binary::dec::be_u8, f64))]
-    /// Indicated airspeed (IAS) of platform
-    pub platform_indicated_airspeed: Option<f64>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x09)]
+    /// (Optional) Indicated airspeed (IAS) of platform
+    /// 
+    /// Units: Meters per second (m/s)
+    /// 
+    /// Resolution: 1 m/s
+    pub platform_indicated_airspeed: Option<u8>,
 
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x0a)]
-    /// Model name for the platform
+    /// (Optional) Model name for the platform
+    /// 
+    /// Units: None
+    /// 
+    /// Resolution: N/A
     pub platform_designation: Option<String>,
 
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x0b)]
-    /// Name of currently active sensor
+    /// (Optional) Name of currently active sensor
+    /// 
+    /// Units: None
+    /// 
+    /// Resolution: N/A
     pub image_source_sensor: Option<String>,
 
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x0c)]
-    /// Name of the image coordinate system used
+    /// (Optional) Name of the image coordinate system used
+    /// 
+    /// Units: None
+    /// 
+    /// Resolution: N/A
     pub image_coordinate_system: Option<String>,
 
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x0d, dec = crate::dec::to_lat)]
-    /// Sensor latitude
+    /// (Optional) Sensor latitude
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~42 nanodegrees
     pub sensor_latitude: Option<f64>,
 
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x0e, dec = crate::dec::to_lon)]
-    /// Sensor longitude
+    /// (Optional) Sensor longitude
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~84 nanodegrees
     pub sensor_longitude: Option<f64>,
 
-    #[klv(key = 0x0f, dec = crate::dec::to_true_alt)]
-    /// Altitude of sensor above from Mean Sea Level (MSL)
-    pub sensor_true_altitude: Option<f64>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x0f, dec = crate::dec::to_alt)]
+    /// (Optional) Altitude of sensor above from Mean Sea Level (MSL)
+    /// 
+    /// Units: Meters (m)
+    /// 
+    /// Resolution: ~0.3 meters
+    pub sensor_true_altitude: Option<f32>,
 
-    // tinyklv::scale!(input, tinyklv::codecs::binary::dec::be_u16, f64, KLV_2_SENSOR_HVFOV)
-    // #[klv(key = 0x10, dec = crate::dec::to_sensor_hvfov)]
-    #[klv(
-        key = 0x10,
-        dec = tinyklv::scale!(
-            tinyklv::codecs::binary::dec::be_u16,
-            f64,
-            crate::dec::KLV_2_SENSOR_HVFOV
-        ),
-    )]
-    /// Horizontal field of view of selected imaging sensor
-    pub sensor_hfov: Option<f64>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x10, dec = crate::dec::to_sensor_hvfov)]
+    /// (Optional) Horizontal field of view of selected imaging sensor
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~2.7 millidegrees
+    pub sensor_hfov: Option<f32>,
 
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x11, dec = crate::dec::to_sensor_hvfov)]
-    /// Vertical field of view of selected imaging sensor
-    pub sensor_vfov: Option<f64>,
+    /// (Optional) Vertical field of view of selected imaging sensor
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~2.7 millidegrees
+    pub sensor_vfov: Option<f32>,
 
-    #[klv(key = 0x12, dec = crate::dec::to_sensor_rel_azm_rll_angle)]
-    /// Relative rotation angle of sensor to platform longitudinal axis
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x12, dec = crate::dec::to_sensor_relative_azimuth_angle)]
+    /// (Optional) Relative rotation angle of sensor to platform longitudinal axis
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~84 nanodegrees
     pub sensor_relative_azimuth_angle: Option<f64>,
 
-    #[klv(key = 0x13, dec = crate::dec::to_sensor_rel_elv_angle)]
-    /// Relative elevation angle of sensor to platform longitudinal-transverse plane
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x13, dec = crate::dec::to_sensor_relative_elevation_angle)]
+    /// (Optional) Relative elevation angle of sensor to platform longitudinal-transverse plane
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~84 nanodegrees
     pub sensor_relative_elevation_angle: Option<f64>,
 
-    #[klv(key = 0x14, dec = crate::dec::to_sensor_rel_azm_rll_angle)]
-    /// Relative roll angle of sensor to aircraft platform
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x14, dec = crate::dec::to_sensor_relative_roll_angle)]
+    /// (Optional) Relative roll angle of sensor to aircraft platform
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~84 nanodegrees
     pub sensor_relative_roll_angle: Option<f64>,
 
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x15, dec = crate::dec::to_slant_range)]
-    /// Slant range in meters
+    /// (Optional) Slant range in meters
+    /// 
+    /// Units: Meters (m)
+    /// 
+    /// Resolution: ~1.2 millimeters
     pub slant_range: Option<f64>,
 
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
     #[klv(key = 0x16, dec = crate::dec::to_target_width)]
-    /// Target width within sensor field of view
-    pub target_width: Option<f64>,
+    /// (Optional) Target width within sensor field of view
+    /// 
+    /// Units: Meters (m)
+    /// 
+    /// Resolution: ~0.16 meters
+    pub target_width: Option<f32>,
 
-    #[klv(key = 0x17)]
-    /// Terrain latitude of frame center
-    pub frame_center_latitude: Option<i32>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x17, dec = crate::dec::to_lat)]
+    /// (Optional) Terrain latitude of frame center
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~42 nanodegrees
+    pub frame_center_latitude: Option<f64>,
 
-    #[klv(key = 0x18)]
-    /// Terrain longitude of frame center
-    pub frame_center_longitude: Option<i32>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x18, dec = crate::dec::to_lon)]
+    /// (Optional) Terrain longitude of frame center
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~84 nanodegrees
+    pub frame_center_longitude: Option<f64>,
 
-    #[klv(key = 0x19)]
-    /// Terrain elevation at frame center relative to Mean Sea Level (MSL)
-    pub frame_center_elevation: Option<u16>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x19, dec = crate::dec::to_alt)]
+    /// (Optional) Terrain elevation at frame center relative to Mean Sea Level (MSL)
+    /// 
+    /// Units: Meters (m)
+    /// 
+    /// Resolution: 0.3 meters
+    pub frame_center_elevation: Option<f32>,
 
-    // #[klv(key = 0x20)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x1a, dec = crate::dec::to_offset_ll)]
+    /// (Optional) Frame latitude offset for upper left corner
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~1.2 microdegrees
+    pub offset_corner_lat_p1: Option<f32>,
 
-    // #[klv(key = 0x21)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x1b, dec = crate::dec::to_offset_ll)]
+    /// (Optional) Frame longitude offset for upper left corner
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~1.2 microdegrees
+    pub offset_corner_lon_p1: Option<f32>,
 
-    // #[klv(key = 0x22)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x1c, dec = crate::dec::to_offset_ll)]
+    /// (Optional) Frame latitude offset for upper right corner
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~1.2 microdegrees
+    pub offset_corner_lat_p2: Option<f32>,
 
-    // #[klv(key = 0x23)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x1d, dec = crate::dec::to_offset_ll)]
+    /// (Optional) Frame longitude offset for upper right corner
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~1.2 microdegrees
+    pub offset_corner_lon_p2: Option<f32>,
 
-    // #[klv(key = 0x24)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x1e, dec = crate::dec::to_offset_ll)]
+    /// (Optional) Frame latitude offset for lower right corner
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~1.2 microdegrees
+    pub offset_corner_lat_p3: Option<f32>,
 
-    // #[klv(key = 0x25)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x1f, dec = crate::dec::to_offset_ll)]
+    /// (Optional) Frame longitude offset for lower right corner
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~1.2 microdegrees
+    pub offset_corner_lon_p3: Option<f32>,
 
-    // #[klv(key = 0x26)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x20, dec = crate::dec::to_offset_ll)]
+    /// (Optional) Frame latitude offset for lower left corner
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~1.2 microdegrees
+    pub offset_corner_lat_p4: Option<f32>,
 
-    // #[klv(key = 0x27)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x21, dec = crate::dec::to_offset_ll)]
+    /// (Optional) Frame longitude offset for lower left corner
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~1.2 microdegrees
+    pub offset_corner_lon_p4: Option<f32>,
 
-    // #[klv(key = 0x28)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x22, dec = crate::dec::to_icing_detected)]
+    /// (Optional) Flag for icing detected at aircraft location
+    /// 
+    /// Units: Icing Code (code)
+    /// 
+    /// Resolution: N/A
+    pub icing_detected: Option<Icing>,
 
-    // #[klv(key = 0x29)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x23, dec = crate::dec::to_wind_direction)]
+    /// (Optional) Wind direction at aircraft location
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~5.5 millidegrees
+    pub wind_direction: Option<f32>,
 
-    // #[klv(key = 0x30)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x24, dec = crate::dec::to_wind_speed)]
+    /// (Optional) Wind speed at aircraft location
+    /// 
+    /// Units: Meters per second (m/s)
+    /// 
+    /// Resolution: ~0.4 m/s
+    pub wind_speed: Option<f32>,
 
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x25, dec = crate::dec::to_static_pressure)]
+    /// (Optional) Static pressure at aircraft location
+    /// 
+    /// Units: Millibars (mbar)
+    /// 
+    /// Resolution: ~0.01 mbar
+    pub static_pressure: Option<f32>,
+}
 
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
-
-    // #[klv(key = xxxxxxxx)]
-    // /// 
-    // pub namenamenamenamename: Option<typetypetypetypetype>,
+#[derive(Debug, PartialEq)]
+pub enum Icing {
+    DetectorOff,
+    NoIcingDetected,
+    IcingDetected,
 }
