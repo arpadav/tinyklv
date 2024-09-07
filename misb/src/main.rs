@@ -38,7 +38,7 @@ fn main() {
         Err(e) => println!("{:?}", e),
     }
 
-    println!("debug point");
+    // println!("debug point");
 
     // fn main() {
     //     let bruh = tinyklv::scale!();
