@@ -230,18 +230,18 @@ pub(crate) fn to_target_width(input: &mut &[u8]) -> winnow::PResult<f32> {
 /// * `offset_corner_lon_p3`
 /// * `offset_corner_lat_p4`
 /// * `offset_corner_lon_p4`
-pub(crate) fn to_offset_ll(input: &mut &[u8]) -> winnow::PResult<f32> {
-    tinyklv::scale!(
-        tinyklv::codecs::binary::dec::be_i16,
-        f32,
-        KLV_2_OFFSET_LL,
-    )(input)
-}
-// pub(crate) const to_offset_ll: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
-//     tinyklv::codecs::binary::dec::be_i16,
-//     f32,
-//     KLV_2_OFFSET_LL,
-// );
+// pub(crate) fn to_offset_ll(input: &mut &[u8]) -> winnow::PResult<f32> {
+//     tinyklv::scale!(
+//         tinyklv::codecs::binary::dec::be_i16,
+//         f32,
+//         KLV_2_OFFSET_LL,
+//     )(input)
+// }
+pub(crate) const to_offset_ll: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_i16,
+    f32,
+    KLV_2_OFFSET_LL,
+);
 
 #[inline(always)]
 #[cfg(feature = "misb0601-19")]
@@ -257,89 +257,89 @@ pub(crate) fn to_icing_detected(input: &mut &[u8]) -> winnow::PResult<crate::mis
 
 #[cfg(feature = "misb0601-19")]
 /// See [`crate::misb0601::Misb0601`] `wind_direction`
-pub(crate) fn to_wind_direction(input: &mut &[u8]) -> winnow::PResult<f32> {
-    tinyklv::scale!(
-        tinyklv::codecs::binary::dec::be_u16,
-        f32,
-        KLV_2_WIND_DIRECTION
-    )(input)
-}
-// pub(crate) const to_wind_direction: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
-//     tinyklv::codecs::binary::dec::be_u16,
-//     f32,
-//     KLV_2_WIND_DIRECTION
-// );
+// pub(crate) fn to_wind_direction(input: &mut &[u8]) -> winnow::PResult<f32> {
+//     tinyklv::scale!(
+//         tinyklv::codecs::binary::dec::be_u16,
+//         f32,
+//         KLV_2_WIND_DIRECTION
+//     )(input)
+// }
+pub(crate) const to_wind_direction: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u16,
+    f32,
+    KLV_2_WIND_DIRECTION
+);
 
 #[cfg(feature = "misb0601-19")]
 /// See [`crate::misb0601::Misb0601`] `wind_speed`
-pub(crate) fn to_wind_speed(input: &mut &[u8]) -> winnow::PResult<f32> {
-    tinyklv::scale!(
-        tinyklv::codecs::binary::dec::be_u8,
-        f32,
-        KLV_2_WIND_SPEED,
-    )(input)
-}
-// pub(crate) const to_wind_speed: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
-//     tinyklv::codecs::binary::dec::be_u8,
-//     f32,
-//     KLV_2_WIND_SPEED,
-// );
+// pub(crate) fn to_wind_speed(input: &mut &[u8]) -> winnow::PResult<f32> {
+//     tinyklv::scale!(
+//         tinyklv::codecs::binary::dec::be_u8,
+//         f32,
+//         KLV_2_WIND_SPEED,
+//     )(input)
+// }
+pub(crate) const to_wind_speed: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u8,
+    f32,
+    KLV_2_WIND_SPEED,
+);
 
 #[cfg(feature = "misb0601-19")]
 /// See [`crate::misb0601::Misb0601`] `static_pressure`
-pub(crate) fn to_static_pressure(input: &mut &[u8]) -> winnow::PResult<f32> {
-    tinyklv::scale!(
-        tinyklv::codecs::binary::dec::be_u16,
-        f32,
-        KLV_2_STATIC_PRESSURE,
-    )(input)
-}
-// pub(crate) const to_static_pressure: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
-//     tinyklv::codecs::binary::dec::be_u16,
-//     f32,
-//     KLV_2_STATIC_PRESSURE,
-// );
+// pub(crate) fn to_static_pressure(input: &mut &[u8]) -> winnow::PResult<f32> {
+//     tinyklv::scale!(
+//         tinyklv::codecs::binary::dec::be_u16,
+//         f32,
+//         KLV_2_STATIC_PRESSURE,
+//     )(input)
+// }
+pub(crate) const to_static_pressure: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u16,
+    f32,
+    KLV_2_STATIC_PRESSURE,
+);
 
 #[cfg(feature = "misb0601-19")]
 /// See [`crate::misb0601::Misb0601`]
 /// 
 /// * `target_track_gate_width`
 /// * `target_track_gate_height`
-pub(crate) fn to_target_track_gate_hw(input: &mut &[u8]) -> winnow::PResult<u16> {
-    tinyklv::scale!(
-        tinyklv::codecs::binary::dec::be_u8,
-        u16,
-        2,
-    )(input)
-}
-// pub(crate) const to_target_track_gate_hw: fn(&mut &[u8]) -> winnow::PResult<u16> = tinyklv::scale!(
-//     tinyklv::codecs::binary::dec::be_u8,
-//     u16,
-//     2,
-// );
+// pub(crate) fn to_target_track_gate_hw(input: &mut &[u8]) -> winnow::PResult<u16> {
+//     tinyklv::scale!(
+//         tinyklv::codecs::binary::dec::be_u8,
+//         u16,
+//         2,
+//     )(input)
+// }
+pub(crate) const to_target_track_gate_hw: fn(&mut &[u8]) -> winnow::PResult<u16> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u8,
+    u16,
+    2,
+);
 
 #[cfg(feature = "misb0601-19")]
 /// See [`crate::misb0601::Misb0601`]
 /// 
 /// * `target_error_estimate_ce90`
 /// * `target_error_estimate_le90`
-pub(crate) fn to_error_estimate(input: &mut &[u8]) -> winnow::PResult<f32> {
-    tinyklv::scale!(
-        tinyklv::codecs::binary::dec::be_u16,
-        f32,
-        KLV_2_ERROR_ESTIMATE,
-    )(input)
-}
-// pub(crate) const to_error_estimate: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
-//     tinyklv::codecs::binary::dec::be_u16,
-//     f32,
-//     KLV_2_ERROR_ESTIMATE,
-// );
+// pub(crate) fn to_error_estimate(input: &mut &[u8]) -> winnow::PResult<f32> {
+//     tinyklv::scale!(
+//         tinyklv::codecs::binary::dec::be_u16,
+//         f32,
+//         KLV_2_ERROR_ESTIMATE,
+//     )(input)
+// }
+pub(crate) const to_error_estimate: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u16,
+    f32,
+    KLV_2_ERROR_ESTIMATE,
+);
 
 #[inline(always)]
 #[cfg(feature = "misb0601-19")]
 /// See [`crate::misb0601::Misb0601`] `generic_flag_data`
-pub(crate) fn generic_flag_data(input: &mut &[u8]) -> winnow::PResult<crate::misb0601::GenericFlagData> {
+pub(crate) fn to_generic_flag_data(input: &mut &[u8]) -> winnow::PResult<crate::misb0601::GenericFlagData> {
     let value = tinyklv::codecs::binary::dec::be_u8.parse_next(input)?;
     Ok(crate::misb0601::GenericFlagData {
         laser_range_on: (value >> 0) & 1 == 1,

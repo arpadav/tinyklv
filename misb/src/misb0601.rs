@@ -15,6 +15,7 @@ use tinyklv::prelude::*;
     default(ty = u8, dec = tinyklv::codecs::binary::dec::be_u8),
     default(ty = u16, dec = tinyklv::codecs::binary::dec::be_u16),
     default(ty = u32, dec = tinyklv::codecs::binary::dec::be_u32),
+    default(ty = i8, dec = tinyklv::codecs::binary::dec::be_i8),
     default(ty = i16, dec = tinyklv::codecs::binary::dec::be_i16),
     default(ty = i32, dec = tinyklv::codecs::binary::dec::be_i32),
     default(ty = String, dec = tinyklv::codecs::binary::dec::to_string, dyn = true),
@@ -388,16 +389,16 @@ pub struct Misb0601 {
     /// Resolution: ~1.2 microdegrees
     pub offset_corner_lon_p4: Option<f32>,
 
-    // #[cfg(any(
-    //     feature = "misb0601-19",
-    // ))]
-    // #[klv(key = 0x22, dec = crate::dec::to_icing_detected)]
-    // /// (Optional) Flag for icing detected at aircraft location
-    // /// 
-    // /// Units: Icing Code (code)
-    // /// 
-    // /// Resolution: N/A
-    // pub icing_detected: Option<Icing>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x22, dec = crate::dec::to_icing_detected)]
+    /// (Optional) Flag for icing detected at aircraft location
+    /// 
+    /// Units: Icing Code (code)
+    /// 
+    /// Resolution: N/A
+    pub icing_detected: Option<Icing>,
 
     #[cfg(any(
         feature = "misb0601-19",
@@ -532,16 +533,16 @@ pub struct Misb0601 {
     /// Resolution: 0.0625 meters
     pub target_error_estimate_le90: Option<f32>,
 
-    // #[cfg(any(
-    //     feature = "misb0601-19",
-    // ))]
-    // #[klv(key = 0x2e)]
-    // /// (Optional) Generic metadata flags
-    // /// 
-    // /// Units: None
-    // /// 
-    // /// Resolution: N/A
-    // pub generic_flag_data: Option<GenericFlagData>,
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x2e, dec = crate::dec::to_generic_flag_data)]
+    /// (Optional) Generic metadata flags
+    /// 
+    /// Units: None
+    /// 
+    /// Resolution: N/A
+    pub generic_flag_data: Option<GenericFlagData>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -556,9 +557,17 @@ pub enum Icing {
 #[derive(Debug, PartialEq)]
 /// See [`crate::misb0601::Misb0601`] `generic_flag_data`
 pub struct GenericFlagData {
+    /// Laser Range Finder can be used to aid in geopositioning
+    /// 
+    /// Indicates whether or not laser range finder is on
     pub laser_range_on: bool,
+    /// Sensor steering is automatically controlled by onboard tracking system
+    /// 
+    /// Indicates whether or not sensor steering is on
     pub auto_track_on: bool,
+    /// Indicates IR polarity
     pub ir_polarity: IrPolarity,
+    /// Indicates icing status
     pub icing_status: Icing,
     pub slant_range_source: SlantRangeSource,
     pub is_image_invalid: bool,
