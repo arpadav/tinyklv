@@ -1,3 +1,15 @@
+#![allow(non_upper_case_globals)]
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use chrono::TimeZone;
+// use winnow::prelude::*;
+// use winnow::stream::Stream;
+// use winnow::error::AddContext;
+
+// --------------------------------------------------
+// tinyklv
+// --------------------------------------------------
 use tinyklv::Klv;
 use tinyklv::prelude::*;
 
@@ -37,7 +49,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x02, dec = crate::dec::to_precision_timestamp)]
+    #[klv(key = 0x02, dec = to_precision_timestamp)]
     /// (Mandatory) Timestamp for all metadata in this Local Set; used to coordinate with Motion Imagery
     /// 
     /// Units: Microseconds (μs)
@@ -70,7 +82,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x05, dec = crate::dec::to_platform_heading_angle)]
+    #[klv(key = 0x05, dec = to_platform_heading_angle)]
     /// (Optional) Aircraft heading angle
     /// 
     /// Units: Degrees (°)
@@ -81,7 +93,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x06, dec = crate::dec::to_platform_pitch_angle)]
+    #[klv(key = 0x06, dec = to_platform_pitch_angle)]
     /// (Optional) Aircraft pitch angle
     /// 
     /// Units: Degrees (°)
@@ -92,7 +104,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x07, dec = crate::dec::to_platform_roll_angle)]
+    #[klv(key = 0x07, dec = to_platform_roll_angle)]
     /// (Optional) Platform roll angle
     /// 
     /// Units: Degrees (°)
@@ -158,7 +170,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x0d, dec = crate::dec::to_lat)]
+    #[klv(key = 0x0d, dec = to_lat)]
     /// (Optional) Sensor latitude
     /// 
     /// Units: Degrees (°)
@@ -169,7 +181,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x0e, dec = crate::dec::to_lon)]
+    #[klv(key = 0x0e, dec = to_lon)]
     /// (Optional) Sensor longitude
     /// 
     /// Units: Degrees (°)
@@ -180,7 +192,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x0f, dec = crate::dec::to_alt)]
+    #[klv(key = 0x0f, dec = to_alt)]
     /// (Optional) Altitude of sensor above from Mean Sea Level (MSL)
     /// 
     /// Units: Meters (m)
@@ -191,7 +203,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x10, dec = crate::dec::to_sensor_hvfov)]
+    #[klv(key = 0x10, dec = to_sensor_hvfov)]
     /// (Optional) Horizontal field of view of selected imaging sensor
     /// 
     /// Units: Degrees (°)
@@ -202,7 +214,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x11, dec = crate::dec::to_sensor_hvfov)]
+    #[klv(key = 0x11, dec = to_sensor_hvfov)]
     /// (Optional) Vertical field of view of selected imaging sensor
     /// 
     /// Units: Degrees (°)
@@ -213,7 +225,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x12, dec = crate::dec::to_sensor_relative_azimuth_angle)]
+    #[klv(key = 0x12, dec = to_sensor_relative_azimuth_angle)]
     /// (Optional) Relative rotation angle of sensor to platform longitudinal axis
     /// 
     /// Units: Degrees (°)
@@ -224,7 +236,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x13, dec = crate::dec::to_sensor_relative_elevation_angle)]
+    #[klv(key = 0x13, dec = to_sensor_relative_elevation_angle)]
     /// (Optional) Relative elevation angle of sensor to platform longitudinal-transverse plane
     /// 
     /// Units: Degrees (°)
@@ -235,7 +247,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x14, dec = crate::dec::to_sensor_relative_roll_angle)]
+    #[klv(key = 0x14, dec = to_sensor_relative_roll_angle)]
     /// (Optional) Relative roll angle of sensor to aircraft platform
     /// 
     /// Units: Degrees (°)
@@ -246,7 +258,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x15, dec = crate::dec::to_slant_range)]
+    #[klv(key = 0x15, dec = to_slant_range)]
     /// (Optional) Slant range in meters
     /// 
     /// Units: Meters (m)
@@ -257,7 +269,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x16, dec = crate::dec::to_target_width)]
+    #[klv(key = 0x16, dec = to_target_width)]
     /// (Optional) Target width within sensor field of view
     /// 
     /// Units: Meters (m)
@@ -268,7 +280,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x17, dec = crate::dec::to_lat)]
+    #[klv(key = 0x17, dec = to_lat)]
     /// (Optional) Terrain latitude of frame center
     /// 
     /// Units: Degrees (°)
@@ -279,7 +291,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x18, dec = crate::dec::to_lon)]
+    #[klv(key = 0x18, dec = to_lon)]
     /// (Optional) Terrain longitude of frame center
     /// 
     /// Units: Degrees (°)
@@ -290,7 +302,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x19, dec = crate::dec::to_alt)]
+    #[klv(key = 0x19, dec = to_alt)]
     /// (Optional) Terrain elevation at frame center relative to Mean Sea Level (MSL)
     /// 
     /// Units: Meters (m)
@@ -301,7 +313,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x1a, dec = crate::dec::to_offset_ll)]
+    #[klv(key = 0x1a, dec = to_offset_ll)]
     /// (Optional) Frame latitude offset for upper left corner
     /// 
     /// Units: Degrees (°)
@@ -312,7 +324,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x1b, dec = crate::dec::to_offset_ll)]
+    #[klv(key = 0x1b, dec = to_offset_ll)]
     /// (Optional) Frame longitude offset for upper left corner
     /// 
     /// Units: Degrees (°)
@@ -323,7 +335,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x1c, dec = crate::dec::to_offset_ll)]
+    #[klv(key = 0x1c, dec = to_offset_ll)]
     /// (Optional) Frame latitude offset for upper right corner
     /// 
     /// Units: Degrees (°)
@@ -334,7 +346,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x1d, dec = crate::dec::to_offset_ll)]
+    #[klv(key = 0x1d, dec = to_offset_ll)]
     /// (Optional) Frame longitude offset for upper right corner
     /// 
     /// Units: Degrees (°)
@@ -345,7 +357,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x1e, dec = crate::dec::to_offset_ll)]
+    #[klv(key = 0x1e, dec = to_offset_ll)]
     /// (Optional) Frame latitude offset for lower right corner
     /// 
     /// Units: Degrees (°)
@@ -356,7 +368,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x1f, dec = crate::dec::to_offset_ll)]
+    #[klv(key = 0x1f, dec = to_offset_ll)]
     /// (Optional) Frame longitude offset for lower right corner
     /// 
     /// Units: Degrees (°)
@@ -367,7 +379,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x20, dec = crate::dec::to_offset_ll)]
+    #[klv(key = 0x20, dec = to_offset_ll)]
     /// (Optional) Frame latitude offset for lower left corner
     /// 
     /// Units: Degrees (°)
@@ -378,7 +390,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x21, dec = crate::dec::to_offset_ll)]
+    #[klv(key = 0x21, dec = to_offset_ll)]
     /// (Optional) Frame longitude offset for lower left corner
     /// 
     /// Units: Degrees (°)
@@ -389,7 +401,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x22, dec = crate::dec::to_icing_detected)]
+    #[klv(key = 0x22, dec = to_icing_detected)]
     /// (Optional) Flag for icing detected at aircraft location
     /// 
     /// Units: Icing Code (code)
@@ -400,7 +412,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x23, dec = crate::dec::to_wind_direction)]
+    #[klv(key = 0x23, dec = to_wind_direction)]
     /// (Optional) Wind direction at aircraft location
     /// 
     /// Units: Degrees (°)
@@ -411,7 +423,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x24, dec = crate::dec::to_wind_speed)]
+    #[klv(key = 0x24, dec = to_wind_speed)]
     /// (Optional) Wind speed at aircraft location
     /// 
     /// Units: Meters per second (m/s)
@@ -422,7 +434,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x25, dec = crate::dec::to_mbar_pressure)]
+    #[klv(key = 0x25, dec = to_mbar_pressure)]
     /// (Optional) Static pressure at aircraft location
     /// 
     /// Units: Millibars (mbar)
@@ -433,7 +445,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x26, dec = crate::dec::to_alt)]
+    #[klv(key = 0x26, dec = to_alt)]
     /// (Optional) Density altitude at aircraft location
     /// 
     /// Units: Meters (m)
@@ -455,7 +467,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x28, dec = crate::dec::to_lat)]
+    #[klv(key = 0x28, dec = to_lat)]
     /// (Optional) Calculated target latitude
     /// 
     /// Units: Degrees (°)
@@ -466,7 +478,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x29, dec = crate::dec::to_lon)]
+    #[klv(key = 0x29, dec = to_lon)]
     /// (Optional) Calculated target longitude
     /// 
     /// Units: Degrees (°)
@@ -477,7 +489,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x2a, dec = crate::dec::to_alt)]
+    #[klv(key = 0x2a, dec = to_alt)]
     /// (Optional) Calculated target altitude
     /// 
     /// Units: Meters (m)
@@ -488,7 +500,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x2b, dec = crate::dec::to_target_track_gate_hw)]
+    #[klv(key = 0x2b, dec = to_target_track_gate_hw)]
     /// (Optional) Tracking gate width (x value) of tracked target within field of view
     /// 
     /// Units: Pixels
@@ -499,7 +511,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x2c, dec = crate::dec::to_target_track_gate_hw)]
+    #[klv(key = 0x2c, dec = to_target_track_gate_hw)]
 
     /// (Optional) Tracking gate height (y value) of tracked target within field of view
     /// 
@@ -511,7 +523,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x2d, dec = crate::dec::to_error_estimate)]
+    #[klv(key = 0x2d, dec = to_error_estimate)]
     /// (Optional) Circular error 90 (CE90) is the estimated error distance in the horizontal direction
     /// 
     /// Units: Meters (m)
@@ -522,7 +534,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x2d, dec = crate::dec::to_error_estimate)]
+    #[klv(key = 0x2e, dec = to_error_estimate)]
     /// (Optional) Lateral error 90 (LE90) is the estimated error distance in the vertical (or lateral) direction
     /// 
     /// Units: Meters (m)
@@ -533,7 +545,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x2e, dec = GenericFlagData::decode)]
+    #[klv(key = 0x2f, dec = GenericFlagData::decode)]
     /// (Optional) Generic metadata flags
     /// 
     /// Units: None
@@ -544,7 +556,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x2f, dec = crate::misb0102::Misb0102LocalSet::decode)]
+    #[klv(key = 0x30, dec = crate::misb0102::Misb0102LocalSet::decode)]
     /// (Optional) MISB ST 0102 local let Security Metadata items
     /// 
     /// Units: None
@@ -555,7 +567,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x30, dec = crate::dec::to_mbar_pressure)]
+    #[klv(key = 0x31, dec = to_mbar_pressure)]
     /// (Optional) Differential pressure at aircraft location
     /// 
     /// Units: Millibar (mbar)
@@ -566,7 +578,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x31, dec = crate::dec::to_platform_pitch_angle)]
+    #[klv(key = 0x32, dec = to_platform_pitch_angle)]
     /// (Optional) Platform attack angle
     /// 
     /// Units: Degrees (°)
@@ -577,7 +589,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x32, dec = crate::dec::to_platform_vertical_speed)]
+    #[klv(key = 0x33, dec = to_platform_vertical_speed)]
     /// (Optional) Vertical speed of the aircraft relative to zenith
     /// 
     /// Units: Meters per second (m/s)
@@ -588,7 +600,7 @@ pub struct Misb0601 {
     // #[cfg(any(
     //     feature = "misb0601-19",
     // ))]
-    // #[klv(key = 0x33)]
+    // #[klv(key = 0x34)]
     // pub platform_sideslip_angle: Option<f32>,
 }
 
@@ -641,10 +653,9 @@ pub struct GenericFlagData {
     /// Indicates if image is invalid
     pub is_image_invalid: bool,
 }
+#[cfg(feature = "misb0601-19")]
 /// [`GenericFlagData`] implementation of [`tinyklv::prelude::Decode`]
 impl tinyklv::prelude::Decode<&[u8]> for GenericFlagData {
-    #[inline(always)]
-    #[cfg(feature = "misb0601-19")]
     /// See [`crate::misb0601::Misb0601::generic_flag_data`]
     fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
         let value = tinyklv::codecs::binary::dec::be_u8.parse_next(input)?;
@@ -666,4 +677,282 @@ impl tinyklv::prelude::Decode<&[u8]> for GenericFlagData {
             is_image_invalid: (value >> 5) & 1 == 1,
         })
     }
+}
+
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+// it is known that some values are repeated
+// --------------------------------------------------
+pub const SFT_2_LAT: f64 = 4294967294.0 / 180.0;
+pub const KLV_2_LAT: f64 = 180.0 / 4294967294.0;
+pub const SFT_2_LON: f64 = 4294967294.0 / 360.0;
+pub const KLV_2_LON: f64 = 360.0 / 4294967294.0;
+pub const KLV_2_PLATFORM_HEADING: f32 = 360.0 / 65535.0;
+pub const SFT_2_PLATFORM_HEADING: f32 = 65535.0 / 360.0;
+pub const KLV_2_PLATFORM_PITCH: f32 = 40.0 / 65534.0;
+pub const SFT_2_PLATFORM_PITCH: f32 = 65534.0 / 40.0;
+pub const KLV_2_PLATFORM_ROLL: f32 = 100.0 / 65534.0;
+pub const SFT_2_PLATFORM_ROLL: f32 = 65534.0 / 100.0;
+pub const KLV_2_SENSOR_TRUE_ALT_P1: f32 = 19900.0 / 65535.0;
+pub const SFT_2_SENSOR_TRUE_ALT_P1: f32 = 65535.0 / 19900.0;
+pub const SENSOR_TRUE_ALT_OFFSET_P2: f32 = 900.0;
+pub const SFT_2_SENSOR_HVFOV: f32 = 65535.0 / 180.0;
+pub const KLV_2_SENSOR_HVFOV: f32 = 180.0 / 65535.0;
+pub const SFT_2_SENSOR_REL_AZM_RLL_ANGLE: f64 = 4294967295.0 / 360.0;
+pub const KLV_2_SENSOR_REL_AZM_RLL_ANGLE: f64 = 360.0 / 4294967295.0;
+pub const SFT_2_SENSOR_REL_ELV_ANGLE: f64 = 4294967294.0 / 360.0;
+pub const KLV_2_SENSOR_REL_ELV_ANGLE: f64 = 360.0 / 4294967294.0;
+pub const SFT_2_SLANT_RANGE: f64 = 4294967295.0 / 5_000_000.0;
+pub const KLV_2_SLANT_RANGE: f64 = 5_000_000.0 / 4294967295.0;
+pub const SFT_2_TARGET_WIDTH: f32 = 65535.0 / 10_000.0;
+pub const KLV_2_TARGET_WIDTH: f32 = 10_000.0 / 65535.0;
+pub const SFT_2_OFFSET_LL: f32 = 65534.0 / 0.15;
+pub const KLV_2_OFFSET_LL: f32 = 0.15 / 65534.0;
+pub const SFT_2_WIND_DIRECTION: f32 = 65535.0 / 360.0;
+pub const KLV_2_WIND_DIRECTION: f32 = 360.0 / 65535.0;
+pub const SFT_2_WIND_SPEED: f32 = 255.0 / 100.0;
+pub const KLV_2_WIND_SPEED: f32 = 100.0 / 255.0;
+pub const SFT_2_MBAR_PRESSURE: f32 = 65535.0 / 5000.0;
+pub const KLV_2_MBAR_PRESSURE: f32 = 5000.0 / 65535.0;
+pub const SFT_2_ERROR_ESTIMATE: f32 = 65535.0 / 4095.0;
+pub const KLV_2_ERROR_ESTIMATE: f32 = 4095.0 / 65535.0;
+pub const SFT_2_PLATFORM_VERT_SPEED: f32 = 65534.0 / 360.0;
+pub const KLV_2_PLATFORM_VERT_SPEED: f32 = 360.0 / 65534.0;
+
+#[inline(always)]
+#[cfg(feature = "misb0601-19")]
+/// Represents the number of MICROSECONDS elapsed since midnight
+/// (00:00:00), January 1, 1970, not including leap seconds.
+/// 
+/// # Example
+/// 
+/// ```
+/// use chrono::TimeZone;
+/// use tinyklv::prelude::*;
+/// use misb::misb0601::to_precision_timestamp;
+/// let mut val1: &[u8] = &(0x0004_59F4_A6AA_4AA8 as u64).to_be_bytes();
+/// let result1 = to_precision_timestamp(&mut val1);
+/// assert_eq!(result1, Ok(chrono::Utc.with_ymd_and_hms(2008, 10, 24, 0, 13, 29).unwrap() + chrono::Duration::milliseconds(913)));
+/// ```
+pub fn to_precision_timestamp(input: &mut &[u8]) -> winnow::PResult<chrono::DateTime<chrono::Utc>> {
+    let checkpoint = input.checkpoint();
+    // time in microseconds
+    let ts = winnow::binary::be_u64.parse_next(input)?; 
+    // time in seconds, time in nanoseconds
+    let (ts, tns) = (ts / 1_000_000, (ts % 1_000_000) * 1_000);
+    // convert to UTC
+    match chrono::Utc.timestamp_opt(ts as i64, tns as u32) {
+        chrono::LocalResult::Single(dt) => Ok(dt),
+        chrono::LocalResult::None => Err(tinyklv::err!().add_context(
+            input,
+            &checkpoint,
+            winnow::error::StrContext::Label("Invalid timestamp")
+        )),
+        chrono::LocalResult::Ambiguous(_, _) => Err(tinyklv::err!()),
+    }
+}
+
+#[inline(always)]
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601`]
+/// 
+/// * [`crate::misb0601::Misb0601::sensor_latitude`]
+/// * [`crate::misb0601::Misb0601::frame_center_latitude`]
+pub(crate) fn to_lat(input: &mut &[u8]) -> winnow::PResult<f64> {
+    let value = tinyklv::codecs::binary::dec::be_i32.parse_next(input)?;
+    if value as u32 == 0x8000_0000 { return Err(tinyklv::err!()) } // "Reserved" - keep for backwards compatibility
+    Ok((value as f64) * KLV_2_LAT)
+}
+
+#[inline(always)]
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601`]
+/// 
+/// * [`crate::misb0601::Misb0601::sensor_longitude`]
+/// * [`crate::misb0601::Misb0601::frame_center_longitude`]
+pub(crate) fn to_lon(input: &mut &[u8]) -> winnow::PResult<f64> {
+    let value = tinyklv::codecs::binary::dec::be_i32.parse_next(input)?;
+    if value as u32 == 0x8000_0000 { return Err(tinyklv::err!()) } // "Reserved" - keep for backwards compatibility
+    Ok((value as f64) * KLV_2_LON)
+}
+
+#[inline(always)]
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601`]
+/// 
+/// * [`crate::misb0601::Misb0601::sensor_true_altitude`]
+/// * [`crate::misb0601::Misb0601::frame_center_elevation`]
+pub(crate) fn to_alt(input: &mut &[u8]) -> winnow::PResult<f32> {
+    let value = tinyklv::codecs::binary::dec::be_u16.parse_next(input)?;
+    Ok((value as f32 * KLV_2_SENSOR_TRUE_ALT_P1) - SENSOR_TRUE_ALT_OFFSET_P2)
+}
+
+
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601::platform_heading_angle`]
+pub(crate) const to_platform_heading_angle: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u16,
+    f32,
+    KLV_2_PLATFORM_HEADING
+);
+
+#[inline(always)]
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601::platform_pitch_angle`]
+pub(crate) fn to_platform_pitch_angle(input: &mut &[u8]) -> winnow::PResult<f32> {
+    let value = tinyklv::codecs::binary::dec::be_i16.parse_next(input)?;
+    if value as u32 == 0x8000 { return Err(tinyklv::err!()) } // "Out of Range" - keep for backwards compatibility
+    Ok((value as f32) * KLV_2_PLATFORM_PITCH)
+}
+
+#[inline(always)]
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601::platform_roll_angle`]
+pub(crate) fn to_platform_roll_angle(input: &mut &[u8]) -> winnow::PResult<f32> {
+    let value = tinyklv::codecs::binary::dec::be_i16.parse_next(input)?;
+    if value as u32 == 0x8000 { return Err(tinyklv::err!()) } // "Out of Range" - keep for backwards compatibility
+    Ok((value as f32) * KLV_2_PLATFORM_ROLL)
+}
+
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601`]
+/// 
+/// * [`crate::misb0601::Misb0601::sensor_hfov`]
+/// * [`crate::misb0601::Misb0601::sensor_vfov`]
+pub(crate) const to_sensor_hvfov: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u16,
+    f32,
+    KLV_2_SENSOR_HVFOV
+);
+
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601::sensor_relative_azimuth_angle`]
+/// 
+/// Same as [`to_sensor_relative_roll_angle`]
+pub(crate) const to_sensor_relative_azimuth_angle: fn(&mut &[u8]) -> winnow::PResult<f64> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u32,
+    f64,
+    KLV_2_SENSOR_REL_AZM_RLL_ANGLE
+);
+
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601::sensor_relative_elevation_angle`]
+pub(crate) const to_sensor_relative_elevation_angle: fn(&mut &[u8]) -> winnow::PResult<f64> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_i32,
+    f64,
+    KLV_2_SENSOR_REL_ELV_ANGLE
+);
+
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601::sensor_relative_roll_angle`]
+/// 
+/// Same as [`to_sensor_relative_azimuth_angle`]
+pub(crate) const to_sensor_relative_roll_angle: fn(&mut &[u8]) -> winnow::PResult<f64> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u32,
+    f64,
+    KLV_2_SENSOR_REL_AZM_RLL_ANGLE
+);
+
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601::slant_range`]
+pub(crate) const to_slant_range: fn(&mut &[u8]) -> winnow::PResult<f64> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u32,
+    f64,
+    KLV_2_SLANT_RANGE
+);
+
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601::target_width`]
+pub(crate) const to_target_width: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u16,
+    f32,
+    KLV_2_TARGET_WIDTH
+);
+
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601`]
+/// 
+/// * [`crate::misb0601::Misb0601::offset_corner_lat_p1`]
+/// * [`crate::misb0601::Misb0601::offset_corner_lon_p1`]
+/// * [`crate::misb0601::Misb0601::offset_corner_lat_p2`]
+/// * [`crate::misb0601::Misb0601::offset_corner_lon_p2`]
+/// * [`crate::misb0601::Misb0601::offset_corner_lat_p3`]
+/// * [`crate::misb0601::Misb0601::offset_corner_lon_p3`]
+/// * [`crate::misb0601::Misb0601::offset_corner_lat_p4`]
+/// * [`crate::misb0601::Misb0601::offset_corner_lon_p4`]
+pub(crate) const to_offset_ll: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_i16,
+    f32,
+    KLV_2_OFFSET_LL,
+);
+
+#[inline(always)]
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601::icing_detected`]
+pub(crate) fn to_icing_detected(input: &mut &[u8]) -> winnow::PResult<crate::misb0601::Icing> {
+    match tinyklv::codecs::binary::dec::be_u8.parse_next(input)? {
+        0 => Ok(crate::misb0601::Icing::DetectorOff),
+        1 => Ok(crate::misb0601::Icing::NoIcingDetected),
+        2 => Ok(crate::misb0601::Icing::IcingDetected),
+        _ => Err(tinyklv::err!()),
+    }
+}
+
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601::wind_direction`]
+pub(crate) const to_wind_direction: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u16,
+    f32,
+    KLV_2_WIND_DIRECTION
+);
+
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601::wind_speed`]
+pub(crate) const to_wind_speed: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u8,
+    f32,
+    KLV_2_WIND_SPEED,
+);
+
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601`]
+/// 
+/// * [`crate::misb0601::Misb0601::static_pressure`]
+/// * [`crate::misb0601::Misb0601::differential_pressure`]
+pub(crate) const to_mbar_pressure: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u16,
+    f32,
+    KLV_2_MBAR_PRESSURE,
+);
+
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601`]
+/// 
+/// * [`crate::misb0601::Misb0601::target_track_gate_width`]
+/// * [`crate::misb0601::Misb0601::target_track_gate_height`]
+pub(crate) const to_target_track_gate_hw: fn(&mut &[u8]) -> winnow::PResult<u16> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u8,
+    u16,
+    2,
+);
+
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601`]
+/// 
+/// * [`crate::misb0601::Misb0601::target_error_estimate_ce90`]
+/// * [`crate::misb0601::Misb0601::target_error_estimate_le90`]
+pub(crate) const to_error_estimate: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
+    tinyklv::codecs::binary::dec::be_u16,
+    f32,
+    KLV_2_ERROR_ESTIMATE,
+);
+
+#[inline(always)]
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601::platform_vertical_speed`]
+pub(crate) fn to_platform_vertical_speed(input: &mut &[u8]) -> winnow::PResult<f32> {
+    let value = tinyklv::codecs::binary::dec::be_i16.parse_next(input)?;
+    if value as u32 == 0x8000 { return Err(tinyklv::err!()) } // "Out of Range" - keep for backwards compatibility
+    Ok((value as f32) * KLV_2_PLATFORM_VERT_SPEED)
 }
