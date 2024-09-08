@@ -1,12 +1,18 @@
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use thisenum::Const;
+
+// --------------------------------------------------
+// tinyklv
+// --------------------------------------------------
 use tinyklv::Klv;
 use tinyklv::prelude::*;
-
-use thisenum::Const;
 
 #[cfg(any(
     feature = "misb0102-12",
 ))]
-#[derive(Klv)]
+#[derive(Klv, Debug)]
 #[klv(
     stream = &[u8],
     sentinel = b"\x06\x0E\x2B\x34\x02\x01\x01\x01\x02\x08\x02\x00\x00\x00\x00\x00",
@@ -14,7 +20,8 @@ use thisenum::Const;
         dec = tinyklv::codecs::ber::dec::ber_oid::<u64>),
     len(enc = tinyklv::codecs::ber::enc::ber_length,
         dec = tinyklv::codecs::ber::dec::ber_length),
-    default(ty = String, dec = tinyklv::codecs::binary::dec::to_string_ascii, dyn = true),
+    default(ty = u16, dec = tinyklv::codecs::binary::dec::be_u16),
+    default(ty = String, dyn = true, dec = tinyklv::codecs::binary::dec::to_string_ascii),
 )]
 /// Security Metadata Universal and Local Sets for Motion Imagery Data
 /// 
@@ -93,45 +100,91 @@ pub struct Misb0102LocalSet {
     pub classified_by: Option<String>,
 
     #[klv(key = 0x08)]
-    /// (Contextual)
+    /// (Contextual) The Derived From metadata element contains information about
+    /// the original source of data from which the classification was derived. The
+    /// metadata element is free text.
     pub derived_from: Option<String>,
 
     #[klv(key = 0x09)]
-    /// (Contextual)
+    /// (Contextual) The Classification Reason metadata element contains the reason
+    /// for classification or a citation from a document. The metadata element is
+    /// free text.
     pub classification_reason: Option<String>,
 
-    #[klv(key = 0x0A)]
-    /// (Contextual)
+    #[klv(key = 0x0A, dyn = true, dec = tinyklv::as_date!(
+        tinyklv::dec::binary::to_string_ascii,
+        "%Y%m%d",
+    ))]
+    /// (Contextual) The Declassification Date metadata element provides a date when
+    /// the classified material may be automatically declassified.
     pub declassification_date: Option<chrono::NaiveDate>,
 
     #[klv(key = 0x0B)]
-    /// (Contextual)
+    /// (Contextual) The Classification and Marking System metadata element identifies
+    /// the classification or marking system used in the Security Metadata set as
+    /// determined by the appropriate security entity for the country originating.
+    /// the data. 
     pub classification_and_marking_system: Option<String>,
 
     #[klv(key = 0x0C, dec = CountryCodingMethod::decode_tag_0c)]
-    /// (Mandatory)
+    /// (Mandatory) The Object Country Coding Method metadata element identifies
+    /// the coding method for the Object Country Code (Par. 6.1.13) metadata. This
+    /// element allows use of GEC two-letter or fourletter alphabetic country code
+    /// (legacy systems only); ISO-3166 two-letter, three-letter, or three-digit
+    /// numeric; STANAG 1059 two-letter or three-letter codes; and GENC two-letter,
+    /// three-letter, three-digit numeric or administrative subdivisions.
+    /// 
+    /// Use of this element in version 6 of this Standard and later is mandatory.
+    /// In version 5 and earlier, it was optional; its absence indicates the default
+    /// GENC two-letter coding method was used in the Object Country Code element.
     pub object_country_coding_method: Option<CountryCodingMethod>,
 
     #[klv(key = 0x0D, dec = tinyklv::codecs::binary::dec::to_string_utf16)]
-    /// (Mandatory)
+    /// (Mandatory) The Object Country Codes metadata element contains a value
+    /// identifying the country (or countries), which is the object of the Motion
+    /// Imagery Data.
+    /// 
+    /// The object country codes of other represented geographic regions may be
+    /// included in addition to the country code of the geographic region under
+    /// the center of the image frame. Note: The use of the semi-colon to separate
+    /// country codes, instead of blanks or other characters, is to allow processing
+    /// by current, automated imagery processing and management tools.
     pub object_country_codes: Option<String>,
 
     #[klv(key = 0x0E)]
-    /// (Optional) 
+    /// (Optional) The Classification Comments metadata element allows for security
+    /// related comments and format changes necessary in the future. This field may
+    /// be used in addition to those required by appropriate security entity and is
+    /// optional.
     pub classification_comments: Option<String>,
 
     #[klv(key = 0x16)]
-    /// (Mandatory)
+    /// (Mandatory) The Version metadata element indicates the version number
+    /// of MISB ST 0102 referenced.
     pub version: u16,
 
-    #[klv(key = 0x17)]
-    /// (Optional)
+    #[klv(key = 0x17, dyn = true, dec = tinyklv::as_date!(
+        tinyklv::dec::binary::to_string_ascii,
+        "%Y-%m-%d",
+    ))]
+    /// (Optional) This metadata element provides the effective date (promulgation
+    /// date) of the source (FIPS 10-4, ISO 3166, GENC 2.0, or STANAG 1059) used
+    /// for the Classifying Country and Releasing Instructions Country Coding Method.
+    /// As ISO 3166 is updated by dated circulars, not by version revision, the
+    /// ISO 8601 YYYY-MM-DD formatted date is used.
     /// 
     /// See [`Misb0102LocalSet::country_coding_method`]
     pub country_coding_method_version_date: chrono::NaiveDate,
 
-    #[klv(key = 0x18)]
-    /// (Optional)
+    #[klv(key = 0x18, dyn = true, dec = tinyklv::as_date!(
+        tinyklv::dec::binary::to_string_ascii,
+        "%Y-%m-%d",
+    ))]
+    /// (Optional) The Object Country Coding Method Version Date metadata element
+    /// is the effective date (promulgation date) of the source (FIPS 10-4, ISO 3166,
+    /// GENC 2.0, or STANAG 1059) used for the Object Country Coding Method. As
+    /// ISO 3166 is updated by dated circulars, not by version revision, the ISO 8601
+    /// YYYY-MM-DD formatted date is used.
     /// 
     /// See [`Misb0102LocalSet::object_country_coding_method`]
     pub object_country_coding_method_version_date: chrono::NaiveDate,
@@ -223,6 +276,8 @@ pub enum CountryCodingMethod {
 }
 /// [`CountryCodingMethod`] implementation
 impl CountryCodingMethod {
+    /// Decodes the tag 0x02 of [`Misb0102LocalSet`], where some values
+    /// are omitted
     pub(crate) fn decode_tag_02(input: &mut &[u8]) -> winnow::PResult<Self> {
         match CountryCodingMethod::try_from(
             tinyklv::dec::binary::be_u8.parse_next(input)?
@@ -235,7 +290,8 @@ impl CountryCodingMethod {
             Err(_) => Err(tinyklv::err!()),
         }
     }
-
+    /// Decodes the tag 0x0C of [`Misb0102LocalSet`], where some values
+    /// are omitted
     pub(crate) fn decode_tag_0c(input: &mut &[u8]) -> winnow::PResult<Self> {
         match CountryCodingMethod::try_from(
             tinyklv::dec::binary::be_u8.parse_next(input)?
@@ -254,12 +310,9 @@ impl CountryCodingMethod {
 /// [`CountryCodingMethod`] implementation of [`tinyklv::prelude::Decode`]
 impl tinyklv::prelude::Decode<&[u8]> for CountryCodingMethod {
     fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
-        match CountryCodingMethod::try_from(
+        CountryCodingMethod::try_from(
             tinyklv::dec::binary::be_u8.parse_next(input)?
-        ) {
-            Ok(v) => Ok(v),
-            Err(_) => Err(tinyklv::err!()),
-        }
+        ).map_err(|_| tinyklv::err!())
     }
 }
 /// [`CountryCodingMethod`] implementation of [`tinyklv::prelude::Encode`]
@@ -268,3 +321,16 @@ impl tinyklv::prelude::Encode<Vec<u8>> for CountryCodingMethod {
         return vec![*self.value()]
     }
 }
+
+// mod test {
+//     use super::Misb0102LocalSet;
+//     use tinyklv::prelude::*;
+
+
+//     #[test]
+//     fn test() {
+//         let mut input: &[u8] = &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18];
+//         let input = &mut input;
+//         Misb0102LocalSet::decode(input);
+//     }
+// }

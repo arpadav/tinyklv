@@ -422,7 +422,7 @@ pub struct Misb0601 {
     #[cfg(any(
         feature = "misb0601-19",
     ))]
-    #[klv(key = 0x25, dec = crate::dec::to_static_pressure)]
+    #[klv(key = 0x25, dec = crate::dec::to_mbar_pressure)]
     /// (Optional) Static pressure at aircraft location
     /// 
     /// Units: Millibars (mbar)
@@ -540,6 +540,56 @@ pub struct Misb0601 {
     /// 
     /// Resolution: N/A
     pub generic_flag_data: Option<GenericFlagData>,
+
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x2f, dec = crate::misb0102::Misb0102LocalSet::decode)]
+    /// (Optional) MISB ST 0102 local let Security Metadata items
+    /// 
+    /// Units: None
+    /// 
+    /// Resolution: N/A
+    pub security_local_set: Option<crate::misb0102::Misb0102LocalSet>,
+
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x30, dec = crate::dec::to_mbar_pressure)]
+    /// (Optional) Differential pressure at aircraft location
+    /// 
+    /// Units: Millibar (mbar)
+    /// 
+    /// Resolution: ~0.08 mbar
+    pub differential_pressure: Option<f32>,
+
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x31, dec = crate::dec::to_platform_pitch_angle)]
+    /// (Optional) Platform attack angle
+    /// 
+    /// Units: Degrees (°)
+    /// 
+    /// Resolution: ~610 microdegrees
+    pub platform_angle_of_attack: Option<f32>,
+
+    #[cfg(any(
+        feature = "misb0601-19",
+    ))]
+    #[klv(key = 0x32, dec = crate::dec::to_platform_vertical_speed)]
+    /// (Optional) Vertical speed of the aircraft relative to zenith
+    /// 
+    /// Units: Meters per second (m/s)
+    /// 
+    /// Resolution: ~0.0055 m/s
+    pub platform_vertical_speed: Option<f32>,
+
+    // #[cfg(any(
+    //     feature = "misb0601-19",
+    // ))]
+    // #[klv(key = 0x33)]
+    // pub platform_sideslip_angle: Option<f32>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -552,7 +602,23 @@ pub enum Icing {
 }
 
 #[derive(Debug, PartialEq)]
-/// See [`crate::misb0601::Misb0601`] `generic_flag_data`
+/// IR sensor images use either black values indicating
+/// hot or white values indicating hot
+pub enum IrPolarity {
+    BlackHot,
+    WhiteHot,
+}
+
+#[derive(Debug, PartialEq)]
+/// Slant range is measured (i.e., using Laser Range
+/// Finder) or calculated using gimbal/aircraft position
+/// and angles
+pub enum SlantRangeSource {
+    Measured,
+    Calculated,
+}
+#[derive(Debug, PartialEq)]
+/// See [`crate::misb0601::Misb0601::generic_flag_data`]
 pub struct GenericFlagData {
     /// Laser Range Finder can be used to aid in geopositioning
     /// 
@@ -575,28 +641,11 @@ pub struct GenericFlagData {
     /// Indicates if image is invalid
     pub is_image_invalid: bool,
 }
-
-#[derive(Debug, PartialEq)]
-/// IR sensor images use either black values indicating
-/// hot or white values indicating hot
-pub enum IrPolarity {
-    BlackHot,
-    WhiteHot,
-}
-
-#[derive(Debug, PartialEq)]
-/// Slant range is measured (i.e., using Laser Range
-/// Finder) or calculated using gimbal/aircraft position
-/// and angles
-pub enum SlantRangeSource {
-    Measured,
-    Calculated,
-}
-
+/// [`GenericFlagData`] implementation of [`tinyklv::prelude::Decode`]
 impl tinyklv::prelude::Decode<&[u8]> for GenericFlagData {
     #[inline(always)]
     #[cfg(feature = "misb0601-19")]
-    /// See [`crate::misb0601::Misb0601`] `generic_flag_data`
+    /// See [`crate::misb0601::Misb0601::generic_flag_data`]
     fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
         let value = tinyklv::codecs::binary::dec::be_u8.parse_next(input)?;
         Ok(crate::misb0601::GenericFlagData {

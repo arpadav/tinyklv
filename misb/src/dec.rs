@@ -43,10 +43,12 @@ pub const SFT_2_WIND_DIRECTION: f32 = 65535.0 / 360.0;
 pub const KLV_2_WIND_DIRECTION: f32 = 360.0 / 65535.0;
 pub const SFT_2_WIND_SPEED: f32 = 255.0 / 100.0;
 pub const KLV_2_WIND_SPEED: f32 = 100.0 / 255.0;
-pub const SFT_2_STATIC_PRESSURE: f32 = 65535.0 / 5000.0;
-pub const KLV_2_STATIC_PRESSURE: f32 = 5000.0 / 65535.0;
+pub const SFT_2_MBAR_PRESSURE: f32 = 65535.0 / 5000.0;
+pub const KLV_2_MBAR_PRESSURE: f32 = 5000.0 / 65535.0;
 pub const SFT_2_ERROR_ESTIMATE: f32 = 65535.0 / 4095.0;
 pub const KLV_2_ERROR_ESTIMATE: f32 = 4095.0 / 65535.0;
+pub const SFT_2_PLATFORM_VERT_SPEED: f32 = 65534.0 / 360.0;
+pub const KLV_2_PLATFORM_VERT_SPEED: f32 = 360.0 / 65534.0;
 
 #[inline(always)]
 #[cfg(feature = "misb0601-19")]
@@ -244,11 +246,14 @@ pub(crate) const to_wind_speed: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv
 );
 
 #[cfg(feature = "misb0601-19")]
-/// See [`crate::misb0601::Misb0601::static_pressure`]
-pub(crate) const to_static_pressure: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
+/// See [`crate::misb0601::Misb0601`]
+/// 
+/// * [`crate::misb0601::Misb0601::static_pressure`]
+/// * [`crate::misb0601::Misb0601::differential_pressure`]
+pub(crate) const to_mbar_pressure: fn(&mut &[u8]) -> winnow::PResult<f32> = tinyklv::scale!(
     tinyklv::codecs::binary::dec::be_u16,
     f32,
-    KLV_2_STATIC_PRESSURE,
+    KLV_2_MBAR_PRESSURE,
 );
 
 #[cfg(feature = "misb0601-19")]
@@ -272,3 +277,12 @@ pub(crate) const to_error_estimate: fn(&mut &[u8]) -> winnow::PResult<f32> = tin
     f32,
     KLV_2_ERROR_ESTIMATE,
 );
+
+#[inline(always)]
+#[cfg(feature = "misb0601-19")]
+/// See [`crate::misb0601::Misb0601::platform_vertical_speed`]
+pub(crate) fn to_platform_vertical_speed(input: &mut &[u8]) -> winnow::PResult<f32> {
+    let value = tinyklv::codecs::binary::dec::be_i16.parse_next(input)?;
+    if value as u32 == 0x8000 { return Err(tinyklv::err!()) } // "Out of Range" - keep for backwards compatibility
+    Ok((value as f32) * KLV_2_PLATFORM_VERT_SPEED)
+}

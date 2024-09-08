@@ -19,10 +19,10 @@ use tinyklv::prelude::*;
     len(dec = tinyklv::dec::binary::u8_as_usize),
 )]
 struct Foo {
-    #[klv(key = 0x01, dyn = true, dec = tinyklv::dec::binary::to_string)]
+    #[klv(key = 0x01, dyn = true, dec = tinyklv::dec::binary::to_string_utf8)]
     // value length is dynamically determined, always as input from stream
     // 
-    // therefore, it is used as an input arg in decoder: `tinyklv::dec::binary::to_string`
+    // therefore, it is used as an input arg in decoder: `tinyklv::dec::binary::to_string_utf8`
     // (function signature = `fn(&mut S, usize) -> winnow::PResult<String>`)
     name: String,
 
