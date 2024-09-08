@@ -29,6 +29,7 @@ fn main() {
     let input = &mut data;
 
     let results: winnow::PResult<Vec<Misb0601>> = winnow::combinator::repeat(0.., Misb0601::extract).parse_next(input);
+    // Misb0601::decode(input);
     // let res = .parse_next(input);
 
     match results {
