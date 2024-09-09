@@ -1,12 +1,12 @@
 [package]
 name = "tinyklv-common"
-version = "0.1.0"
+version = "0.0.1-alpha.1"
 authors = ["Arpad Voros <arpadav@gmail.com>"]
 license = "MIT"
 description = "Common attributes `tinyklv` crate"
 repository = "https://github.com/arpadav/tinyklv"
 edition = "2021"
-publish = false
+publish = true
 
 [dependencies]
 # --------------------------------------------------
