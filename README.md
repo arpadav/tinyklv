@@ -1,5 +1,10 @@
 # tinyklv: A [Key-Length-Value (KLV)](https://en.wikipedia.org/wiki/KLV) framework in Rust using [`winnow`](https://crates.io/crates/winnow)
 
+[![LICENSE](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Crates.io Version](https://img.shields.io/crates/v/tinyklv.svg)](https://crates.io/crates/tinyklv)
+<!-- [![Latest Release](https://img.shields.io/github/v/release/arpadav/tinyklv)](https://github.com/arpadav/tinyklv) -->
+<!-- [![Coverage Status](https://coveralls.io/repos/github/arpadav/tinyklv/badge.svg?branch=main)](https://coveralls.io/github/arpadav/tinyklv?branch=main) -->
+
 ***If you are looking for parsing [TLV data (Type-Length-Value)](https://en.wikipedia.org/wiki/Type%E2%80%93length%E2%80%93value), `winnow`, `nom`, as well as other parsing crates already provide this support. KLV is built ontop of TLV.***
 
 `tinyklv` is a Rust implementation of a KLV framework to reduce the amount of boilerplate code required for parsing and encoding KLV data in an agnostic, human-defined manner.
