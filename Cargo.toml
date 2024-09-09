@@ -1,6 +1,6 @@
 [package]
 name = "tinyklv"
-version = "0.1.0"
+version = "0.0.1-alpha.1"
 authors = ["Arpad Voros <arpadav@gmail.com>"]
 license = "MIT"
 description = ""
@@ -8,20 +8,21 @@ repository = "https://github.com/arpadav/tinyklv"
 documentation = "https://docs.rs/tinyklv"
 readme = "README.md"
 # keywords = ["enum", "const", "literals", "macro", "parsing"]
-# categories = ["parsing", "memory-management"]
+# categories = ["parsing"]
 edition = "2021"
 
-[lib]
-proc-macro = true
-
 [dependencies]
-syn = "1.0"
-quote = "1.0"
-thisenum = "0.1"
-thiserror = "1.0"
-proc-macro2 = "1.0"
+paste = "1.0"
+winnow = "0.6"
+num-traits = "0.2"
+ascii = { version = "1.1", optional = true }
+chrono = { version = "0.4", optional = true }
+tinyklv-impl = { version = "0.1", path = "impl" }
+tinyklv-common = { version = "0.1", path = "common" }
 
-[dev-dependencies]
+[features]
+default = []
+full = ["chrono", "ascii"]
 
 [profile.dev]
 opt-level = 0

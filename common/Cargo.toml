@@ -1,0 +1,36 @@
+[package]
+name = "tinyklv-common"
+version = "0.1.0"
+authors = ["Arpad Voros <arpadav@gmail.com>"]
+license = "MIT"
+description = "Common attributes `tinyklv` crate"
+repository = "https://github.com/arpadav/tinyklv"
+edition = "2021"
+publish = false
+
+[dependencies]
+# --------------------------------------------------
+# tinyklv-common:
+# --------------------------------------------------
+thisenum = "0.1"
+thiserror = "1.0"
+# symple = { version = "0.1", path = "../symple" }
+
+# --------------------------------------------------
+# symple
+# --------------------------------------------------
+quote = "1.0"
+proc-macro2 = "1.0"
+syn = { version = "1.0", features = ["full", "extra-traits"] }
+
+[dev-dependencies]
+
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+lto = true
+strip = true
+opt-level = 3
+panic = "abort"
+codegen-units = 1
