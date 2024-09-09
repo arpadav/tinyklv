@@ -12,18 +12,17 @@ readme = "README.md"
 edition = "2021"
 
 [dependencies]
-# required
 paste = "1.0"
 winnow = "0.6"
 num-traits = "0.2"
+ascii = { version = "1.1", optional = true }
+chrono = { version = "0.4", optional = true }
 tinyklv-impl = { version = "0.1", path = "impl" }
 tinyklv-common = { version = "0.1", path = "common" }
-# optional
-ascii = "1.1"
-chrono = "0.4"
 
 [features]
-chrono = []
+default = []
+full = ["chrono", "ascii"]
 
 [profile.dev]
 opt-level = 0
