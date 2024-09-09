@@ -1,5 +1,3 @@
-use std::io::Read;
-
 // --------------------------------------------------
 // external
 // --------------------------------------------------
@@ -88,6 +86,7 @@ pub fn to_string_utf16(input: &mut &[u8], len: usize) -> winnow::PResult<String>
 }
 
 #[inline(always)]
+#[cfg(feature = "ascii")]
 /// Decodes a byte slice into a [`String`], using [`ascii::AsciiString::from_ascii`]
 /// 
 /// # Example
