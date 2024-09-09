@@ -9,8 +9,10 @@ pub mod reexport {
 pub use tinyklv_impl::*;
 
 pub(crate) fn enc_prior<T, const N: usize>(input: Option<T>, enc: fn(T) -> [u8; N]) -> Vec<u8> {
-    input.map(|i| enc(i).to_vec()) // convert [u8; N] -> Vec<u8>, if Some
-    .unwrap_or_default() // return an empty Vec<u8> for None
+    // Some: convert resulting [u8; N] -> Vec<u8>
+    // None: return an empty Vec<u8>
+    input.map(|i| enc(i).into())
+    .unwrap_or_default()
 }
 
 #[macro_export]
