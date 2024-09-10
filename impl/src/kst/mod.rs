@@ -11,6 +11,7 @@ pub(crate) mod xcoder;
 
 /// [`Input`] of the [`crate::Klv`] derive macro
 pub(crate) struct Input {
+    pub input: syn::DeriveInput,
     pub name: syn::Ident,
     pub sattr: StructAttrSchema,
     pub fattrs: Vec<FieldAttrSchema>,
@@ -41,6 +42,6 @@ impl Input {
             .iter()
             .filter_map(|field| FieldAttrSchema::from_field(field))
             .collect::<Vec<_>>();
-        Ok(Self { name, sattr, fattrs })
+        Ok(Self { input: input.clone(), name, sattr, fattrs })
     }
 }

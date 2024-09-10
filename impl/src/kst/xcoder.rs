@@ -220,7 +220,6 @@ impl From<syn::Macro> for PathLike {
 /// [`PathLike`] implementation of [`From`] for [`symple::MetaValue`]
 impl From<symple::MetaValue> for PathLike {
     fn from(x: symple::MetaValue) -> Self {
-        println!(" IM IN HERE {}", x);
         match x {
             symple::MetaValue::Path(x) => PathLike::Path(x),
             symple::MetaValue::Expr(x) => PathLike::Expr(x),
