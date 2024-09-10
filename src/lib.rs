@@ -67,12 +67,23 @@ macro_rules! err {
 /// 
 /// Can be used directly in a `#[klv(dec = ...)]` attribute
 /// 
-/// # Example
+/// # Usage
 /// 
-/// ```rust no_run ignore
+/// ```rust ignore
 /// tinyklv::scale!(tinyklv::codecs::binary::dec::be_u16, f64, KLV_2_PLATFORM_HEADING)(input)
 /// // OR
 /// #[klv(dec = tinyklv::scale!(tinyklv::codecs::binary::dec::be_u16, f64, KLV_2_PLATFORM_HEADING))]
+/// ```
+/// 
+/// # Example
+/// 
+/// ```rust
+/// use tinyklv::prelude::*;
+/// 
+/// let mut input: &[u8] = &[0x00, 0x01];
+/// let input = &mut input;
+/// let num = tinyklv::scale!(tinyklv::codecs::binary::dec::be_u16, f32, 3.0)(input);
+/// assert_eq!(num, Ok(3.0_f32));
 /// ```
 macro_rules! scale {
     ($parser:path, $precision:ty, $scale:tt $(,)*) => {
@@ -87,12 +98,23 @@ macro_rules! scale {
 /// 
 /// Can be used directly in a `#[klv(dec = ...)]` attribute
 /// 
-/// # Example
+/// # Usage
 /// 
-/// ```rust no_run ignore
+/// ```rust ignore
 /// tinyklv::cast!(tinyklv::codecs::binary::dec::be_u16, f64)(input)
 /// // OR
 /// #[klv(dec = tinyklv::cast!(tinyklv::codecs::binary::dec::be_u16, f64))]
+/// ```
+/// 
+/// # Example
+/// 
+/// ```rust
+/// use tinyklv::prelude::*;
+/// 
+/// let mut input: &[u8] = &[0x00, 0x01];
+/// let input = &mut input;
+/// let num = tinyklv::cast!(tinyklv::codecs::binary::dec::be_u16, f64)(input);
+/// assert_eq!(num, Ok(1.0_f64));
 /// ```
 macro_rules! cast {
     ($parser:expr, $precision:ty $(,)*) => {

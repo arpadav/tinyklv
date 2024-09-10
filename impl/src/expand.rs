@@ -68,8 +68,8 @@ impl From<kst::Input> for proc_macro::TokenStream {
         //         #encode_impl
         //     }
         // }
-        println!("{}", input.sattr);
-        println!("{:?}", input.fattrs);
+        // println!("{}", input.sattr);
+        // println!("{:?}", input.fattrs);
         expanded.into()
     }
 }
@@ -95,7 +95,7 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
         .unwrap_or_else(|| panic!("{}", crate::Error::MissingFunc("struct".into(), "len".into(), "dec".into(), "decoder".into())));
     let items_init = gen_items_init(&input.fattrs);
     let items_match = gen_items_match(&input.fattrs);
-    let items_set = gen_item_set(name, &input.fattrs);
+    let items_set = gen_item_set(name, &input.fattrs, crate::parse::elems_without_klv_attr(&input.input));
     let result = quote! {
         #[automatically_derived]
         #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::Seek`] for [`", stringify!(#stream), "`]")]
@@ -144,7 +144,7 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
             }
         }
     };
-    println!("{}", result);
+    // println!("{}", result);
     result
 }
 
@@ -187,7 +187,7 @@ fn gen_items_match(fatts: &Vec<kst::FieldAttrSchema>) -> proc_macro2::TokenStrea
 /// Generates the tokens for setting the field variables upon returning of the output struct
 /// 
 /// `Ok(#struct_name { #(#field_set_on_return)* })`
-fn gen_item_set(struct_name: &syn::Ident, fatts: &Vec<kst::FieldAttrSchema>) -> proc_macro2::TokenStream {
+fn gen_item_set(struct_name: &syn::Ident, fatts: &Vec<kst::FieldAttrSchema>, elem_name_type_without_keys: Vec<(syn::Ident, syn::Type)>) -> proc_macro2::TokenStream {
     let field_set_on_return = fatts.iter().map(|field| {
         let kst::FieldAttrSchema { name, ty, .. } = field;
         match crate::parse::is_option(ty) {
@@ -207,9 +207,24 @@ fn gen_item_set(struct_name: &syn::Ident, fatts: &Vec<kst::FieldAttrSchema>) -> 
             true => quote! { #name, },
         }
     });
-    quote! {
-        Ok(#struct_name {
-            #(#field_set_on_return)*
-        })
+    // --------------------------------------------------
+    // elements without the  `#[klv(..)]` attribute must
+    // implement [`default::Default`]
+    // --------------------------------------------------
+    // if the default does not exist, then this will not compile
+    // --------------------------------------------------
+    match elem_name_type_without_keys.len() != 0 {
+        false => quote! { Ok(#struct_name { #(#field_set_on_return)* }) },
+        true => {
+            let names: Vec<_> = elem_name_type_without_keys.iter().map(|(name, _)| name.clone()).collect();
+            let types: Vec<_> = elem_name_type_without_keys.iter().map(|(_, ty)| crate::parse::type2fish(ty)).collect();
+            let individual_defaults = quote! { #(#names: #types::default())*, };
+            quote! {
+                Ok(#struct_name {
+                    #(#field_set_on_return)* 
+                    #individual_defaults
+                })
+            }
+        },
     }
 }
