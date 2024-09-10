@@ -187,7 +187,7 @@ fn gen_items_match(fatts: &Vec<kst::FieldAttrSchema>) -> proc_macro2::TokenStrea
 /// Generates the tokens for setting the field variables upon returning of the output struct
 /// 
 /// `Ok(#struct_name { #(#field_set_on_return)* })`
-fn gen_item_set(struct_name: &syn::Ident, fatts: &Vec<kst::FieldAttrSchema>, elem_name_type_without_keys: Vec<(syn::Ident, syn::Type)>) -> proc_macro2::TokenStream {
+fn gen_item_set(struct_name: &syn::Ident, fatts: &Vec<kst::FieldAttrSchema>, elem_name_type_without_klv: Vec<(syn::Ident, syn::Type)>) -> proc_macro2::TokenStream {
     let field_set_on_return = fatts.iter().map(|field| {
         let kst::FieldAttrSchema { name, ty, .. } = field;
         match crate::parse::is_option(ty) {
@@ -213,11 +213,11 @@ fn gen_item_set(struct_name: &syn::Ident, fatts: &Vec<kst::FieldAttrSchema>, ele
     // --------------------------------------------------
     // if the default does not exist, then this will not compile
     // --------------------------------------------------
-    match elem_name_type_without_keys.len() != 0 {
+    match elem_name_type_without_klv.len() != 0 {
         false => quote! { Ok(#struct_name { #(#field_set_on_return)* }) },
         true => {
-            let names: Vec<_> = elem_name_type_without_keys.iter().map(|(name, _)| name.clone()).collect();
-            let types: Vec<_> = elem_name_type_without_keys.iter().map(|(_, ty)| crate::parse::type2fish(ty)).collect();
+            let names: Vec<_> = elem_name_type_without_klv.iter().map(|(name, _)| name.clone()).collect();
+            let types: Vec<_> = elem_name_type_without_klv.iter().map(|(_, ty)| crate::parse::type2fish(ty)).collect();
             let individual_defaults = quote! { #(#names: #types::default())*, };
             quote! {
                 Ok(#struct_name {

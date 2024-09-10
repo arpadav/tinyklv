@@ -4,6 +4,14 @@
 use crate::prelude::*;
 use winnow::token::take;
 
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+const B16_PADDED: &[u8; 2] = &[0, 0];
+const B32_PADDED: &[u8; 4] = &[0, 0, 0, 0];
+const B64_PADDED: &[u8; 8] = &[0, 0, 0, 0, 0, 0, 0, 0];
+const B128_PADDED: &[u8; 16] = &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
 #[inline(always)]
 /// Decodes a byte slice into a [`String`], using [`String::from_utf8_lossy`]
 /// 
@@ -188,3 +196,186 @@ as_usize!(u16);
 as_usize!(u32);
 as_usize!(u64);
 as_usize!(u128);
+
+macro_rules! lengthed_be {
+    ($type:ty, $len:expr, $pad:expr, $doc:expr) => { paste::paste! {
+        #[inline(always)]
+        #[doc = $doc]
+        pub fn [<be_ $type _lengthed>](input: &mut &[u8], len: usize) -> winnow::PResult<$type> {
+            let value = take(len).parse_next(input)?;
+            match len > $len {
+                true => {
+                    let mut value = &value[value.len() - $len..];
+                    [<be_ $type>](&mut value)
+                },
+                false => {
+                    let pval = &mut $pad.clone();
+                    pval[($len - len)..].copy_from_slice(&value);
+                    Ok($type::from_be_bytes(*pval))
+                },
+            }
+        }
+    }};
+    ($type:ty, $len:expr, $pad:expr) => { lengthed_be!($type, $len, $pad, ""); };
+}
+macro_rules! lengthed_le {
+    ($type:ty, $precision_len:expr, $pad:expr, $doc:expr) => { paste::paste! {
+        #[inline(always)]
+        #[doc = $doc]
+        pub fn [<le_ $type _lengthed>](input: &mut &[u8], len: usize) -> winnow::PResult<$type> {
+            let value = take(len).parse_next(input)?;
+            match len > $precision_len {
+                true => {
+                    let mut value = &value[..$precision_len];
+                    [<le_ $type>](&mut value)
+                },
+                false => {
+                    let pval = &mut $pad.clone();
+                    pval[..len].copy_from_slice(&value);
+                    Ok($type::from_le_bytes(*pval))
+                },
+            }
+        }
+    }};
+    ($type:ty, $len:expr, $pad:expr) => { lengthed_le!($type, $len, $pad, ""); };
+}
+
+lengthed_be!(u16, 2, B16_PADDED, "
+Converts a [`prim@u8`] slice of any length into a [`prim@u16`] value
+using big-endian encoding.
+
+* len 8: [SKIP, SKIP, SKIP, SKIP, SKIP, SKIP, VAL, VAL] -> [VAL, VAL]
+* len 1: [VAL] -> [0x00, VAL]
+
+# Example
+
+```rust
+use tinyklv::prelude::*;
+
+let mut input1: &[u8] = &[0x01, 0xE0, 0xFF, 0xFF];
+let mut input2: &[u8] = &[0x01, 0xE0];
+let mut input3: &[u8] = &[0xE0];
+assert_eq!(tinyklv::dec::binary::be_u16_lengthed(&mut input1, 4), Ok(0xFFFF));
+assert_eq!(tinyklv::dec::binary::be_u16_lengthed(&mut input2, 2), Ok(0x01E0));
+assert_eq!(tinyklv::dec::binary::be_u16_lengthed(&mut input3, 1), Ok(0x00E0));
+```
+");
+lengthed_be!(u32, 4, B32_PADDED, "
+Converts a [`prim@u8`] slice of any length into a [`prim@u32`] value
+using big-endian encoding.
+
+* len 8: [SKIP, SKIP, SKIP, SKIP, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL]
+* len 1: [VAL] -> [0x00, 0x00, 0x00, VAL]
+
+# Example
+
+```rust
+use tinyklv::prelude::*;
+
+let mut input1: &[u8] = &[0x00, 0x01, 0xE0, 0xFF, 0xFF];
+let mut input2: &[u8] = &[0x00, 0x01, 0xE0, 0xFF];
+let mut input3: &[u8] = &[0x01, 0xE0, 0xFF];
+assert_eq!(tinyklv::dec::binary::be_u32_lengthed(&mut input1, 5), Ok(0x01E0FFFF));
+assert_eq!(tinyklv::dec::binary::be_u32_lengthed(&mut input2, 4), Ok(0x0001E0FF));
+assert_eq!(tinyklv::dec::binary::be_u32_lengthed(&mut input3, 3), Ok(0x0001E0FF));
+```
+");
+lengthed_be!(u64, 8, B64_PADDED, "
+Converts a [`prim@u8`] slice of any length into a [`prim@u64`] value
+using big-endian encoding.
+
+* len 10: [SKIP, SKIP, VAL, VAL, VAL, VAL, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL, VAL, VAL, VAL, VAL]
+* len 1: [VAL] -> [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, VAL]
+* len 5: [VAL, VAL, VAL, VAL, VAL] -> [0x00, 0x00, 0x00, VAL, VAL, VAL, VAL, VAL]
+
+# Example
+
+```rust
+use tinyklv::prelude::*;
+let mut input1: &[u8] = &[0x00, 0x00, 0x01, 0xE0, 0xFF, 0xFF, 0x00, 0x00, 0x00];
+let mut input2: &[u8] = &[0x00, 0x00, 0x01, 0xE0, 0xFF, 0xFF, 0x00, 0x00];
+let mut input3: &[u8] = &[0x00, 0x00, 0x01, 0xE0, 0xFF, 0xFF, 0x00];
+assert_eq!(tinyklv::dec::binary::be_u64_lengthed(&mut input1, 9), Ok(0x00_01_E0_FF_FF_00_00_00));
+assert_eq!(tinyklv::dec::binary::be_u64_lengthed(&mut input2, 8), Ok(0x00_00_01_E0_FF_FF_00_00));
+assert_eq!(tinyklv::dec::binary::be_u64_lengthed(&mut input3, 7), Ok(0x00_00_00_01_E0_FF_FF_00));
+
+```
+");
+lengthed_be!(u128, 16, B128_PADDED);
+lengthed_be!(i16, 2, B16_PADDED);
+lengthed_be!(i32, 4, B32_PADDED);
+lengthed_be!(i64, 8, B64_PADDED);
+lengthed_be!(i128, 16, B128_PADDED);
+lengthed_le!(u16, 2, B16_PADDED, "
+Converts a [`prim@u8`] slice of any length into a [`prim@u16`] value
+using little-endian encoding.
+
+* len 8: [VAL, VAL, SKIP, SKIP, SKIP, SKIP, SKIP, SKIP] -> [VAL, VAL]
+* len 1: [VAL] -> [VAL, 0x00]
+
+# Example
+
+```rust
+use tinyklv::prelude::*;
+
+let mut input1: &[u8] = &[0xE0, 0x01, 0xFF, 0xFF, 0xFF];
+let mut input2: &[u8] = &[0x01];
+let num1 = tinyklv::dec::binary::le_u16_lengthed(&mut input1, 5);
+let num2 = tinyklv::dec::binary::le_u16_lengthed(&mut input2, 1);
+assert_eq!(num1, Ok(480));
+assert_eq!(num2, Ok(1));
+```
+");
+lengthed_le!(u32, 4, B32_PADDED, "
+Converts a [`prim@u8`] slice of any length into a [`prim@u32`] value
+using little-endian encoding.
+
+* len 8: [VAL, VAL, VAL, VAL, SKIP, SKIP, SKIP, SKIP] -> [VAL, VAL, VAL, VAL]
+* len 1: [VAL] -> [VAL, 0x00, 0x00, 0x00]
+* len 3: [VAL, VAL, VAL] -> [VAL, VAL, VAL, 0x00]
+
+# Example
+
+```rust
+use tinyklv::prelude::*;
+
+let mut input1: &[u8] = &[0xE0, 0x01, 0xFF, 0xFF, 0xFF];
+let mut input2: &[u8] = &[0x01];
+let mut input3: &[u8] = &[0x01, 0x02, 0x03];
+let num1 = tinyklv::dec::binary::le_u32_lengthed(&mut input1, 5);
+let num2 = tinyklv::dec::binary::le_u32_lengthed(&mut input2, 1);
+let num3 = tinyklv::dec::binary::le_u32_lengthed(&mut input3, 3);
+assert_eq!(num1, Ok(4_294_902_240));
+assert_eq!(num2, Ok(1));
+assert_eq!(num3, Ok(197_121));
+```
+");
+lengthed_le!(u64, 8, B64_PADDED, "
+Converts a [`prim@u8`] slice of any length into a [`prim@u64`] value
+using little-endian encoding.
+
+* len 8: [VAL, VAL, VAL, VAL, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL, VAL, VAL, VAL, VAL]
+* len 1: [VAL] -> [VAL, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+* len 7: [VAL, VAL, VAL, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL, VAL, VAL, VAL, 0x00]
+
+# Example
+
+```rust
+use tinyklv::prelude::*;
+
+let mut input1: &[u8] = &[0xE0, 0x01, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+let mut input2: &[u8] = &[0x01];
+let mut input3: &[u8] = &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
+let num1 = tinyklv::dec::binary::le_u64_lengthed(&mut input1, input1.len());
+let num2 = tinyklv::dec::binary::le_u64_lengthed(&mut input2, 1);
+let num3 = tinyklv::dec::binary::le_u64_lengthed(&mut input3, 7);
+assert_eq!(num1, Ok(1_099_511_562_720));
+assert_eq!(num2, Ok(1));
+assert_eq!(num3, Ok(1_976_943_448_883_713));
+```
+");
+lengthed_le!(u128, 16, B128_PADDED);
+lengthed_le!(i16, 2, B16_PADDED);
+lengthed_le!(i32, 4, B32_PADDED);
+lengthed_le!(i64, 8, B64_PADDED);
+lengthed_le!(i128, 16, B128_PADDED);
