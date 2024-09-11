@@ -21,6 +21,21 @@ pub trait Encode<S> {
     fn encode(&self) -> S;
 }
 
+/// [`Encode`] implementation for all values which are [`IntoIterator`], and 
+/// each element implements [`Encode`]
+impl<T, I> Encode<Vec<u8>> for I
+where
+    I: IntoIterator<Item = T>,
+    for<'a> &'a I: IntoIterator<Item = &'a T>, // Ensure we can iterate over references to the items
+    T: Encode<Vec<u8>>,
+{
+    fn encode(&self) -> Vec<u8> {
+        self.into_iter()
+            .flat_map(|item| item.encode())
+            .collect()
+    }
+}
+
 /// Trait for decoding from stream-type T, of type [`winnow::stream::Stream`]
 /// 
 /// Common examples of stream types include `&[u8]` and `&str`
@@ -40,6 +55,7 @@ where
     fn decode(input: &mut S) -> winnow::PResult<Self>;
 }
 
+/// Trait for seeking to the beginning of the prescribed type from a stream
 pub trait Seek<S>: Sized
 where
     S: winnow::stream::Stream,
@@ -106,5 +122,25 @@ where
                 )),
             }
         }
+    }
+}
+
+/// Decodes repeatedly, until it can no longer
+/// 
+/// Accumulates results in a [`Vec`] and returns
+pub trait RepeatedDecode<S>: Sized
+where
+    S: winnow::stream::Stream,
+{
+    fn repeated(input: &mut S) -> winnow::PResult<Vec<Self>>;
+}
+/// [`RepeatedDecode`] implementation for all types T that implement [`Decode`]
+impl<S, T> RepeatedDecode<S> for T
+where
+    S: winnow::stream::Stream,
+    T: Decode<S>,
+{
+    fn repeated(input: &mut S) -> winnow::PResult<Vec<Self>> {
+        winnow::combinator::repeat(0.., Self::decode).parse_next(input)
     }
 }

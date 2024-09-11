@@ -27,8 +27,8 @@ use crate::prelude::*;
 // --------------------------------------------------
 // traits
 // --------------------------------------------------
-pub trait OfBerCommon: Copy + ToBytes + Unsigned + PartialOrd + ToPrimitive + FromPrimitive + AsPrimitive<u64> {}
-impl<T> OfBerCommon for T where T: Copy + ToBytes + Unsigned + PartialOrd + ToPrimitive + FromPrimitive + AsPrimitive<u64> {}
+pub trait OfBerCommon: Copy + ToBytes + Unsigned + PartialOrd + ToPrimitive + FromPrimitive + AsPrimitive<u128> {}
+impl<T> OfBerCommon for T where T: Copy + ToBytes + Unsigned + PartialOrd + ToPrimitive + FromPrimitive + AsPrimitive<u128> {}
 pub trait OfBerLength: OfBerCommon {}
 impl<T> OfBerLength for T where T: OfBerCommon {}
 pub trait OfBerOid: OfBerCommon {}
@@ -37,7 +37,7 @@ impl<T> OfBerOid for T where T: OfBerCommon {}
 #[derive(Debug, PartialEq)]
 /// Enum representing Basic-Encoding-Rules (BER) Length Encoding.
 /// 
-/// Maximum precision: [`u64`]
+/// Maximum precision: [`u128`]
 /// 
 /// * See: [https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf)
 /// * See: [https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf](https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf) page 7
@@ -80,10 +80,10 @@ impl<T: OfBerLength> BerLength<T> {
         Self::new(len).encode()
     }
 
-    /// Returns the length as a [`u64`]
-    pub fn as_u64(&self) -> u64 {
+    /// Returns the length as a [`u128`]
+    pub fn as_u128(&self) -> u128 {
         match self {
-            BerLength::Short(len) => *len as u64,
+            BerLength::Short(len) => *len as u128,
             BerLength::Long(len) => len.as_(),
         }
     }
@@ -191,15 +191,15 @@ impl<T: OfBerLength> Decode<&[u8]> for BerLength<T> {
         // --------------------------------------------------
         // decode the length from the specified number of bytes
         // --------------------------------------------------
-        let output = parse_length_u64(input, num_bytes)?;
-        Ok(BerLength::Long(T::from_u64(output).unwrap()))
+        let output = parse_length_u128(input, num_bytes)?;
+        Ok(BerLength::Long(T::from_u128(output).unwrap()))
     }
 }
 
 #[derive(Debug, PartialEq)]
 /// Struct representing Basic Encoding Rules (BER) Object Identifier (OID) encoding.
 /// 
-/// Maximum precision: [`u64`]
+/// Maximum precision: [`u128`]
 /// 
 /// * See: [https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf)
 /// * See: [https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf](https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf) page 7
@@ -302,10 +302,10 @@ impl<T: OfBerOid> Decode<&[u8]> for BerOid<T> {
                 // extract the 7 bits from the byte (ignoring the MSB)
                 // and insert to correct position
                 // --------------------------------------------------
-                .fold(0u64, |acc, &b| (acc << 7) | (b & 0x7F) as u64),
-            Err(_) => winnow::binary::be_u8(input)? as u64,
+                .fold(0u128, |acc, &b| (acc << 7) | (b & 0x7F) as u128),
+            Err(_) => winnow::binary::be_u8(input)? as u128,
         };
-        Ok(BerOid::new(&T::from_u64(output).unwrap()))
+        Ok(BerOid::new(&T::from_u128(output).unwrap()))
     }
 }
 
@@ -329,9 +329,9 @@ fn msb_is_set(b: u8) -> bool {
 }
 
 #[inline(always)]
-/// Parses out a specified number of bytes and combines them into a [`u64`] value
-fn parse_length_u64(input: &mut &[u8], num_bytes: usize) -> winnow::PResult<u64> {
+/// Parses out a specified number of bytes and combines them into a [`u128`] value
+fn parse_length_u128(input: &mut &[u8], num_bytes: usize) -> winnow::PResult<u128> {
     take(num_bytes)
-        .map(|bytes: &[u8]| bytes.iter().fold(0u64, |acc, &byte| (acc << 8) | byte as u64))
+        .map(|bytes: &[u8]| bytes.iter().fold(0u128, |acc, &byte| (acc << 8) | byte as u128))
         .parse_next(input)
 }

@@ -6,8 +6,8 @@ use crate::prelude::*;
 
 /// See [`crate::codecs::ber::BerLength::decode`]
 pub fn ber_length(input: &mut &[u8]) -> winnow::PResult<usize> {
-    super::BerLength::<u64>::decode
-        .map(|value| value.as_u64() as usize)
+    super::BerLength::<u128>::decode
+        .map(|value| value.as_u128() as usize)
         .parse_next(input)
 }
 
