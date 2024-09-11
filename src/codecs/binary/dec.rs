@@ -7,6 +7,7 @@ use winnow::token::take;
 // --------------------------------------------------
 // constants
 // --------------------------------------------------
+const B8_PADDED: &[u8; 1] = &[0];
 const B16_PADDED: &[u8; 2] = &[0, 0];
 const B32_PADDED: &[u8; 4] = &[0, 0, 0, 0];
 const B64_PADDED: &[u8; 8] = &[0, 0, 0, 0, 0, 0, 0, 0];
@@ -240,6 +241,7 @@ macro_rules! lengthed_le {
     ($type:ty, $len:expr, $pad:expr) => { lengthed_le!($type, $len, $pad, ""); };
 }
 
+lengthed_be!(u8, 1, B8_PADDED);
 lengthed_be!(u16, 2, B16_PADDED, "
 Converts a [`prim@u8`] slice of any length into a [`prim@u16`] value
 using big-endian encoding.
@@ -302,10 +304,12 @@ assert_eq!(tinyklv::dec::binary::be_u64_lengthed(&mut input3, 7), Ok(0x00_00_00_
 ```
 ");
 lengthed_be!(u128, 16, B128_PADDED);
+lengthed_be!(i8, 1, B8_PADDED);
 lengthed_be!(i16, 2, B16_PADDED);
 lengthed_be!(i32, 4, B32_PADDED);
 lengthed_be!(i64, 8, B64_PADDED);
 lengthed_be!(i128, 16, B128_PADDED);
+lengthed_le!(u8, 1, B8_PADDED);
 lengthed_le!(u16, 2, B16_PADDED, "
 Converts a [`prim@u8`] slice of any length into a [`prim@u16`] value
 using little-endian encoding.
@@ -375,6 +379,7 @@ assert_eq!(num3, Ok(1_976_943_448_883_713));
 ```
 ");
 lengthed_le!(u128, 16, B128_PADDED);
+lengthed_le!(i8, 1, B8_PADDED);
 lengthed_le!(i16, 2, B16_PADDED);
 lengthed_le!(i32, 4, B32_PADDED);
 lengthed_le!(i64, 8, B64_PADDED);
