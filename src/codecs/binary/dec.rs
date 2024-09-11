@@ -366,7 +366,7 @@ use tinyklv::prelude::*;
 let mut input1: &[u8] = &[0xE0, 0x01, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
 let mut input2: &[u8] = &[0x01];
 let mut input3: &[u8] = &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
-let num1 = tinyklv::dec::binary::le_u64_lengthed(&mut input1, input1.len());
+let num1 = tinyklv::dec::binary::le_u64_lengthed(&mut input1, 16);
 let num2 = tinyklv::dec::binary::le_u64_lengthed(&mut input2, 1);
 let num3 = tinyklv::dec::binary::le_u64_lengthed(&mut input3, 7);
 assert_eq!(num1, Ok(1_099_511_562_720));

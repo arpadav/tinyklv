@@ -41,14 +41,20 @@ impl<T> OfBerOid for T where T: OfBerCommon {}
 /// 
 /// * See: [https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf)
 /// * See: [https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf](https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf) page 7
-pub enum BerLength<T>
-where 
-    T: OfBerLength
-{
+/// 
+/// # Example
+/// 
+/// ```
+/// use tinyklv::prelude::*;
+/// use tinyklv::codecs::ber::BerLength;
+/// 
+/// assert_eq!(vec![128 + 3, 129, 182, 2], BerLength::new(&8_500_738_u32).encode());
+/// assert_eq!(BerLength::new(&8_500_738_u32), BerLength::decode(&mut &vec![128 + 3, 129, 182, 2][..]).unwrap());
+/// ```
+pub enum BerLength<T: OfBerLength> {
     Short(u8),
     Long(T),
 }
-
 /// [`BerLength`] implementation
 impl<T: OfBerLength> BerLength<T> {
     /// Creates a new [BerLength] from a [`num_traits::Unsigned`]
@@ -82,7 +88,6 @@ impl<T: OfBerLength> BerLength<T> {
         }
     }
 }
-
 /// [`BerLength`] implementation of [`Encode`]
 impl<T: OfBerLength> Encode<Vec<u8>> for BerLength<T> {
     /// Encode a [`BerLength`] into a [`Vec<u8>`]
@@ -143,9 +148,24 @@ impl<T: OfBerLength> Encode<Vec<u8>> for BerLength<T> {
         }
     }
 }
-
 /// [`BerLength`] implementation of [`Decode`]
 impl<T: OfBerLength> Decode<&[u8]> for BerLength<T> {
+    /// Decode a [`BerLength`] from a [`&[u8]`]
+    /// 
+    /// # Example
+    /// 
+    /// ```
+    /// use tinyklv::prelude::*;
+    /// use tinyklv::codecs::ber::BerLength;
+    /// 
+    /// let value0 = vec![47];
+    /// let value1 = vec![128 + 1, 201];
+    /// let value2 = vec![128 + 6, 112, 173, 208, 117, 220, 22];
+    /// 
+    /// assert_eq!(BerLength::decode(&mut &value0[..]).unwrap(), BerLength::new(&47_u64));
+    /// assert_eq!(BerLength::decode(&mut &value1[..]).unwrap(), BerLength::new(&201_u64));
+    /// assert_eq!(BerLength::decode(&mut &value2[..]).unwrap(), BerLength::new(&123891829038102_u64));
+    /// ```
     fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
         // --------------------------------------------------
         // err if no bytes
@@ -163,7 +183,11 @@ impl<T: OfBerLength> Decode<&[u8]> for BerLength<T> {
         // --------------------------------------------------
         // ensure there are enough bytes in the stream
         // --------------------------------------------------
-        if input.len() < num_bytes + 1 { return Err(ErrMode::Incomplete(Needed::Size(std::num::NonZero::new(num_bytes + 1).unwrap()))); }
+        // since 1 was taken from input, this should be
+        // `input.len() + 1 < num_bytes + 1`
+        // but can be shortened
+        // --------------------------------------------------
+        if input.len() < num_bytes { return Err(ErrMode::Incomplete(Needed::Size(std::num::NonZero::new(num_bytes + 1).unwrap()))); }
         // --------------------------------------------------
         // decode the length from the specified number of bytes
         // --------------------------------------------------
@@ -179,13 +203,20 @@ impl<T: OfBerLength> Decode<&[u8]> for BerLength<T> {
 /// 
 /// * See: [https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf](https://www.itu.int/dms_pubrec/itu-r/rec/bt/R-REC-BT.1563-0-200204-S!!PDF-E.pdf)
 /// * See: [https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf](https://upload.wikimedia.org/wikipedia/commons/1/19/MISB_Standard_0601.pdf) page 7
-pub struct BerOid<T>
-where 
-    T: OfBerOid
-{
+/// 
+/// # Example
+/// 
+/// ```
+/// use tinyklv::prelude::*;
+/// use tinyklv::codecs::ber::BerOid;
+/// 
+/// assert_eq!(vec![129, 182, 2], BerOid::encode(&23298_u64));
+/// assert_eq!(23298_u64, BerOid::decode(&mut &vec![129, 182, 2][..]).unwrap().value);
+/// ```
+pub struct BerOid<T: OfBerOid> {
     pub value: T,
 }
-
+/// [`BerOid`] implementation
 impl<T: OfBerOid> BerOid<T> {
     /// Creates a new [`BerOid`] from an unsigned integer
     pub fn new(value: &T) -> Self {
@@ -197,7 +228,6 @@ impl<T: OfBerOid> BerOid<T> {
         Self::new(value).encode()
     }
 }
-
 /// [`BerOid`] implementation of [`Encode`]
 impl<T: OfBerOid> Encode<Vec<u8>> for BerOid<T> {
     /// Encode a [`BerOid`] into a [`Vec<u8>`]
@@ -210,6 +240,10 @@ impl<T: OfBerOid> Encode<Vec<u8>> for BerOid<T> {
     /// 
     /// assert_eq!(vec![129, 182, 2], BerOid::encode(&23298_u64));
     /// ```
+    /// 
+    /// Please use [`crate::codecs::ber::enc::ber_oid`] instead for
+    /// all parsing needs. This struct is meant to be used as a development
+    /// tool for encoding values to BER format.
     fn encode(&self) -> Vec<u8> {
         let mut output = Vec::new();
         let mut value = self.value.as_();
@@ -238,9 +272,22 @@ impl<T: OfBerOid> Encode<Vec<u8>> for BerOid<T> {
         output
     }
 }
-
 /// [`BerOid`] implementation of [`Decode`]
 impl<T: OfBerOid> Decode<&[u8]> for BerOid<T> {
+    /// Decode a [`BerOid`] from a [`&[u8]`]
+    /// 
+    /// # Example
+    /// 
+    /// ```
+    /// use tinyklv::prelude::*;
+    /// use tinyklv::codecs::ber::BerOid;
+    /// 
+    /// assert_eq!(23298_u64, BerOid::decode(&mut &vec![129, 182, 2][..]).unwrap().value);
+    /// ```
+    /// 
+    /// Please use [`crate::codecs::ber::dec::ber_oid`] instead for
+    /// all parsing needs. This struct is meant to be used as a development
+    /// tool for parsing BER encoded values.
     fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
         // --------------------------------------------------
         // take while MSB = 1, then take last byte and exit

@@ -1,3 +1,5 @@
+#![allow(noop_method_call)]
+
 use tinyklv::Klv;
 use tinyklv::prelude::*;
 
