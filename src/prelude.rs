@@ -5,7 +5,15 @@ pub use winnow::prelude::*;
 pub use winnow::stream::Stream;
 pub use winnow::error::AddContext;
 
-/// Trait for encoding types T to stream-type S, of type [`winnow::stream::Stream`]
+pub trait EncodedValue<T>: IntoIterator<Item = T> + FromIterator<T> + AsRef<[T]> {}
+impl<T, S> EncodedValue<T> for S
+where
+    S: IntoIterator<Item = T> + FromIterator<T> + AsRef<[T]>,
+    S::IntoIter: ExactSizeIterator
+{}
+
+/// Trait for encoding data to owned stream-type O, where O is an owned
+/// stream-type of [`winnow::stream::Stream`], with elements T.
 /// 
 /// Common examples include `&[u8]` and `&str`. Note that due to borrowing rules, the
 /// return type of encoding is likely going to be an owned value like [`Vec<u8>`] or
@@ -16,18 +24,39 @@ pub use winnow::error::AddContext;
 /// For custom encoding functions, ***no need to use this trait***. Instead, please ensure
 /// the functions signature matches the following:
 /// 
-/// `fn <name>(&T) -> S;` or `fn <name>(T) -> S;`
-pub trait Encode<S> {
-    fn encode(&self) -> S;
+/// `fn <name>(&V) -> O;` or `fn <name>(V) -> O;`
+pub trait Encode<T, O: EncodedValue<T>> {
+    fn encode(&self) -> O;
+}
+
+pub trait EncodeKlv<T, O: EncodedValue<T>> {
+    fn encode_klv(&self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O;
+}
+/// [`EncodeKlv`] implementation for all types V that implement [`Encode`]
+impl<T, O, V> EncodeKlv<T, O> for V
+where
+    V: Encode<T, O>,
+    O: EncodedValue<T>,
+{
+    fn encode_klv(&self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
+        let encoded_value = self.encode();
+        let len = encoded_value.as_ref().len();
+        O::from_iter(encoded_key
+            .into()
+            .into_iter()
+            .chain(len_encoder(len).into_iter())
+            .chain(encoded_value.into_iter())
+        )
+    }
 }
 
 /// [`Encode`] implementation for all values which are [`IntoIterator`], and 
 /// each element implements [`Encode`]
-impl<T, I> Encode<Vec<u8>> for I
+impl<T, I> Encode<u8, Vec<u8>> for I
 where
     I: IntoIterator<Item = T>,
-    for<'a> &'a I: IntoIterator<Item = &'a T>, // Ensure we can iterate over references to the items
-    T: Encode<Vec<u8>>,
+    for<'a> &'a I: IntoIterator<Item = &'a T>,
+    T: Encode<u8, Vec<u8>>,
 {
     fn encode(&self) -> Vec<u8> {
         self.into_iter()

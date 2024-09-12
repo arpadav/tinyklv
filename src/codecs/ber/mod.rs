@@ -89,7 +89,7 @@ impl<T: OfBerLength> BerLength<T> {
     }
 }
 /// [`BerLength`] implementation of [`Encode`]
-impl<T: OfBerLength> Encode<Vec<u8>> for BerLength<T> {
+impl<T: OfBerLength> Encode<u8, Vec<u8>> for BerLength<T> {
     /// Encode a [`BerLength`] into a [`Vec<u8>`]
     /// 
     /// # Example
@@ -229,7 +229,7 @@ impl<T: OfBerOid> BerOid<T> {
     }
 }
 /// [`BerOid`] implementation of [`Encode`]
-impl<T: OfBerOid> Encode<Vec<u8>> for BerOid<T> {
+impl<T: OfBerOid> Encode<u8, Vec<u8>> for BerOid<T> {
     /// Encode a [`BerOid`] into a [`Vec<u8>`]
     /// 
     /// # Example
