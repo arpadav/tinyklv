@@ -50,20 +50,20 @@ where
     }
 }
 
-/// [`Encode`] implementation for all values which are [`IntoIterator`], and 
-/// each element implements [`Encode`]
-impl<T, I> Encode<u8, Vec<u8>> for I
-where
-    I: IntoIterator<Item = T>,
-    for<'a> &'a I: IntoIterator<Item = &'a T>,
-    T: Encode<u8, Vec<u8>>,
-{
-    fn encode(&self) -> Vec<u8> {
-        self.into_iter()
-            .flat_map(|item| item.encode())
-            .collect()
-    }
-}
+// /// [`Encode`] implementation for all values which are [`IntoIterator`], and 
+// /// each element implements [`Encode`]
+// impl<T, I> Encode<u8, Vec<u8>> for I
+// where
+//     I: IntoIterator<Item = T>,
+//     for<'a> &'a I: IntoIterator<Item = &'a T>,
+//     T: Encode<u8, Vec<u8>>,
+// {
+//     fn encode(&self) -> Vec<u8> {
+//         self.into_iter()
+//             .flat_map(|item| item.encode())
+//             .collect()
+//     }
+// }
 
 /// Trait for decoding from stream-type T, of type [`winnow::stream::Stream`]
 /// 
