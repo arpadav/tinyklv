@@ -38,9 +38,66 @@ where
 /// For example:
 /// 
 /// ```rust ignore
-/// struct MyStruct {}
-/// fn my_struct_u8_stream(input: &MyStruct) -> Vec<u8>;
-/// fn my_struct_char_stream(input: &MyStruct) -> String;
+/// use tinyklv::Klv;
+/// use tinyklv::prelude::*;
+/// 
+/// struct InnerValue {}
+/// 
+/// fn ex01_encoder(input: &InnerValue) -> Vec<u8> {
+///     return vec![0x65, 0x66, 0x67, 0x68];
+/// };
+/// 
+/// fn ex02_encoder(input: &InnerValue) -> Vec<u8> {
+///     return String::from("Y2K").into_bytes();
+/// };
+/// 
+/// impl Encode<u8, Vec<u8>> for InnerValue {
+///     fn encode(&self) -> Vec<u8> {
+///         return String::from("KLV").to_lowercase().into_bytes();
+///     }
+/// }
+/// 
+/// #[derive(Klv)]
+/// #[klv(
+///     stream = &[u8],
+///     sentinel = 0x00,
+///     key(enc = tinyklv::codecs::FixedLength::encode<u8>(1),
+///         dec = tinyklv::codecs::FixedLength::decode<u8>(1)),
+///     len(enc = tinyklv::codecs::FixedLength::encode<u8>(1),
+///         dec = tinyklv::codecs::FixedLength::decode<u8>(1)),
+/// )]
+/// struct MyStruct {
+///     #[klv(key = 0x07, enc = ex01_encoder)]
+///     example_one: InnerValue
+/// 
+///     #[klv(key = 0x0A, enc = ex02_encoder)]
+///     example_two: InnerValue
+/// 
+///     #[klv(key = 0x8A, enc = InnerValue::encode)]
+///     example_three: InnerValue
+/// }
+/// 
+/// let my_struct_encoded = MyStruct::encode();
+/// assert_eq!(my_struct_encoded, vec![
+///     0x00,               // sentinel
+///     0x10,               // total length
+/// 
+///     // example 1
+///     0x07,               // example 1 key
+///     0x04,               // example 1 length
+///                         // example 1 value 
+///     0x65, 0x66, 0x67, 0x68,
+/// 
+///     // example 2
+///     0x0A,               // example 2 key
+///     0x03,               // example 2 length
+///     0x59, 0x32, 0x4B,   // example 2 value
+/// 
+///     // example 3
+///     0x8A,               // example 3 key
+///     0x03,               // example 3 length
+///     0x6B, 0x6C, 0x76,   // example 3 value
+/// ]);
 /// ```
 /// 
 /// See [`EncodeKlv`] for an example usage of this trait.
