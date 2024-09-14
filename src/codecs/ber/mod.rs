@@ -75,9 +75,9 @@ impl<T: OfBerLength> BerLength<T> {
 
     /// Encodes a length of [`BerLength`] into a [`Vec<u8>`]
     /// 
-    /// See [`BerLength`] implementation [`Encode`]
+    /// See [`BerLength`] implementation [`EncodeValue`]
     pub fn encode(len: &T) -> Vec<u8> {
-        Self::new(len).encode()
+        Self::new(len).encode_value()
     }
 
     /// Returns the length as a [`u128`]
@@ -88,8 +88,8 @@ impl<T: OfBerLength> BerLength<T> {
         }
     }
 }
-/// [`BerLength`] implementation of [`Encode`]
-impl<T: OfBerLength> Encode<u8, Vec<u8>> for BerLength<T> {
+/// [`BerLength`] implementation of [`EncodeValue`]
+impl<T: OfBerLength> EncodeValue<u8, Vec<u8>> for BerLength<T> {
     /// Encode a [`BerLength`] into a [`Vec<u8>`]
     /// 
     /// # Example
@@ -113,7 +113,7 @@ impl<T: OfBerLength> Encode<u8, Vec<u8>> for BerLength<T> {
     /// assert_eq!(value0_encoded, vec![47]);
     /// assert_eq!(value1_encoded, vec![128 + 1, 201]);
     /// ```
-    fn encode(&self) -> Vec<u8> {
+    fn encode_value(&self) -> Vec<u8> {
         match self {
             BerLength::Short(len) => vec![*len],
             BerLength::Long(len) => {
@@ -225,11 +225,11 @@ impl<T: OfBerOid> BerOid<T> {
 
     /// Encodes a value of [`BerOid`] into a [`Vec<u8>`]
     pub fn encode(value: &T) -> Vec<u8> {
-        Self::new(value).encode()
+        Self::new(value).encode_value()
     }
 }
 /// [`BerOid`] implementation of [`Encode`]
-impl<T: OfBerOid> Encode<u8, Vec<u8>> for BerOid<T> {
+impl<T: OfBerOid> EncodeValue<u8, Vec<u8>> for BerOid<T> {
     /// Encode a [`BerOid`] into a [`Vec<u8>`]
     /// 
     /// # Example
@@ -244,7 +244,7 @@ impl<T: OfBerOid> Encode<u8, Vec<u8>> for BerOid<T> {
     /// Please use [`crate::codecs::ber::enc::ber_oid`] instead for
     /// all parsing needs. This struct is meant to be used as a development
     /// tool for encoding values to BER format.
-    fn encode(&self) -> Vec<u8> {
+    fn encode_value(&self) -> Vec<u8> {
         let mut output = Vec::new();
         let mut value = self.value.as_();
         let mut first_byte = true;

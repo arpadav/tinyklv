@@ -61,17 +61,51 @@ impl From<kst::Input> for proc_macro::TokenStream {
                 #decode_impl
             }
         }
-        // if all_encoders_exist {
-        //     let encode_impl = gen_encode_impl(&input);
-        //     expanded = quote! {
-        //         #expanded
-        //         #encode_impl
-        //     }
-        // }
+        println!("I AM HERE");
+        if all_encoders_exist {
+            let encode_impl = gen_encode_impl(&input);
+            expanded = quote! {
+                #expanded
+                #encode_impl
+            }
+        }
         // println!("{}", input.sattr);
         // println!("{:?}", input.fattrs);
         expanded.into()
     }
+}
+
+/// Generates the tokens for the entire [`tinyklv::prelude::Encode`](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.Encode.html) implementation
+fn gen_encode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
+    let name = &input.name;
+    // --------------------------------------------------
+    // default stream -> &[u8]
+    // --------------------------------------------------
+    let stream = input.sattr.stream.value.clone().unwrap_or(crate::parse::u8_slice());
+    let stream_lifetimed = crate::parse::insert_lifetime(&stream, PACKET_LIFETIME_CHAR);
+    let sentinel = input.sattr.sentinel.as_ref().map_or(None, |x| x.get().clone());
+    let key_encoder = input
+        .sattr.key.value.clone()
+        .unwrap_or_else(|| panic!("{}", crate::Error::MissingFunc("struct".into(), "key".into(), "enc".into(), "encoder".into())))
+        .xcoder.enc
+        .unwrap_or_else(|| panic!("{}", crate::Error::MissingFunc("struct".into(), "key".into(), "enc".into(), "encoder".into())));
+    let len_encoder = input
+        .sattr.len.value.clone()
+        .unwrap_or_else(|| panic!("{}", crate::Error::MissingFunc("struct".into(), "len".into(), "enc".into(), "encoder".into())))
+        .xcoder.enc
+        .unwrap_or_else(|| panic!("{}", crate::Error::MissingFunc("struct".into(), "len".into(), "enc".into(), "encoder".into())));
+
+    println!("{:?}", input.sattr);
+    println!("{:?}", input.fattrs);
+
+    quote! {
+        impl ::tinyklv::prelude::EncodeValue<u8, Vec<u8>> for #name {
+            fn encode_value(&self) -> Vec<u8> {
+                
+            }
+        }
+    };
+    quote! {}
 }
 
 /// Generates the tokens for the entire [`tinyklv::prelude::Decode`](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.Decode.html) implementation

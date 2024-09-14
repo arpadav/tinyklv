@@ -91,11 +91,6 @@ pub struct MetaNameValue {
 /// [`MetaNameValue`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for MetaNameValue {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        // let name = input.parse()?;
-        // let sep = input.parse()?;
-        // let value: MetaValue = input.parse()?;
-        // println!("{}", value.to_token_stream().to_string());
-        // Ok(MetaNameValue { name, sep, value })
         Ok(MetaNameValue {
             name: input.parse()?,
             sep: input.parse()?,
