@@ -5,8 +5,8 @@ pub use winnow::prelude::*;
 pub use winnow::stream::Stream;
 pub use winnow::error::AddContext;
 
-pub trait EncodedValue<T>: IntoIterator<Item = T> + FromIterator<T> + AsRef<[T]> {}
-impl<T, S> EncodedValue<T> for S
+pub trait EncodedOutput<T>: IntoIterator<Item = T> + FromIterator<T> + AsRef<[T]> {}
+impl<T, S> EncodedOutput<T> for S
 where
     S: IntoIterator<Item = T> + FromIterator<T> + AsRef<[T]>,
     S::IntoIter: ExactSizeIterator
@@ -45,14 +45,14 @@ where
 /// 
 /// fn ex01_encoder(input: &InnerValue) -> Vec<u8> {
 ///     return vec![0x65, 0x66, 0x67, 0x68];
-/// };
+/// }
 /// 
 /// fn ex02_encoder(input: &InnerValue) -> Vec<u8> {
 ///     return String::from("Y2K").into_bytes();
-/// };
+/// }
 /// 
-/// impl Encode<u8, Vec<u8>> for InnerValue {
-///     fn encode(&self) -> Vec<u8> {
+/// impl EncodeValue<u8, Vec<u8>> for InnerValue {
+///     fn encode_value(&self) -> Vec<u8> {
 ///         return String::from("KLV").to_lowercase().into_bytes();
 ///     }
 /// }
@@ -61,20 +61,20 @@ where
 /// #[klv(
 ///     stream = &[u8],
 ///     sentinel = 0x00,
-///     key(enc = tinyklv::codecs::FixedLength::encode<u8>(1),
-///         dec = tinyklv::codecs::FixedLength::decode<u8>(1)),
-///     len(enc = tinyklv::codecs::FixedLength::encode<u8>(1),
-///         dec = tinyklv::codecs::FixedLength::decode<u8>(1)),
+///     key(enc = tinyklv::codecs::binary::enc::u8,
+///         dec = tinyklv::codecs::binary::dec::u8),
+///     len(enc = tinyklv::codecs::binary::enc::u8,
+///         dec = tinyklv::codecs::binary::dec::u8),
 /// )]
 /// struct MyStruct {
 ///     #[klv(key = 0x07, enc = ex01_encoder)]
-///     example_one: InnerValue
+///     example_one: InnerValue,
 /// 
 ///     #[klv(key = 0x0A, enc = ex02_encoder)]
-///     example_two: InnerValue
+///     example_two: InnerValue,
 /// 
 ///     #[klv(key = 0x8A, enc = InnerValue::encode)]
-///     example_three: InnerValue
+///     example_three: InnerValue,
 /// }
 /// 
 /// let my_struct_encoded = MyStruct::encode();
@@ -100,9 +100,9 @@ where
 /// ]);
 /// ```
 /// 
-/// See [`EncodeKlv`] for an example usage of this trait.
-pub trait Encode<T, O: EncodedValue<T>> {
-    fn encode(&self) -> O;
+/// See [`Encode`] for an example usage of this trait.
+pub trait EncodeValue<T, O: EncodedOutput<T>> {
+    fn encode_value(&self) -> O;
 }
 
 /// Trait for encoding data, with its length and key.
@@ -121,14 +121,14 @@ pub trait Encode<T, O: EncodedValue<T>> {
 /// 
 /// struct MyStruct {}
 /// 
-/// impl Encode<u8, Vec<u8>> for MyStruct {
-///     fn encode(&self) -> Vec<u8> {
+/// impl EncodeValue<u8, Vec<u8>> for MyStruct {
+///     fn encode_value(&self) -> Vec<u8> {
 ///         return "a value".as_bytes().to_vec();
 ///     }
 /// }
 /// 
 /// let my_struct = MyStruct {};
-/// let key_len_val_of_my_struct = my_struct.encode_klv(
+/// let key_len_val_of_my_struct = my_struct.encode(
 ///     [0xFF, 0xBB],   // encoded key (must implement into iter)
 ///     |x: usize|      // length encoder
 ///         (x as u8).to_be_bytes().to_vec(), 
@@ -140,18 +140,18 @@ pub trait Encode<T, O: EncodedValue<T>> {
 /// ]);
 /// ```
 /// 
-/// See [`Encode`] for more information.
-pub trait EncodeKlv<T, O: EncodedValue<T>> {
+/// See [`EncodeValue`] for more information.
+pub(crate) trait EncodeKlv<T, O: EncodedOutput<T>> {
     fn encode_klv(&self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O;
 }
-/// [`EncodeKlv`] implementation for all types V that implement [`Encode`]
+/// [`Encode`] implementation for all types V that implement [`Encode`]
 impl<T, O, V> EncodeKlv<T, O> for V
 where
-    V: Encode<T, O>,
-    O: EncodedValue<T>,
+    V: EncodeValue<T, O>,
+    O: EncodedOutput<T>,
 {
     fn encode_klv(&self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
-        let encoded_value = self.encode();
+        let encoded_value = self.encode_value();
         let len = encoded_value.as_ref().len();
         O::from_iter(encoded_key
             .into()

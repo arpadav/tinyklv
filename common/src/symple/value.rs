@@ -36,12 +36,10 @@ pub enum MetaValue {
     Type(syn::Type),
     Ident(syn::Ident),
     Macro(syn::Macro),
-    // MacroCall(proc_macro2::TokenStream),
 }
 /// [`MetaValue`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for MetaValue {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        println!("{}", input.to_string());
         // --------------------------------------------------
         // prioritize macro: check for a path followed by '!'
         // --------------------------------------------------
@@ -49,22 +47,7 @@ impl syn::parse::Parse for MetaValue {
         if let Ok(_) = fork.parse::<syn::Path>() {
             if fork.peek(syn::Token![!]) {
                 let macro_: syn::Macro = input.parse()?;
-                println!("{}", macro_.to_token_stream().to_string());
                 return Ok(MetaValue::Macro(macro_));
-                // // let parsed_path: syn::Path = input.parse()?;
-                // // let bang_token: syn::Token![!] = input.parse()?;
-                // let content;
-                // syn::parenthesized!(content in input);
-                // let macro_contents: Result<proc_macro2::TokenStream, syn::Error> = content.parse();
-                // match macro_contents {
-                //     Ok(x) => return Ok(MetaValue::MacroCall(quote::quote! {
-                //         #macro_ ( #x )
-                //     })),
-                //     Err(_) => return Ok(MetaValue::Macro(macro_)),
-                // }
-                // // return Ok(MetaValue::Macro(quote::quote! {
-                // //     #parsed_path #bang_token ( #macro_contents )
-                // // }));
             }
         }
         drop(fork);
