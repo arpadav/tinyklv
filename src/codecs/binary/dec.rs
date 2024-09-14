@@ -294,13 +294,13 @@ using big-endian encoding.
 
 ```rust
 use tinyklv::prelude::*;
+
 let mut input1: &[u8] = &[0x00, 0x00, 0x01, 0xE0, 0xFF, 0xFF, 0x00, 0x00, 0x00];
 let mut input2: &[u8] = &[0x00, 0x00, 0x01, 0xE0, 0xFF, 0xFF, 0x00, 0x00];
 let mut input3: &[u8] = &[0x00, 0x00, 0x01, 0xE0, 0xFF, 0xFF, 0x00];
 assert_eq!(tinyklv::dec::binary::be_u64_lengthed(&mut input1, 9), Ok(0x00_01_E0_FF_FF_00_00_00));
 assert_eq!(tinyklv::dec::binary::be_u64_lengthed(&mut input2, 8), Ok(0x00_00_01_E0_FF_FF_00_00));
 assert_eq!(tinyklv::dec::binary::be_u64_lengthed(&mut input3, 7), Ok(0x00_00_00_01_E0_FF_FF_00));
-
 ```
 ");
 lengthed_be!(u128, 16, B128_PADDED);
