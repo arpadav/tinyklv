@@ -25,8 +25,10 @@ where
 /// Common stream types include `&[u8]` and `&str`, therefore the return type of
 /// encoding is likely an owned value like [`Vec<u8>`] or [`String`].
 /// 
-/// Automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv) trait
-/// which have encoders for every field covered.
+/// This trait is automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv)
+/// trait, in which every field has an associated encoder for it's type.
+/// 
+/// Otherwise, this trait can be implemented manually.
 /// 
 /// For custom encoding functions, ***no need to use this trait***. Instead, please ensure
 /// the functions signature matches the following:
@@ -35,7 +37,7 @@ where
 /// fn encoder_fn_name(..) -> O;
 /// ```
 /// 
-/// For example:
+/// # Example
 /// 
 /// ```rust ignore
 /// use tinyklv::Klv;
@@ -100,7 +102,7 @@ where
 /// ]);
 /// ```
 /// 
-/// See [`Encode`] for an example usage of this trait.
+/// See [`EncodeManual`] for an example usage of this trait.
 pub trait EncodeValue<T, O: EncodedOutput<T>> {
     fn encode_value(&self) -> O;
 }
@@ -128,7 +130,7 @@ pub trait EncodeValue<T, O: EncodedOutput<T>> {
 /// }
 /// 
 /// let my_struct = MyStruct {};
-/// let key_len_val_of_my_struct = my_struct.encode(
+/// let key_len_val_of_my_struct = my_struct.encode_manually(
 ///     [0xFF, 0xBB],   // encoded key (must implement into iter)
 ///     |x: usize|      // length encoder
 ///         (x as u8).to_be_bytes().to_vec(), 
@@ -141,25 +143,30 @@ pub trait EncodeValue<T, O: EncodedOutput<T>> {
 /// ```
 /// 
 /// See [`EncodeValue`] for more information.
-pub(crate) trait EncodeKlv<T, O: EncodedOutput<T>> {
-    fn encode_klv(&self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O;
+pub trait EncodeManual<T, O: EncodedOutput<T>> {
+    fn encode_manually(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O;
 }
-/// [`Encode`] implementation for all types V that implement [`Encode`]
-impl<T, O, V> EncodeKlv<T, O> for V
+/// [`EncodeManual`] implementation for all types V that implement [`EncodeValue`]
+impl<T, O> EncodeManual<T, O> for O
 where
-    V: EncodeValue<T, O>,
+    // V: EncodeValue<T, O>,
     O: EncodedOutput<T>,
 {
-    fn encode_klv(&self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
-        let encoded_value = self.encode_value();
-        let len = encoded_value.as_ref().len();
+    fn encode_manually(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
+        // let encoded_value = self.encode_value();
+        // let encoded_value = self;
+        let len = self.as_ref().len();
         O::from_iter(encoded_key
             .into()
             .into_iter()
             .chain(len_encoder(len).into_iter())
-            .chain(encoded_value.into_iter())
+            .chain(self.into_iter())
         )
     }
+}
+
+pub trait Encode<T, O: EncodedOutput<T>> {
+    fn encode(&self) -> O;
 }
 
 // /// [`Encode`] implementation for all values which are [`IntoIterator`], and 
