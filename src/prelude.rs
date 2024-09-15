@@ -130,7 +130,7 @@ pub trait EncodeValue<T, O: EncodedOutput<T>> {
 /// }
 /// 
 /// let my_struct = MyStruct {};
-/// let key_len_val_of_my_struct = my_struct.encode_manually(
+/// let key_len_val_of_my_struct = my_struct.encode().into_klv(
 ///     [0xFF, 0xBB],   // encoded key (must implement into iter)
 ///     |x: usize|      // length encoder
 ///         (x as u8).to_be_bytes().to_vec(), 
@@ -143,25 +143,59 @@ pub trait EncodeValue<T, O: EncodedOutput<T>> {
 /// ```
 /// 
 /// See [`EncodeValue`] for more information.
-pub trait EncodeManual<T, O: EncodedOutput<T>> {
-    fn encode_manually(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O;
+pub trait IntoKlv<T, O: EncodedOutput<T>> {
+    fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O;
 }
-/// [`EncodeManual`] implementation for all types V that implement [`EncodeValue`]
-impl<T, O> EncodeManual<T, O> for O
+// /// [`IntoKlv`] implementation for all types S that implement [`EncodeValue<T>`]
+// impl<T, S, O> IntoKlv<T, O> for S
+// where
+//     S: EncodeValue<T, O>,
+//     O: EncodedOutput<T>,
+// {
+//     #[inline(always)]
+//     fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
+//         self.encode_value().into_klv(encoded_key, len_encoder)
+//     }
+// }
+/// [`IntoKlv`] implementation for all types O that implement [`EncodedOutput<T>`]
+impl<T, O> IntoKlv<T, O> for O
 where
-    // V: EncodeValue<T, O>,
     O: EncodedOutput<T>,
 {
-    fn encode_manually(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
-        // let encoded_value = self.encode_value();
-        // let encoded_value = self;
-        let len = self.as_ref().len();
+    #[inline(always)]
+    fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
         O::from_iter(encoded_key
             .into()
             .into_iter()
-            .chain(len_encoder(len).into_iter())
+            .chain(len_encoder(self.as_ref().len()).into_iter())
             .chain(self.into_iter())
         )
+    }
+}
+/// [`IntoKlv`] implementation for all types [`Result<O>`] that implement [`EncodedOutput<T>`]
+impl<T, O, E> IntoKlv<T, O> for Result<O, E>
+where
+    O: EncodedOutput<T>,
+{
+    #[inline(always)]
+    fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
+        match self {
+            Ok(x) => x.into_klv(encoded_key, len_encoder),
+            Err(_) => O::from_iter(std::iter::empty::<T>())
+        }
+    }
+}
+/// [`IntoKlv`] implementation for all types [`Option<O>`] that implement [`EncodedOutput<T>`]
+impl<T, O> IntoKlv<T, O> for Option<O>
+where
+    O: EncodedOutput<T>,
+{
+    #[inline(always)]
+    fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
+        match self {
+            Some(x) => x.into_klv(encoded_key, len_encoder),
+            None => O::from_iter(std::iter::empty::<T>())
+        }
     }
 }
 
