@@ -8,11 +8,13 @@ use tinyklv_common::symple::prelude::*;
 // local
 // --------------------------------------------------
 use crate::kst;
+use crate::kst::xcoder::PathLike;
 
 // --------------------------------------------------
 // constants
 // --------------------------------------------------
 const PACKET_LIFETIME_CHAR: char = 'z';
+const ENCODE_ACCUMULATE_VAR: &str = "output";
 
 /// Derive [`crate::Klv`]
 pub fn derive(input: &syn::DeriveInput) -> proc_macro::TokenStream {
@@ -71,6 +73,7 @@ impl From<kst::Input> for proc_macro::TokenStream {
         }
         // println!("{}", input.sattr);
         // println!("{:?}", input.fattrs);
+        println!("{}", expanded);
         expanded.into()
     }
 }
@@ -82,7 +85,6 @@ fn gen_encode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
     // default stream -> &[u8]
     // --------------------------------------------------
     let stream = input.sattr.stream.value.clone().unwrap_or(crate::parse::u8_slice());
-    let stream_lifetimed = crate::parse::insert_lifetime(&stream, PACKET_LIFETIME_CHAR);
     let sentinel = input.sattr.sentinel.as_ref().map_or(None, |x| x.get().clone());
     let key_encoder = input
         .sattr.key.value.clone()
@@ -95,17 +97,56 @@ fn gen_encode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
         .xcoder.enc
         .unwrap_or_else(|| panic!("{}", crate::Error::MissingFunc("struct".into(), "len".into(), "enc".into(), "encoder".into())));
 
+    let items_encoded = gen_items_encoded(&input, &key_encoder, &len_encoder);
+
     println!("{:?}", input.sattr);
     println!("{:?}", input.fattrs);
 
+    let encode_with_key_len = match sentinel {
+        Some(sentinel) => quote! {
+            #[automatically_derived]
+            impl ::tinyklv::prelude::Encode<u8, Vec<u8>> for #name {
+                fn encode(&self) -> Vec<u8> {
+                    self
+                        .encode_value()
+                        .into_klv(
+                            #key_encoder (#sentinel),
+                            #len_encoder ,
+                        )
+                }
+            }
+        },
+        None => quote! {}
+    };
+
     quote! {
+        #[automatically_derived]
         impl ::tinyklv::prelude::EncodeValue<u8, Vec<u8>> for #name {
             fn encode_value(&self) -> Vec<u8> {
-                
+                let mut output = vec![];
+                #items_encoded
+                output
             }
         }
-    };
-    quote! {}
+        #encode_with_key_len
+    }
+}
+
+fn gen_items_encoded(input: &kst::Input, key_encoder: &PathLike, len_encoder: &PathLike) -> proc_macro2::TokenStream {
+    let items_encoded = input.fattrs.iter().map(|field| {
+        let name = &field.name;
+        let value_encoder = field
+            .contents.enc()
+            .unwrap_or_else(|| panic!("{}", crate::Error::MissingFunc("struct".into(), "value".into(), "enc".into(), "encoder".into())));
+        let key = field
+            .contents.key
+            .value.clone().unwrap_or_else(|| panic!("{}", crate::Error::MissingKey(name.to_string()))
+        );
+        quote! {
+            output.extend(#value_encoder(&self.#name).into_klv(#key_encoder(#key), #len_encoder));
+        }
+    });
+    quote! { #(#items_encoded)* }
 }
 
 /// Generates the tokens for the entire [`tinyklv::prelude::Decode`](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.Decode.html) implementation

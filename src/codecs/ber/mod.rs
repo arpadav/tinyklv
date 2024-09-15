@@ -48,7 +48,7 @@ impl<T> OfBerOid for T where T: OfBerCommon {}
 /// use tinyklv::prelude::*;
 /// use tinyklv::codecs::ber::BerLength;
 /// 
-/// assert_eq!(vec![128 + 3, 129, 182, 2], BerLength::new(&8_500_738_u32).encode());
+/// assert_eq!(vec![128 + 3, 129, 182, 2], BerLength::new(&8_500_738_u32).encode_value());
 /// assert_eq!(BerLength::new(&8_500_738_u32), BerLength::decode(&mut &vec![128 + 3, 129, 182, 2][..]).unwrap());
 /// ```
 pub enum BerLength<T: OfBerLength> {
@@ -76,7 +76,7 @@ impl<T: OfBerLength> BerLength<T> {
     /// Encodes a length of [`BerLength`] into a [`Vec<u8>`]
     /// 
     /// See [`BerLength`] implementation [`EncodeValue`]
-    pub fn encode(len: &T) -> Vec<u8> {
+    pub fn encode_value(len: &T) -> Vec<u8> {
         Self::new(len).encode_value()
     }
 
@@ -102,13 +102,13 @@ impl<T: OfBerLength> EncodeValue<u8, Vec<u8>> for BerLength<T> {
     /// let value1 = BerLength::new(&201_u64);
     /// let value2 = BerLength::new(&123891829038102_u64);
     /// 
-    /// assert_eq!(value0.encode(), vec![47]);
-    /// assert_eq!(value1.encode(), vec![128 + 1, 201]);
-    /// assert_eq!(value2.encode(), vec![128 + 6, 112, 173, 208, 117, 220, 22]);
+    /// assert_eq!(value0.encode_value(), vec![47]);
+    /// assert_eq!(value1.encode_value(), vec![128 + 1, 201]);
+    /// assert_eq!(value2.encode_value(), vec![128 + 6, 112, 173, 208, 117, 220, 22]);
     /// 
     /// // Can also directly encode:
-    /// let value0_encoded = BerLength::encode(&47_u64);
-    /// let value1_encoded = BerLength::encode(&201_u64);
+    /// let value0_encoded = BerLength::encode_value(&47_u64);
+    /// let value1_encoded = BerLength::encode_value(&201_u64);
     /// 
     /// assert_eq!(value0_encoded, vec![47]);
     /// assert_eq!(value1_encoded, vec![128 + 1, 201]);
@@ -210,7 +210,7 @@ impl<T: OfBerLength> Decode<&[u8]> for BerLength<T> {
 /// use tinyklv::prelude::*;
 /// use tinyklv::codecs::ber::BerOid;
 /// 
-/// assert_eq!(vec![129, 182, 2], BerOid::encode(&23298_u64));
+/// assert_eq!(vec![129, 182, 2], BerOid::encode_value(&23298_u64));
 /// assert_eq!(23298_u64, BerOid::decode(&mut &vec![129, 182, 2][..]).unwrap().value);
 /// ```
 pub struct BerOid<T: OfBerOid> {
@@ -224,7 +224,7 @@ impl<T: OfBerOid> BerOid<T> {
     }
 
     /// Encodes a value of [`BerOid`] into a [`Vec<u8>`]
-    pub fn encode(value: &T) -> Vec<u8> {
+    pub fn encode_value(value: &T) -> Vec<u8> {
         Self::new(value).encode_value()
     }
 }
@@ -238,7 +238,7 @@ impl<T: OfBerOid> EncodeValue<u8, Vec<u8>> for BerOid<T> {
     /// use tinyklv::prelude::*;
     /// use tinyklv::codecs::ber::BerOid;
     /// 
-    /// assert_eq!(vec![129, 182, 2], BerOid::encode(&23298_u64));
+    /// assert_eq!(vec![129, 182, 2], BerOid::encode_value(&23298_u64));
     /// ```
     /// 
     /// Please use [`crate::codecs::ber::enc::ber_oid`] instead for
