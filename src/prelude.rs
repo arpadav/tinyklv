@@ -130,7 +130,7 @@ pub trait EncodeValue<T, O: EncodedOutput<T>> {
 /// }
 /// 
 /// let my_struct = MyStruct {};
-/// let key_len_val_of_my_struct = my_struct.encode().into_klv(
+/// let key_len_val_of_my_struct = my_struct.encode_value().into_klv(
 ///     [0xFF, 0xBB],   // encoded key (must implement into iter)
 ///     |x: usize|      // length encoder
 ///         (x as u8).to_be_bytes().to_vec(), 
@@ -146,17 +146,6 @@ pub trait EncodeValue<T, O: EncodedOutput<T>> {
 pub trait IntoKlv<T, O: EncodedOutput<T>> {
     fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O;
 }
-// /// [`IntoKlv`] implementation for all types S that implement [`EncodeValue<T>`]
-// impl<T, S, O> IntoKlv<T, O> for S
-// where
-//     S: EncodeValue<T, O>,
-//     O: EncodedOutput<T>,
-// {
-//     #[inline(always)]
-//     fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
-//         self.encode_value().into_klv(encoded_key, len_encoder)
-//     }
-// }
 /// [`IntoKlv`] implementation for all types O that implement [`EncodedOutput<T>`]
 impl<T, O> IntoKlv<T, O> for O
 where
@@ -202,21 +191,6 @@ where
 pub trait Encode<T, O: EncodedOutput<T>> {
     fn encode(&self) -> O;
 }
-
-// /// [`Encode`] implementation for all values which are [`IntoIterator`], and 
-// /// each element implements [`Encode`]
-// impl<T, I> Encode<u8, Vec<u8>> for I
-// where
-//     I: IntoIterator<Item = T>,
-//     for<'a> &'a I: IntoIterator<Item = &'a T>,
-//     T: Encode<u8, Vec<u8>>,
-// {
-//     fn encode(&self) -> Vec<u8> {
-//         self.into_iter()
-//             .flat_map(|item| item.encode())
-//             .collect()
-//     }
-// }
 
 /// Trait for decoding from stream-type T, of type [`winnow::stream::Stream`]
 /// 

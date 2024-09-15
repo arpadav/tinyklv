@@ -7,8 +7,18 @@ macro_rules! impl_encode {
         }
 
         #[inline(always)]
+        pub fn [<be_ $ty _from_usize>](input: usize) -> Vec<u8> {
+            (input as $ty).to_be_bytes().to_vec()
+        }
+
+        #[inline(always)]
         pub fn [<le_ $ty>](input: $ty) -> Vec<u8> {
             input.to_le_bytes().to_vec()
+        }
+
+        #[inline(always)]
+        pub fn [<le_ $ty _from_usize>](input: usize) -> Vec<u8> {
+            (input as $ty).to_le_bytes().to_vec()
         }
 
         #[inline(always)]
@@ -17,6 +27,14 @@ macro_rules! impl_encode {
             { input.to_be_bytes().to_vec() }
             #[cfg(target_endian = "little")]
             { input.to_le_bytes().to_vec() }
+        }
+
+        #[inline(always)]
+        pub fn [<$ty _from_usize>](input: usize) -> Vec<u8> {
+            #[cfg(target_endian = "big")]
+            { (input as $ty).to_be_bytes().to_vec() }
+            #[cfg(target_endian = "little")]
+            { (input as $ty).to_le_bytes().to_vec() }
         }
 
         #[inline(always)]
