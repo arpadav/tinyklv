@@ -1,3 +1,5 @@
+#![allow(klv_unimplemented_decode)]
+
 use tinyklv::Klv;
 use tinyklv::prelude::*;
 
@@ -26,6 +28,8 @@ impl EncodeValue<u8, Vec<u8>> for InnerValue {
     len(enc = tinyklv::codecs::binary::enc::u8_from_usize,
         dec = tinyklv::codecs::binary::dec::u8),
 )]
+// #[klv(allow_unimplemented_decode)]
+// #[klv(allow_unimplemented_encode)]
 struct MyStruct {
     #[klv(key = 0x07, enc = ex01_encoder)]
     example_one: InnerValue,

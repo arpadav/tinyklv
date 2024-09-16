@@ -36,7 +36,7 @@ enum Error {
 
 const NAME: &str = "Klv";
 const ATTR: &str = "klv";
-#[proc_macro_derive(Klv, attributes(klv))]
+#[proc_macro_derive(Klv, attributes(klv, allow))]
 pub fn klv(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     expand::derive(&input)

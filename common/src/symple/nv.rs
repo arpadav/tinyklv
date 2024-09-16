@@ -72,7 +72,7 @@ impl<T: From<MetaValue> + ToTokens> From<MetaValue> for NameValue<T> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 /// [`MetaNameValue`]
 /// 
 /// Data structure which is consists of a name [`struct@syn::Ident`] 
