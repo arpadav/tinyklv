@@ -8,13 +8,6 @@ pub mod reexport {
 }
 pub use tinyklv_impl::*;
 
-pub(crate) fn enc_prior<T, const N: usize>(input: Option<T>, enc: fn(T) -> [u8; N]) -> Vec<u8> {
-    // Some: convert resulting [u8; N] -> Vec<u8>
-    // None: return an empty Vec<u8>
-    input.map(|i| enc(i).into())
-    .unwrap_or_default()
-}
-
 #[macro_export]
 /// Returns a blank context error: usually used for reserved values.
 /// 
@@ -23,44 +16,6 @@ pub(crate) fn enc_prior<T, const N: usize>(input: Option<T>, enc: fn(T) -> [u8; 
 macro_rules! err {
     () => { winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()) };
 }
-
-// #[macro_export]
-// /// Perform some operation on a parsed value of some defined precision
-// /// 
-// /// # Example
-// /// 
-// /// ```rust no_run ignore
-// /// tinyklv::op!(input, parser, f64, * 100.0, - 10.0);
-// /// // expands to:
-// /// let _ = (parser.parse_next(input)? * 100.0) - 10.0;
-// /// 
-// /// tinyklv::op!(input, parser, f64, * 100.0, - 10.0, + 12.0, / 2.0, + 1.0);
-// /// // expands to:
-// /// let _ = (((parser.parse_next(input)? * 100.0) - 10.0 + 12.0) / 2.0) + 1.0;
-// /// ```
-// macro_rules! op {
-//     // Base case: single operation
-//     ($input:tt, $parser:path, $precision:ty, $op:tt $val:expr) => {
-//         $parser.parse_next($input)? $op $val
-//     };
-
-//     // Recursive case: multiple operations
-//     ($input:tt, $parser:path, $precision:ty, $op1:tt $val1:expr, $($op2:tt $val2:expr),*) => {
-//         $crate::op!(@apply $input, $parser, $precision, $op1 $val1, $($op2 $val2),*)
-//     };
-
-//     // Helper to apply remaining operations
-//     (@apply $input:tt, $parser:path, $precision:ty, $op1:tt $val1:expr) => {
-//         $parser.parse_next($input)? $op1 $val1
-//     };
-
-//     (@apply $input:tt, $parser:path, $precision:ty, $op1:tt $val1:expr, $($op2:tt $val2:expr),*) => {
-//         $crate::op!(@apply $input, $parser, $precision, ($parser.parse_next($input)? as $precision $op1 $val1) $($op2 $val2),*)
-//     };
-// }
-// Example Usage
-// tinyklv::op!(input, parser, f64, * 100.0, - 10.0, + 12.0, / 2.0, + 1.0);
-
 
 #[macro_export]
 /// Scales a parsed value of some predefined precision
