@@ -8,6 +8,7 @@ pub mod enc;
 // external
 // --------------------------------------------------
 use num_traits::ToBytes;
+use winnow::Parser;
 use std::convert::AsRef;
 
 /// [`FixedLength`] encoder / decoder
@@ -21,7 +22,9 @@ impl FixedLength {
     where
         P: From<u128>,
     {
-        Ok(crate::codecs::binary::dec::be_u128_lengthed(input, self.len)?.into())
+        crate::codecs::binary::dec::be_u128_lengthed(self.len)
+            .parse_next(input)
+            .map(|res| res.into())
     }
 
     #[inline(always)]
@@ -38,8 +41,9 @@ impl FixedLength {
         P: From<u128>,
     {
         move |input: &mut &[u8]| {
-            let val = crate::codecs::binary::dec::be_u128_lengthed(input, len)?;
-            Ok(val.into())
+            crate::codecs::binary::dec::be_u128_lengthed(len)
+                .parse_next(input)
+                .map(|res| res.into())
         }
     }
 
