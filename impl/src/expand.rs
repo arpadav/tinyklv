@@ -99,7 +99,7 @@ fn gen_encode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
     let encode_with_key_len = match sentinel {
         Some(sentinel) => quote! {
             #[automatically_derived]
-            impl ::tinyklv::prelude::Encode<u8, Vec<u8>> for #name {
+            impl ::tinyklv::prelude::Encode<Vec<u8>> for #name {
                 fn encode(&self) -> Vec<u8> {
                     self.encode_value().into_klv(
                         #key_encoder (#sentinel),
@@ -113,7 +113,7 @@ fn gen_encode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
 
     quote! {
         #[automatically_derived]
-        impl ::tinyklv::prelude::EncodeValue<u8, Vec<u8>> for #name {
+        impl ::tinyklv::prelude::EncodeValue<Vec<u8>> for #name {
             fn encode_value(&self) -> Vec<u8> {
                 let mut output = vec![];
                 #items_encoded
@@ -241,9 +241,9 @@ fn gen_items_match(fatts: &Vec<kst::FieldAttrSchema>) -> proc_macro2::TokenStrea
         );
         let dynlen = field.contents.dynlen();
         let optional_len = if let Some(true) = dynlen { quote! { len } } else { quote! { _ } };
-        let optional_len_arg = if let Some(true) = dynlen { quote! { , len } } else { quote! {} };
+        let optional_len_arg = if let Some(true) = dynlen { quote! { (len) } } else { quote! {} };
         quote! {
-            (#key, #optional_len) => #name = #dec (input #optional_len_arg).ok(),
+            (#key, #optional_len) => #name = #dec #optional_len_arg (input).ok(),
         }
     });
     quote! {

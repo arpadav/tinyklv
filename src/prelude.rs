@@ -14,6 +14,32 @@ where
     S::IntoIter: ExactSizeIterator,
 {}
 
+pub trait HasElement {
+    type Element;
+}
+macro_rules! has_element {
+    ($ty:ty, $elem:ty) => {
+        impl HasElement for $ty {
+            type Element = $elem;
+        }
+    };
+    ($ty:ty, $elem:ty; $($tt:tt)*) => {
+        impl<$($tt)*> HasElement for $ty {
+            type Element = $elem;
+        }
+    };
+}
+has_element!(Vec<T>, T; T);
+has_element!(&mut Vec<T>, T; T);
+has_element!(Box<[T]>, T; T);
+has_element!(&mut Box<[T]>, T; T);
+has_element!(&[T], T; T);
+has_element!(&mut &[T], T; T);
+has_element!(String, char);
+has_element!(&mut String, char);
+has_element!(&str, char);
+has_element!(&mut str, char);
+
 /// Trait for encoding ***data only*** to owned stream-type `O`, where `O` is an owned
 /// stream-type of [`winnow::stream::Stream`], with elements `T`.
 /// 
@@ -54,7 +80,7 @@ where
 ///     return String::from("Y2K").into_bytes();
 /// }
 /// 
-/// impl EncodeValue<u8, Vec<u8>> for InnerValue {
+/// impl EncodeValue<Vec<u8>> for InnerValue {
 ///     fn encode_value(&self) -> Vec<u8> {
 ///         return String::from("KLV").to_lowercase().into_bytes();
 ///     }
@@ -108,7 +134,13 @@ where
 /// ```
 /// 
 /// See [`Encode`] for an example usage of this trait.
-pub trait EncodeValue<T, O: EncodedOutput<T>> {
+// pub trait EncodeValue<O: EncodedOutput<O::Element>>: ElementType {
+//     fn encode_value(&self) -> O;
+// }
+// pub trait EncodeValue<T: ElementType, O: EncodedOutput<T::Element>> {
+//     fn encode_value(&self) -> O;
+// }
+pub trait EncodeValue<O: HasElement + EncodedOutput<<O as HasElement>::Element>> {
     fn encode_value(&self) -> O;
 }
 
@@ -131,7 +163,7 @@ pub trait EncodeValue<T, O: EncodedOutput<T>> {
 /// 
 /// struct MyStruct {}
 /// 
-/// impl EncodeValue<u8, Vec<u8>> for MyStruct {
+/// impl EncodeValue<Vec<u8>> for MyStruct {
 ///     fn encode_value(&self) -> Vec<u8> {
 ///         return "a value".as_bytes().to_vec();
 ///     }
@@ -229,7 +261,7 @@ where
 /// 
 /// struct MyStruct {}
 /// 
-/// impl EncodeValue<u8, Vec<u8>> for MyStruct {
+/// impl EncodeValue<Vec<u8>> for MyStruct {
 ///     fn encode_value(&self) -> Vec<u8> {
 ///         return "example".as_bytes().to_vec();
 ///     }
@@ -258,13 +290,13 @@ where
 /// 
 /// struct MyStruct {}
 /// 
-/// impl EncodeValue<u8, Vec<u8>> for MyStruct {
+/// impl EncodeValue<Vec<u8>> for MyStruct {
 ///     fn encode_value(&self) -> Vec<u8> {
 ///         return "example".as_bytes().to_vec();
 ///     }
 /// }
 /// 
-/// impl Encode<u8, Vec<u8>> for MyStruct {
+/// impl Encode<Vec<u8>> for MyStruct {
 ///     fn encode(&self) -> Vec<u8> {
 ///         return self.encode_value().into_klv(
 ///             [0xFF, 0xBB],   // encoded key (must implement into iter)
@@ -325,7 +357,8 @@ where
 /// 
 /// assert_eq!(mystruct_klv_1, mystruct_klv_2);
 /// ```
-pub trait Encode<T, O: EncodedOutput<T>> {
+
+pub trait Encode<O: HasElement + EncodedOutput<<O as HasElement>::Element>> {
     fn encode(&self) -> O;
 }
 
