@@ -19,26 +19,42 @@ pub trait HasElement {
 }
 macro_rules! has_element {
     ($ty:ty, $elem:ty) => {
+        has_element!(w_mut; $ty, $elem);
+        has_element!(wo_mut; $ty, $elem);
+    };
+    ($ty:ty, $elem:ty; $($tt:tt)*) => {
+        has_element!(w_mut; $ty, $elem; $($tt)*);
+        has_element!(wo_mut; $ty, $elem; $($tt)*);
+    };
+    (wo_mut; $ty:ty, $elem:ty) => {
         impl HasElement for $ty {
             type Element = $elem;
         }
     };
-    ($ty:ty, $elem:ty; $($tt:tt)*) => {
+    (wo_mut; $ty:ty, $elem:ty; $($tt:tt)*) => {
         impl<$($tt)*> HasElement for $ty {
+            type Element = $elem;
+        }
+    };
+    (w_mut; $ty:ty, $elem:ty) => {
+        impl HasElement for &mut $ty {
+            type Element = $elem;
+        }
+    };
+    (w_mut; $ty:ty, $elem:ty; $($tt:tt)*) => {
+        impl<$($tt)*> HasElement for &mut $ty {
             type Element = $elem;
         }
     };
 }
 has_element!(Vec<T>, T; T);
-has_element!(&mut Vec<T>, T; T);
 has_element!(Box<[T]>, T; T);
-has_element!(&mut Box<[T]>, T; T);
-has_element!(&[T], T; T);
-has_element!(&mut &[T], T; T);
+has_element!(wo_mut; &[T], T; T);
+has_element!(wo_mut; &mut [T], T; T);
 has_element!(String, char);
-has_element!(&mut String, char);
-has_element!(&str, char);
-has_element!(&mut str, char);
+has_element!(wo_mut; &str, char);
+has_element!(wo_mut; &mut str, char);
+has_element!(dyn Iterator<Item = T>, T; T);
 
 /// Trait for encoding ***data only*** to owned stream-type `O`, where `O` is an owned
 /// stream-type of [`winnow::stream::Stream`], with elements `T`.
