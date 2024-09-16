@@ -27,7 +27,7 @@ impl<T: From<MetaValue>> From<MetaValue> for Value<T> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 /// [`MetaValue`], which can be [`enum@syn::Lit`], [`syn::Type`], [`syn::Path`], or [`struct@syn::Ident`]
 pub enum MetaValue {
     Lit(syn::Lit),

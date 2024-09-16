@@ -50,7 +50,7 @@ impl<T: From<MetaContents>> From<MetaContents> for Contents<T> {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone, Default, PartialEq, Eq, Hash)]
 /// [`MetaContents`]
 /// 
 /// Listed contents delimited by a comma `,`
@@ -107,6 +107,14 @@ impl<'a> IntoIterator for &'a MetaContents {
         MetaContentsIterator::new(&self.items)
     }
 }
+/// [`MetaContents`] implementation of [`crate::symple::prelude::Merge`]
+impl crate::symple::prelude::Merge for MetaContents {
+    fn merge(&mut self, other: Self) {
+        let set1 = self.items.iter().cloned().collect::<std::collections::HashSet<_>>();
+        let set2 = other.items.iter().cloned().collect::<std::collections::HashSet<_>>();
+        self.items.extend(set2.difference(&set1).cloned());
+    }
+}
 /// [`MetaContents`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for MetaContents {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -154,7 +162,7 @@ impl<'a> Iterator for MetaContentsIterator<'a> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 /// Enum to handle various meta data types
 /// 
 /// # Example

@@ -8,7 +8,7 @@ use thisenum::Const;
 // --------------------------------------------------
 pub mod symple;
 
-#[derive(Const)]
+#[derive(Const, Debug)]
 #[armtype(&str)]
 /// Struct attributes for `tinyklv` and their input arguments
 /// 
@@ -196,6 +196,12 @@ pub enum StructNames {
     /// Please refer to [`XcoderNames::Encoder`] and [`XcoderNames::Decoder`] for 
     /// example usage for setting the `enc` and `dec` arguments.
     DefaultTuple,
+
+    #[value = "allow_unimplemented_decode"]
+    AllowUnimplementedDecode,
+
+    #[value = "allow_unimplemented_encode"]
+    AllowUnimplementedEncode,
 }
 
 #[derive(Const)]

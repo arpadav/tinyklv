@@ -5,11 +5,13 @@ pub use winnow::prelude::*;
 pub use winnow::stream::Stream;
 pub use winnow::error::AddContext;
 
-pub trait EncodedOutput<T>: IntoIterator<Item = T> + FromIterator<T> + AsRef<[T]> {}
+/// A trait to represent the encoded output.
+pub trait EncodedOutput<T>: Extend<T> + AsRef<[T]> + FromIterator<T> + IntoIterator<Item = T> {}
 impl<T, S> EncodedOutput<T> for S
 where
-    S: IntoIterator<Item = T> + FromIterator<T> + AsRef<[T]>,
-    S::IntoIter: ExactSizeIterator
+    S: Extend<T> + AsRef<[T]>,
+    S: FromIterator<T> + IntoIterator<Item = T>,
+    S::IntoIter: ExactSizeIterator,
 {}
 
 /// Trait for encoding ***data only*** to owned stream-type `O`, where `O` is an owned
@@ -17,18 +19,17 @@ where
 /// 
 /// ```text
 ///                                  This is what is encoded
-///                                 vvvvvvvvvvvvvvvvvvvvvvvvv
-/// [ ... key ... | ... length ... | ........ value ........ ]
-///                                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+///                                 vvvvvvvvvvvvvvvvvvvvvvvvvv
+/// [ ... key ... | ... length ... | ..... value (self) ..... ]
+///                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 /// ```
+/// 
+/// ***This trait IS automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv)
+/// trait, in which every field has an associated encoder for it's type. Otherwise, this trait
+/// CAN be implemented manually.***
 /// 
 /// Common stream types include `&[u8]` and `&str`, therefore the return type of
 /// encoding is likely an owned value like [`Vec<u8>`] or [`String`].
-/// 
-/// This trait is automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv)
-/// trait, in which every field has an associated encoder for it's type.
-/// 
-/// Otherwise, this trait can be implemented manually.
 /// 
 /// For custom encoding functions, ***no need to use this trait***. Instead, please ensure
 /// the functions signature matches the following:
@@ -39,7 +40,7 @@ where
 /// 
 /// # Example
 /// 
-/// ```rust ignore
+/// ```rust
 /// use tinyklv::Klv;
 /// use tinyklv::prelude::*;
 /// 
@@ -63,11 +64,10 @@ where
 /// #[klv(
 ///     stream = &[u8],
 ///     sentinel = 0x00,
-///     key(enc = tinyklv::codecs::binary::enc::u8,
-///         dec = tinyklv::codecs::binary::dec::u8),
-///     len(enc = tinyklv::codecs::binary::enc::u8,
-///         dec = tinyklv::codecs::binary::dec::u8),
+///     key(enc = tinyklv::codecs::binary::enc::u8),
+///     len(enc = tinyklv::codecs::binary::enc::u8_from_usize),
 /// )]
+/// 
 /// struct MyStruct {
 ///     #[klv(key = 0x07, enc = ex01_encoder)]
 ///     example_one: InnerValue,
@@ -75,11 +75,16 @@ where
 ///     #[klv(key = 0x0A, enc = ex02_encoder)]
 ///     example_two: InnerValue,
 /// 
-///     #[klv(key = 0x8A, enc = InnerValue::encode)]
+///     #[klv(key = 0x8A, enc = InnerValue::encode_value)]
 ///     example_three: InnerValue,
 /// }
 /// 
-/// let my_struct_encoded = MyStruct::encode();
+/// let my_struct_encoded = MyStruct{
+///     example_one: InnerValue {},
+///     example_two: InnerValue {},
+///     example_three: InnerValue {},
+/// }.encode();
+/// 
 /// assert_eq!(my_struct_encoded, vec![
 ///     0x00,               // sentinel
 ///     0x10,               // total length
@@ -102,19 +107,22 @@ where
 /// ]);
 /// ```
 /// 
-/// See [`EncodeManual`] for an example usage of this trait.
+/// See [`Encode`] for an example usage of this trait.
 pub trait EncodeValue<T, O: EncodedOutput<T>> {
     fn encode_value(&self) -> O;
 }
 
-/// Trait for encoding data, with its length and key.
+/// Trait for prepending encoded data with its key and length.
 /// 
 /// ```text
-///                 This is what is encoded
-///  vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-/// [ ... key ... | ... length ... | ........ value ........ ]
-///  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///     This is what is prepended
+///  vvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+/// [ ... key ... | ... length ... | ..... value (self) ..... ]
+///  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 /// ```
+/// 
+/// ***This trait is automatically implemented for all potential encoded-like datatypes.
+/// There is no need to implement it manually.***
 /// 
 /// # Example 
 /// 
@@ -130,11 +138,13 @@ pub trait EncodeValue<T, O: EncodedOutput<T>> {
 /// }
 /// 
 /// let my_struct = MyStruct {};
+/// 
 /// let key_len_val_of_my_struct = my_struct.encode_value().into_klv(
 ///     [0xFF, 0xBB],   // encoded key (must implement into iter)
 ///     |x: usize|      // length encoder
 ///         (x as u8).to_be_bytes().to_vec(), 
 /// );
+/// 
 /// assert_eq!(key_len_val_of_my_struct, [
 ///     0xFF, 0xBB,                     // key
 ///     0x07,                           // length
@@ -188,6 +198,133 @@ where
     }
 }
 
+/// Trait for encoding data to its full key-length-value representation.
+/// 
+/// ```text
+///                 This is what is encoded
+///  vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+/// [ ... key ... | ... length ... | ..... value (self) ..... ]
+///  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// ```
+/// 
+/// ***This trait IS automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv)
+/// trait, in which every field has an associated encoder for it's type. Otherwise, this trait
+/// CAN be implemented manually.***
+/// 
+/// Since this function and [`EncodeValue`] have the same function signature, this could
+/// cause confusion. Therefore, the general workflow for all KLV encoding should be:
+/// 
+/// 1. Encode the struct/value
+/// 
+/// This can be done by implementing the [`EncodeValue`] trait.
+/// 
+/// 2. Use the [`IntoKlv`] function to convert the struct/value into its key-length-value,
+///    providing the encoded key/recognition sentinel, alongside the length encoder.
+/// 
+/// Then, youre done! Now you can produce the key-length-value representation of your struct
+/// with the following snippet:
+/// 
+/// ```rust
+/// use tinyklv::prelude::*;
+/// 
+/// struct MyStruct {}
+/// 
+/// impl EncodeValue<u8, Vec<u8>> for MyStruct {
+///     fn encode_value(&self) -> Vec<u8> {
+///         return "example".as_bytes().to_vec();
+///     }
+/// }
+/// 
+/// let my_struct = MyStruct {};
+/// 
+/// let key_len_val_of_my_struct = my_struct.encode_value().into_klv(
+///     [0xFF, 0xBB],   // encoded key (must implement into iter)
+///     |x: usize|      // length encoder
+///         (x as u8).to_be_bytes().to_vec(), 
+/// );
+/// 
+/// assert_eq!(key_len_val_of_my_struct, [
+///     0xFF, 0xBB,                         // key
+///     0x07,                               // length
+///     101, 120, 97, 109, 112, 108, 101,   // value
+/// ]);
+/// ```
+/// 
+/// However, you can also implement the [`Encode`] trait instead to combine
+/// both of these operations:
+/// 
+/// ```rust
+/// use tinyklv::prelude::*;
+/// 
+/// struct MyStruct {}
+/// 
+/// impl EncodeValue<u8, Vec<u8>> for MyStruct {
+///     fn encode_value(&self) -> Vec<u8> {
+///         return "example".as_bytes().to_vec();
+///     }
+/// }
+/// 
+/// impl Encode<u8, Vec<u8>> for MyStruct {
+///     fn encode(&self) -> Vec<u8> {
+///         return self.encode_value().into_klv(
+///             [0xFF, 0xBB],   // encoded key (must implement into iter)
+///             |x: usize|      // length encoder
+///                 (x as u8).to_be_bytes().to_vec(), 
+///         );
+///     }
+/// }
+/// 
+/// let my_struct = MyStruct {};
+/// 
+/// let key_len_val_of_my_struct = my_struct.encode();
+/// 
+/// assert_eq!(key_len_val_of_my_struct, [
+///     0xFF, 0xBB,                         // key
+///     0x07,                               // length
+///     101, 120, 97, 109, 112, 108, 101,   // value
+/// ]);
+/// ```
+///
+/// Furthermore, you can use the [`crate::Klv`] macro to implement both of these
+/// for you! Note that the examples above on a blank struct aren't representative
+/// of how the macro works, so a field has been added to the struct:
+/// 
+/// ```rust
+/// use tinyklv::Klv;
+/// use tinyklv::prelude::*;
+/// 
+/// fn string_encoder(input: &String) -> Vec<u8> {
+///     return input.as_bytes().to_vec();
+/// }
+/// 
+/// #[derive(Klv)]
+/// #[klv(
+///     stream = &[u8],
+///     sentinel = 0x00,
+///     key(enc = tinyklv::codecs::binary::enc::u8),
+///     len(enc = tinyklv::codecs::binary::enc::u8_from_usize),
+/// )]  // this implements `tinyklv::prelude::EncodeValue` and `tinyklv::prelude::Encode`
+///     // given a key and length encoder are provided
+/// struct MyStruct {
+///     #[klv(key = 0xFF, enc = string_encoder)]
+///     value: String,
+/// }
+/// 
+/// // using `tinyklv::Klv` to encode as KLV
+/// let mystruct_klv_1 = MyStruct {
+///     value: "example".into()
+/// }.encode();                                         // `tinyklv::prelude::Encode` implementation
+/// 
+/// // using manual implementation to encode as KLV
+/// let mystruct_klv_2 = MyStruct {
+///     value: "example".into()
+/// }.encode_value().into_klv(
+///     [0x00],                                         // recognition sentinel (must implement into iter)
+///     tinyklv::codecs::binary::enc::u8_from_usize,    // length encoder
+/// );                                                  // this is now equivalent to the macro call
+/// 
+/// assert_eq!(mystruct_klv_1, mystruct_klv_2);
+/// ```
 pub trait Encode<T, O: EncodedOutput<T>> {
     fn encode(&self) -> O;
 }

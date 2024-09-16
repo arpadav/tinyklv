@@ -14,7 +14,6 @@ use crate::kst::xcoder::PathLike;
 // constants
 // --------------------------------------------------
 const PACKET_LIFETIME_CHAR: char = 'z';
-const ENCODE_ACCUMULATE_VAR: &str = "output";
 
 /// Derive [`crate::Klv`]
 pub fn derive(input: &syn::DeriveInput) -> proc_macro::TokenStream {
@@ -63,7 +62,6 @@ impl From<kst::Input> for proc_macro::TokenStream {
                 #decode_impl
             }
         }
-        println!("I AM HERE");
         if all_encoders_exist {
             let encode_impl = gen_encode_impl(&input);
             expanded = quote! {
@@ -84,7 +82,6 @@ fn gen_encode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
     // --------------------------------------------------
     // default stream -> &[u8]
     // --------------------------------------------------
-    let stream = input.sattr.stream.value.clone().unwrap_or(crate::parse::u8_slice());
     let sentinel = input.sattr.sentinel.as_ref().map_or(None, |x| x.get().clone());
     let key_encoder = input
         .sattr.key.value.clone()
@@ -99,20 +96,15 @@ fn gen_encode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
 
     let items_encoded = gen_items_encoded(&input, &key_encoder, &len_encoder);
 
-    println!("{:?}", input.sattr);
-    println!("{:?}", input.fattrs);
-
     let encode_with_key_len = match sentinel {
         Some(sentinel) => quote! {
             #[automatically_derived]
             impl ::tinyklv::prelude::Encode<u8, Vec<u8>> for #name {
                 fn encode(&self) -> Vec<u8> {
-                    self
-                        .encode_value()
-                        .into_klv(
-                            #key_encoder (#sentinel),
-                            #len_encoder ,
-                        )
+                    self.encode_value().into_klv(
+                        #key_encoder (#sentinel),
+                        #len_encoder ,
+                    )
                 }
             }
         },

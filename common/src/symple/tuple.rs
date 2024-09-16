@@ -85,7 +85,7 @@ impl <T: From<MetaContents>> From<MetaContents> for Tuple<T> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 /// [`MetaTuple`]
 /// 
 /// Innter data structure which is consists of a name [`struct@syn::Ident`]
@@ -130,6 +130,12 @@ impl<'a> IntoIterator for &'a MetaTuple {
     type IntoIter = MetaContentsIterator<'a>;
     fn into_iter(self) -> Self::IntoIter {
         self.contents.into_iter()
+    }
+}
+/// [`MetaTuple`] implementation of [`crate::symple::prelude::Merge`]
+impl crate::symple::prelude::Merge for MetaTuple {
+    fn merge(&mut self, other: Self) {
+        self.contents.merge(other.contents);
     }
 }
 /// [`MetaTuple`] implementation of [`std::fmt::Display`]
