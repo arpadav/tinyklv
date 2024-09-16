@@ -93,14 +93,14 @@ macro_rules! cast {
 /// let mut input: &[u8] = b"2020-12-31";
 /// let input = &mut input;
 /// let len = 10;
-/// let date = tinyklv::as_date!(tinyklv::dec::binary::to_string_utf8, "%Y-%m-%d")(input, len);
+/// let date = tinyklv::as_date!(len, tinyklv::dec::binary::to_string_utf8, "%Y-%m-%d")(input);
 /// assert_eq!(date, Ok(chrono::NaiveDate::from_ymd_opt(2020, 12, 31).unwrap()));
 /// ```
 macro_rules! as_date {
-    ($str_parser:path, $date_fmt:tt $(,)*) => {
-        |input, len| -> winnow::PResult<chrono::NaiveDate> {
+    ($len:expr, $str_parser:path, $date_fmt:tt $(,)*) => {
+        |input| -> winnow::PResult<chrono::NaiveDate> {
             chrono::NaiveDate::parse_from_str(
-                &$str_parser(input, len)?,
+                &$str_parser($len)(input)?,
                 $date_fmt,
             ).map_err(|_| tinyklv::err!())
         }
@@ -120,15 +120,14 @@ macro_rules! as_date {
 /// 
 /// let mut input: &[u8] = b"12:34:56";
 /// let input = &mut input;
-/// let len = 8;
-/// let time = tinyklv::as_time!(tinyklv::dec::binary::to_string_utf8, "%H:%M:%S")(input, len);
+/// let time = tinyklv::as_time!(8, tinyklv::dec::binary::to_string_utf8, "%H:%M:%S")(input);
 /// assert_eq!(time, Ok(chrono::NaiveTime::from_hms_opt(12, 34, 56).unwrap()));
 /// ```
 macro_rules! as_time {
-    ($str_parser:path, $time_fmt:tt $(,)*) => {
-        |input, len| -> winnow::PResult<chrono::NaiveTime> {
+    ($len:expr, $str_parser:path, $time_fmt:tt $(,)*) => {
+        |input| -> winnow::PResult<chrono::NaiveTime> {
             chrono::NaiveTime::parse_from_str(
-                &$str_parser(input, len)?,
+                &$str_parser($len)(input)?,
                 $time_fmt,
             ).map_err(|_| tinyklv::err!())
         }
@@ -148,16 +147,16 @@ macro_rules! as_time {
 /// use tinyklv::prelude::*;
 /// 
 /// let mut input: &[u8] = b"2020-12-31 12:34:56";
+/// let len = input.len();
 /// let input = &mut input;
-/// let len = 19;
-/// let datetime = tinyklv::as_datetime!(tinyklv::dec::binary::to_string_utf8, "%Y-%m-%d %H:%M:%S")(input, len);
+/// let datetime = tinyklv::as_datetime!(input.len(), tinyklv::dec::binary::to_string_utf8, "%Y-%m-%d %H:%M:%S")(input);
 /// assert_eq!(datetime, Ok(chrono::NaiveDate::from_ymd_opt(2020, 12, 31).unwrap().and_hms_opt(12, 34, 56).unwrap()));
 /// ```
 macro_rules! as_datetime {
-    ($str_parser:path, $datetime_fmt:tt $(,)*) => {
-        |input, len| -> winnow::PResult<chrono::NaiveDateTime> {
+    ($len:expr, $str_parser:path, $datetime_fmt:tt $(,)*) => {
+        |input| -> winnow::PResult<chrono::NaiveDateTime> {
             chrono::NaiveDateTime::parse_from_str(
-                &$str_parser(input, len)?,
+                &$str_parser($len)(input)?,
                 $datetime_fmt,
             ).map_err(|_| tinyklv::err!())
         }
