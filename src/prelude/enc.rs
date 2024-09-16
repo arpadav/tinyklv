@@ -1,60 +1,7 @@
 // --------------------------------------------------
-// external
+// local
 // --------------------------------------------------
-pub use winnow::prelude::*;
-pub use winnow::stream::Stream;
-pub use winnow::error::AddContext;
-
-/// A trait to represent the encoded output.
-pub trait EncodedOutput<T>: Extend<T> + AsRef<[T]> + FromIterator<T> + IntoIterator<Item = T> {}
-impl<T, S> EncodedOutput<T> for S
-where
-    S: Extend<T> + AsRef<[T]>,
-    S: FromIterator<T> + IntoIterator<Item = T>,
-    S::IntoIter: ExactSizeIterator,
-{}
-
-pub trait HasElement {
-    type Element;
-}
-macro_rules! has_element {
-    ($ty:ty, $elem:ty) => {
-        has_element!(w_mut; $ty, $elem);
-        has_element!(wo_mut; $ty, $elem);
-    };
-    ($ty:ty, $elem:ty; $($tt:tt)*) => {
-        has_element!(w_mut; $ty, $elem; $($tt)*);
-        has_element!(wo_mut; $ty, $elem; $($tt)*);
-    };
-    (wo_mut; $ty:ty, $elem:ty) => {
-        impl HasElement for $ty {
-            type Element = $elem;
-        }
-    };
-    (wo_mut; $ty:ty, $elem:ty; $($tt:tt)*) => {
-        impl<$($tt)*> HasElement for $ty {
-            type Element = $elem;
-        }
-    };
-    (w_mut; $ty:ty, $elem:ty) => {
-        impl HasElement for &mut $ty {
-            type Element = $elem;
-        }
-    };
-    (w_mut; $ty:ty, $elem:ty; $($tt:tt)*) => {
-        impl<$($tt)*> HasElement for &mut $ty {
-            type Element = $elem;
-        }
-    };
-}
-has_element!(Vec<T>, T; T);
-has_element!(Box<[T]>, T; T);
-has_element!(wo_mut; &[T], T; T);
-has_element!(wo_mut; &mut [T], T; T);
-has_element!(String, char);
-has_element!(wo_mut; &str, char);
-has_element!(wo_mut; &mut str, char);
-has_element!(dyn Iterator<Item = T>, T; T);
+pub use super::*;
 
 /// Trait for encoding ***data only*** to owned stream-type `O`, where `O` is an owned
 /// stream-type of [`winnow::stream::Stream`], with elements `T`.
@@ -121,11 +68,35 @@ has_element!(dyn Iterator<Item = T>, T; T);
 ///     example_three: InnerValue,
 /// }
 /// 
-/// let my_struct_encoded = MyStruct{
+/// let my_struct_value_encoded = MyStruct {
 ///     example_one: InnerValue {},
 ///     example_two: InnerValue {},
 ///     example_three: InnerValue {},
-/// }.encode();
+/// }.encode_value();
+/// 
+/// assert_eq!(my_struct_value_encoded, vec![
+///     // example 1
+///     0x07,               // example 1 key
+///     0x04,               // example 1 length
+///                         // example 1 value 
+///     0x65, 0x66, 0x67, 0x68,
+/// 
+///     // example 2
+///     0x0A,               // example 2 key
+///     0x03,               // example 2 length
+///     0x59, 0x32, 0x4B,   // example 2 value
+/// 
+///     // example 3
+///     0x8A,               // example 3 key
+///     0x03,               // example 3 length
+///     0x6B, 0x6C, 0x76,   // example 3 value
+/// ]);
+/// 
+/// let my_struct_encoded = MyStruct {
+///     example_one: InnerValue {},
+///     example_two: InnerValue {},
+///     example_three: InnerValue {},
+/// }.encode(); // See: `tinyklv::prelude::Encode` -> This prepends the key and length
 /// 
 /// assert_eq!(my_struct_encoded, vec![
 ///     0x00,               // sentinel
@@ -148,15 +119,7 @@ has_element!(dyn Iterator<Item = T>, T; T);
 ///     0x6B, 0x6C, 0x76,   // example 3 value
 /// ]);
 /// ```
-/// 
-/// See [`Encode`] for an example usage of this trait.
-// pub trait EncodeValue<O: EncodedOutput<O::Element>>: ElementType {
-//     fn encode_value(&self) -> O;
-// }
-// pub trait EncodeValue<T: ElementType, O: EncodedOutput<T::Element>> {
-//     fn encode_value(&self) -> O;
-// }
-pub trait EncodeValue<O: HasElement + EncodedOutput<<O as HasElement>::Element>> {
+pub trait EncodeValue<O: EncodedOutput> {
     fn encode_value(&self) -> O;
 }
 
@@ -201,14 +164,11 @@ pub trait EncodeValue<O: HasElement + EncodedOutput<<O as HasElement>::Element>>
 /// ```
 /// 
 /// See [`EncodeValue`] for more information.
-pub trait IntoKlv<T, O: EncodedOutput<T>> {
+pub trait IntoKlv<O: EncodedOutput> {
     fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O;
 }
 /// [`IntoKlv`] implementation for all types O that implement [`EncodedOutput<T>`]
-impl<T, O> IntoKlv<T, O> for O
-where
-    O: EncodedOutput<T>,
-{
+impl<O: EncodedOutput> IntoKlv<O> for O {
     #[inline(always)]
     fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
         O::from_iter(encoded_key
@@ -220,28 +180,22 @@ where
     }
 }
 /// [`IntoKlv`] implementation for all types [`Result<O>`] that implement [`EncodedOutput<T>`]
-impl<T, O, E> IntoKlv<T, O> for Result<O, E>
-where
-    O: EncodedOutput<T>,
-{
+impl<O: EncodedOutput, E> IntoKlv<O> for Result<O, E> {
     #[inline(always)]
     fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
         match self {
             Ok(x) => x.into_klv(encoded_key, len_encoder),
-            Err(_) => O::from_iter(std::iter::empty::<T>())
+            Err(_) => O::from_iter(std::iter::empty::<O::Element>())
         }
     }
 }
 /// [`IntoKlv`] implementation for all types [`Option<O>`] that implement [`EncodedOutput<T>`]
-impl<T, O> IntoKlv<T, O> for Option<O>
-where
-    O: EncodedOutput<T>,
-{
+impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
     #[inline(always)]
     fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
         match self {
             Some(x) => x.into_klv(encoded_key, len_encoder),
-            None => O::from_iter(std::iter::empty::<T>())
+            None => O::from_iter(std::iter::empty::<O::Element>())
         }
     }
 }
@@ -269,7 +223,7 @@ where
 /// 2. Use the [`IntoKlv`] function to convert the struct/value into its key-length-value,
 ///    providing the encoded key/recognition sentinel, alongside the length encoder.
 /// 
-/// Then, youre done! Now you can produce the key-length-value representation of your struct
+/// Then, youre done: now you can produce the key-length-value representation of your struct
 /// with the following snippet:
 /// 
 /// ```rust
@@ -334,8 +288,8 @@ where
 /// ```
 ///
 /// Furthermore, you can use the [`crate::Klv`] macro to implement both of these
-/// for you! Note that the examples above on a blank struct aren't representative
-/// of how the macro works, so a field has been added to the struct:
+/// for you. (Note that the examples above on a blank struct aren't representative
+/// of how the macro works, so a field has been added to the struct):
 /// 
 /// ```rust
 /// use tinyklv::Klv;
@@ -373,116 +327,6 @@ where
 /// 
 /// assert_eq!(mystruct_klv_1, mystruct_klv_2);
 /// ```
-
-pub trait Encode<O: HasElement + EncodedOutput<<O as HasElement>::Element>> {
+pub trait Encode<O: EncodedOutput> {
     fn encode(&self) -> O;
-}
-
-/// Trait for decoding from stream-type T, of type [`winnow::stream::Stream`]
-/// 
-/// Common examples of stream types include `&[u8]` and `&str`
-/// 
-/// Automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv) trait
-/// which have decoders for every field covered.
-/// 
-/// For custom decoding functions, ***no need to use this trait***. Instead, please ensure
-/// the functions signature matches the following:
-/// 
-/// * static length: `fn <name>(input: &mut S) -> winnow::PResult<Self>;`
-/// * dynamic length: `fn <name>(input: &mut S, len: usize) -> winnow::PResult<Self>;`
-pub trait Decode<S>: Sized
-where
-    S: winnow::stream::Stream,
-{
-    fn decode(input: &mut S) -> winnow::PResult<Self>;
-}
-
-/// Trait for seeking to the beginning of the prescribed type from a stream
-pub trait Seek<S>: Sized
-where
-    S: winnow::stream::Stream,
-{
-    fn seek(input: &mut S) -> winnow::PResult<S>;
-}
-
-/// Trait for extracting from stream-type T, of type [`winnow::stream::Stream`]
-pub trait Extract<S>: Sized
-where
-    S: winnow::stream::Stream,
-{
-    fn extract(input: &mut S) -> winnow::PResult<Self>;
-}
-/// [`Extract`] implementation for all types T that implement [`Seek`] and [`Decode`]
-impl<S, T> Extract<S> for T
-where
-    S: winnow::stream::Stream,
-    T: Seek<S> + Decode<S>,
-{
-    fn extract(input: &mut S) -> winnow::PResult<Self> {
-        let mut sought = T::seek.parse_next(input)?;
-        let result = T::then_decode(&mut sought).parse_next(input);
-        result
-    }
-}
-
-/// Internal trait for parsing and decoding embedded data
-/// 
-/// See [`Extract`] for more information
-/// 
-/// Idea is: 
-/// 
-/// * [`Decode`] decodes the data of the packet, without finding it
-/// * [`Seek`] finds the data by the recognition sentinel
-/// * [`Extract`] performs [`Seek`] -> [`Decode`]. But upon failure, it has to return the
-///   checkpoint to the next item of input, rather than the checkpoint of the
-///   sub-slice used in the [`Decode`] call
-/// 
-/// [`ThenDecode`] solves this issue by taking the sub-slice as an input, passing it 
-/// to the [`Decode`] implementation, and upon failure, returning to the original 
-/// input checkpoint.
-trait ThenDecode<S>: Sized
-where
-    S: winnow::stream::Stream,
-{
-    fn then_decode(subslice: &mut S) -> impl FnMut(&mut S) -> winnow::PResult<Self>;
-}
-/// [`ThenDecode`] implementation for all types T that implement [`Decode`]
-impl<S, T> ThenDecode<S> for T
-where
-    S: winnow::stream::Stream,
-    T: Decode<S>,
-{
-    fn then_decode(subslice: &mut S) -> impl FnMut(&mut S) -> winnow::PResult<Self> {
-        move |input: &mut S| {
-            let checkpoint = input.checkpoint();
-            match Self::decode(subslice) {
-                Ok(parsed) => Ok(parsed),
-                Err(e) => Err(e.backtrack().add_context(
-                    input,
-                    &checkpoint,
-                    winnow::error::StrContext::Label("Unable to parse data embedded in packet"),
-                )),
-            }
-        }
-    }
-}
-
-/// Decodes repeatedly, until it can no longer
-/// 
-/// Accumulates results in a [`Vec`] and returns
-pub trait RepeatedDecode<S>: Sized
-where
-    S: winnow::stream::Stream,
-{
-    fn repeated(input: &mut S) -> winnow::PResult<Vec<Self>>;
-}
-/// [`RepeatedDecode`] implementation for all types T that implement [`Decode`]
-impl<S, T> RepeatedDecode<S> for T
-where
-    S: winnow::stream::Stream,
-    T: Decode<S>,
-{
-    fn repeated(input: &mut S) -> winnow::PResult<Vec<Self>> {
-        winnow::combinator::repeat(0.., Self::decode).parse_next(input)
-    }
 }
