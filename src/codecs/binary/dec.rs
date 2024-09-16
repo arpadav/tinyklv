@@ -110,8 +110,8 @@ pub fn to_string_utf16(len: usize) -> impl Fn(&mut &[u8]) -> winnow::PResult<Str
 /// let mut val1: &[u8] = &[0x41, 0x46, 0x2D, 0x31, 0x30, 0x31];
 /// let mut val2: &[u8] = &[0x4D, 0x49, 0x53, 0x53, 0x49, 0x4F, 0x4E, 0x30, 0x31];
 /// 
-/// let res1 = to_string_ascii(&mut val1, 6);
-/// let res2 = to_string_ascii(&mut val2, 9);
+/// let res1 = to_string_ascii(6)(&mut val1);
+/// let res2 = to_string_ascii(9)(&mut val2);
 /// 
 /// assert_eq!(res1, Ok(String::from("AF-101")));
 /// assert_eq!(res2, Ok(String::from("MISSION01")));
@@ -267,9 +267,9 @@ use tinyklv::prelude::*;
 let mut input1: &[u8] = &[0x01, 0xE0, 0xFF, 0xFF];
 let mut input2: &[u8] = &[0x01, 0xE0];
 let mut input3: &[u8] = &[0xE0];
-assert_eq!(tinyklv::dec::binary::be_u16_lengthed(&mut input1, 4), Ok(0xFFFF));
-assert_eq!(tinyklv::dec::binary::be_u16_lengthed(&mut input2, 2), Ok(0x01E0));
-assert_eq!(tinyklv::dec::binary::be_u16_lengthed(&mut input3, 1), Ok(0x00E0));
+assert_eq!(tinyklv::dec::binary::be_u16_lengthed(4)(&mut input1), Ok(0xFFFF));
+assert_eq!(tinyklv::dec::binary::be_u16_lengthed(2)(&mut input2), Ok(0x01E0));
+assert_eq!(tinyklv::dec::binary::be_u16_lengthed(1)(&mut input3), Ok(0x00E0));
 ```
 ");
 lengthed_be!(u32, 4, B32_PADDED, "
@@ -287,9 +287,9 @@ use tinyklv::prelude::*;
 let mut input1: &[u8] = &[0x00, 0x01, 0xE0, 0xFF, 0xFF];
 let mut input2: &[u8] = &[0x00, 0x01, 0xE0, 0xFF];
 let mut input3: &[u8] = &[0x01, 0xE0, 0xFF];
-assert_eq!(tinyklv::dec::binary::be_u32_lengthed(&mut input1, 5), Ok(0x01E0FFFF));
-assert_eq!(tinyklv::dec::binary::be_u32_lengthed(&mut input2, 4), Ok(0x0001E0FF));
-assert_eq!(tinyklv::dec::binary::be_u32_lengthed(&mut input3, 3), Ok(0x0001E0FF));
+assert_eq!(tinyklv::dec::binary::be_u32_lengthed(5)(&mut input1), Ok(0x01E0FFFF));
+assert_eq!(tinyklv::dec::binary::be_u32_lengthed(4)(&mut input2), Ok(0x0001E0FF));
+assert_eq!(tinyklv::dec::binary::be_u32_lengthed(3)(&mut input3), Ok(0x0001E0FF));
 ```
 ");
 lengthed_be!(u64, 8, B64_PADDED, "
@@ -308,9 +308,9 @@ use tinyklv::prelude::*;
 let mut input1: &[u8] = &[0x00, 0x00, 0x01, 0xE0, 0xFF, 0xFF, 0x00, 0x00, 0x00];
 let mut input2: &[u8] = &[0x00, 0x00, 0x01, 0xE0, 0xFF, 0xFF, 0x00, 0x00];
 let mut input3: &[u8] = &[0x00, 0x00, 0x01, 0xE0, 0xFF, 0xFF, 0x00];
-assert_eq!(tinyklv::dec::binary::be_u64_lengthed(&mut input1, 9), Ok(0x00_01_E0_FF_FF_00_00_00));
-assert_eq!(tinyklv::dec::binary::be_u64_lengthed(&mut input2, 8), Ok(0x00_00_01_E0_FF_FF_00_00));
-assert_eq!(tinyklv::dec::binary::be_u64_lengthed(&mut input3, 7), Ok(0x00_00_00_01_E0_FF_FF_00));
+assert_eq!(tinyklv::dec::binary::be_u64_lengthed(9)(&mut input1), Ok(0x00_01_E0_FF_FF_00_00_00));
+assert_eq!(tinyklv::dec::binary::be_u64_lengthed(8)(&mut input2), Ok(0x00_00_01_E0_FF_FF_00_00));
+assert_eq!(tinyklv::dec::binary::be_u64_lengthed(7)(&mut input3), Ok(0x00_00_00_01_E0_FF_FF_00));
 ```
 ");
 lengthed_be!(u128, 16, B128_PADDED);
@@ -334,8 +334,8 @@ use tinyklv::prelude::*;
 
 let mut input1: &[u8] = &[0xE0, 0x01, 0xFF, 0xFF, 0xFF];
 let mut input2: &[u8] = &[0x01];
-let num1 = tinyklv::dec::binary::le_u16_lengthed(&mut input1, 5);
-let num2 = tinyklv::dec::binary::le_u16_lengthed(&mut input2, 1);
+let num1 = tinyklv::dec::binary::le_u16_lengthed(5)(&mut input1);
+let num2 = tinyklv::dec::binary::le_u16_lengthed(1)(&mut input2);
 assert_eq!(num1, Ok(480));
 assert_eq!(num2, Ok(1));
 ```
@@ -356,9 +356,9 @@ use tinyklv::prelude::*;
 let mut input1: &[u8] = &[0xE0, 0x01, 0xFF, 0xFF, 0xFF];
 let mut input2: &[u8] = &[0x01];
 let mut input3: &[u8] = &[0x01, 0x02, 0x03];
-let num1 = tinyklv::dec::binary::le_u32_lengthed(&mut input1, 5);
-let num2 = tinyklv::dec::binary::le_u32_lengthed(&mut input2, 1);
-let num3 = tinyklv::dec::binary::le_u32_lengthed(&mut input3, 3);
+let num1 = tinyklv::dec::binary::le_u32_lengthed(5)(&mut input1);
+let num2 = tinyklv::dec::binary::le_u32_lengthed(1)(&mut input2);
+let num3 = tinyklv::dec::binary::le_u32_lengthed(3)(&mut input3);
 assert_eq!(num1, Ok(4_294_902_240));
 assert_eq!(num2, Ok(1));
 assert_eq!(num3, Ok(197_121));
@@ -380,9 +380,9 @@ use tinyklv::prelude::*;
 let mut input1: &[u8] = &[0xE0, 0x01, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
 let mut input2: &[u8] = &[0x01];
 let mut input3: &[u8] = &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07];
-let num1 = tinyklv::dec::binary::le_u64_lengthed(&mut input1, 16);
-let num2 = tinyklv::dec::binary::le_u64_lengthed(&mut input2, 1);
-let num3 = tinyklv::dec::binary::le_u64_lengthed(&mut input3, 7);
+let num1 = tinyklv::dec::binary::le_u64_lengthed(16)(&mut input1);
+let num2 = tinyklv::dec::binary::le_u64_lengthed(1)(&mut input2);
+let num3 = tinyklv::dec::binary::le_u64_lengthed(7)(&mut input3);
 assert_eq!(num1, Ok(1_099_511_562_720));
 assert_eq!(num2, Ok(1));
 assert_eq!(num3, Ok(1_976_943_448_883_713));

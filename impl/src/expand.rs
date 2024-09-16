@@ -241,9 +241,9 @@ fn gen_items_match(fatts: &Vec<kst::FieldAttrSchema>) -> proc_macro2::TokenStrea
         );
         let dynlen = field.contents.dynlen();
         let optional_len = if let Some(true) = dynlen { quote! { len } } else { quote! { _ } };
-        let optional_len_arg = if let Some(true) = dynlen { quote! { , len } } else { quote! {} };
+        let optional_len_arg = if let Some(true) = dynlen { quote! { (len) } } else { quote! {} };
         quote! {
-            (#key, #optional_len) => #name = #dec (input #optional_len_arg).ok(),
+            (#key, #optional_len) => #name = #dec #optional_len_arg (input).ok(),
         }
     });
     quote! {
