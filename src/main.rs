@@ -13,7 +13,7 @@ fn ex02_encoder(input: &InnerValue) -> Vec<u8> {
     return String::from("Y2K").into_bytes();
 }
 
-impl EncodeValue<u8, Vec<u8>> for InnerValue {
+impl EncodeValue<Vec<u8>> for InnerValue {
     fn encode_value(&self) -> Vec<u8> {
         return String::from("KLV").to_lowercase().into_bytes();
     }
