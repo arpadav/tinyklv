@@ -26,7 +26,6 @@ impl<I, T> MergeAll<T> for I
 where
     I: IntoIterator<Item = T>,
     T: Merge,
-    T: std::fmt::Debug,
 {
     fn merge_all(self) -> Option<T> {
         let mut iter = self.into_iter();
