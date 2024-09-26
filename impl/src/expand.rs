@@ -163,32 +163,38 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
     let items_init = gen_items_init(&input.fattrs);
     let items_match = gen_items_match(&input.fattrs);
     let items_set = gen_item_set(name, &input.fattrs, crate::parse::elems_without_klv_attr(&input.input));
-    let result = quote! {
-        #[automatically_derived]
-        #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::Seek`] for [`", stringify!(#stream), "`]")]
-        impl ::tinyklv::prelude::Seek<#stream> for #name {
-            // ---- vvv ---- remember this is PACKET_LIFETIME_CHAR
-            fn seek<'z>(input: &mut #stream_lifetimed) -> ::tinyklv::reexport::winnow::PResult<#stream_lifetimed> {
-            // ---- ^^^ ---- remember this is PACKET_LIFETIME_CHAR
-                let checkpoint = input.checkpoint();
-                let packet_len = match ::tinyklv::reexport::winnow::combinator::seq!(_:
-                    // ::winnow::token::take_until(0.., #sentinel),
-                    // ::winnow::token::take_till(0.., #sentinel),
-                    #sentinel,
-                    #len_decoder,
-                ).parse_next(input) {
-                    Ok(x) => x.0 as usize,
-                    Err(e) => return Err(e.backtrack().add_context(
-                        input,
-                        &checkpoint,
-                        ::tinyklv::reexport::winnow::error::StrContext::Label(
-                            concat!("Unable to find recognition sentinal and packet length for initial parsing of `", stringify!(#name), "` packet")
-                        )
-                    )),
-                };
-                ::tinyklv::reexport::winnow::token::take(packet_len).parse_next(input)
+    let seek_if_sentinel = match sentinel {
+        Some(sentinel) => quote! {
+            #[automatically_derived]
+            #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::Seek`] for [`", stringify!(#stream), "`]")]
+            impl ::tinyklv::prelude::Seek<#stream> for #name {
+                // ---- vvv ---- remember this is PACKET_LIFETIME_CHAR
+                fn seek<'z>(input: &mut #stream_lifetimed) -> ::tinyklv::reexport::winnow::PResult<#stream_lifetimed> {
+                // ---- ^^^ ---- remember this is PACKET_LIFETIME_CHAR
+                    let checkpoint = input.checkpoint();
+                    let packet_len = match ::tinyklv::reexport::winnow::combinator::seq!(_:
+                        // ::winnow::token::take_until(0.., #sentinel),
+                        // ::winnow::token::take_till(0.., #sentinel),
+                        #sentinel,
+                        #len_decoder,
+                    ).parse_next(input) {
+                        Ok(x) => x.0 as usize,
+                        Err(e) => return Err(e.backtrack().add_context(
+                            input,
+                            &checkpoint,
+                            ::tinyklv::reexport::winnow::error::StrContext::Label(
+                                concat!("Unable to find recognition sentinal and packet length for initial parsing of `", stringify!(#name), "` packet")
+                            )
+                        )),
+                    };
+                    ::tinyklv::reexport::winnow::token::take(packet_len).parse_next(input)
+                }
             }
-        }
+        },
+        None => quote! {}
+    };
+    let result = quote! {
+        #seek_if_sentinel
         #[automatically_derived]
         #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::Decode`] for [`", stringify!(#stream), "`]")]
         impl ::tinyklv::prelude::Decode<#stream> for #name {
