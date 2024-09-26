@@ -100,6 +100,7 @@ where
     S: winnow::stream::Stream,
 {
     fn repeated(input: &mut S) -> winnow::PResult<Vec<Self>>;
+    fn num_repeated(len: usize) -> impl Fn(&mut S) -> winnow::PResult<Vec<Self>>;
 }
 /// [`RepeatedDecode`] implementation for all types T that implement [`Decode`]
 impl<S, T> RepeatedDecode<S> for T
@@ -109,5 +110,11 @@ where
 {
     fn repeated(input: &mut S) -> winnow::PResult<Vec<Self>> {
         winnow::combinator::repeat(0.., Self::decode).parse_next(input)
+    }
+
+    fn num_repeated(len: usize) -> impl Fn(&mut S) -> winnow::PResult<Vec<Self>> {
+        move |input: &mut S| {
+            winnow::combinator::repeat(0..len, Self::decode).parse_next(input)
+        }
     }
 }
