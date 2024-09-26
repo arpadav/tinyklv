@@ -93,11 +93,11 @@ macro_rules! cast {
 /// let mut input: &[u8] = b"2020-12-31";
 /// let input = &mut input;
 /// let len = 10;
-/// let date = tinyklv::as_date!(len, tinyklv::dec::binary::to_string_utf8, "%Y-%m-%d")(input);
+/// let date = tinyklv::as_date!(tinyklv::dec::binary::to_string_utf8, "%Y-%m-%d", len)(input);
 /// assert_eq!(date, Ok(chrono::NaiveDate::from_ymd_opt(2020, 12, 31).unwrap()));
 /// ```
 macro_rules! as_date {
-    ($len:expr, $str_parser:path, $date_fmt:tt $(,)*) => {
+    ($str_parser:path, $date_fmt:tt, $len:expr $(,)*) => {
         |input| -> winnow::PResult<chrono::NaiveDate> {
             chrono::NaiveDate::parse_from_str(
                 &$str_parser($len)(input)?,
@@ -120,11 +120,11 @@ macro_rules! as_date {
 /// 
 /// let mut input: &[u8] = b"12:34:56";
 /// let input = &mut input;
-/// let time = tinyklv::as_time!(8, tinyklv::dec::binary::to_string_utf8, "%H:%M:%S")(input);
+/// let time = tinyklv::as_time!(tinyklv::dec::binary::to_string_utf8, "%H:%M:%S", 8)(input);
 /// assert_eq!(time, Ok(chrono::NaiveTime::from_hms_opt(12, 34, 56).unwrap()));
 /// ```
 macro_rules! as_time {
-    ($len:expr, $str_parser:path, $time_fmt:tt $(,)*) => {
+    ($str_parser:path, $time_fmt:tt, $len:expr $(,)*) => {
         |input| -> winnow::PResult<chrono::NaiveTime> {
             chrono::NaiveTime::parse_from_str(
                 &$str_parser($len)(input)?,
@@ -147,13 +147,12 @@ macro_rules! as_time {
 /// use tinyklv::prelude::*;
 /// 
 /// let mut input: &[u8] = b"2020-12-31 12:34:56";
-/// let len = input.len();
 /// let input = &mut input;
-/// let datetime = tinyklv::as_datetime!(input.len(), tinyklv::dec::binary::to_string_utf8, "%Y-%m-%d %H:%M:%S")(input);
+/// let datetime = tinyklv::as_datetime!(tinyklv::dec::binary::to_string_utf8, "%Y-%m-%d %H:%M:%S", input.len())(input);
 /// assert_eq!(datetime, Ok(chrono::NaiveDate::from_ymd_opt(2020, 12, 31).unwrap().and_hms_opt(12, 34, 56).unwrap()));
 /// ```
 macro_rules! as_datetime {
-    ($len:expr, $str_parser:path, $datetime_fmt:tt $(,)*) => {
+    ($str_parser:path, $datetime_fmt:tt, $len:expr $(,)*) => {
         |input| -> winnow::PResult<chrono::NaiveDateTime> {
             chrono::NaiveDateTime::parse_from_str(
                 &$str_parser($len)(input)?,
