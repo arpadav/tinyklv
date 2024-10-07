@@ -3,8 +3,7 @@
 // --------------------------------------------------
 pub use super::*;
 
-/// Trait for encoding ***data only*** to owned stream-type `O`, where `O` is an owned
-/// stream-type of [`winnow::stream::Stream`], with elements `T`.
+/// Trait for encoding ***data only*** to owned stream-type `O`, where `O` is an owned stream-type of [`winnow::stream::Stream`], with elements `T`.
 /// 
 /// ```text
 ///                                  This is what is encoded
@@ -13,15 +12,11 @@ pub use super::*;
 ///                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 /// ```
 /// 
-/// ***This trait IS automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv)
-/// trait, in which every field has an associated encoder for it's type. Otherwise, this trait
-/// CAN be implemented manually.***
+/// ***This trait IS automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv) trait, in which every field has an associated encoder for it's type. Otherwise, this trait CAN be implemented manually.***
 /// 
-/// Common stream types include `&[u8]` and `&str`, therefore the return type of
-/// encoding is likely an owned value like [`Vec<u8>`] or [`String`].
+/// Common stream types include `&[u8]` and `&str`, therefore the return type of encoding is likely an owned value like [`Vec<u8>`] or [`String`].
 /// 
-/// For custom encoding functions, ***no need to use this trait***. Instead, please ensure
-/// the functions signature matches the following:
+/// For custom encoding functions, ***no need to use this trait***. Instead, please ensure the functions signature matches the following:
 /// 
 /// ```rust ignore
 /// fn encoder_fn_name(..) -> O;
@@ -132,8 +127,7 @@ pub trait EncodeValue<O: EncodedOutput> {
 ///  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 /// ```
 /// 
-/// ***This trait is automatically implemented for all potential encoded-like datatypes.
-/// There is no need to implement it manually.***
+/// ***This trait is automatically implemented for all potential encoded-like datatypes. There is no need to implement it manually.***
 /// 
 /// # Example 
 /// 
@@ -209,22 +203,17 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 ///  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 /// ```
 /// 
-/// ***This trait IS automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv)
-/// trait, in which every field has an associated encoder for it's type. Otherwise, this trait
-/// CAN be implemented manually.***
+/// ***This trait IS automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv) trait, in which every field has an associated encoder for it's type. Otherwise, this trait CAN be implemented manually.***
 /// 
-/// Since this function and [`EncodeValue`] have the same function signature, this could
-/// cause confusion. Therefore, the general workflow for all KLV encoding should be:
+/// Since this function and [`EncodeValue`] have the same function signature, this could cause confusion. Therefore, the general workflow for all KLV encoding should be:
 /// 
 /// 1. Encode the struct/value
 /// 
 /// This can be done by implementing the [`EncodeValue`] trait.
 /// 
-/// 2. Use the [`IntoKlv`] function to convert the struct/value into its key-length-value,
-///    providing the encoded key/recognition sentinel, alongside the length encoder.
+/// 2. Use the [`IntoKlv`] function to convert the struct/value into its key-length-value, providing the encoded key/recognition sentinel, alongside the length encoder.
 /// 
-/// Then, youre done: now you can produce the key-length-value representation of your struct
-/// with the following snippet:
+/// Then, youre done: now you can produce the key-length-value representation of your struct with the following snippet:
 /// 
 /// ```rust
 /// use tinyklv::prelude::*;
@@ -252,8 +241,7 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 /// ]);
 /// ```
 /// 
-/// However, you can also implement the [`Encode`] trait instead to combine
-/// both of these operations:
+/// However, you can also implement the [`Encode`] trait instead to combine both of these operations:
 /// 
 /// ```rust
 /// use tinyklv::prelude::*;
@@ -287,9 +275,7 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 /// ]);
 /// ```
 ///
-/// Furthermore, you can use the [`crate::Klv`] macro to implement both of these
-/// for you. (Note that the examples above on a blank struct aren't representative
-/// of how the macro works, so a field has been added to the struct):
+/// Furthermore, you can use the [`crate::Klv`] macro to implement both of these for you. (Note that the examples above on a blank struct aren't representative of how the macro works, so a field has been added to the struct):
 /// 
 /// ```rust
 /// use tinyklv::Klv;

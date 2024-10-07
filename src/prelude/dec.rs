@@ -7,11 +7,9 @@ pub use super::*;
 /// 
 /// Common examples of stream types include `&[u8]` and `&str`
 /// 
-/// Automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv) trait
-/// which have decoders for every field covered.
+/// Automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv) trait which have decoders for every field covered.
 /// 
-/// For custom decoding functions, ***no need to use this trait***. Instead, please ensure
-/// the functions signature matches the following:
+/// For custom decoding functions, ***no need to use this trait***. Instead, please ensure the functions signature matches the following:
 /// 
 /// * static length: `fn <name>(input: &mut S) -> winnow::PResult<Self>;`
 /// * dynamic length: `fn <name>(len: usize) -> impl Fn(&mut S) -> winnow::PResult<Self>;`
@@ -58,13 +56,9 @@ where
 /// 
 /// * [`Decode`] decodes the data of the packet, without finding it
 /// * [`Seek`] finds the data by the recognition sentinel
-/// * [`Extract`] performs [`Seek`] -> [`Decode`]. But upon failure, it has to return the
-///   checkpoint to the next item of input, rather than the checkpoint of the
-///   sub-slice used in the [`Decode`] call
+/// * [`Extract`] performs [`Seek`] -> [`Decode`]. But upon failure, it has to return the checkpoint to the next item of input, rather than the checkpoint of the sub-slice used in the [`Decode`] call
 /// 
-/// [`ThenDecode`] solves this issue by taking the sub-slice as an input, passing it 
-/// to the [`Decode`] implementation, and upon failure, returning to the original 
-/// input checkpoint.
+/// [`ThenDecode`] solves this issue by taking the sub-slice as an input, passing it to the [`Decode`] implementation, and upon failure, returning to the original input checkpoint.
 trait ThenDecode<S>: Sized
 where
     S: winnow::stream::Stream,
@@ -95,12 +89,13 @@ where
 /// Decodes repeatedly, until it can no longer
 /// 
 /// Accumulates results in a [`Vec`] and returns
+/// 
+/// Note that this **always** returns [`Ok`]: if there is a failure, it will return [`Ok`] with [an empty vector](Vec::new)
 pub trait RepeatedDecode<S>: Sized
 where
     S: winnow::stream::Stream,
 {
     fn repeated(input: &mut S) -> winnow::PResult<Vec<Self>>;
-    fn num_repeated(len: usize) -> impl Fn(&mut S) -> winnow::PResult<Vec<Self>>;
 }
 /// [`RepeatedDecode`] implementation for all types T that implement [`Decode`]
 impl<S, T> RepeatedDecode<S> for T
@@ -109,12 +104,38 @@ where
     S: winnow::stream::Stream,
 {
     fn repeated(input: &mut S) -> winnow::PResult<Vec<Self>> {
-        winnow::combinator::repeat(0.., Self::decode).parse_next(input)
-    }
-
-    fn num_repeated(len: usize) -> impl Fn(&mut S) -> winnow::PResult<Vec<Self>> {
-        move |input: &mut S| {
-            winnow::combinator::repeat(0..len, Self::decode).parse_next(input)
-        }
+        Ok(winnow::combinator::repeat(0.., Self::decode)
+            .parse_next(input)
+            .unwrap_or(Vec::new())
+        )
     }
 }
+
+// pub trait SeekThen<S>: Sized
+// where
+//     // E: winnow::error::ParserError<S>,
+//     S: winnow::stream::FindSlice<<S as winnow::stream::Stream>::Slice>,
+//     S: winnow::stream::Stream<Slice = S> + winnow::stream::StreamIsPartial,
+//     <S as winnow::stream::Stream>::Slice: Clone + winnow::Parser<S, S::Slice, winnow::error::ContextError>,
+// {
+//     fn seek_then(literal: impl Into<S::Slice>) -> impl winnow::Parser<S> {
+//         let mut literal: S::Slice = literal.into();
+//         move |input: &mut S| -> winnow::PResult<S::Slice> {
+//             let checkpoint = input.checkpoint();
+//             let res = winnow::token::take_until(0.., literal).parse_next(input);
+//             Err(crate::err!())
+//         }
+//         // move |input: &mut S| -> winnow::PResult<S::Slice> {
+//         //     let checkpoint = input.checkpoint();
+//         //     let res: winnow::PResult<S> = winnow::token::take_until(0.., literal).parse_next(input);
+//         //     match res {
+//         //         Ok(_) => Ok(literal.clone()),
+//         //         Err(e) => Err(
+//         //             e
+//         //             .backtrack()
+//         //             .add_context(input, &checkpoint, winnow::error::StrContext::Label("Unable to find literal in stream"))
+//         //         ),
+//         //     }
+//         // }
+//     }
+// }

@@ -173,8 +173,7 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
                 // ---- ^^^ ---- remember this is PACKET_LIFETIME_CHAR
                     let checkpoint = input.checkpoint();
                     let packet_len = match ::tinyklv::reexport::winnow::combinator::seq!(_:
-                        // ::winnow::token::take_until(0.., #sentinel),
-                        // ::winnow::token::take_till(0.., #sentinel),
+                        // ::tinyklv::reexport::winnow::token::take_until(#sentinel),
                         #sentinel,
                         #len_decoder,
                     ).parse_next(input) {
@@ -206,9 +205,11 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
                         #key_decoder,
                         #len_decoder,
                     ).parse_next(input) {
-                        Ok((key, len)) => match (key, len) {
+                        Ok((key, len)) => match key {
                             #items_match
-                            (_, len) => { let _ = ::tinyklv::reexport::winnow::token::take::<usize, #stream, ::tinyklv::reexport::winnow::error::ContextError>(len).parse_next(input); },
+                            _ => {
+                                let _ = ::tinyklv::reexport::winnow::token::take::<usize, #stream, ::tinyklv::reexport::winnow::error::ContextError>(len).parse_next(input);
+                            },
                         },
                         Err(_) => break,
                     }
@@ -217,7 +218,6 @@ fn gen_decode_impl(input: &kst::Input) -> proc_macro2::TokenStream {
             }
         }
     };
-    // println!("{}", result);
     result
 }
 
@@ -234,24 +234,49 @@ fn gen_items_init(fatts: &Vec<kst::FieldAttrSchema>) -> proc_macro2::TokenStream
 }
 
 /// Generates the tokens for matching the key/len's with fields and parsers
-/// 
-/// `(#key, #optional_len) => #name = #dec (input #optional_len_arg).ok(),`
 fn gen_items_match(fatts: &Vec<kst::FieldAttrSchema>) -> proc_macro2::TokenStream {
     let arms = fatts.iter().map(|field| {
+        // --------------------------------------------------
+        // the name of the field. this is a variable which is assigned Option<T>
+        // --------------------------------------------------
         let name = &field.name;
+        // --------------------------------------------------
+        // the key which represents the field in binary
+        // --------------------------------------------------
         let key = &field.contents.key.value.clone().unwrap_or_else(||
             panic!("{}", crate::Error::MissingKey(name.to_string()))
         );
+        // --------------------------------------------------
+        // the value decoder
+        // --------------------------------------------------
         let dec = field.contents.dec().clone().unwrap_or_else(||
             panic!("{}", crate::Error::MissingFunc(format!("field `{}`", name), "value".into(), "dec".into(), "decoder".into()))
         );
-        let dynlen = field.contents.dynlen();
-        let optional_len = if let Some(true) = dynlen { quote! { len } } else { quote! { _ } };
-        let optional_len_arg = if let Some(true) = dynlen { quote! { (len) } } else { quote! {} };
+        // --------------------------------------------------
+        // the item assignment
+        // --------------------------------------------------
+        // if the decoder takes in a length, it will call the decoder as:
+        // * `let field: Option<T> = decoder(len)(input).ok();`
+        // 
+        // if the decoder does not take in a length, it will call the decoder as:
+        // * `let field: Option<T> = decoder(&mut take(len).parse_next(input)?).ok();`
+        // 
+        // this is to ensure that the **actual** length of the data is being used during parsing, rather than completely ignored. For example, lets say the value being decoded is a `be_u16` but there are 3 bytes. This is a mismatch, but my `be_u16` decoder defaults to taking 2 bytes. As a result, debugging this issue will be difficult since the entire stream is being offset by 1 byte and the whole process goes awry. alternatively, if 3 bytes are taken, THEN `be_u16` is applied, then the stream decodes fine, except for the `be_u16` part. This results in a much easier time decoding and updating parsers
+        // --------------------------------------------------
+        let item_assignment = match field.contents.dynlen() {
+            Some(true) => quote! { #name = #dec (len)(input).ok() },
+            _ => quote! { #name = #dec (&mut ::tinyklv::reexport::winnow::token::take(len).parse_next(input)?).ok() },
+        };
+        // --------------------------------------------------
+        // create the match arm for this key + len, assigning the parsed value to the field variable
+        // --------------------------------------------------
         quote! {
-            (#key, #optional_len) => #name = #dec #optional_len_arg (input).ok(),
+            #key => #item_assignment ,
         }
     });
+    // --------------------------------------------------
+    // return all the match arms
+    // --------------------------------------------------
     quote! {
         #(#arms)*
     }
