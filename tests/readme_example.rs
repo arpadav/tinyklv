@@ -6,23 +6,24 @@ use tinyklv::prelude::*;
 #[derive(Klv)]
 #[klv(
     stream = &[u8],
-    sentinel = b"\x00\x00\x00",
-    key(dec = tinyklv::dec::binary::u8),
-    len(dec = tinyklv::dec::binary::u8_as_usize),
+    sentinel = "\x00\x00\x00",
+    key(dec = tinyklv::dec::binary::u8, enc = tinyklv::enc::binary::u8),
+    len(dec = tinyklv::dec::binary::u8_as_usize, enc = tinyklv::enc::binary::u8),
+    allow_unimplemented_encode,
 )]
 struct Foo {
-    #[klv(key = 0x01, dyn = true, dec = tinyklv::dec::binary::to_string_utf8)]
-    // value length is dynamically determined, always as input from stream
+    #[klv(key = 0x01, var = true, dec = "tinyklv::dec::binary::to_string_utf8")]
+    // value length is variable, always read from stream
     // 
     // therefore, it is used as an input arg in decoder: `tinyklv::dec::binary::to_string_utf8`
-    // (function signature = `fn(&mut S, usize) -> winnow::PResult<String>`)
+    // (function signature = `fn(&mut S, usize) -> winnow::Result<String>`)
     name: String,
 
     #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16)]
     // value length is always 2 bytes
     // 
     // therefore, it is not used as an input arg in decoder: `tinyklv::dec::binary::be_u16`
-    // (function signature = `fn(&mut S) -> winnow::PResult<u16>`)
+    // (function signature = `fn(&mut S) -> winnow::Result<u16>`)
     number: u16,
 }
 

@@ -24,3 +24,11 @@
 //     // let encoded = value3.encode();
 //     // println!("{:?}", value3.encode());
 // }
+
+
+pub(crate) static __SEEKER: ::std::sync::LazyLock<::memchr::memmem::Finder> = ::std::sync::LazyLock::new(|| ::memchr::memmem::Finder::new(b"Seeker"));
+
+#[test]
+fn test_me() {
+    
+}

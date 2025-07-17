@@ -7,28 +7,27 @@ use num_traits::{
     AsPrimitive,
     ToPrimitive,
     FromPrimitive,
-};
-use winnow::error::{
-    Needed,
-    ErrMode,
+    bounds::UpperBounded,
 };
 use winnow::token::{
     take,
     take_while,
 };
+use crate::prelude::*;
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 pub mod dec;
 pub mod enc;
-use crate::prelude::*;
 
 // --------------------------------------------------
 // traits
 // --------------------------------------------------
-pub trait OfBerCommon: Copy + ToBytes + Unsigned + PartialOrd + ToPrimitive + FromPrimitive + AsPrimitive<u128> {}
-impl<T> OfBerCommon for T where T: Copy + ToBytes + Unsigned + PartialOrd + ToPrimitive + FromPrimitive + AsPrimitive<u128> {}
+pub trait OfBerCommon:
+    Copy + ToBytes + Unsigned + UpperBounded + PartialOrd + ToPrimitive + FromPrimitive + AsPrimitive<u128> {}
+impl<T> OfBerCommon for T where T:
+    Copy + ToBytes + Unsigned + UpperBounded + PartialOrd + ToPrimitive + FromPrimitive + AsPrimitive<u128> {}
 pub trait OfBerLength: OfBerCommon {}
 impl<T> OfBerLength for T where T: OfBerCommon {}
 pub trait OfBerOid: OfBerCommon {}
@@ -89,7 +88,7 @@ impl<T: OfBerLength> BerLength<T> {
     }
 }
 /// [`BerLength`] implementation of [`EncodeValue`]
-impl<T: OfBerLength> EncodeValue<Vec<u8>> for BerLength<T> {
+impl<T: OfBerLength> crate::EncodeValue<Vec<u8>> for BerLength<T> {
     /// Encode a [`BerLength`] into a [`Vec<u8>`]
     /// 
     /// # Example
@@ -149,7 +148,7 @@ impl<T: OfBerLength> EncodeValue<Vec<u8>> for BerLength<T> {
     }
 }
 /// [`BerLength`] implementation of [`Decode`]
-impl<T: OfBerLength> Decode<&[u8]> for BerLength<T> {
+impl<T: OfBerLength> crate::Decode<&[u8]> for BerLength<T> {
     /// Decode a [`BerLength`] from a [`&[u8]`]
     /// 
     /// # Example
@@ -166,7 +165,8 @@ impl<T: OfBerLength> Decode<&[u8]> for BerLength<T> {
     /// assert_eq!(BerLength::decode(&mut &value1[..]).unwrap(), BerLength::new(&201_u64));
     /// assert_eq!(BerLength::decode(&mut &value2[..]).unwrap(), BerLength::new(&123891829038102_u64));
     /// ```
-    fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
+    fn decode(input: &mut &[u8]) -> winnow::Result<Self> {
+        let checkpoint = input.checkpoint();
         // --------------------------------------------------
         // err if no bytes
         // --------------------------------------------------
@@ -187,7 +187,10 @@ impl<T: OfBerLength> Decode<&[u8]> for BerLength<T> {
         // `input.len() + 1 < num_bytes + 1`
         // but can be shortened
         // --------------------------------------------------
-        if input.len() < num_bytes { return Err(ErrMode::Incomplete(Needed::Size(std::num::NonZero::new(num_bytes + 1).unwrap()))); }
+        if input.len() < num_bytes {
+            return crate::err!(input, checkpoint, "Not enough bytes for length encoding");
+            // return Err(ErrMode::Incomplete(Needed::Size(std::num::NonZero::new(num_bytes + 1).unwrap())));
+        }
         // --------------------------------------------------
         // decode the length from the specified number of bytes
         // --------------------------------------------------
@@ -229,7 +232,7 @@ impl<T: OfBerOid> BerOid<T> {
     }
 }
 /// [`BerOid`] implementation of [`Encode`]
-impl<T: OfBerOid> EncodeValue<Vec<u8>> for BerOid<T> {
+impl<T: OfBerOid> crate::EncodeValue<Vec<u8>> for BerOid<T> {
     /// Encode a [`BerOid`] into a [`Vec<u8>`]
     /// 
     /// # Example
@@ -273,7 +276,7 @@ impl<T: OfBerOid> EncodeValue<Vec<u8>> for BerOid<T> {
     }
 }
 /// [`BerOid`] implementation of [`Decode`]
-impl<T: OfBerOid> Decode<&[u8]> for BerOid<T> {
+impl<T: OfBerOid> crate::Decode<&[u8]> for BerOid<T> {
     /// Decode a [`BerOid`] from a [`&[u8]`]
     /// 
     /// # Example
@@ -288,7 +291,8 @@ impl<T: OfBerOid> Decode<&[u8]> for BerOid<T> {
     /// Please use [`crate::codecs::ber::dec::ber_oid`] instead for
     /// all parsing needs. This struct is meant to be used as a development
     /// tool for parsing BER encoded values.
-    fn decode(input: &mut &[u8]) -> winnow::PResult<Self> {
+    fn decode(input: &mut &[u8]) -> winnow::Result<Self> {
+        let checkpoint = input.checkpoint();
         // --------------------------------------------------
         // take while MSB = 1, then take last byte and exit
         // if fails, it means it's a single byte with no
@@ -305,20 +309,31 @@ impl<T: OfBerOid> Decode<&[u8]> for BerOid<T> {
                 .fold(0u128, |acc, &b| (acc << 7) | (b & 0x7F) as u128),
             Err(_) => winnow::binary::be_u8(input)? as u128,
         };
-        Ok(BerOid::new(&T::from_u128(output).unwrap()))
+        let output = match T::from_u128(output) {
+            Some(value) => value,
+            None => {
+                return Err(winnow::error::ContextError::new().add_context(
+                    input,
+                    &checkpoint,
+                    winnow::error::StrContext::Label("Unable to cast BER-OID value from u128 -> T. Perhaps value > T::max?."),
+                    // winnow::error::StrContext::Label(&format!("Unable to parse BER-OID value into type `{}`, got {}", std::any::type_name::<T>(), output)),
+                ));
+            },
+        };
+        Ok(BerOid::new(&output))
     }
 }
 
 #[inline(always)]
 /// Parses out all bytes while MSB is set to 1
-fn take_while_msb_set<'s>(input: &mut &'s [u8]) -> winnow::PResult<&'s [u8]> {
+fn take_while_msb_set<'s>(input: &mut &'s [u8]) -> winnow::Result<&'s [u8]> {
     take_while(1.., msb_is_set).parse_next(input)
 }
 
 #[inline(always)]
 /// Parses out a single byte. MSB is **assumed** set to 0, since
 /// this function is only called after [`take_while_msb_set`]
-fn take_one<'s>(input: &mut &'s [u8]) -> winnow::PResult<&'s [u8]> {
+fn take_one<'s>(input: &mut &'s [u8]) -> winnow::Result<&'s [u8]> {
     take(1usize).parse_next(input)
 }
 
@@ -330,7 +345,7 @@ fn msb_is_set(b: u8) -> bool {
 
 #[inline(always)]
 /// Parses out a specified number of bytes and combines them into a [`u128`] value
-fn parse_length_u128(input: &mut &[u8], num_bytes: usize) -> winnow::PResult<u128> {
+fn parse_length_u128(input: &mut &[u8], num_bytes: usize) -> winnow::Result<u128> {
     take(num_bytes)
         .map(|bytes: &[u8]| bytes.iter().fold(0u128, |acc, &byte| (acc << 8) | byte as u128))
         .parse_next(input)

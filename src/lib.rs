@@ -1,20 +1,112 @@
 #![doc = include_str!("../README.md")]
+// --------------------------------------------------
+// mods
+// --------------------------------------------------
 pub mod _tutorial;
-pub mod prelude;
+pub mod traits;
 pub mod codecs;
+
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 pub use codecs::*;
-pub mod reexport {
-    pub use winnow;
-}
+pub use traits::*;
 pub use tinyklv_impl::*;
 
+// --------------------------------------------------
+// internal re-exports: used during macro expansion
+// --------------------------------------------------
+pub mod __export {
+    pub use winnow;
+    pub use memchr;
+    #[cfg(feature = "chrono")]
+    pub use chrono;
+}
+
+pub mod prelude {
+    // --------------------------------------------------
+    // external
+    // --------------------------------------------------
+    pub use winnow::prelude::*;
+    pub use winnow::Parser as _;
+    pub use winnow::stream::Stream as _;
+    pub use winnow::error::AddContext as _;
+    // --------------------------------------------------
+    // local
+    // --------------------------------------------------
+    pub use crate::traits::Seek as _;
+    pub use crate::traits::Decode as _;
+    pub use crate::traits::Extract as _;
+    pub use crate::traits::RepeatedDecode as _;
+
+    pub use crate::traits::Encode as _;
+    pub use crate::traits::IntoKlv as _;
+    pub use crate::traits::EncodeValue as _;
+    
+    pub use crate::traits::BreakCondition as _;
+    // pub use crate::traits::BreakConditionType as _;
+}
+
+pub type Result<T> = winnow::Result<T>;
+
+#[deprecated]
 #[macro_export]
-/// Returns a blank context error: usually used for reserved values.
+/// Returns a blank, unrecoverable error.
 /// 
-/// It is not recommended to use this unless a [`None`] value has to be
-/// returned upon parsing values.
+/// This is helpful for quick development. However, **it is not recommended
+/// to use this** since the error is non-descriptive.
+macro_rules! err2 {
+    () => {
+        winnow::error::ContextError::new()
+    };
+
+    ($input:ident, $checkpoint:ident, $msg:expr) => {
+        winnow::error::ErrMode::Cut(winnow::error::ContextError::new().add_context(
+            $input,
+            &$checkpoint,
+            winnow::error::StrContext::Label($msg),
+        ))
+    };
+}
+
+#[macro_export]
+/// Returns a blank, unrecoverable error.
 macro_rules! err {
-    () => { winnow::error::ErrMode::Backtrack(winnow::error::ContextError::new()) };
+    ($input:ident, $checkpoint:ident, $msg:expr) => {
+        Err(winnow::error::ContextError::new().add_context(
+            $input,
+            &$checkpoint,
+            winnow::error::StrContext::Label($msg),
+        ))
+    };
+
+    ($err:ident, $input:ident, $checkpoint:ident, $msg:expr) => {
+        Err($err.add_context(
+            $input,
+            &$checkpoint,
+            winnow::error::StrContext::Label($msg),
+        ))
+    };
+}
+
+#[macro_export]
+/// Returns a blank, unrecoverable error.
+macro_rules! ctxt {
+    ($input:ident, $checkpoint:ident, $msg:expr) => {
+        winnow::error::ContextError::new().add_context(
+            $input,
+            &$checkpoint,
+            winnow::error::StrContext::Label($msg),
+        )
+    };
+
+    ($err:ident, $input:ident, $checkpoint:ident, $msg:expr) => {
+        $err.add_context(
+            $input,
+            &$checkpoint,
+            winnow::error::StrContext::Label($msg),
+        )
+    };
 }
 
 #[macro_export]
@@ -42,7 +134,7 @@ macro_rules! err {
 /// ```
 macro_rules! scale {
     ($parser:path, $precision:ty, $scale:tt $(,)*) => {
-        |input| -> winnow::PResult<$precision> {
+        |input| -> ::tinyklv::Result<$precision> {
             Ok(($parser.parse_next(input)? as $precision) * $scale)
         }
     };
@@ -73,7 +165,7 @@ macro_rules! scale {
 /// ```
 macro_rules! cast {
     ($parser:expr, $precision:ty $(,)*) => {
-        |input| -> winnow::PResult<$precision> {
+        |input| -> ::tinyklv::Result<$precision> {
             Ok($parser.parse_next(input)? as $precision)
         }
     };
@@ -98,11 +190,11 @@ macro_rules! cast {
 /// ```
 macro_rules! as_date {
     ($str_parser:path, $date_fmt:tt, $len:expr $(,)*) => {
-        |input| -> winnow::PResult<chrono::NaiveDate> {
-            chrono::NaiveDate::parse_from_str(
+        |input| -> ::tinyklv::Result<::tinyklv::__export::chrono::NaiveDate> {
+            ::tinyklv::__export::chrono::NaiveDate::parse_from_str(
                 &$str_parser($len)(input)?,
                 $date_fmt,
-            ).map_err(|_| tinyklv::err!())
+            ).map_err(|_| ::tinyklv::err!())
         }
     };
 }
@@ -125,11 +217,11 @@ macro_rules! as_date {
 /// ```
 macro_rules! as_time {
     ($str_parser:path, $time_fmt:tt, $len:expr $(,)*) => {
-        |input| -> winnow::PResult<chrono::NaiveTime> {
-            chrono::NaiveTime::parse_from_str(
+        |input| -> ::tinyklv::Result<::tinyklv::__export::chrono::NaiveTime> {
+            ::tinyklv::__export::chrono::NaiveTime::parse_from_str(
                 &$str_parser($len)(input)?,
                 $time_fmt,
-            ).map_err(|_| tinyklv::err!())
+            ).map_err(|_| ::tinyklv::err!())
         }
     };
 }
@@ -153,8 +245,8 @@ macro_rules! as_time {
 /// ```
 macro_rules! as_datetime {
     ($str_parser:path, $datetime_fmt:tt, $len:expr $(,)*) => {
-        |input| -> winnow::PResult<chrono::NaiveDateTime> {
-            chrono::NaiveDateTime::parse_from_str(
+        |input| -> ::tinyklv::Result<::tinyklv::__export::chrono::NaiveDateTime> {
+            ::tinyklv::__export::chrono::NaiveDateTime::parse_from_str(
                 &$str_parser($len)(input)?,
                 $datetime_fmt,
             ).map_err(|_| tinyklv::err!())
