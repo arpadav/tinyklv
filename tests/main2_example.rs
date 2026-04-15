@@ -3,8 +3,8 @@
 use std::prelude::rust_2021::*;
 #[macro_use]
 extern crate std;
-use tinyklv::Klv;
 use tinyklv::prelude::*;
+use tinyklv::Klv;
 
 struct InnerValue {}
 fn ex01_encoder(_: &InnerValue) -> Vec<u8> {
@@ -18,9 +18,7 @@ impl tinyklv::EncodeValue<Vec<u8>> for InnerValue {
         return String::from("KLV").to_lowercase().into_bytes();
     }
 }
-fn my_decoder_key(
-    x: &mut &[u8],
-) -> tinyklv::Result<u8> {
+fn my_decoder_key(x: &mut &[u8]) -> tinyklv::Result<u8> {
     tinyklv::codecs::binary::dec::u8(x)
 }
 

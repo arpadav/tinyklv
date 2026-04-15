@@ -13,22 +13,21 @@ pub(crate) fn is_option(ty: &syn::Type) -> bool {
 /// Helps determine if a [`syn::Type`] is an [`Option`] or not, with some
 /// ancillary information. Used in [`crate::expand`]
 fn is_option_helper(ty: &syn::Type) -> (bool, Option<&syn::Type>) {
-    if let syn::Type::Path(syn::TypePath {
-        path,
-        ..
-    }) = ty {
+    if let syn::Type::Path(syn::TypePath { path, .. }) = ty {
         if let Some(syn::PathSegment {
             ident: ref id,
-            arguments: syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments {
-                args,
-                ..
-            })
-        }) = path.segments.first() {
+            arguments:
+                syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments { args, .. }),
+        }) = path.segments.first()
+        {
             if id == "Option" {
-                return (true, args.first().and_then(|arg| match arg {
-                    syn::GenericArgument::Type(inner_ty) => Some(inner_ty),
-                    _ => None,
-                }))
+                return (
+                    true,
+                    args.first().and_then(|arg| match arg {
+                        syn::GenericArgument::Type(inner_ty) => Some(inner_ty),
+                        _ => None,
+                    }),
+                );
             }
         }
     }
@@ -50,7 +49,7 @@ pub(crate) fn insert_lifetime(ty: &syn::Type, lifetime_char: char) -> syn::Type 
             lifetime: Some(lifetime),
             mutability: None,
             elem: Box::new(ty.clone()),
-        })
+        }),
     }
 }
 
@@ -72,21 +71,21 @@ pub(crate) fn u8_slice() -> syn::Type {
 
 /// Converts a [`syn::Type`] to a [`proc_macro2::TokenStream`], using the
 /// turbofish notation
-/// 
+///
 /// For example:
-/// 
+///
 /// * `Option<String>` -> `Option::<String>`
 /// * `Option<Vec<u8>>` -> `Option::<Vec::<u8>>`
-/// 
+///
 /// This is used to fill defaults when no `#[klv(..)]`
 /// attribute is provided
-/// 
+///
 /// For example:
-/// 
+///
 /// ```rust no_run ignore
 /// use tinyklv::Klv;
 /// use tinyklv::prelude::*;
-/// 
+///
 /// #[derive(Klv)]
 /// #[klv(..)]
 /// struct MyStruct {
@@ -96,12 +95,12 @@ pub(crate) fn u8_slice() -> syn::Type {
 ///     pub klv_field: Option<String>,
 /// }
 /// ```
-/// 
+///
 /// When creating the `MyStruct` by decoding from a stream, it returns
 /// a [`winnow::Result<MyStruct>`]
-/// 
+///
 /// During the decoding process, this is returned (see: [`crate::expand::gen_item_set`]):
-/// 
+///
 /// ```rust no_run ignore
 /// // parses from byte stream...
 /// let klv_field_decoded = ...;
@@ -116,28 +115,34 @@ pub(crate) fn type2fish(ty: &syn::Type) -> proc_macro2::TokenStream {
         syn::Type::Path(type_path) => {
             let mut tokens = proc_macro2::TokenStream::new();
             for (i, segment) in type_path.path.segments.iter().enumerate() {
-                if i > 0 { tokens.extend(quote::quote!(::)); }
+                if i > 0 {
+                    tokens.extend(quote::quote!(::));
+                }
                 let ident = &segment.ident;
                 tokens.extend(quote::quote!(#ident));
                 match &segment.arguments {
                     syn::PathArguments::AngleBracketed(args) => {
-                        let args_tokens: Vec<proc_macro2::TokenStream> = args.args.iter().map(|arg| {
-                            match arg {
-                                syn::GenericArgument::Type(ty) => type2fish(ty),
-                                // extend this match to handle other [`syn::GenericArgument`] variants as needed
-                                _ => quote::quote!(#arg),
-                            }
-                        }).collect();
+                        let args_tokens: Vec<proc_macro2::TokenStream> = args
+                            .args
+                            .iter()
+                            .map(|arg| {
+                                match arg {
+                                    syn::GenericArgument::Type(ty) => type2fish(ty),
+                                    // extend this match to handle other [`syn::GenericArgument`] variants as needed
+                                    _ => quote::quote!(#arg),
+                                }
+                            })
+                            .collect();
                         if !args_tokens.is_empty() {
                             tokens.extend(quote::quote!(::<#(#args_tokens),*>));
                         }
-                    },
+                    }
                     // handle other [`syn::PathArguments`] variants if necessary
                     _ => {}
                 }
             }
             tokens
-        },
+        }
         // extend this match to handle other [`syn::Type`] variants as needed
         _ => quote::quote!(#ty),
     }

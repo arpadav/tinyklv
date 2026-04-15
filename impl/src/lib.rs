@@ -10,17 +10,14 @@ mod expand;
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use syn::{
-    DeriveInput,
-    parse_macro_input,
-};
+use syn::{parse_macro_input, DeriveInput};
 use thiserror::Error;
 
 // --------------------------------------------------
 // re-exports
 // --------------------------------------------------
-use crate::ctxt::Ctxt;
 use crate::ast::symbol;
+use crate::ctxt::Ctxt;
 
 // --------------------------------------------------
 // constants
@@ -41,11 +38,9 @@ pub fn klv_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 #[derive(Debug, Error)]
 /// [`tinyklv`](crate) proc-macro errors
 enum Error {
-    
     // --------------------------------------------------
     // container parsing
     // --------------------------------------------------
-
     #[error("\
         {c} does not support #[derive({d})] for {0}s.",
         c = CRATE_NAME,
@@ -70,7 +65,6 @@ enum Error {
     // --------------------------------------------------
     // container attributes
     // --------------------------------------------------
-
     #[error("\
         Unknown attribute: `{0}`.
 Expected {s}.",
@@ -113,7 +107,6 @@ Options include {s}.",
     // --------------------------------------------------
     // stream
     // --------------------------------------------------
-
     #[error("\
         Duplicate `{s}` attribute. Only one stream-type per struct is supported.",
         s = symbol::STREAM,
@@ -123,7 +116,6 @@ Options include {s}.",
     // --------------------------------------------------
     // sentinel
     // --------------------------------------------------
-
     #[error("\
         Duplicate `{s}` attribute. Currently, only one sentinel is supported per struct.",
         s = symbol::SENTINEL,
@@ -133,7 +125,6 @@ Options include {s}.",
     // --------------------------------------------------
     // key / len
     // --------------------------------------------------
-    
     #[error("\
         Missing required `{s}` field to describe how to encode/decode key values.",
         s = symbol::KEY,
@@ -183,7 +174,7 @@ Expected `{e} = <..>` or `{d} = <..>`.",
         l = symbol::LENGTH,
     )]
     DuplicateDecoderInKeyLen,
-    
+
     #[error("\
         Missing required `{e}` field for `{0}`.
 If no encoding is required, use `#[{a}({aue})]`.",
@@ -205,14 +196,13 @@ If no decoding is required, use `#[{a}({aud})]`.",
     // --------------------------------------------------
     // default
     // --------------------------------------------------
-
     #[error("\
         Unknown default field: `{0}`.
 Expected {s}.",
         s = symbol::CONT_DEFAULT_LIST_SYMBOLS,
     )]
     UnknownDefaultField(String),
-    
+
     #[error("\
         Missing required `{s}` field for `{d}`.",
         s = symbol::TYPE,
@@ -267,7 +257,6 @@ To add ways to decode said type, they must be done on a field-by-field basis and
     // --------------------------------------------------
     // field
     // --------------------------------------------------
-
     #[error("\
         Malformed `{s}` field. Expecting list: `{s}(..)`
 Options include {fs}.",

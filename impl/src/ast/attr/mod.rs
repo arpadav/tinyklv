@@ -1,8 +1,8 @@
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
-mod field;
 mod container;
+mod field;
 
 // --------------------------------------------------
 // external
@@ -40,11 +40,7 @@ pub(crate) struct MainField<'a> {
 
 impl<'a> MainContainer<'a> {
     /// Convert the raw [`syn`] ast into a parsed container object, collecting errors in `cx`.
-    pub fn from_ast(
-        cx: &Ctxt,
-        item: &'a syn::DeriveInput,
-    ) -> Option<MainContainer<'a>> {
-
+    pub fn from_ast(cx: &Ctxt, item: &'a syn::DeriveInput) -> Option<MainContainer<'a>> {
         let attrs = container::Container::from_ast(cx, item);
 
         let data = match &item.data {
@@ -57,20 +53,14 @@ impl<'a> MainContainer<'a> {
                     attrs.allow_unimplemented_decode.is_some(),
                 )),
                 syn::Fields::Unnamed(fields) => {
-                    cx.error_spanned_by(
-                        &fields,
-                        err!(UnsupportedUnnamedStructs),
-                    );
+                    cx.error_spanned_by(&fields, err!(UnsupportedUnnamedStructs));
                     None
-                },
+                }
                 syn::Fields::Unit => {
-                    cx.error_spanned_by(
-                        &data.fields,
-                        err!(UnsupportedUnitStructs),
-                    );
+                    cx.error_spanned_by(&data.fields, err!(UnsupportedUnitStructs));
                     None
-                },
-            }
+                }
+            },
             syn::Data::Enum(_) => {
                 cx.error_spanned_by(item, err!(UnsupportedContainer("enum")));
                 return None;
@@ -108,7 +98,7 @@ fn fields_from_ast<'a>(
             name: name.clone(),
             attrs: match field::Field::from_ast(cx, field, &name, container_defaults, aue, aud) {
                 Some(x) => field::FieldParsed::from_field(cx, field, &x),
-                None => None
+                None => None,
             },
             ty: &field.ty,
             _original: field,

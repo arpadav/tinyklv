@@ -27,10 +27,10 @@ pub mod prelude {
     // --------------------------------------------------
     // external
     // --------------------------------------------------
-    pub use winnow::Parser as _;
     pub use winnow::error::AddContext as _;
     pub use winnow::prelude::*;
     pub use winnow::stream::Stream as _;
+    pub use winnow::Parser as _;
     // --------------------------------------------------
     // local
     // --------------------------------------------------

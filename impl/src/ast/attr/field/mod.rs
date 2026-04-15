@@ -7,16 +7,16 @@ mod xcoder;
 // external
 // --------------------------------------------------
 use quote::ToTokens;
-use xcoder::FieldXcoder;
 use std::collections::HashMap;
+use xcoder::FieldXcoder;
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::Ctxt;
-use crate::symbol;
-use crate::ast::types::XcoderType;
 use crate::ast::attr::container::default::DefaultXcoder;
+use crate::ast::types::XcoderType;
+use crate::symbol;
+use crate::Ctxt;
 
 #[derive(Debug)]
 /// Represents field attribute information
@@ -53,7 +53,9 @@ impl Field {
             // parse out klv attributes
             // --------------------------------------------------
             match attr.meta {
-                syn::Meta::List(ref contents) => all_field_xcoders.push(FieldXcoder::from(contents)),
+                syn::Meta::List(ref contents) => {
+                    all_field_xcoders.push(FieldXcoder::from(contents))
+                }
                 _ => {
                     cx.error_spanned_by(attr, err!(MalformedField));
                 }
@@ -70,7 +72,10 @@ impl Field {
         // --------------------------------------------------
         // add all `syn_error`'s to `cx`
         // --------------------------------------------------
-        all_field_xcoders.iter().filter_map(|f| f.errors.clone()).for_each(|e| cx.syn_error(e));
+        all_field_xcoders
+            .iter()
+            .filter_map(|f| f.errors.clone())
+            .for_each(|e| cx.syn_error(e));
 
         // --------------------------------------------------
         // init
@@ -88,14 +93,14 @@ impl Field {
             0 => {
                 cx.error_spanned_by(field, err!(MissingKeyInField));
                 None
-            },
+            }
             1 => Some(keys[0].clone()),
             _ => {
                 cx.error_spanned_by(field, err!(DuplicateKey));
                 None
-            },
+            }
         };
-        
+
         // --------------------------------------------------
         // get all klv attr encoders
         // --------------------------------------------------
@@ -111,7 +116,7 @@ impl Field {
                 cx.error_spanned_by(field, err!(DuplicateEncoderInField));
                 keep_enc_none = true;
                 None
-            },
+            }
         };
 
         // --------------------------------------------------
@@ -129,7 +134,7 @@ impl Field {
                 cx.error_spanned_by(field, err!(DuplicateDecoderInField));
                 keep_dec_none = true;
                 None
-            },
+            }
         };
 
         // --------------------------------------------------
@@ -145,7 +150,7 @@ impl Field {
             _ => {
                 cx.error_spanned_by(field, err!(DuplicateVariableLengthInField));
                 None
-            },
+            }
         };
 
         // --------------------------------------------------
@@ -161,13 +166,14 @@ impl Field {
             _ => {
                 cx.error_spanned_by(field, err!(DuplicateDecoderInField)); // TODO <-- make custom error
                 None
-            },
+            }
         };
 
         // --------------------------------------------------
         // set defaults, if no enc/dec was found
         // --------------------------------------------------
-        let typ_maybe_unwrapped = crate::expand::helpers::unwrap_option_type(&field.ty).unwrap_or(&field.ty);
+        let typ_maybe_unwrapped =
+            crate::expand::helpers::unwrap_option_type(&field.ty).unwrap_or(&field.ty);
         if let Some(default) = container_defaults.get(typ_maybe_unwrapped) {
             if let (Some(default_enc), false) = (&default.enc, keep_enc_none) {
                 field_xcoder.enc = Some(default_enc.clone());
@@ -182,14 +188,20 @@ impl Field {
         // unimplemented encode error
         // --------------------------------------------------
         if !allow_unimplemented_encode && field_xcoder.enc.is_none() {
-            cx.error_spanned_by(name.clone(), err!(UnimplementedEncode(name, typ_maybe_unwrapped)));
+            cx.error_spanned_by(
+                name.clone(),
+                err!(UnimplementedEncode(name, typ_maybe_unwrapped)),
+            );
         }
 
         // --------------------------------------------------
         // unimplemented decode error
         // --------------------------------------------------
         if !allow_unimplemented_decode && field_xcoder.dec.is_none() {
-            cx.error_spanned_by(name.clone(), err!(UnimplementedDecode(name, typ_maybe_unwrapped)));
+            cx.error_spanned_by(
+                name.clone(),
+                err!(UnimplementedDecode(name, typ_maybe_unwrapped)),
+            );
         }
 
         // --------------------------------------------------
@@ -222,7 +234,7 @@ impl FieldParsed {
             None => {
                 cx.error_spanned_by(sf.ident.clone(), err!(MissingKeyInField));
                 return None;
-            },
+            }
         };
         let _init = f.contents.init.clone();
         println!("init: {:?}", _init);

@@ -12,13 +12,13 @@ use crate::ast::types::{TypeType, XcoderType};
 
 #[derive(Debug)]
 /// A default encoder / decoder for a specific type
-/// 
+///
 /// # Syntax
-/// 
+///
 /// `default(typ = <type>, enc = <path>, dec = <path>, var = <bool>)`
-/// 
+///
 /// Both `enc` and `dec` are optional, however at least one must be provided.
-/// 
+///
 /// `var` defaults to `false`.
 pub(crate) struct DefaultXcoder {
     /// The type associated with the encoder / decoder
@@ -64,10 +64,7 @@ impl From<&syn::MetaList> for DefaultXcoder {
         // at least one encoder or one decoder must be provided
         // --------------------------------------------------
         if enc.is_none() && dec.is_none() {
-            let e = syn::Error::new_spanned(
-                input.clone(),
-                err!(MissingEncDecInDefault),
-            );
+            let e = syn::Error::new_spanned(input.clone(), err!(MissingEncDecInDefault));
             match errors {
                 None => errors = Some(e),
                 Some(ref mut errors) => errors.combine(e),
@@ -77,10 +74,7 @@ impl From<&syn::MetaList> for DefaultXcoder {
         // type must be provided
         // --------------------------------------------------
         if typ.is_none() {
-            let e = syn::Error::new_spanned(
-                input.clone(),
-                err!(MissingTypeInDefault),
-            );
+            let e = syn::Error::new_spanned(input.clone(), err!(MissingTypeInDefault));
             match errors {
                 None => errors = Some(e),
                 Some(ref mut errors) => errors.combine(e),

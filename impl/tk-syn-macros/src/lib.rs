@@ -7,56 +7,56 @@ use syn::parse::Parser;
 #[macro_export]
 /// Macro for handling values within a [`syn::MetaList::parse_nested_meta`] iterator. See the example at the bottom
 /// for a working verbose use-case.
-/// 
+///
 /// # Syntax
-/// 
+///
 /// ```rust ignore
 /// use tk_syn_macros::handle_unique_nested_meta_values;
-/// 
+///
 /// // all input types to be optional
 /// let foo: Option<syn::LitStr> = None;
 /// let bar: Option<syn::Macro> = None;
 /// let baz: Option<syn::LitBool> = None;
 /// let qux: Option<syn::Type> = None;
 /// let bep: Option<syn::Path> = None;
-/// 
+///
 /// input.parse_nested_meta(|meta| {
 ///     handle_unique_nested_meta_values! {
 ///         meta;               // <-- syn::meta::ParseNestedMeta
 ///         "unknown field";    // <-- unknown field error message: &str
 ///         5;                  // <-- number of names to try to parse
-/// 
+///
 ///         foo: foo_parser,    // <-- parser fn: `fn(&syn::meta::ParseNestedMeta) -> Option<syn::Result<T>>`
 ///         bar: bar_parser,    //     with default error message if duplicate: "duplicate `bar` field"
 ///         
 ///         // using custom error message
 ///         baz: baz_parser => "there can only be one `baz` field because i said so!",
-/// 
+///
 ///         // using quick parser from `tk_syn_macros`
 ///         qux: tk_syn_macros::parse_pnm("qux"),
-/// 
+///
 ///         // using parser made using `tk_syn_macros::create_parser!`
 ///         bep: parser_maybestr_bep,
 ///     }
 /// });
-/// 
+///
 /// fn foo_parser(meta: &syn::meta::ParseNestedMeta) -> Option<syn::Result<syn::LitStr>>;
 /// fn bar_parser(meta: &syn::meta::ParseNestedMeta) -> Option<syn::Result<syn::Macro>>;
 /// fn baz_parser(meta: &syn::meta::ParseNestedMeta) -> Option<syn::Result<syn::LitBool>>;
-/// 
+///
 /// // creates a name/value parser fn for keyword `bep` and value type `syn::Path`
 /// // using value parser `parse_maybestr`
 /// //
 /// // `bep = <path>`       <-- valid, will return Some(Ok(<path>))
 /// // `bep = <literal>`    <-- invalid, will return Some(Err)
 /// // `baz = <path>`       <-- invalid, will return None
-/// // 
+/// //
 /// // creates: `pub(crate) fn parser_maybestr_bep`
 /// tk_syn_macros::create_parser! {
 ///     "bep": syn::Path;
 ///     parse_maybestr => syn::meta::ParseNestedMeta
 /// }
-/// 
+///
 /// // a function to parse a value which could be raw tokens, or surrounded by quotes
 /// fn parse_maybestr<T: syn::parse::Parse>(input: &syn::meta::ParseNestedMeta) -> syn::Result<T> {
 ///     match input.value() {
@@ -68,33 +68,33 @@ use syn::parse::Parser;
 ///     }
 /// }
 /// ```
-/// 
+///
 /// Each comma delimited tokenstream must the following crieteria:
-/// 
+///
 /// * A unique keyword is expected, no duplicates
 ///   * For name-value pairs (e.g. `<name> = <value>,` ), the name is the keyword and the value should be returned by the `parse_fn`
 ///   * For paths (e.g. `<name>,` ), the name is the keyword and whether it exists or not should be returned by the `parse_fn`
 ///   * For lists (e.g. `<name>(<contents>),` ) the name is the keyword and the contents should be parsed by the `parse_fn`
-/// 
+///
 /// Each `parser_fn` is defined by the [`tk_syn_macros::create_parser!`](crate::create_parser) macro or by the
 /// [`tk_syn_macros::quick_parse`](crate::parse_pnm) function, where it returns:
-/// 
+///
 /// * [`None`] if the keyword is not detected
 /// * [`Some`] if the keyword is detected
 ///   * [`Ok`] if the value is successfully parsed
 ///   * [`Err`] if the value could not be parsed
-/// 
+///
 /// Resulting in a return-type of [`Option<Result<T, syn::Error>>`](syn::Error). The [`syn::Error`] return type is required since
 /// this macro is only expected to be used inside of [`syn::MetaList::parse_nested_meta`]
-/// 
+///
 /// Each variable which holds these values must be of type [`Option<T>`], where `T` is the type returned by the `parser_fn`. Each
-/// variable which doesn't have a custom error message will **default to the name of the variable**. E.g. if you expect a keyword 
+/// variable which doesn't have a custom error message will **default to the name of the variable**. E.g. if you expect a keyword
 /// to be an invalid variable name (like kebab-case or a reserved word), then the error message should be customized since:
-/// 
+///
 /// ```rust ignore
 /// // keyword = `var-iable`
 /// let var: Option<syn::LitStr> = None;
-/// 
+///
 /// input.parse_nested_meta(|meta| {
 ///     tk_syn_macros::handle_unique_nested_meta_values! {
 ///         meta; "unknown field"; 1;
@@ -104,13 +104,13 @@ use syn::parse::Parser;
 /// ```
 ///
 /// # Example
-/// 
+///
 /// ```rust
-/// 
+///
 /// use const_format::concatcp;
-/// 
+///
 /// const EXPECTED: &str = concat!("expected `type` or `encoder` or `decoder` or `var`");
-/// 
+///
 /// #[derive(Debug, PartialEq)]
 /// struct Example {
 ///     /// The name of the struct
@@ -124,9 +124,9 @@ use syn::parse::Parser;
 ///     /// Optional, defaults to `false`
 ///     pub var: bool,
 /// }
-/// 
+///
 /// impl Example {
-/// 
+///
 ///     fn parse_example_from_metalist(input: &syn::MetaList) -> syn::Result<Self> {
 ///     
 ///         let mut typ: Option<syn::Type> = None;
@@ -146,7 +146,7 @@ use syn::parse::Parser;
 ///                 var: tk_syn_macros::parse_pnm("var"),           // <-- built-in parser function with keyword `var`
 ///             }
 ///         })?;
-/// 
+///
 ///         Ok(Example {
 ///             name: input.path.clone(),
 ///             typ: typ.ok_or(syn::Error::new_spanned(input.clone(), "missing required `type` field"))?,
@@ -159,9 +159,9 @@ use syn::parse::Parser;
 ///         })
 ///     
 ///     }
-/// 
+///
 /// }
-/// 
+///
 /// /// A custom parser to handle both:
 /// /// * `encoder = <path>`
 /// /// * `encoder = "<path>"`
@@ -175,7 +175,7 @@ use syn::parse::Parser;
 ///         Err(err) => Err(err),
 ///     })
 /// }
-/// 
+///
 /// fn main() {
 ///     // --------------------------------------------------
 ///     // parse correctly 1
@@ -199,7 +199,7 @@ use syn::parse::Parser;
 ///             var: false,
 ///         },
 ///     );
-/// 
+///
 ///     // --------------------------------------------------
 ///     // parse correctly 2
 ///     // --------------------------------------------------
@@ -222,7 +222,7 @@ use syn::parse::Parser;
 ///             var: true,
 ///         },
 ///     );
-/// 
+///
 ///     // --------------------------------------------------
 ///     // unknown field
 ///     // --------------------------------------------------
@@ -239,7 +239,7 @@ use syn::parse::Parser;
 ///         "unknown field, expected `type` or `encoder` or `decoder` or `var`",
 ///         output.unwrap_err().to_string(),
 ///     );
-/// 
+///
 ///     // --------------------------------------------------
 ///     // missing required field
 ///     // --------------------------------------------------
@@ -255,7 +255,7 @@ use syn::parse::Parser;
 ///         "missing required `type` field",
 ///         output.unwrap_err().to_string(),
 ///     );
-/// 
+///
 ///     // --------------------------------------------------
 ///     // duplicate field: default error message
 ///     // --------------------------------------------------
@@ -273,7 +273,7 @@ use syn::parse::Parser;
 ///         "duplicate `decoder` field",
 ///         output.unwrap_err().to_string(),
 ///     );
-/// 
+///
 ///     // --------------------------------------------------
 ///     // duplicate field: custom error message
 ///     // --------------------------------------------------
@@ -291,7 +291,7 @@ use syn::parse::Parser;
 ///         "duplicate `type` field! you can only have one!",
 ///         output.unwrap_err().to_string(),
 ///     );
-/// 
+///
 ///     // --------------------------------------------------
 ///     // using non `<name> = <value>` syntax
 ///     // --------------------------------------------------
@@ -332,7 +332,7 @@ macro_rules! handle_unique_nested_meta_values {
 
         Ok(())
     };
-    
+
     // --------------------------------------------------
     // fields with custom error message
     // --------------------------------------------------
@@ -428,14 +428,12 @@ macro_rules! create_parser {
 pub fn parse_pnm<T: syn::parse::Parse>(
     name: &str,
 ) -> impl Fn(&syn::meta::ParseNestedMeta) -> Option<Result<T, syn::Error>> + use<'_, T> {
-    move |pnm| {
-        match pnm.path.is_ident(name) {
-            true => Some(match pnm.value() {
-                Ok(value) => value.parse(),
-                Err(err) => Err(err),
-            }),
-            false => None,
-        }
+    move |pnm| match pnm.path.is_ident(name) {
+        true => Some(match pnm.value() {
+            Ok(value) => value.parse(),
+            Err(err) => Err(err),
+        }),
+        false => None,
     }
 }
 
@@ -444,11 +442,9 @@ pub fn parse_pnm<T: syn::parse::Parse>(
 pub fn parse_nv<T: syn::parse::Parse>(
     name: &str,
 ) -> impl Fn(&syn::MetaNameValue) -> Option<Result<T, syn::Error>> + use<'_, T> {
-    move |nv| {
-        match nv.path.is_ident(name) {
-            true => Some(T::parse.parse2(nv.value.to_token_stream())),
-            false => None,
-        }
+    move |nv| match nv.path.is_ident(name) {
+        true => Some(T::parse.parse2(nv.value.to_token_stream())),
+        false => None,
     }
 }
 

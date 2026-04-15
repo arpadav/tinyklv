@@ -6,16 +6,16 @@ use tk_syn_macros::create_parser;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::Length;
-use crate::symbol::*;
 use crate::ast::types::*;
+use crate::symbol::*;
+use crate::Length;
 
 /// Attempts to parse a type `T` from a [`syn::meta::ParseNestedMeta`]
-/// 
+///
 /// If the type `T` can be surrounded with quotes (e.g. parse the contents
 /// within the quotes of a [`syn::LitStr`], rather than trying to parse the
 /// [`syn::LitStr`] as a type `T`), set `maybe_litstr` to `true`.
-/// 
+///
 /// Otherwise, set `maybe_litstr` to `false`. (This is usually the case for
 /// parsing literals, since you don't want to parse the contents within quotes
 /// as a lit, instead, just parse the lit itself.)
@@ -30,11 +30,11 @@ fn pnm_parse_maybestr<T: syn::parse::Parse>(input: &syn::meta::ParseNestedMeta) 
 }
 
 /// Attempts to parse a type `T` from a [`syn::MetaNameValue`]
-/// 
+///
 /// If the type `T` can be surrounded with quotes (e.g. parse the contents
 /// within the quotes of a [`syn::LitStr`], rather than trying to parse the
 /// [`syn::LitStr`] as a type `T`), set `maybe_litstr` to `true`.
-/// 
+///
 /// Otherwise, set `maybe_litstr` to `false`. (This is usually the case for
 /// parsing literals, since you don't want to parse the contents within quotes
 /// as a lit, instead, just parse the lit itself.)
@@ -138,8 +138,8 @@ pub(crate) fn parse_pnm_length(input: &syn::meta::ParseNestedMeta) -> Option<syn
             return Some(Err(syn::Error::new_spanned(
                 &input.path,
                 err!(ExpectedLengthInField(@String value.to_string())),
-            )))
-        },
+            )));
+        }
         // --------------------------------------------------
         // failed to get value, return error
         // --------------------------------------------------

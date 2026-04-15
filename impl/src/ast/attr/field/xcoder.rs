@@ -44,19 +44,21 @@ impl From<&syn::MetaList> for FieldXcoder {
         // --------------------------------------------------
         // parse nested meta
         // --------------------------------------------------
-        let errors = input.parse_nested_meta(|meta| {
-            handle_unique_nested_meta_values! {
-                meta;
-                err!(UnknownFieldField(meta.path));
-                6;
-                key: symbol::parse_pnm_key              => err!(DuplicateKeyInField),
-                enc: symbol::pnm_parse_maybestr_encoder => err!(DuplicateEncoderInField),
-                dec: symbol::pnm_parse_maybestr_decoder => err!(DuplicateDecoderInField),
-                var: symbol::parse_pnm_variable_length  => err!(DuplicateVariableLengthInField),
-                len: symbol::parse_pnm_length           => err!(DuplicateLengthInField),
-                init: symbol::parse_pnm_initial_value,
-            }
-        }).err();
+        let errors = input
+            .parse_nested_meta(|meta| {
+                handle_unique_nested_meta_values! {
+                    meta;
+                    err!(UnknownFieldField(meta.path));
+                    6;
+                    key: symbol::parse_pnm_key              => err!(DuplicateKeyInField),
+                    enc: symbol::pnm_parse_maybestr_encoder => err!(DuplicateEncoderInField),
+                    dec: symbol::pnm_parse_maybestr_decoder => err!(DuplicateDecoderInField),
+                    var: symbol::parse_pnm_variable_length  => err!(DuplicateVariableLengthInField),
+                    len: symbol::parse_pnm_length           => err!(DuplicateLengthInField),
+                    init: symbol::parse_pnm_initial_value,
+                }
+            })
+            .err();
         // println!("init: {:?}", init);
         // --------------------------------------------------
         // return

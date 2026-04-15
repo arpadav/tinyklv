@@ -18,7 +18,7 @@ impl TryFrom<&syn::MetaNameValue> for Stream {
             // `stream` keyword is detected, and value is parsed correctly
             Some(Ok(x)) => Ok(Stream(Some(x))),
             // `stream` keyword is detected, but value is not parsed correctly
-            Some(Err(err)) => return Err(err), 
+            Some(Err(err)) => return Err(err),
             // // `stream` keyword is not detected
             // None => return Err(syn::Error::new_spanned(input, "`stream` keyword is not detected")),
             None => return Ok(Stream(None)),

@@ -1,28 +1,28 @@
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
-pub(crate) mod keylen;
-pub(crate) mod stream;
 pub(crate) mod default;
+pub(crate) mod keylen;
 pub(crate) mod sentinel;
+pub(crate) mod stream;
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use syn::Token;
 use quote::ToTokens;
 use std::collections::HashMap;
 use syn::punctuated::Punctuated;
+use syn::Token;
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::Ctxt;
 use crate::symbol;
-use stream::Stream;
+use crate::Ctxt;
+use default::DefaultXcoder;
 use keylen::Xcoder;
 use sentinel::Sentinel;
-use default::DefaultXcoder;
+use stream::Stream;
 
 #[derive(Debug)]
 /// Represents struct attribute information
@@ -41,7 +41,7 @@ pub(crate) struct Container {
 /// [`Container`] implementation
 impl Container {
     /// Extract out the `#[klv(...)]` attributes from a container.
-    /// 
+    ///
     /// Only container implemented is struct.
     pub fn from_ast(cx: &Ctxt, item: &syn::DeriveInput) -> Self {
         // --------------------------------------------------
@@ -68,43 +68,48 @@ impl Container {
             if attr.path() != symbol::KLV_ATTR {
                 continue;
             }
-            
+
             // --------------------------------------------------
             // split using comma
             // --------------------------------------------------
-            let nested = match attr.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated) {
-                Ok(nested) => nested,
-                Err(err) => {
-                    cx.syn_error(err);
-                    continue;
-                },
-            };
+            let nested =
+                match attr.parse_args_with(Punctuated::<syn::Meta, Token![,]>::parse_terminated) {
+                    Ok(nested) => nested,
+                    Err(err) => {
+                        cx.syn_error(err);
+                        continue;
+                    }
+                };
 
             // --------------------------------------------------
             // loop through comma blocks
             // --------------------------------------------------
             for meta in nested {
-
                 match meta {
-
                     // --------------------------------------------------
                     // handle all: `syn::MetaList`
                     // e.g. `key(enc = <..>, dec = <..>),`
                     // --------------------------------------------------
                     syn::Meta::List(list) => match symbol::Symbol::from(&list.path) {
-                        
                         symbol::KEY => match key {
                             Some(_) => cx.error_spanned_by(&list, err!(DuplicateKey)),
-                            None => key = Xcoder::try_from(&list).map_err(|err| cx.syn_error(err)).ok(),
+                            None => {
+                                key = Xcoder::try_from(&list)
+                                    .map_err(|err| cx.syn_error(err))
+                                    .ok()
+                            }
                         },
 
                         symbol::LENGTH => match len {
                             Some(_) => cx.error_spanned_by(&list.path, err!(DuplicateLength)),
-                            None => len = Xcoder::try_from(&list).map_err(|err| cx.syn_error(err)).ok(),
+                            None => {
+                                len = Xcoder::try_from(&list)
+                                    .map_err(|err| cx.syn_error(err))
+                                    .ok()
+                            }
                         },
 
                         symbol::DEFAULT => {
-
                             let new = DefaultXcoder::from(&list);
                             if let Some(err) = new.errors {
                                 cx.syn_error(err);
@@ -117,38 +122,66 @@ impl Container {
                             };
 
                             match defaults.get_mut(&new_typ) {
-                                
                                 Some(old) => {
                                     match (&old.dec, &new.dec) {
-                                        (Some(_), Some(dec_path)) => cx.error_spanned_by(dec_path, err!(DuplicateDefault(new.typ; "decoder"))),
+                                        (Some(_), Some(dec_path)) => cx.error_spanned_by(
+                                            dec_path,
+                                            err!(DuplicateDefault(new.typ; "decoder")),
+                                        ),
                                         (None, _) => old.dec = new.dec,
                                         _ => (),
                                     }
                                     match (&old.enc, &new.enc) {
-                                        (Some(_), Some(enc_path)) => cx.error_spanned_by(enc_path, err!(DuplicateDefault(new.typ; "encoder"))),
+                                        (Some(_), Some(enc_path)) => cx.error_spanned_by(
+                                            enc_path,
+                                            err!(DuplicateDefault(new.typ; "encoder")),
+                                        ),
                                         (None, _) => old.enc = new.enc,
                                         _ => (),
                                     }
-                                },
+                                }
 
                                 None => {
                                     let _ = defaults.insert(new_typ, new);
-                                },
+                                }
                             }
-                        },
+                        }
 
                         // --------------------------------------------------
                         // non lists
                         // --------------------------------------------------
-                        symbol::STREAM                      => cx.error_spanned_by(&list.path, err!(ExpectedAsNameValue(symbol::STREAM))),
-                        symbol::SENTINEL                    => cx.error_spanned_by(&list.path, err!(ExpectedAsNameValue(symbol::SENTINEL))),
-                        symbol::DEBUG                       => cx.error_spanned_by(&list.path, err!(ExpectedAsPath(symbol::DEBUG))),
-                        symbol::DENY_UNKNOWN_KEYS           => cx.error_spanned_by(&list.path, err!(ExpectedAsPath(symbol::DENY_UNKNOWN_KEYS))),
-                        symbol::ALLOW_LENGTH_MISMATCH       => cx.error_spanned_by(&list.path, err!(ExpectedAsPath(symbol::ALLOW_LENGTH_MISMATCH))),
-                        symbol::ALLOW_UNIMPLEMENTED_DECODE  => cx.error_spanned_by(&list.path, err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_DECODE))),
-                        symbol::ALLOW_UNIMPLEMENTED_ENCODE  => cx.error_spanned_by(&list.path, err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_ENCODE))),
-                        _                                   => cx.error_spanned_by(&list.path, err!(UnknownContainerListAttribute(list.path))),
-                    }
+                        symbol::STREAM => cx.error_spanned_by(
+                            &list.path,
+                            err!(ExpectedAsNameValue(symbol::STREAM)),
+                        ),
+                        symbol::SENTINEL => cx.error_spanned_by(
+                            &list.path,
+                            err!(ExpectedAsNameValue(symbol::SENTINEL)),
+                        ),
+                        symbol::DEBUG => {
+                            cx.error_spanned_by(&list.path, err!(ExpectedAsPath(symbol::DEBUG)))
+                        }
+                        symbol::DENY_UNKNOWN_KEYS => cx.error_spanned_by(
+                            &list.path,
+                            err!(ExpectedAsPath(symbol::DENY_UNKNOWN_KEYS)),
+                        ),
+                        symbol::ALLOW_LENGTH_MISMATCH => cx.error_spanned_by(
+                            &list.path,
+                            err!(ExpectedAsPath(symbol::ALLOW_LENGTH_MISMATCH)),
+                        ),
+                        symbol::ALLOW_UNIMPLEMENTED_DECODE => cx.error_spanned_by(
+                            &list.path,
+                            err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_DECODE)),
+                        ),
+                        symbol::ALLOW_UNIMPLEMENTED_ENCODE => cx.error_spanned_by(
+                            &list.path,
+                            err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_ENCODE)),
+                        ),
+                        _ => cx.error_spanned_by(
+                            &list.path,
+                            err!(UnknownContainerListAttribute(list.path)),
+                        ),
+                    },
 
                     // --------------------------------------------------
                     // handle all: `syn::MetaNameValue`
@@ -157,25 +190,53 @@ impl Container {
                     syn::Meta::NameValue(nv) => match symbol::Symbol::from(&nv.path) {
                         symbol::STREAM => match stream {
                             Some(_) => cx.error_spanned_by(&nv, err!(DuplicateStream)),
-                            None => stream = Stream::try_from(&nv).map_err(|err| cx.syn_error(err)).ok(),
+                            None => {
+                                stream = Stream::try_from(&nv).map_err(|err| cx.syn_error(err)).ok()
+                            }
                         },
                         symbol::SENTINEL => match sentinel {
                             Some(_) => cx.error_spanned_by(&nv, err!(DuplicateSentinel)),
-                            None => sentinel = Sentinel::try_from(&nv).map_err(|err| cx.syn_error(err)).ok(),
+                            None => {
+                                sentinel = Sentinel::try_from(&nv)
+                                    .map_err(|err| cx.syn_error(err))
+                                    .ok()
+                            }
                         },
                         // --------------------------------------------------
                         // non name-values
                         // --------------------------------------------------
-                        symbol::KEY                         => cx.error_spanned_by(&nv.path, err!(ExpectedAsList(symbol::KEY))),
-                        symbol::LENGTH                      => cx.error_spanned_by(&nv.path, err!(ExpectedAsList(symbol::LENGTH))),
-                        symbol::DEFAULT                     => cx.error_spanned_by(&nv.path, err!(ExpectedAsList(symbol::DEFAULT))),
-                        symbol::DEBUG                       => cx.error_spanned_by(&nv.path, err!(ExpectedAsPath(symbol::DEBUG))),
-                        symbol::DENY_UNKNOWN_KEYS           => cx.error_spanned_by(&nv.path, err!(ExpectedAsPath(symbol::DENY_UNKNOWN_KEYS))),
-                        symbol::ALLOW_LENGTH_MISMATCH       => cx.error_spanned_by(&nv.path, err!(ExpectedAsPath(symbol::ALLOW_LENGTH_MISMATCH))),
-                        symbol::ALLOW_UNIMPLEMENTED_DECODE  => cx.error_spanned_by(&nv.path, err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_DECODE))),
-                        symbol::ALLOW_UNIMPLEMENTED_ENCODE  => cx.error_spanned_by(&nv.path, err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_ENCODE))),
-                        _                                   => cx.error_spanned_by(&nv.path, err!(UnknownContainerNameValueAttribute(nv.path))),
-
+                        symbol::KEY => {
+                            cx.error_spanned_by(&nv.path, err!(ExpectedAsList(symbol::KEY)))
+                        }
+                        symbol::LENGTH => {
+                            cx.error_spanned_by(&nv.path, err!(ExpectedAsList(symbol::LENGTH)))
+                        }
+                        symbol::DEFAULT => {
+                            cx.error_spanned_by(&nv.path, err!(ExpectedAsList(symbol::DEFAULT)))
+                        }
+                        symbol::DEBUG => {
+                            cx.error_spanned_by(&nv.path, err!(ExpectedAsPath(symbol::DEBUG)))
+                        }
+                        symbol::DENY_UNKNOWN_KEYS => cx.error_spanned_by(
+                            &nv.path,
+                            err!(ExpectedAsPath(symbol::DENY_UNKNOWN_KEYS)),
+                        ),
+                        symbol::ALLOW_LENGTH_MISMATCH => cx.error_spanned_by(
+                            &nv.path,
+                            err!(ExpectedAsPath(symbol::ALLOW_LENGTH_MISMATCH)),
+                        ),
+                        symbol::ALLOW_UNIMPLEMENTED_DECODE => cx.error_spanned_by(
+                            &nv.path,
+                            err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_DECODE)),
+                        ),
+                        symbol::ALLOW_UNIMPLEMENTED_ENCODE => cx.error_spanned_by(
+                            &nv.path,
+                            err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_ENCODE)),
+                        ),
+                        _ => cx.error_spanned_by(
+                            &nv.path,
+                            err!(UnknownContainerNameValueAttribute(nv.path)),
+                        ),
                     },
 
                     // --------------------------------------------------
@@ -183,23 +244,37 @@ impl Container {
                     // e.g. `allow_unimplemented_decode,`
                     // --------------------------------------------------
                     syn::Meta::Path(path) => match symbol::Symbol::from(&path) {
-                        symbol::DEBUG                       => debug = Some(path),
-                        symbol::DENY_UNKNOWN_KEYS           => deny_unknown_keys = Some(path),
-                        symbol::ALLOW_LENGTH_MISMATCH       => allow_length_mismatch = Some(path),
-                        symbol::ALLOW_UNIMPLEMENTED_DECODE  => allow_unimplemented_decode = Some(path),
-                        symbol::ALLOW_UNIMPLEMENTED_ENCODE  => allow_unimplemented_encode = Some(path),
+                        symbol::DEBUG => debug = Some(path),
+                        symbol::DENY_UNKNOWN_KEYS => deny_unknown_keys = Some(path),
+                        symbol::ALLOW_LENGTH_MISMATCH => allow_length_mismatch = Some(path),
+                        symbol::ALLOW_UNIMPLEMENTED_DECODE => {
+                            allow_unimplemented_decode = Some(path)
+                        }
+                        symbol::ALLOW_UNIMPLEMENTED_ENCODE => {
+                            allow_unimplemented_encode = Some(path)
+                        }
                         // --------------------------------------------------
                         // non paths
                         // --------------------------------------------------
-                        symbol::KEY         => cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::KEY))),
-                        symbol::LENGTH      => cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::LENGTH))),
-                        symbol::DEFAULT     => cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::DEFAULT))),
-                        symbol::STREAM      => cx.error_spanned_by(&path, err!(ExpectedAsNameValue(symbol::STREAM))),
-                        symbol::SENTINEL    => cx.error_spanned_by(&path, err!(ExpectedAsNameValue(symbol::SENTINEL))),
-                        _                   => cx.error_spanned_by(&path, err!(UnknownContainerAttribute(path))),
-                    }
+                        symbol::KEY => {
+                            cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::KEY)))
+                        }
+                        symbol::LENGTH => {
+                            cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::LENGTH)))
+                        }
+                        symbol::DEFAULT => {
+                            cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::DEFAULT)))
+                        }
+                        symbol::STREAM => {
+                            cx.error_spanned_by(&path, err!(ExpectedAsNameValue(symbol::STREAM)))
+                        }
+                        symbol::SENTINEL => {
+                            cx.error_spanned_by(&path, err!(ExpectedAsNameValue(symbol::SENTINEL)))
+                        }
+                        _ => cx.error_spanned_by(&path, err!(UnknownContainerAttribute(path))),
+                    },
                 }
-            };
+            }
         }
 
         // --------------------------------------------------
@@ -213,7 +288,7 @@ impl Container {
                 cx.error_spanned_by(&item.ident, err!(MissingEncInKeyLen(symbol::LENGTH)));
             }
         }
-        
+
         // --------------------------------------------------
         // unimplemented decode error
         // --------------------------------------------------
@@ -245,10 +320,10 @@ impl Container {
 }
 
 /// A parsed container
-/// 
+///
 /// * `_allow_unimplemented_decode`
 /// * `_allow_unimplemented_encode`
-/// 
+///
 /// are currently not used at this stage, but the paths are kept for potential
 /// future docs/debugging during expansion.
 pub(crate) struct ContainerParsed {
@@ -273,16 +348,16 @@ impl ContainerParsed {
             (Some(_), None) => {
                 cx.error_spanned_by(name, err!(MissingLength));
                 return None;
-            },
+            }
             (None, Some(_)) => {
                 cx.error_spanned_by(name, err!(MissingKey));
                 return None;
-            },
+            }
             (None, None) => {
                 cx.error_spanned_by(name, err!(MissingKey));
                 cx.error_spanned_by(name, err!(MissingLength));
                 return None;
-            },
+            }
         };
         // --------------------------------------------------
         // return parsed container

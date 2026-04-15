@@ -15,45 +15,47 @@ const B128_PADDED: &[u8; 16] = &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 #[inline(always)]
 /// Decodes a byte slice into a [`String`], using [`String::from_utf8_lossy`]
-/// 
+///
 /// To decode in a more strict manner, please see [`to_string_utf8_strict`]
-/// 
+///
 /// # Example
-/// 
+///
 /// ```
 /// use tinyklv::codecs::binary::dec::to_string_utf8;
-/// 
+///
 /// let mut val1: &[u8] = &[0x41, 0x46, 0x2D, 0x31, 0x30, 0x31];
 /// let mut val2: &[u8] = &[0x4D, 0x49, 0x53, 0x53, 0x49, 0x4F, 0x4E, 0x30, 0x31];
-/// 
+///
 /// let res1 = to_string_utf8(6)(&mut val1);
 /// let res2 = to_string_utf8(9)(&mut val2);
-/// 
+///
 /// assert_eq!(res1, Ok(String::from("AF-101")));
 /// assert_eq!(res2, Ok(String::from("MISSION01")));
 /// ```
 pub fn to_string_utf8(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<String> {
-    move |input| take(len)
-        .map(|slice| String::from_utf8_lossy(slice).to_string())
-        .parse_next(input)
+    move |input| {
+        take(len)
+            .map(|slice| String::from_utf8_lossy(slice).to_string())
+            .parse_next(input)
+    }
 }
 
 #[inline(always)]
 /// Decodes a byte slice into a [`String`], using [`String::from_utf8`]
-/// 
+///
 /// To decode in a more relaxed manner, please see [`to_string_utf8`]
-/// 
+///
 /// # Example
-/// 
+///
 /// ```
 /// use tinyklv::codecs::binary::dec::to_string_utf8_strict;
 ///
 /// let mut val1: &[u8] = &[0x41, 0x46, 0x2D, 0x31, 0x30, 0x31];
 /// let mut val2: &[u8] = &[0x4D, 0x49, 0x53, 0x53, 0x49, 0x4F, 0x4E, 0x30, 0x31];
-/// 
+///
 /// let res1 = to_string_utf8_strict(6)(&mut val1);
 /// let res2 = to_string_utf8_strict(9)(&mut val2);
-/// 
+///
 /// assert_eq!(res1, Ok(String::from("AF-101")));
 /// assert_eq!(res2, Ok(String::from("MISSION01")));
 /// ```
@@ -65,7 +67,9 @@ pub fn to_string_utf8_strict(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Resul
             Err(_) => Err(winnow::error::ContextError::new().add_context(
                 input,
                 &checkpoint,
-                winnow::error::StrContext::Label("Unable to decode string using `String::from_utf8`")
+                winnow::error::StrContext::Label(
+                    "Unable to decode string using `String::from_utf8`",
+                ),
             )),
         }
     }
@@ -80,40 +84,42 @@ pub fn to_string_utf16(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<Stri
             return Err(winnow::error::ContextError::new().add_context(
                 input,
                 &checkpoint,
-                winnow::error::StrContext::Label("Invalid UTF-16 slice length")
-            ))
+                winnow::error::StrContext::Label("Invalid UTF-16 slice length"),
+            ));
         }
-        take(len).map(|slice: &[u8]| {
-            let utf16: Vec<u16> = slice
-                .chunks_exact(2)
-                .map(|chunk| {
-                    #[allow(clippy::unwrap_used)]
-                    // safe to unwrap, since `chunks_exact` returns exactly
-                    // 2 bytes
-                    let array: [u8; 2] = chunk.try_into().unwrap();
-                    u16::from_le_bytes(array)
-                })
-                .collect();
-            String::from_utf16_lossy(&utf16)
-        }).parse_next(input)
+        take(len)
+            .map(|slice: &[u8]| {
+                let utf16: Vec<u16> = slice
+                    .chunks_exact(2)
+                    .map(|chunk| {
+                        #[allow(clippy::unwrap_used)]
+                        // safe to unwrap, since `chunks_exact` returns exactly
+                        // 2 bytes
+                        let array: [u8; 2] = chunk.try_into().unwrap();
+                        u16::from_le_bytes(array)
+                    })
+                    .collect();
+                String::from_utf16_lossy(&utf16)
+            })
+            .parse_next(input)
     }
 }
 
 #[inline(always)]
 #[cfg(feature = "ascii")]
 /// Decodes a byte slice into a [`String`], using [`ascii::AsciiString::from_ascii`]
-/// 
+///
 /// # Example
-/// 
+///
 /// ```
 /// use tinyklv::codecs::binary::dec::to_string_ascii;
-/// 
+///
 /// let mut val1: &[u8] = &[0x41, 0x46, 0x2D, 0x31, 0x30, 0x31];
 /// let mut val2: &[u8] = &[0x4D, 0x49, 0x53, 0x53, 0x49, 0x4F, 0x4E, 0x30, 0x31];
-/// 
+///
 /// let res1 = to_string_ascii(6)(&mut val1);
 /// let res2 = to_string_ascii(9)(&mut val2);
-/// 
+///
 /// assert_eq!(res1, Ok(String::from("AF-101")));
 /// assert_eq!(res2, Ok(String::from("MISSION01")));
 /// ```
@@ -125,7 +131,9 @@ pub fn to_string_ascii(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<Stri
             Err(_) => Err(winnow::error::ContextError::new().add_context(
                 input,
                 &checkpoint,
-                winnow::error::StrContext::Label("Unable to decode string using `ascii::AsciiString::from_ascii`")
+                winnow::error::StrContext::Label(
+                    "Unable to decode string using `ascii::AsciiString::from_ascii`",
+                ),
             )),
         }
     }
@@ -161,18 +169,30 @@ macro_rules! wrap_native {
         }
     }}
 }
-wrap!(u8);      wrap_native!(simple u8);
-wrap!(u16);     wrap_native!(u16);
-wrap!(u32);     wrap_native!(u32);
-wrap!(u64);     wrap_native!(u64);
-wrap!(u128);    wrap_native!(u128);
-wrap!(i8);      wrap_native!(simple i8);
-wrap!(i16);     wrap_native!(i16);
-wrap!(i32);     wrap_native!(i32);
-wrap!(i64);     wrap_native!(i64);
-wrap!(i128);    wrap_native!(i128);
-wrap!(f32);     wrap_native!(f32);
-wrap!(f64);     wrap_native!(f64);
+wrap!(u8);
+wrap_native!(simple u8);
+wrap!(u16);
+wrap_native!(u16);
+wrap!(u32);
+wrap_native!(u32);
+wrap!(u64);
+wrap_native!(u64);
+wrap!(u128);
+wrap_native!(u128);
+wrap!(i8);
+wrap_native!(simple i8);
+wrap!(i16);
+wrap_native!(i16);
+wrap!(i32);
+wrap_native!(i32);
+wrap!(i64);
+wrap_native!(i64);
+wrap!(i128);
+wrap_native!(i128);
+wrap!(f32);
+wrap_native!(f32);
+wrap!(f64);
+wrap_native!(f64);
 
 macro_rules! as_usize {
     ($parser:ident) => { paste::paste! {
@@ -253,7 +273,11 @@ macro_rules! lengthed_le {
 }
 
 lengthed_be!(u8, 1, B8_PADDED);
-lengthed_be!(u16, 2, B16_PADDED, "
+lengthed_be!(
+    u16,
+    2,
+    B16_PADDED,
+    "
 Converts a [`prim@u8`] slice of any length into a [`prim@u16`] value
 using big-endian encoding.
 
@@ -272,8 +296,13 @@ assert_eq!(tinyklv::dec::binary::be_u16_lengthed(4)(&mut input1), Ok(0xFFFF));
 assert_eq!(tinyklv::dec::binary::be_u16_lengthed(2)(&mut input2), Ok(0x01E0));
 assert_eq!(tinyklv::dec::binary::be_u16_lengthed(1)(&mut input3), Ok(0x00E0));
 ```
-");
-lengthed_be!(u32, 4, B32_PADDED, "
+"
+);
+lengthed_be!(
+    u32,
+    4,
+    B32_PADDED,
+    "
 Converts a [`prim@u8`] slice of any length into a [`prim@u32`] value
 using big-endian encoding.
 
@@ -292,7 +321,8 @@ assert_eq!(tinyklv::dec::binary::be_u32_lengthed(5)(&mut input1), Ok(0x01E0FFFF)
 assert_eq!(tinyklv::dec::binary::be_u32_lengthed(4)(&mut input2), Ok(0x0001E0FF));
 assert_eq!(tinyklv::dec::binary::be_u32_lengthed(3)(&mut input3), Ok(0x0001E0FF));
 ```
-");
+"
+);
 lengthed_be!(u64, 8, B64_PADDED, "
 Converts a [`prim@u8`] slice of any length into a [`prim@u64`] value
 using big-endian encoding.
@@ -321,7 +351,11 @@ lengthed_be!(i32, 4, B32_PADDED);
 lengthed_be!(i64, 8, B64_PADDED);
 lengthed_be!(i128, 16, B128_PADDED);
 lengthed_le!(u8, 1, B8_PADDED);
-lengthed_le!(u16, 2, B16_PADDED, "
+lengthed_le!(
+    u16,
+    2,
+    B16_PADDED,
+    "
 Converts a [`prim@u8`] slice of any length into a [`prim@u16`] value
 using little-endian encoding.
 
@@ -340,8 +374,13 @@ let num2 = tinyklv::dec::binary::le_u16_lengthed(1)(&mut input2);
 assert_eq!(num1, Ok(480));
 assert_eq!(num2, Ok(1));
 ```
-");
-lengthed_le!(u32, 4, B32_PADDED, "
+"
+);
+lengthed_le!(
+    u32,
+    4,
+    B32_PADDED,
+    "
 Converts a [`prim@u8`] slice of any length into a [`prim@u32`] value
 using little-endian encoding.
 
@@ -364,7 +403,8 @@ assert_eq!(num1, Ok(4_294_902_240));
 assert_eq!(num2, Ok(1));
 assert_eq!(num3, Ok(197_121));
 ```
-");
+"
+);
 lengthed_le!(u64, 8, B64_PADDED, "
 Converts a [`prim@u8`] slice of any length into a [`prim@u64`] value
 using little-endian encoding.

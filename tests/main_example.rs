@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use tinyklv::Klv;
 use tinyklv::prelude::*;
+use tinyklv::Klv;
 
 struct InnerValue {}
 

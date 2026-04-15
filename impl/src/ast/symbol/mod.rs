@@ -42,25 +42,14 @@ pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
 ]);
 
 /// Container list symbols
-pub(crate) static CONT_LIST_SYMBOLS: Symbols = Symbols(&[
-    KEY,
-    LENGTH,
-    DEFAULT,
-]);
+pub(crate) static CONT_LIST_SYMBOLS: Symbols = Symbols(&[KEY, LENGTH, DEFAULT]);
 
 /// Container default list symbols
-pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols = Symbols(&[
-    TYPE,
-    ENCODER,
-    DECODER,
-    VARIABLE_LENGTH,
-]);
+pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols =
+    Symbols(&[TYPE, ENCODER, DECODER, VARIABLE_LENGTH]);
 
 /// Container name-value symbols
-pub(crate) static CONT_NV_SYMBOLS: Symbols = Symbols(&[
-    STREAM,
-    SENTINEL,
-]);
+pub(crate) static CONT_NV_SYMBOLS: Symbols = Symbols(&[STREAM, SENTINEL]);
 
 /// Field symbols
 pub(crate) static FIELD_SYMBOLS: Symbols = Symbols(&[
@@ -68,9 +57,8 @@ pub(crate) static FIELD_SYMBOLS: Symbols = Symbols(&[
     // LENGTH,             // <-- TODO add
     ENCODER,
     DECODER,
-    VARIABLE_LENGTH,    // <-- TODO deprecate
+    VARIABLE_LENGTH, // <-- TODO deprecate
 ]);
-
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 /// A symbol for KLV attributes
@@ -91,7 +79,8 @@ impl std::fmt::Display for Symbol {
 /// [`Symbol`] implementation of [`From`] for [`syn::Path`]
 impl From<&syn::Path> for Symbol {
     fn from(path: &syn::Path) -> Self {
-        let ident = path.segments
+        let ident = path
+            .segments
             .last()
             .expect("path has no segments")
             .ident
@@ -147,6 +136,8 @@ impl std::fmt::Display for Symbols<'_> {
         let mut symbols = self.0.to_vec();
         // reverse alphabetical
         symbols.sort_by(|a, b| b.0.cmp(a.0));
-        symbols.iter().try_for_each(|symbol| write!(f, "`{}` ", symbol.0))
+        symbols
+            .iter()
+            .try_for_each(|symbol| write!(f, "`{}` ", symbol.0))
     }
 }

@@ -1,10 +1,10 @@
 use quote::quote;
 use quote::ToTokens;
 
+use crate::ast::attr::MainContainer;
+use crate::ast::attr::MainField;
 use crate::ast::types;
 use crate::expand::helpers;
-use crate::ast::attr::MainField;
-use crate::ast::attr::MainContainer;
 use crate::symbol;
 
 const PACKET_LIFETIME_CHAR: char = 'z';
@@ -38,7 +38,7 @@ pub(crate) fn gen_decode_impl(
     let debug = input.attrs.debug.is_some();
     let deny_unknown_keys = input.attrs._deny_unknown_keys.is_some();
     let _allow_length_mismatch = input.attrs._allow_length_mismatch.is_some();
-    
+
     let items_init = gen_items_init(&input.data);
     let items_match = gen_items_match(&input.data, debug);
     let items_set = gen_item_set(name, &input.data);
@@ -46,8 +46,10 @@ pub(crate) fn gen_decode_impl(
     let seek_if_sentinel = match sentinel {
         Some(sentinel) => {
             // let packet_lifetime = quote::format_ident!("'{}", PACKET_LIFETIME_CHAR);
-            let sentinel_len_static_name = quote::format_ident!("__TINYKLV_SENTINEL_LEN_{}", name.to_string().to_uppercase());
-            let sentinel_seeker_static_name = quote::format_ident!("__TINYKLV_SEEKER_{}", name.to_string().to_uppercase());
+            let sentinel_len_static_name =
+                quote::format_ident!("__TINYKLV_SENTINEL_LEN_{}", name.to_string().to_uppercase());
+            let sentinel_seeker_static_name =
+                quote::format_ident!("__TINYKLV_SEEKER_{}", name.to_string().to_uppercase());
             quote! {
                 #[automatically_derived]
                 #[doc(hidden)]
@@ -59,7 +61,7 @@ pub(crate) fn gen_decode_impl(
                 #[doc = concat!(" Static seeker for [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::Seek`]")]
                 pub(crate) static #sentinel_seeker_static_name: ::std::sync::LazyLock<::tinyklv::__export::memchr::memmem::Finder> =
                     ::std::sync::LazyLock::new(|| ::tinyklv::__export::memchr::memmem::Finder::new(#sentinel));
-                
+
                 #[automatically_derived]
                 #[doc(hidden)]
                 #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::Seek`] for [`", stringify!(#stream), "`]")]
@@ -90,8 +92,8 @@ pub(crate) fn gen_decode_impl(
                     }
                 }
             }
-        },
-        None => quote! {}
+        }
+        None => quote! {},
     };
 
     // --------------------------------------------------
@@ -103,7 +105,7 @@ pub(crate) fn gen_decode_impl(
             quote! {
                 #logger ("key: {}, len: {}", key, len);
             }
-        },
+        }
         false => quote! {},
     };
 
@@ -129,11 +131,11 @@ pub(crate) fn gen_decode_impl(
         impl ::tinyklv::traits::Decode<#stream> for #name {
             fn decode(input: &mut #stream) -> ::tinyklv::__export::winnow::Result<Self> {
                 #items_init
-                
+
                 let checkpoint = input.checkpoint();
 
                 loop {
-                    
+
                     let checkpoint_inner = input.checkpoint();
 
                     match (
@@ -142,7 +144,7 @@ pub(crate) fn gen_decode_impl(
                     ).parse_next(input) {
 
                         Ok((key, len)) => {
-                            
+
                             match Self::break_condition(key, len) {
                                 ::tinyklv::BreakConditionType::Proceed => (),
                                 ::tinyklv::BreakConditionType::Skip => {
@@ -191,7 +193,7 @@ pub(crate) fn gen_decode_impl(
 }
 
 /// Generates the tokens for initializing the field variables as optional
-/// 
+///
 /// `let mut #name: Option<#ty> = None;`
 fn gen_items_init(fatts: &Vec<MainField>) -> proc_macro2::TokenStream {
     let field_initializations = fatts.iter().map(|field| {
@@ -211,50 +213,57 @@ fn gen_items_init(fatts: &Vec<MainField>) -> proc_macro2::TokenStream {
 }
 
 /// Generates the tokens for matching the key/len's with fields and parsers
-/// 
+///
 /// `#key => #name = #dec #optional_len_arg (&mut subinput).ok(),`
-/// 
+///
 /// Where `subinput` is a sub-slice of `input` of the values length, designated
 /// by the stream after its key.
 fn gen_items_match(fields: &Vec<MainField>, debug: bool) -> proc_macro2::TokenStream {
-    let arms = fields.iter().filter_map(|f| match &f.attrs {
-        Some(attr) => Some((&f.name, attr)),
-        None => None
-    }).map(|(name, attrs)| {
-        // --------------------------------------------------
-        // the name of the field assigned above.
-        // this is a variable which is assigned Option<T>
-        // --------------------------------------------------
-        // the key which represents the field in binary
-        // --------------------------------------------------
-        let key = &attrs.key;
-        // --------------------------------------------------
-        // the value decoder
-        // --------------------------------------------------
-        #[allow(clippy::unwrap_used)]
-        // `gen_decode_impl` call ensures that `attrs.dec` is `Some`
-        let dec = attrs.dec.as_ref().unwrap();
-        let varlen = attrs.var.as_ref().map(|v| v.value).unwrap_or(false); // <-- defaults to false
-        let optional_len_arg = if varlen { quote! { (len) } } else { quote! {} };
-        // --------------------------------------------------
-        // return
-        // --------------------------------------------------
-        match debug {
-            true => {
-                let logger = logger();
-                quote! {
-                    #key => {
-                        let val = #dec #optional_len_arg (&mut subinput);
-                        #logger ("\t{}: {:?}", stringify!(#name), val);
-                        #name = val.ok().or(#name);
-                    },
+    let arms = fields
+        .iter()
+        .filter_map(|f| match &f.attrs {
+            Some(attr) => Some((&f.name, attr)),
+            None => None,
+        })
+        .map(|(name, attrs)| {
+            // --------------------------------------------------
+            // the name of the field assigned above.
+            // this is a variable which is assigned Option<T>
+            // --------------------------------------------------
+            // the key which represents the field in binary
+            // --------------------------------------------------
+            let key = &attrs.key;
+            // --------------------------------------------------
+            // the value decoder
+            // --------------------------------------------------
+            #[allow(clippy::unwrap_used)]
+            // `gen_decode_impl` call ensures that `attrs.dec` is `Some`
+            let dec = attrs.dec.as_ref().unwrap();
+            let varlen = attrs.var.as_ref().map(|v| v.value).unwrap_or(false); // <-- defaults to false
+            let optional_len_arg = if varlen {
+                quote! { (len) }
+            } else {
+                quote! {}
+            };
+            // --------------------------------------------------
+            // return
+            // --------------------------------------------------
+            match debug {
+                true => {
+                    let logger = logger();
+                    quote! {
+                        #key => {
+                            let val = #dec #optional_len_arg (&mut subinput);
+                            #logger ("\t{}: {:?}", stringify!(#name), val);
+                            #name = val.ok().or(#name);
+                        },
+                    }
                 }
-            },
-            false => quote! {
-                #key => #name = #dec #optional_len_arg (&mut subinput).ok().or(#name),
-            },
-        }
-    });
+                false => quote! {
+                    #key => #name = #dec #optional_len_arg (&mut subinput).ok().or(#name),
+                },
+            }
+        });
     // --------------------------------------------------
     // return all the match arms
     // --------------------------------------------------
@@ -262,14 +271,17 @@ fn gen_items_match(fields: &Vec<MainField>, debug: bool) -> proc_macro2::TokenSt
 }
 
 /// Generates the tokens for setting the field variables upon returning of the output struct
-/// 
+///
 /// `Ok(#struct_name { #(#field_set_on_return)* })`
 fn gen_item_set(struct_name: &syn::Ident, fields: &Vec<MainField>) -> proc_macro2::TokenStream {
     let init_symbol = symbol::INITIAL_VALUE.to_token_stream();
-    let elem_name_type_without_klv = fields.iter().filter_map(|f| match &f.attrs {
-        Some(_) => None,
-        None => Some((f.name.clone(), f.ty))
-    }).collect::<Vec<_>>();
+    let elem_name_type_without_klv = fields
+        .iter()
+        .filter_map(|f| match &f.attrs {
+            Some(_) => None,
+            None => Some((f.name.clone(), f.ty)),
+        })
+        .collect::<Vec<_>>();
     let field_set_on_return = fields.iter().filter_map(|f| match f.attrs {
         Some(_) => Some(f),
         None => None
@@ -306,15 +318,21 @@ fn gen_item_set(struct_name: &syn::Ident, fields: &Vec<MainField>) -> proc_macro
     match elem_name_type_without_klv.len() != 0 {
         false => quote! { Ok(#struct_name { #(#field_set_on_return)* }) },
         true => {
-            let names: Vec<_> = elem_name_type_without_klv.iter().map(|(name, _)| name.clone()).collect();
-            let types: Vec<_> = elem_name_type_without_klv.iter().map(|(_, ty)| helpers::type2fish(ty)).collect();
+            let names: Vec<_> = elem_name_type_without_klv
+                .iter()
+                .map(|(name, _)| name.clone())
+                .collect();
+            let types: Vec<_> = elem_name_type_without_klv
+                .iter()
+                .map(|(_, ty)| helpers::type2fish(ty))
+                .collect();
             let individual_defaults = quote! { #(#names: #types::default())*, };
             quote! {
                 Ok(#struct_name {
-                    #(#field_set_on_return)* 
+                    #(#field_set_on_return)*
                     #individual_defaults
                 })
             }
-        },
+        }
     }
 }

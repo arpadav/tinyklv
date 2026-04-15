@@ -1,12 +1,12 @@
-pub(crate) mod helpers;
-mod encode_impl;
 mod decode_impl;
+mod encode_impl;
+pub(crate) mod helpers;
 
-use quote::quote;
 use proc_macro2::TokenStream;
+use quote::quote;
 
-use crate::Ctxt;
 use crate::ast::attr::MainContainer;
+use crate::Ctxt;
 
 pub fn derive(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
     // --------------------------------------------------
@@ -46,20 +46,12 @@ pub fn derive(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
     // --------------------------------------------------
     // impl decode
     // --------------------------------------------------
-    if let (
-        Some(key_dec),
-        Some(len_dec),
-        true,
-    ) = (
+    if let (Some(key_dec), Some(len_dec), true) = (
         cont.attrs.key.dec.as_ref(),
         cont.attrs.len.dec.as_ref(),
         all_decoders_exist,
     ) {
-        let decode_impls = decode_impl::gen_decode_impl(
-            &cont,
-            key_dec,
-            len_dec,
-        );
+        let decode_impls = decode_impl::gen_decode_impl(&cont, key_dec, len_dec);
         expanded = quote! {
             #expanded
             #decode_impls
@@ -68,20 +60,12 @@ pub fn derive(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
     // --------------------------------------------------
     // impl encode
     // --------------------------------------------------
-    if let (
-        Some(key_enc),
-        Some(len_enc),
-        true,
-    ) = (
+    if let (Some(key_enc), Some(len_enc), true) = (
         cont.attrs.key.enc.as_ref(),
         cont.attrs.len.enc.as_ref(),
         all_encoders_exist,
     ) {
-        let encode_impls = encode_impl::gen_encode_impl(
-            &cont,
-            &key_enc,
-            &len_enc,
-        );
+        let encode_impls = encode_impl::gen_encode_impl(&cont, &key_enc, &len_enc);
         expanded = quote! {
             #expanded
             #encode_impls
@@ -102,4 +86,3 @@ pub fn derive(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
 
     Ok(expanded)
 }
-

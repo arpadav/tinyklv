@@ -11,7 +11,7 @@ pub(crate) type XcoderType = XcoderLike;
 
 #[derive(Debug, Clone)]
 /// encoder / decoders can be:
-/// 
+///
 /// * a path
 /// * a macro call
 /// * a fn call which returns impl FnOnce
@@ -38,7 +38,11 @@ impl syn::parse::Parse for XcoderLike {
         // --------------------------------------------------
         // expressions
         // --------------------------------------------------
-        if input.peek(syn::token::Paren) || input.peek(syn::token::Brace) || input.peek(syn::Token![if]) || input.peek(syn::Token![match]) {
+        if input.peek(syn::token::Paren)
+            || input.peek(syn::token::Brace)
+            || input.peek(syn::Token![if])
+            || input.peek(syn::Token![match])
+        {
             if let Ok(x) = input.parse::<syn::Expr>() {
                 return Ok(XcoderLike::Expr(x));
             }

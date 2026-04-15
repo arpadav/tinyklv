@@ -1,7 +1,7 @@
 use quote::quote;
 
-use crate::ast::types;
 use crate::ast::attr::MainContainer;
+use crate::ast::types;
 
 /// Generates the tokens for the entire [`tinyklv::prelude::Encode`](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.Encode.html) implementation
 pub(crate) fn gen_encode_impl(
@@ -24,7 +24,7 @@ pub(crate) fn gen_encode_impl(
                 }
             }
         },
-        None => quote! {}
+        None => quote! {},
     };
     quote! {
         #[automatically_derived]

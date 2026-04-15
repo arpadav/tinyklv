@@ -11,7 +11,7 @@ use crate::ast::types::XcoderType;
 
 #[derive(Debug, Clone)]
 /// A key or length encoder/decoder
-/// 
+///
 /// Unimplemented encoding/decoding could be allowed, so both
 /// encoder and decoder are optional.
 pub struct Xcoder {

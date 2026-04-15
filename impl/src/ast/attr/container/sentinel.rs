@@ -17,7 +17,7 @@ impl TryFrom<&syn::MetaNameValue> for Sentinel {
             // `sentinel` keyword is detected, and value is parsed correctly
             Some(Ok(x)) => Ok(Sentinel(Some(x))),
             // `sentinel` keyword is detected, but value is not parsed correctly
-            Some(Err(err)) => return Err(err), 
+            Some(Err(err)) => return Err(err),
             // // `sentinel` keyword is not detected
             // None => return Err(syn::Error::new_spanned(input, "`sentinel` keyword is not detected")),
             None => return Ok(Sentinel(None)),

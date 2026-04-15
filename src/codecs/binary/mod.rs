@@ -8,8 +8,8 @@ pub mod enc;
 // external
 // --------------------------------------------------
 use num_traits::ToBytes;
-use winnow::Parser;
 use std::convert::AsRef;
+use winnow::Parser;
 
 /// [`FixedLength`] encoder / decoder
 pub struct FixedLength {
@@ -30,11 +30,11 @@ impl FixedLength {
     #[inline(always)]
     pub fn encode<P>(&self, input: &P) -> Vec<u8>
     where
-        P: ToBytes
+        P: ToBytes,
     {
         input.to_be_bytes().as_ref()[..self.len].to_vec()
     }
-    
+
     #[inline(always)]
     pub fn decode_lengthed<P>(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<P>
     where
@@ -50,7 +50,7 @@ impl FixedLength {
     #[inline(always)]
     pub fn encode_lengthed<P>(len: usize) -> impl Fn(&P) -> Vec<u8>
     where
-        P: ToBytes
+        P: ToBytes,
     {
         move |input: &P| input.to_be_bytes().as_ref()[..len].to_vec()
     }
