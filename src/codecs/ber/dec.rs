@@ -5,14 +5,14 @@
 use crate::prelude::*;
 
 /// See [`crate::codecs::ber::BerLength::decode`]
-pub fn ber_length(input: &mut &[u8]) -> winnow::PResult<usize> {
+pub fn ber_length(input: &mut &[u8]) -> winnow::Result<usize> {
     super::BerLength::<u128>::decode
         .map(|value| value.as_u128() as usize)
         .parse_next(input)
 }
 
 /// See [`crate::codecs::ber::BerOid::decode`]
-pub fn ber_oid<T: super::OfBerOid>(input: &mut &[u8]) -> winnow::PResult<T> {
+pub fn ber_oid<T: super::OfBerOid>(input: &mut &[u8]) -> winnow::Result<T> {
     super::BerOid::<T>::decode
         .map(|value| value.value)
         .parse_next(input)

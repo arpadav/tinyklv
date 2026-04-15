@@ -1,6 +1,7 @@
 # tinyklv: A [Key-Length-Value (KLV)](https://en.wikipedia.org/wiki/KLV) framework in Rust using [`winnow`](https://crates.io/crates/winnow)
 
 [![LICENSE](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Crates.io Version](https://img.shields.io/crates/v/tinyklv.svg)](https://crates.io/crates/tinyklv)
 <!-- [![Latest Release](https://img.shields.io/github/v/release/arpadav/tinyklv)](https://github.com/arpadav/tinyklv) -->
 <!-- [![Coverage Status](https://coveralls.io/repos/github/arpadav/tinyklv/badge.svg?branch=main)](https://coveralls.io/github/arpadav/tinyklv?branch=main) -->
 
@@ -10,8 +11,7 @@
 
 `tinyklv` is a Rust implementation of a KLV framework to reduce the amount of boilerplate code required for parsing and encoding KLV data in an agnostic, human-defined manner.
 
-This crate is predominately used for streams of packetized data, like from video feeds or serial ports.
- <!-- Options for handling streams of partial packets is supported. TODO: implement this before adding to README -->
+This crate is predominately used for parsing or generating streams of network packets to/from Rust structs.
 
 ```rust
 use tinyklv::Klv;
@@ -21,11 +21,12 @@ use tinyklv::prelude::*;
 #[klv(
     stream = &[u8],
     sentinel = b"\x00\x00\x00",
+    allow_unimplemented_encode,
     key(dec = tinyklv::dec::binary::u8),
     len(dec = tinyklv::dec::binary::u8_as_usize),
 )]
 struct Foo {
-    #[klv(key = 0x01, dyn = true, dec = tinyklv::dec::binary::to_string_utf8)]
+    #[klv(key = 0x01, var = true, dec = tinyklv::dec::binary::to_string_utf8)]
     // value length is dynamically determined, always as input from stream
     // 
     // therefore, it is used as an input arg in decoder: `tinyklv::dec::binary::to_string_utf8`

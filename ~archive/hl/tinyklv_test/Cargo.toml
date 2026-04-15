@@ -1,0 +1,9 @@
+[package]
+name = "tinyklv_test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+winnow = "0.6"
+
+tinyklv-impl = { path = "../tinyklv_impl" }

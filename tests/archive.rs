@@ -1,11 +1,9 @@
-
-
 // #[test]
 // fn main() {
 //     // let value0 = BerLength::new(47 as u64);
 //     // let value1 = BerLength::new(201 as u64);
 //     let value2 = BerLength::new(&123891829038102_u64);
-    
+
 //     // assert_eq!(value0.encode(), vec![47]);
 //     println!("{:?}", value2.encode());
 //     // println!("{:?}", value0.encode()); // Should return [201]
@@ -24,3 +22,9 @@
 //     // let encoded = value3.encode();
 //     // println!("{:?}", value3.encode());
 // }
+
+pub(crate) static __SEEKER: ::std::sync::LazyLock<::memchr::memmem::Finder> =
+    ::std::sync::LazyLock::new(|| ::memchr::memmem::Finder::new(b"Seeker"));
+
+#[test]
+fn test_me() {}
