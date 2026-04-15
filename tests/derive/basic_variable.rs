@@ -1,0 +1,93 @@
+// --------------------------------------------------
+// local
+// --------------------------------------------------
+use tinyklv::prelude::*;
+use tinyklv::Klv;
+
+fn enc_u16(v: &u16) -> Vec<u8> {
+    tinyklv::enc::binary::be_u16(*v)
+}
+
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
+    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+)]
+struct WithString {
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    id: u16,
+    #[klv(
+        key = 0x02,
+        var = true,
+        dec = tinyklv::dec::binary::to_string_utf8,
+        enc = tinyklv::enc::string::from_string_utf8
+    )]
+    name: String,
+}
+
+#[test]
+fn decode_with_string_klv() {
+    let data: &[u8] = &[0x01, 0x02, 0x01, 0x02, 0x02, 0x03, 0x4B, 0x4C, 0x56];
+    let result = WithString::decode(&mut &data[..]).unwrap();
+    assert_eq!(result.id, 258);
+    assert_eq!(result.name, "KLV");
+}
+
+#[test]
+fn decode_hello_world() {
+    let name = b"Hello World!";
+    let mut data = vec![0x01_u8, 0x02, 0x00, 42, 0x02, name.len() as u8];
+    data.extend_from_slice(name);
+    let result = WithString::decode(&mut data.as_slice()).unwrap();
+    assert_eq!(result.id, 42);
+    assert_eq!(result.name, "Hello World!");
+}
+
+#[test]
+fn encode_with_string_roundtrip() {
+    let original = WithString {
+        id: 1234,
+        name: String::from("MISSION01"),
+    };
+    let encoded = original.encode_value();
+    let decoded = WithString::decode(&mut &encoded[..]).unwrap();
+    assert_eq!(decoded, original);
+}
+
+#[test]
+fn decode_empty_string_field() {
+    let data: &[u8] = &[0x01, 0x02, 0x00, 0x00, 0x02, 0x00];
+    let result = WithString::decode(&mut &data[..]).unwrap();
+    assert_eq!(result.id, 0);
+    assert_eq!(result.name, "");
+}
+
+#[test]
+fn decode_long_string() {
+    let name = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    let mut data = vec![0x01_u8, 0x02, 0x00, 0x01, 0x02, name.len() as u8];
+    data.extend_from_slice(name);
+    let result = WithString::decode(&mut data.as_slice()).unwrap();
+    assert_eq!(result.id, 1);
+    assert_eq!(result.name, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+}
+
+#[test]
+fn decode_string_reversed_field_order() {
+    let name = b"rev";
+    let mut data = vec![0x02_u8, name.len() as u8];
+    data.extend_from_slice(name);
+    data.extend_from_slice(&[0x01, 0x02, 0x00, 0x07]);
+    let result = WithString::decode(&mut data.as_slice()).unwrap();
+    assert_eq!(result.id, 7);
+    assert_eq!(result.name, "rev");
+}
+
+#[test]
+fn decode_missing_required_string_fails() {
+    // Only key 0x01 present; string field 0x02 absent
+    let data: &[u8] = &[0x01, 0x02, 0x00, 0x01];
+    let result = WithString::decode(&mut &data[..]);
+    assert!(result.is_err());
+}

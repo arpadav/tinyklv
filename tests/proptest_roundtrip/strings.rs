@@ -1,0 +1,113 @@
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use proptest::prelude::*;
+
+// --------------------------------------------------
+// UTF-8 roundtrips
+// --------------------------------------------------
+
+proptest! {
+    /// Strict roundtrip: Rust &str is always valid UTF-8, so enc -> strict dec
+    /// must always succeed and produce the original string
+    #[test]
+    fn utf8_strict_roundtrip(s in "\\PC{0,100}") {
+        let encoded = tinyklv::codecs::string::enc::from_string_utf8(&s);
+        let decoded = tinyklv::dec::binary::to_string_utf8_strict(encoded.len())(&mut encoded.as_slice()).unwrap();
+        prop_assert_eq!(s, decoded);
+    }
+
+    /// Lossy roundtrip: enc -> lossy dec always succeeds and produces the
+    /// original string (since the input is already valid UTF-8)
+    #[test]
+    fn utf8_lossy_roundtrip(s in "\\PC{0,100}") {
+        let encoded = tinyklv::codecs::string::enc::from_string_utf8(&s);
+        let decoded = tinyklv::dec::binary::to_string_utf8(encoded.len())(&mut encoded.as_slice()).unwrap();
+        prop_assert_eq!(s, decoded);
+    }
+
+    /// Encoding preserves byte length: len(enc(s)) == s.len() for UTF-8
+    #[test]
+    fn utf8_encoded_len_equals_byte_len(s in "\\PC{0,100}") {
+        let encoded = tinyklv::codecs::string::enc::from_string_utf8(&s);
+        prop_assert_eq!(encoded.len(), s.len());
+    }
+
+    /// Empty string roundtrip
+    #[test]
+    fn utf8_empty_roundtrip(_: ()) {
+        let s = "";
+        let encoded = tinyklv::codecs::string::enc::from_string_utf8(s);
+        prop_assert!(encoded.is_empty());
+        let decoded = tinyklv::dec::binary::to_string_utf8_strict(0)(&mut encoded.as_slice()).unwrap();
+        prop_assert_eq!(s, decoded.as_str());
+    }
+}
+
+// --------------------------------------------------
+// UTF-16 LE roundtrips
+// --------------------------------------------------
+
+proptest! {
+    /// UTF-16 LE roundtrip: Rust strings that have no surrogate pairs survive
+    /// lossless encode/decode; ASCII-range input guarantees no surrogates
+    #[test]
+    fn utf16_le_ascii_roundtrip(s in "[\\x20-\\x7e]{0,50}") {
+        let encoded = tinyklv::codecs::string::enc::from_string_utf16_le(&s);
+        // encoded.len() is always even for valid UTF-16
+        prop_assert_eq!(encoded.len() % 2, 0);
+        let decoded = tinyklv::dec::binary::to_string_utf16_le(encoded.len())(&mut encoded.as_slice()).unwrap();
+        prop_assert_eq!(s, decoded);
+    }
+
+    /// UTF-16 LE encoding produces exactly 2 * utf16_len bytes
+    #[test]
+    fn utf16_le_byte_length(s in "[\\x20-\\x7e]{0,50}") {
+        let encoded = tinyklv::codecs::string::enc::from_string_utf16_le(&s);
+        let utf16_len: usize = s.encode_utf16().count();
+        prop_assert_eq!(encoded.len(), utf16_len * 2);
+    }
+
+    /// UTF-16 LE decoder rejects odd-length slices
+    #[test]
+    fn utf16_le_odd_length_errors(data in prop::collection::vec(0u8..=255, 1usize..=11).prop_filter(
+        "must be odd length",
+        |v| v.len() % 2 != 0,
+    )) {
+        let result = tinyklv::dec::binary::to_string_utf16_le(data.len())(&mut data.as_slice());
+        prop_assert!(result.is_err(), "odd-length input must be rejected by utf16_le decoder");
+    }
+}
+
+// --------------------------------------------------
+// UTF-16 BE roundtrips
+// --------------------------------------------------
+
+proptest! {
+    /// UTF-16 BE roundtrip over ASCII-safe strings
+    #[test]
+    fn utf16_be_ascii_roundtrip(s in "[\\x20-\\x7e]{0,50}") {
+        let encoded = tinyklv::codecs::string::enc::from_string_utf16_be(&s);
+        prop_assert_eq!(encoded.len() % 2, 0);
+        let decoded = tinyklv::dec::binary::to_string_utf16_be(encoded.len())(&mut encoded.as_slice()).unwrap();
+        prop_assert_eq!(s, decoded);
+    }
+
+    /// UTF-16 BE and LE encodings of the same string have equal byte length
+    #[test]
+    fn utf16_be_le_same_byte_length(s in "[\\x20-\\x7e]{0,50}") {
+        let be = tinyklv::codecs::string::enc::from_string_utf16_be(&s);
+        let le = tinyklv::codecs::string::enc::from_string_utf16_le(&s);
+        prop_assert_eq!(be.len(), le.len());
+    }
+
+    /// UTF-16 BE decoder rejects odd-length slices
+    #[test]
+    fn utf16_be_odd_length_errors(data in prop::collection::vec(0u8..=255, 1usize..=11).prop_filter(
+        "must be odd length",
+        |v| v.len() % 2 != 0,
+    )) {
+        let result = tinyklv::dec::binary::to_string_utf16_be(data.len())(&mut data.as_slice());
+        prop_assert!(result.is_err(), "odd-length input must be rejected by utf16_be decoder");
+    }
+}

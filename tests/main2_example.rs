@@ -1,21 +1,19 @@
-#![allow(dead_code)]
-// #[prelude_import]
-use std::prelude::rust_2021::*;
-#[macro_use]
-extern crate std;
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
 struct InnerValue {}
 fn ex01_encoder(_: &InnerValue) -> Vec<u8> {
-    return vec![0x65, 0x66, 0x67, 0x68];
+    vec![0x65, 0x66, 0x67, 0x68]
 }
 fn ex02_encoder(_: &InnerValue) -> Vec<u8> {
-    return String::from("Y2K").into_bytes();
+    String::from("Y2K").into_bytes()
 }
 impl tinyklv::EncodeValue<Vec<u8>> for InnerValue {
     fn encode_value(&self) -> Vec<u8> {
-        return String::from("KLV").to_lowercase().into_bytes();
+        String::from("KLV").to_lowercase().into_bytes()
     }
 }
 fn my_decoder_key(x: &mut &[u8]) -> tinyklv::Result<u8> {
