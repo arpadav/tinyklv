@@ -3,46 +3,46 @@
 // mods
 // --------------------------------------------------
 pub mod _tutorial;
-pub mod traits;
 pub mod codecs;
+pub mod traits;
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 pub use codecs::*;
-pub use traits::*;
 pub use tinyklv_impl::*;
+pub use traits::*;
 
 // --------------------------------------------------
 // internal re-exports: used during macro expansion
 // --------------------------------------------------
 pub mod __export {
-    pub use winnow;
-    pub use memchr;
     #[cfg(feature = "chrono")]
     pub use chrono;
+    pub use memchr;
+    pub use winnow;
 }
 
 pub mod prelude {
     // --------------------------------------------------
     // external
     // --------------------------------------------------
-    pub use winnow::prelude::*;
     pub use winnow::Parser as _;
-    pub use winnow::stream::Stream as _;
     pub use winnow::error::AddContext as _;
+    pub use winnow::prelude::*;
+    pub use winnow::stream::Stream as _;
     // --------------------------------------------------
     // local
     // --------------------------------------------------
-    pub use crate::traits::Seek as _;
     pub use crate::traits::Decode as _;
     pub use crate::traits::Extract as _;
     pub use crate::traits::RepeatedDecode as _;
+    pub use crate::traits::Seek as _;
 
-    pub use crate::traits::Encode as _;
+    pub use crate::traits::Encode;
+    pub use crate::traits::EncodeValue;
     pub use crate::traits::IntoKlv as _;
-    pub use crate::traits::EncodeValue as _;
-    
+
     pub use crate::traits::BreakCondition as _;
     // pub use crate::traits::BreakConditionType as _;
 }
@@ -52,7 +52,7 @@ pub type Result<T> = winnow::Result<T>;
 #[deprecated]
 #[macro_export]
 /// Returns a blank, unrecoverable error.
-/// 
+///
 /// This is helpful for quick development. However, **it is not recommended
 /// to use this** since the error is non-descriptive.
 macro_rules! err2 {
@@ -81,11 +81,7 @@ macro_rules! err {
     };
 
     ($err:ident, $input:ident, $checkpoint:ident, $msg:expr) => {
-        Err($err.add_context(
-            $input,
-            &$checkpoint,
-            winnow::error::StrContext::Label($msg),
-        ))
+        Err($err.add_context($input, &$checkpoint, winnow::error::StrContext::Label($msg)))
     };
 }
 
@@ -101,32 +97,28 @@ macro_rules! ctxt {
     };
 
     ($err:ident, $input:ident, $checkpoint:ident, $msg:expr) => {
-        $err.add_context(
-            $input,
-            &$checkpoint,
-            winnow::error::StrContext::Label($msg),
-        )
+        $err.add_context($input, &$checkpoint, winnow::error::StrContext::Label($msg))
     };
 }
 
 #[macro_export]
 /// Scales a parsed value of some predefined precision
-/// 
+///
 /// Can be used directly in a `#[klv(dec = ...)]` attribute
-/// 
+///
 /// # Usage
-/// 
+///
 /// ```rust ignore
 /// tinyklv::scale!(tinyklv::codecs::binary::dec::be_u16, f64, KLV_2_PLATFORM_HEADING)(input)
 /// // OR
 /// #[klv(dec = tinyklv::scale!(tinyklv::codecs::binary::dec::be_u16, f64, KLV_2_PLATFORM_HEADING))]
 /// ```
-/// 
+///
 /// # Example
-/// 
+///
 /// ```rust
 /// use tinyklv::prelude::*;
-/// 
+///
 /// let mut input: &[u8] = &[0x00, 0x01];
 /// let input = &mut input;
 /// let num = tinyklv::scale!(tinyklv::codecs::binary::dec::be_u16, f32, 3.0)(input);
@@ -142,22 +134,22 @@ macro_rules! scale {
 
 #[macro_export]
 /// Sets precision of a parsed value
-/// 
+///
 /// Can be used directly in a `#[klv(dec = ...)]` attribute
-/// 
+///
 /// # Usage
-/// 
+///
 /// ```rust ignore
 /// tinyklv::cast!(tinyklv::codecs::binary::dec::be_u16, f64)(input)
 /// // OR
 /// #[klv(dec = tinyklv::cast!(tinyklv::codecs::binary::dec::be_u16, f64))]
 /// ```
-/// 
+///
 /// # Example
-/// 
+///
 /// ```rust
 /// use tinyklv::prelude::*;
-/// 
+///
 /// let mut input: &[u8] = &[0x00, 0x01];
 /// let input = &mut input;
 /// let num = tinyklv::cast!(tinyklv::codecs::binary::dec::be_u16, f64)(input);
@@ -165,23 +157,21 @@ macro_rules! scale {
 /// ```
 macro_rules! cast {
     ($parser:expr, $precision:ty $(,)*) => {
-        |input| -> ::tinyklv::Result<$precision> {
-            Ok($parser.parse_next(input)? as $precision)
-        }
+        |input| -> ::tinyklv::Result<$precision> { Ok($parser.parse_next(input)? as $precision) }
     };
 }
 
 #[macro_export]
 #[cfg(feature = "chrono")]
 /// Parses a string as a date, using [`chrono::NaiveDate::parse_from_str`]
-/// 
+///
 /// Can be used directly in a `#[klv(dec = ...)]` attribute
-/// 
+///
 /// # Example
-/// 
+///
 /// ```rust
 /// use tinyklv::prelude::*;
-/// 
+///
 /// let mut input: &[u8] = b"2020-12-31";
 /// let input = &mut input;
 /// let len = 10;
@@ -194,7 +184,8 @@ macro_rules! as_date {
             ::tinyklv::__export::chrono::NaiveDate::parse_from_str(
                 &$str_parser($len)(input)?,
                 $date_fmt,
-            ).map_err(|_| ::tinyklv::err!())
+            )
+            .map_err(|_| ::tinyklv::err!())
         }
     };
 }
@@ -202,14 +193,14 @@ macro_rules! as_date {
 #[macro_export]
 #[cfg(feature = "chrono")]
 /// Parses a string as a time, using [`chrono::NaiveTime::parse_from_str`]
-/// 
+///
 /// Can be used directly in a `#[klv(dec = ...)]` attribute
-/// 
+///
 /// # Example
-/// 
+///
 /// ```rust
 /// use tinyklv::prelude::*;
-/// 
+///
 /// let mut input: &[u8] = b"12:34:56";
 /// let input = &mut input;
 /// let time = tinyklv::as_time!(tinyklv::dec::binary::to_string_utf8, "%H:%M:%S", 8)(input);
@@ -221,7 +212,8 @@ macro_rules! as_time {
             ::tinyklv::__export::chrono::NaiveTime::parse_from_str(
                 &$str_parser($len)(input)?,
                 $time_fmt,
-            ).map_err(|_| ::tinyklv::err!())
+            )
+            .map_err(|_| ::tinyklv::err!())
         }
     };
 }
@@ -229,15 +221,15 @@ macro_rules! as_time {
 #[macro_export]
 #[cfg(feature = "chrono")]
 /// Parses a string as a datetime, using [`chrono::NaiveDateTime::parse_from_str`]
-/// 
+///
 /// Can be used directly in a `#[klv(dec = ...)]` attribute
-/// 
+///
 /// # Example
-/// 
+///
 /// ```rust
 /// use std::str::FromStr;
 /// use tinyklv::prelude::*;
-/// 
+///
 /// let mut input: &[u8] = b"2020-12-31 12:34:56";
 /// let input = &mut input;
 /// let datetime = tinyklv::as_datetime!(tinyklv::dec::binary::to_string_utf8, "%Y-%m-%d %H:%M:%S", input.len())(input);
@@ -249,7 +241,8 @@ macro_rules! as_datetime {
             ::tinyklv::__export::chrono::NaiveDateTime::parse_from_str(
                 &$str_parser($len)(input)?,
                 $datetime_fmt,
-            ).map_err(|_| tinyklv::err!())
+            )
+            .map_err(|_| tinyklv::err!())
         }
     };
 }
