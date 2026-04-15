@@ -1,7 +1,25 @@
+//! Binary decode codecs for KLV data
+//!
+//! Provides parsers for converting raw byte slices into Rust primitive types,
+//! strings, and variable-length integer encodings. All parsers are compatible
+//! with the [`winnow`] streaming parser framework and accept `&mut &[u8]` input
+//!
+//! Includes:
+//! * UTF-8, UTF-16 (LE/BE), and ASCII string decoders
+//! * Big-endian, little-endian, and native-endian numeric decoders for all
+//!   standard integer and float types
+//! * Variable-length ("lengthed") decoders that handle under/over-length
+//!   byte slices via truncation or zero-padding
+//! * `usize` wrapper variants for length-field parsing
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
+use crate::prelude::*;
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use crate::prelude::*;
 use winnow::token::take;
 
 // --------------------------------------------------
@@ -81,6 +99,14 @@ pub fn to_string_utf8_strict(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Resul
 /// **Endianness warning**: Using the wrong endianness variant will silently
 /// produce corrupted string data. Verify the endianness of your KLV stream
 /// before selecting a variant.
+///
+/// # Example
+///
+/// ```
+/// let mut input: &[u8] = &[0x41, 0x00, 0x42, 0x00]; // "AB" in UTF-16 LE
+/// let result = tinyklv::codecs::binary::dec::to_string_utf16_le(4)(&mut input);
+/// assert_eq!(result, Ok(String::from("AB")));
+/// ```
 pub fn to_string_utf16_le(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<String> {
     move |input| {
         let checkpoint = input.checkpoint();
@@ -116,6 +142,14 @@ pub fn to_string_utf16_le(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<S
 /// **Endianness warning**: Using the wrong endianness variant will silently
 /// produce corrupted string data. Verify the endianness of your KLV stream
 /// before selecting a variant.
+///
+/// # Example
+///
+/// ```
+/// let mut input: &[u8] = &[0x00, 0x41, 0x00, 0x42]; // "AB" in UTF-16 BE
+/// let result = tinyklv::codecs::binary::dec::to_string_utf16_be(4)(&mut input);
+/// assert_eq!(result, Ok(String::from("AB")));
+/// ```
 pub fn to_string_utf16_be(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<String> {
     move |input| {
         let checkpoint = input.checkpoint();
@@ -193,11 +227,27 @@ macro_rules! wrap {
     ($ty:ty) => { paste::paste! {
         #[inline(always)]
         #[doc = concat!(" Wrapper for [`winnow::binary::be_", stringify!($ty), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
+        #[doc = ""]
+        #[doc = " # Example"]
+        #[doc = ""]
+        #[doc = " ```"]
+        #[doc = concat!(" let mut input: &[u8] = &(1 as ", stringify!($ty), ").to_be_bytes();")]
+        #[doc = concat!(" let result = tinyklv::codecs::binary::dec::be_", stringify!($ty), "(&mut input);")]
+        #[doc = concat!(" assert_eq!(result, Ok(1 as ", stringify!($ty), "));")]
+        #[doc = " ```"]
         pub fn [<be_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
             winnow::binary::[<be_ $ty>].parse_next(input)
         }
         #[inline(always)]
         #[doc = concat!(" Wrapper for [`winnow::binary::le_", stringify!($ty), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
+        #[doc = ""]
+        #[doc = " # Example"]
+        #[doc = ""]
+        #[doc = " ```"]
+        #[doc = concat!(" let mut input: &[u8] = &(1 as ", stringify!($ty), ").to_le_bytes();")]
+        #[doc = concat!(" let result = tinyklv::codecs::binary::dec::le_", stringify!($ty), "(&mut input);")]
+        #[doc = concat!(" assert_eq!(result, Ok(1 as ", stringify!($ty), "));")]
+        #[doc = " ```"]
         pub fn [<le_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
             winnow::binary::[<le_ $ty>].parse_next(input)
         }
@@ -207,6 +257,14 @@ macro_rules! wrap_native {
     ($ty:ty) => { paste::paste! {
         #[inline(always)]
         #[doc = concat!(" Wrapper for [`winnow::binary::", stringify!($ty), "`] with implied native-endianness generics `<&[prim@u8], winnow::error::ContextError>`")]
+        #[doc = ""]
+        #[doc = " # Example"]
+        #[doc = ""]
+        #[doc = " ```"]
+        #[doc = concat!(" let mut input: &[u8] = &(1 as ", stringify!($ty), ").to_ne_bytes();")]
+        #[doc = concat!(" let result = tinyklv::codecs::binary::dec::", stringify!($ty), "(&mut input);")]
+        #[doc = concat!(" assert_eq!(result, Ok(1 as ", stringify!($ty), "));")]
+        #[doc = " ```"]
         pub fn [<$ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
             winnow::binary::$ty(winnow::binary::Endianness::Native).parse_next(input)
         }
@@ -214,6 +272,14 @@ macro_rules! wrap_native {
     (simple $ty:ty) => { paste::paste! {
         #[inline(always)]
         #[doc = concat!(" Wrapper for [`winnow::binary::", stringify!($ty), "`] with implied native-endianness generics `<&[prim@u8], winnow::error::ContextError>`")]
+        #[doc = ""]
+        #[doc = " # Example"]
+        #[doc = ""]
+        #[doc = " ```"]
+        #[doc = concat!(" let mut input: &[u8] = &(1 as ", stringify!($ty), ").to_ne_bytes();")]
+        #[doc = concat!(" let result = tinyklv::codecs::binary::dec::", stringify!($ty), "(&mut input);")]
+        #[doc = concat!(" assert_eq!(result, Ok(1 as ", stringify!($ty), "));")]
+        #[doc = " ```"]
         pub fn [<$ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
             winnow::binary::$ty.parse_next(input)
         }
@@ -250,6 +316,14 @@ macro_rules! as_usize {
         #[doc = concat!(" [`usize`] wrapper for [`winnow::binary::", stringify!($parser), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
         #[doc = concat!(" See: [`", stringify!($parser), "()`] for the direct [`prim@", stringify!($parser), "`] implementation.")]
+        #[doc = ""]
+        #[doc = " # Example"]
+        #[doc = ""]
+        #[doc = " ```"]
+        #[doc = concat!(" let mut input: &[u8] = &(1 as ", stringify!($parser), ").to_ne_bytes();")]
+        #[doc = concat!(" let result = tinyklv::codecs::binary::dec::", stringify!($parser), "_as_usize(&mut input);")]
+        #[doc = " assert_eq!(result, Ok(1_usize));"]
+        #[doc = " ```"]
         pub fn [<$parser _as_usize>](input: &mut &[u8]) -> winnow::Result<usize> {
             $parser(input).map(|val| val as usize)
         }
@@ -257,6 +331,14 @@ macro_rules! as_usize {
         #[doc = concat!(" [`usize`] wrapper for [`winnow::binary::be_", stringify!($parser), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
         #[doc = concat!(" See: [`be_", stringify!($parser), "`] for the direct [`prim@", stringify!($parser), "`] implementation.")]
+        #[doc = ""]
+        #[doc = " # Example"]
+        #[doc = ""]
+        #[doc = " ```"]
+        #[doc = concat!(" let mut input: &[u8] = &(1 as ", stringify!($parser), ").to_be_bytes();")]
+        #[doc = concat!(" let result = tinyklv::codecs::binary::dec::be_", stringify!($parser), "_as_usize(&mut input);")]
+        #[doc = " assert_eq!(result, Ok(1_usize));"]
+        #[doc = " ```"]
         pub fn [<be_ $parser _as_usize>](input: &mut &[u8]) -> winnow::Result<usize> {
             [<be_ $parser>](input).map(|val| val as usize)
         }
@@ -264,6 +346,14 @@ macro_rules! as_usize {
         #[doc = concat!(" [`usize`] wrapper for [`winnow::binary::le_", stringify!($parser), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
         #[doc = concat!(" See: [`le_", stringify!($parser), "`] for the direct [`prim@", stringify!($parser), "`] implementation.")]
+        #[doc = ""]
+        #[doc = " # Example"]
+        #[doc = ""]
+        #[doc = " ```"]
+        #[doc = concat!(" let mut input: &[u8] = &(1 as ", stringify!($parser), ").to_le_bytes();")]
+        #[doc = concat!(" let result = tinyklv::codecs::binary::dec::le_", stringify!($parser), "_as_usize(&mut input);")]
+        #[doc = " assert_eq!(result, Ok(1_usize));"]
+        #[doc = " ```"]
         pub fn [<le_ $parser _as_usize>](input: &mut &[u8]) -> winnow::Result<usize> {
             [<le_ $parser>](input).map(|val| val as usize)
         }
@@ -322,7 +412,27 @@ macro_rules! lengthed_le {
     ($type:ty, $len:expr, $pad:expr) => { lengthed_le!($type, $len, $pad, ""); };
 }
 
-lengthed_be!(u8, 1, B8_PADDED);
+lengthed_be!(
+    u8,
+    1,
+    B8_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into a [`prim@u8`] value
+using big-endian encoding.
+
+* len 3: [SKIP, SKIP, VAL] -> [VAL]
+* len 1: [VAL] -> [VAL]
+
+# Example
+
+```rust
+let mut input1: &[u8] = &[0xAA, 0xBB, 0xCC];
+let mut input2: &[u8] = &[0x42];
+assert_eq!(tinyklv::dec::binary::be_u8_lengthed(3)(&mut input1), Ok(0xCC));
+assert_eq!(tinyklv::dec::binary::be_u8_lengthed(1)(&mut input2), Ok(0x42));
+```
+"
+);
 lengthed_be!(
     u16,
     2,
@@ -394,13 +504,139 @@ assert_eq!(tinyklv::dec::binary::be_u64_lengthed(8)(&mut input2), Ok(0x00_00_01_
 assert_eq!(tinyklv::dec::binary::be_u64_lengthed(7)(&mut input3), Ok(0x00_00_00_01_E0_FF_FF_00));
 ```
 ");
-lengthed_be!(u128, 16, B128_PADDED);
-lengthed_be!(i8, 1, B8_PADDED);
-lengthed_be!(i16, 2, B16_PADDED);
-lengthed_be!(i32, 4, B32_PADDED);
-lengthed_be!(i64, 8, B64_PADDED);
-lengthed_be!(i128, 16, B128_PADDED);
-lengthed_le!(u8, 1, B8_PADDED);
+lengthed_be!(
+    u128,
+    16,
+    B128_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into a [`prim@u128`] value
+using big-endian encoding.
+
+* len > 16: takes last 16 bytes
+* len < 16: zero-pads high bytes
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0x01, 0x02];
+assert_eq!(tinyklv::dec::binary::be_u128_lengthed(2)(&mut input), Ok(0x0102_u128));
+```
+"
+);
+lengthed_be!(
+    i8,
+    1,
+    B8_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into an [`prim@i8`] value
+using big-endian encoding.
+
+* len 3: [SKIP, SKIP, VAL] -> [VAL]
+* len 1: [VAL] -> [VAL]
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0xFF];
+assert_eq!(tinyklv::dec::binary::be_i8_lengthed(1)(&mut input), Ok(-1_i8));
+```
+"
+);
+lengthed_be!(
+    i16,
+    2,
+    B16_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into an [`prim@i16`] value
+using big-endian encoding.
+
+* len 4: [SKIP, SKIP, VAL, VAL] -> [VAL, VAL]
+* len 1: [VAL] -> [0x00, VAL]
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0xFF, 0xFE];
+assert_eq!(tinyklv::dec::binary::be_i16_lengthed(2)(&mut input), Ok(-2_i16));
+```
+"
+);
+lengthed_be!(
+    i32,
+    4,
+    B32_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into an [`prim@i32`] value
+using big-endian encoding.
+
+* len 8: [SKIP, SKIP, SKIP, SKIP, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL]
+* len 2: [VAL, VAL] -> [0x00, 0x00, VAL, VAL]
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0xFF, 0xFF, 0xFF, 0xFF];
+assert_eq!(tinyklv::dec::binary::be_i32_lengthed(4)(&mut input), Ok(-1_i32));
+```
+"
+);
+lengthed_be!(
+    i64,
+    8,
+    B64_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into an [`prim@i64`] value
+using big-endian encoding.
+
+* len 10: takes last 8 bytes
+* len 4: [VAL, VAL, VAL, VAL] -> [0x00, 0x00, 0x00, 0x00, VAL, VAL, VAL, VAL]
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0xFF; 8];
+assert_eq!(tinyklv::dec::binary::be_i64_lengthed(8)(&mut input), Ok(-1_i64));
+```
+"
+);
+lengthed_be!(
+    i128,
+    16,
+    B128_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into an [`prim@i128`] value
+using big-endian encoding.
+
+* len > 16: takes last 16 bytes
+* len < 16: zero-pads high bytes
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0xFF; 16];
+assert_eq!(tinyklv::dec::binary::be_i128_lengthed(16)(&mut input), Ok(-1_i128));
+```
+"
+);
+lengthed_le!(
+    u8,
+    1,
+    B8_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into a [`prim@u8`] value
+using little-endian encoding.
+
+* len 3: [VAL, SKIP, SKIP] -> [VAL]
+* len 1: [VAL] -> [VAL]
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0xCC, 0xBB, 0xAA];
+assert_eq!(tinyklv::dec::binary::le_u8_lengthed(3)(&mut input), Ok(0xCC));
+```
+"
+);
 lengthed_le!(
     u16,
     2,
@@ -479,14 +715,194 @@ assert_eq!(num2, Ok(1));
 assert_eq!(num3, Ok(1_976_943_448_883_713));
 ```
 ");
-lengthed_le!(u128, 16, B128_PADDED);
-lengthed_le!(i8, 1, B8_PADDED);
-lengthed_le!(i16, 2, B16_PADDED);
-lengthed_le!(i32, 4, B32_PADDED);
-lengthed_le!(i64, 8, B64_PADDED);
-lengthed_le!(i128, 16, B128_PADDED);
+lengthed_le!(
+    u128,
+    16,
+    B128_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into a [`prim@u128`] value
+using little-endian encoding.
 
-lengthed_be!(f32, 4, B32_PADDED);
-lengthed_be!(f64, 8, B64_PADDED);
-lengthed_le!(f32, 4, B32_PADDED);
-lengthed_le!(f64, 8, B64_PADDED);
+* len > 16: takes first 16 bytes
+* len < 16: zero-pads high bytes
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0x01, 0x02];
+assert_eq!(tinyklv::dec::binary::le_u128_lengthed(2)(&mut input), Ok(0x0201_u128));
+```
+"
+);
+lengthed_le!(
+    i8,
+    1,
+    B8_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into an [`prim@i8`] value
+using little-endian encoding.
+
+* len 3: [VAL, SKIP, SKIP] -> [VAL]
+* len 1: [VAL] -> [VAL]
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0xFF];
+assert_eq!(tinyklv::dec::binary::le_i8_lengthed(1)(&mut input), Ok(-1_i8));
+```
+"
+);
+lengthed_le!(
+    i16,
+    2,
+    B16_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into an [`prim@i16`] value
+using little-endian encoding.
+
+* len 4: [VAL, VAL, SKIP, SKIP] -> [VAL, VAL]
+* len 1: [VAL] -> [VAL, 0x00]
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0xFE, 0xFF];
+assert_eq!(tinyklv::dec::binary::le_i16_lengthed(2)(&mut input), Ok(-2_i16));
+```
+"
+);
+lengthed_le!(
+    i32,
+    4,
+    B32_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into an [`prim@i32`] value
+using little-endian encoding.
+
+* len 8: [VAL, VAL, VAL, VAL, SKIP, SKIP, SKIP, SKIP] -> [VAL, VAL, VAL, VAL]
+* len 2: [VAL, VAL] -> [VAL, VAL, 0x00, 0x00]
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0xFF, 0xFF, 0xFF, 0xFF];
+assert_eq!(tinyklv::dec::binary::le_i32_lengthed(4)(&mut input), Ok(-1_i32));
+```
+"
+);
+lengthed_le!(
+    i64,
+    8,
+    B64_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into an [`prim@i64`] value
+using little-endian encoding.
+
+* len 10: takes first 8 bytes
+* len 4: [VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL, 0x00, 0x00, 0x00, 0x00]
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0xFF; 8];
+assert_eq!(tinyklv::dec::binary::le_i64_lengthed(8)(&mut input), Ok(-1_i64));
+```
+"
+);
+lengthed_le!(
+    i128,
+    16,
+    B128_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into an [`prim@i128`] value
+using little-endian encoding.
+
+* len > 16: takes first 16 bytes
+* len < 16: zero-pads high bytes
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0xFF; 16];
+assert_eq!(tinyklv::dec::binary::le_i128_lengthed(16)(&mut input), Ok(-1_i128));
+```
+"
+);
+
+lengthed_be!(
+    f32,
+    4,
+    B32_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into an [`prim@f32`] value
+using big-endian encoding.
+
+* len > 4: takes last 4 bytes
+* len < 4: zero-pads high bytes
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0x3F, 0x80, 0x00, 0x00]; // 1.0_f32 in BE
+assert_eq!(tinyklv::dec::binary::be_f32_lengthed(4)(&mut input), Ok(1.0_f32));
+```
+"
+);
+lengthed_be!(
+    f64,
+    8,
+    B64_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into an [`prim@f64`] value
+using big-endian encoding.
+
+* len > 8: takes last 8 bytes
+* len < 8: zero-pads high bytes
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]; // 1.0_f64 in BE
+assert_eq!(tinyklv::dec::binary::be_f64_lengthed(8)(&mut input), Ok(1.0_f64));
+```
+"
+);
+lengthed_le!(
+    f32,
+    4,
+    B32_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into an [`prim@f32`] value
+using little-endian encoding.
+
+* len > 4: takes first 4 bytes
+* len < 4: zero-pads high bytes
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0x00, 0x00, 0x80, 0x3F]; // 1.0_f32 in LE
+assert_eq!(tinyklv::dec::binary::le_f32_lengthed(4)(&mut input), Ok(1.0_f32));
+```
+"
+);
+lengthed_le!(
+    f64,
+    8,
+    B64_PADDED,
+    "
+Converts a [`prim@u8`] slice of any length into an [`prim@f64`] value
+using little-endian encoding.
+
+* len > 8: takes first 8 bytes
+* len < 8: zero-pads high bytes
+
+# Example
+
+```rust
+let mut input: &[u8] = &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F]; // 1.0_f64 in LE
+assert_eq!(tinyklv::dec::binary::le_f64_lengthed(8)(&mut input), Ok(1.0_f64));
+```
+"
+);

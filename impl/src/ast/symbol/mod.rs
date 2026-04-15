@@ -1,33 +1,74 @@
+//! Symbol definitions and comparison helpers for KLV attribute parsing
+//!
+//! Defines the [`Symbol`] type (a wrapper around a `&'static str`) used to
+//! identify attribute names in `#[klv(..)]` annotations, along with the
+//! [`Symbols`] collection type used to display valid symbol sets in error
+//! messages. All known symbol constants and static symbol-set arrays are
+//! declared here
+//!
+//! Author: aav
+#![allow(clippy::expect_used, reason = "proc macro okay to panic")]
+// --------------------------------------------------
+// mods
+// --------------------------------------------------
+mod parsers;
+pub(crate) use parsers::*;
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use quote::ToTokens;
 use syn::parse::Parser;
-
 // --------------------------------------------------
-// local
+// constants
 // --------------------------------------------------
-mod parsers;
-pub(crate) use parsers::*;
-
-// All symbols (all idents, e.g. no kebab-case)
+/// The top-level KLV attribute name (e.g. `#[klv(..)]`)
 pub(crate) const KLV_ATTR: Symbol = Symbol(crate::ATTR_NAME);
-pub(crate) const KEY: Symbol = Symbol("key");
-pub(crate) const TYPE: Symbol = Symbol("typ");
-pub(crate) const DEBUG: Symbol = Symbol("debug");
-pub(crate) const LENGTH: Symbol = Symbol("len");
-pub(crate) const ENCODER: Symbol = Symbol("enc");
-pub(crate) const DECODER: Symbol = Symbol("dec");
-pub(crate) const STREAM: Symbol = Symbol("stream");
-pub(crate) const DEFAULT: Symbol = Symbol("default");
-pub(crate) const SENTINEL: Symbol = Symbol("sentinel");
-pub(crate) const INITIAL_VALUE: Symbol = Symbol("init");
-pub(crate) const VARIABLE_LENGTH: Symbol = Symbol("var");
-pub(crate) const DENY_UNKNOWN_KEYS: Symbol = Symbol("deny_unknown_keys");
-pub(crate) const ALLOW_UNIMPLEMENTED_DECODE: Symbol = Symbol("allow_unimplemented_decode");
-pub(crate) const ALLOW_UNIMPLEMENTED_ENCODE: Symbol = Symbol("allow_unimplemented_encode");
 
-/// Container symbols
+/// The `key` sub-attribute identifier
+pub(crate) const KEY: Symbol = Symbol("key");
+
+/// The `typ` sub-attribute identifier
+pub(crate) const TYPE: Symbol = Symbol("typ");
+
+/// The `debug` sub-attribute identifier
+pub(crate) const DEBUG: Symbol = Symbol("debug");
+
+/// The `len` sub-attribute identifier
+pub(crate) const LENGTH: Symbol = Symbol("len");
+
+/// The `enc` sub-attribute identifier
+pub(crate) const ENCODER: Symbol = Symbol("enc");
+
+/// The `dec` sub-attribute identifier
+pub(crate) const DECODER: Symbol = Symbol("dec");
+
+/// The `stream` sub-attribute identifier
+pub(crate) const STREAM: Symbol = Symbol("stream");
+
+/// The `default` sub-attribute identifier
+pub(crate) const DEFAULT: Symbol = Symbol("default");
+
+/// The `sentinel` sub-attribute identifier
+pub(crate) const SENTINEL: Symbol = Symbol("sentinel");
+
+/// The `init` sub-attribute identifier
+pub(crate) const INITIAL_VALUE: Symbol = Symbol("init");
+
+/// The `var` sub-attribute identifier for variable-length fields
+pub(crate) const VARIABLE_LENGTH: Symbol = Symbol("var");
+
+/// The `deny_unknown_keys` sub-attribute identifier
+pub(crate) const DENY_UNKNOWN_KEYS: Symbol = Symbol("deny_unknown_keys");
+
+/// The `allow_unimplemented_decode` sub-attribute identifier
+pub(crate) const ALLOW_UNIMPLEMENTED_DECODE: Symbol = Symbol("allow_unimplemented_decode");
+
+/// The `allow_unimplemented_encode` sub-attribute identifier
+pub(crate) const ALLOW_UNIMPLEMENTED_ENCODE: Symbol = Symbol("allow_unimplemented_encode");
+// --------------------------------------------------
+// statics
+// --------------------------------------------------
+/// All valid container-level symbols accepted by the `#[klv(..)]` attribute
 pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
     KEY,
     LENGTH,
@@ -39,17 +80,17 @@ pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
     ALLOW_UNIMPLEMENTED_ENCODE,
 ]);
 
-/// Container list symbols
+/// Container-level symbols that accept list syntax (e.g. `key = [...]`)
 pub(crate) static CONT_LIST_SYMBOLS: Symbols = Symbols(&[KEY, LENGTH, DEFAULT]);
 
-/// Container default list symbols
+/// Container-level default list symbols (type, encoder, decoder, var-length)
 pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols =
     Symbols(&[TYPE, ENCODER, DECODER, VARIABLE_LENGTH]);
 
-/// Container name-value symbols
+/// Container-level name-value symbols
 pub(crate) static CONT_NV_SYMBOLS: Symbols = Symbols(&[STREAM, SENTINEL]);
 
-/// Field symbols
+/// All valid field-level symbols accepted by the `#[klv(..)]` attribute
 pub(crate) static FIELD_SYMBOLS: Symbols = Symbols(&[
     KEY,
     // LENGTH,             // <-- TODO add
@@ -62,21 +103,20 @@ pub(crate) static FIELD_SYMBOLS: Symbols = Symbols(&[
 /// A symbol for KLV attributes
 pub(crate) struct Symbol(pub(crate) &'static str);
 
-// /// [`Symbol`] implementation of [`std::fmt::Debug`]
-// impl std::fmt::Debug for Symbol {
-//     fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-//         formatter.write_str(self.0)
-//     }
-// }
 /// [`Symbol`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for Symbol {
     fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
         formatter.write_str(self.0)
     }
 }
+
 /// [`Symbol`] implementation of [`From`] for [`syn::Path`]
 impl From<&syn::Path> for Symbol {
     fn from(path: &syn::Path) -> Self {
+        // --------------------------------------------------
+        // extract the last path segment as the symbol name,
+        // leak it so it satisfies the `&'static str` bound
+        // --------------------------------------------------
         let ident = path
             .segments
             .last()
@@ -86,12 +126,14 @@ impl From<&syn::Path> for Symbol {
         Symbol(Box::leak(ident.into_boxed_str()))
     }
 }
+
 /// [`syn::Path`] implementation of [`From`] for [`Symbol`]
 impl From<Symbol> for syn::Path {
     fn from(symbol: Symbol) -> Self {
         syn::parse_str(symbol.0).expect("?")
     }
 }
+
 /// [`Symbol`] implementation of [`ToTokens`]
 impl ToTokens for Symbol {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
@@ -113,26 +155,17 @@ impl PartialEq<Symbol> for &syn::Path {
     }
 }
 
-// impl PartialEq<Symbol> for syn::Ident {
-//     fn eq(&self, word: &Symbol) -> bool {
-//         self == word.0
-//     }
-// }
-
-// impl PartialEq<Symbol> for &syn::Ident {
-//     fn eq(&self, word: &Symbol) -> bool {
-//         *self == word.0
-//     }
-// }
-
 /// Multiple symbols, for displaying errors
 pub(crate) struct Symbols<'a>(&'a [Symbol]);
 
 /// [`Symbols`] implementation of [`std::fmt::Display`]
 impl std::fmt::Display for Symbols<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // --------------------------------------------------
+        // sort symbols in reverse alphabetical order before
+        // writing them to the formatter
+        // --------------------------------------------------
         let mut symbols = self.0.to_vec();
-        // reverse alphabetical
         symbols.sort_by(|a, b| b.0.cmp(a.0));
         symbols
             .iter()
