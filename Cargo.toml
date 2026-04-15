@@ -28,11 +28,31 @@ winnow = { version = "1.0.1", features = ["simd", "parser"] }
 [dev-dependencies]
 rand = "^0.8"
 rand_distr = "^0.4"
+proptest = "1.4"
 
 [features]
 default = []
 full = ["ascii", "chrono"]
 tracing = ["dep:tracing", "tinyklv-impl/tracing"]
+
+[[test]]
+name = "codecs"
+path = "tests/codecs/main.rs"
+
+[[test]]
+name = "derive"
+path = "tests/derive/main.rs"
+
+[[test]]
+name = "edge_cases"
+path = "tests/edge_cases/main.rs"
+
+[[test]]
+name = "proptest_roundtrip"
+path = "tests/proptest_roundtrip/main.rs"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
 [profile.dev]
 opt-level = 0
