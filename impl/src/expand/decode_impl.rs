@@ -37,7 +37,6 @@ pub(crate) fn gen_decode_impl(
 
     let debug = input.attrs.debug.is_some();
     let deny_unknown_keys = input.attrs._deny_unknown_keys.is_some();
-    let _allow_length_mismatch = input.attrs._allow_length_mismatch.is_some();
 
     let items_init = gen_items_init(&input.data);
     let items_match = gen_items_match(&input.data, debug);
@@ -72,20 +71,27 @@ pub(crate) fn gen_decode_impl(
                         let checkpoint = input.checkpoint();
                         let input = match #sentinel_seeker_static_name.find(&input) {
                             Some(position) => &mut &input[position + #sentinel_len_static_name..],
-                            None => return ::tinyklv::err!(
-                                input,
-                                checkpoint,
-                                concat!("Unable to find recognition sentinel for `", stringify!(#name), "` packet")
+                            None => return Err(
+                                ::tinyklv::__export::winnow::error::ContextError::new().add_context(
+                                    input,
+                                    &checkpoint,
+                                    ::tinyklv::__export::winnow::error::StrContext::Label(
+                                        concat!("Unable to find recognition sentinel for `", stringify!(#name), "` packet")
+                                    ),
+                                )
                             )
                         };
                         let checkpoint = input.checkpoint();
                         let packet_len = match #len_decoder.parse_next(input) {
                             Ok(x) => x as usize,
-                            Err(e) => return ::tinyklv::err!(
-                                e,
-                                input,
-                                checkpoint,
-                                concat!("Unable to parse packet length for `", stringify!(#name), "` packet")
+                            Err(e) => return Err(
+                                e.add_context(
+                                    input,
+                                    &checkpoint,
+                                    ::tinyklv::__export::winnow::error::StrContext::Label(
+                                        concat!("Unable to parse packet length for `", stringify!(#name), "` packet")
+                                    ),
+                                )
                             ),
                         };
                         ::tinyklv::__export::winnow::token::take(packet_len).parse_next(input)
@@ -115,7 +121,23 @@ pub(crate) fn gen_decode_impl(
     // --------------------------------------------------
     let remaining_match = match deny_unknown_keys {
         true => quote! {
-            x => return ::tinyklv::err!(input, checkpoint, &::std::format!("Unknown key: {}", x)),
+            _unknown_key => return Err(
+                ::tinyklv::__export::winnow::error::ContextError::new()
+                    .add_context(
+                        input,
+                        &checkpoint,
+                        ::tinyklv::__export::winnow::error::StrContext::Label("key"),
+                    )
+                    .add_context(
+                        input,
+                        &checkpoint,
+                        ::tinyklv::__export::winnow::error::StrContext::Expected(
+                            ::tinyklv::__export::winnow::error::StrContextValue::Description(
+                                concat!("one of the keys defined on `", stringify!(#name), "`. To turn this off, remove `deny_unknown_keys`")
+                            )
+                        ),
+                    )
+            ),
         },
         false => quote! {
             _ => (),
@@ -148,13 +170,13 @@ pub(crate) fn gen_decode_impl(
                             match Self::break_condition(key, len) {
                                 ::tinyklv::BreakConditionType::Proceed => (),
                                 ::tinyklv::BreakConditionType::Skip => {
-                                    // TODO:
-                                    // * take the length
-                                    // * continue
-
-                                    // ::tinyklv::__export::winnow::token::take(len).parse_next(input)
-                                    // match ::tinyklv::__export::winnow::token::take(len).parse_next(input) {
-                                    // };
+                                    let Ok(_) = ::tinyklv::__export::winnow::token::take::<
+                                        usize,
+                                        #stream,
+                                        ::tinyklv::__export::winnow::error::ContextError,
+                                    >(len).parse_next(input) else {
+                                        break
+                                    };
                                     continue;
                                 },
                                 ::tinyklv::BreakConditionType::Done => break,
@@ -221,10 +243,7 @@ fn gen_items_init(fatts: &Vec<MainField>) -> proc_macro2::TokenStream {
 fn gen_items_match(fields: &Vec<MainField>, debug: bool) -> proc_macro2::TokenStream {
     let arms = fields
         .iter()
-        .filter_map(|f| match &f.attrs {
-            Some(attr) => Some((&f.name, attr)),
-            None => None,
-        })
+        .filter_map(|f| f.attrs.as_ref().map(|attr| (&f.name, attr)))
         .map(|(name, attrs)| {
             // --------------------------------------------------
             // the name of the field assigned above.
@@ -282,10 +301,7 @@ fn gen_item_set(struct_name: &syn::Ident, fields: &Vec<MainField>) -> proc_macro
             None => Some((f.name.clone(), f.ty)),
         })
         .collect::<Vec<_>>();
-    let field_set_on_return = fields.iter().filter_map(|f| match f.attrs {
-        Some(_) => Some(f),
-        None => None
-    }).map(|field| {
+    let field_set_on_return = fields.iter().filter_map(|f| f.attrs.as_ref().map(|_| f)).map(|field| {
         let MainField { name, ty, .. } = field;
         match helpers::is_option(ty) {
             false => quote! {
@@ -315,7 +331,7 @@ fn gen_item_set(struct_name: &syn::Ident, fields: &Vec<MainField>) -> proc_macro
     // --------------------------------------------------
     // if the default does not exist, then this will not compile
     // --------------------------------------------------
-    match elem_name_type_without_klv.len() != 0 {
+    match !elem_name_type_without_klv.is_empty() {
         false => quote! { Ok(#struct_name { #(#field_set_on_return)* }) },
         true => {
             let names: Vec<_> = elem_name_type_without_klv

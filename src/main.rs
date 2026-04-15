@@ -6,16 +6,16 @@ use tinyklv::Klv;
 struct InnerValue {}
 
 fn ex01_encoder(_: &InnerValue) -> Vec<u8> {
-    return vec![0x65, 0x66, 0x67, 0x68];
+    vec![0x65, 0x66, 0x67, 0x68]
 }
 
 fn ex02_encoder(_: &InnerValue) -> Vec<u8> {
-    return String::from("Y2K").into_bytes();
+    String::from("Y2K").into_bytes()
 }
 
 impl tinyklv::EncodeValue<Vec<u8>> for InnerValue {
     fn encode_value(&self) -> Vec<u8> {
-        return String::from("KLV").to_lowercase().into_bytes();
+        String::from("KLV").to_lowercase().into_bytes()
     }
 }
 

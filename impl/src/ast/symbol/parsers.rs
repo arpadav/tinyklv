@@ -135,10 +135,10 @@ pub(crate) fn parse_pnm_length(input: &syn::meta::ParseNestedMeta) -> Option<syn
             // --------------------------------------------------
             // can not parse correctly, return an error
             // --------------------------------------------------
-            return Some(Err(syn::Error::new_spanned(
+            Some(Err(syn::Error::new_spanned(
                 &input.path,
                 err!(ExpectedLengthInField(@String value.to_string())),
-            )));
+            )))
         }
         // --------------------------------------------------
         // failed to get value, return error

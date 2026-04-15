@@ -8,7 +8,9 @@ use winnow::error::ContextError;
 // --------------------------------------------------
 pub use crate::prelude::*;
 
-/// Trait for decoding from stream-type T, of type [`winnow::stream::Stream`]
+/// Decodes the value portion of a KLV field from stream-type `S`.
+///
+/// Encode counterpart: [`EncodeValue`](crate::traits::EncodeValue)
 ///
 /// Common examples of stream types include `&[u8]` and `&str`
 ///
@@ -25,7 +27,9 @@ where
     fn decode(input: &mut S) -> winnow::Result<Self>;
 }
 
-/// Trait for seeking to the beginning of the prescribed type from a stream
+/// Seeks to the beginning of the prescribed type from a stream using the sentinel.
+///
+/// Encode counterpart: sentinel bytes are prepended by [`Encode`](crate::traits::Encode)
 ///
 /// This is automatically implemented when `sentinel` is set in the [`crate::Klv`](crate::Klv) attribute
 pub trait Seek<S>: Sized
@@ -35,7 +39,9 @@ where
     fn seek(input: &mut S) -> winnow::Result<S>;
 }
 
-/// Trait for extracting from stream-type `T`, of type [`winnow::stream::Stream`]
+/// Full KLV decode pipeline: [`Seek`] + [`Decode`].
+///
+/// Encode counterpart: [`Encode`](crate::traits::Encode)
 pub trait Extract<S>: Sized
 where
     S: winnow::stream::Stream,

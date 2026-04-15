@@ -131,7 +131,7 @@ impl<T: OfBerLength> crate::EncodeValue<Vec<u8>> for BerLength<T> {
                 // --------------------------------------------------
                 // This should never happen: upon creation, length is checked to be < 128
                 // --------------------------------------------------
-                if len < &&T::from_u8(128).unwrap() {
+                if len < &T::from_u8(128).unwrap() {
                     return vec![len.to_u8().unwrap()];
                 }
                 // --------------------------------------------------
@@ -202,14 +202,44 @@ impl<T: OfBerLength> crate::Decode<&[u8]> for BerLength<T> {
         // but can be shortened
         // --------------------------------------------------
         if input.len() < num_bytes {
-            return crate::err!(input, checkpoint, "Not enough bytes for length encoding");
-            // return Err(ErrMode::Incomplete(Needed::Size(std::num::NonZero::new(num_bytes + 1).unwrap())));
+            return Err(winnow::error::ContextError::new()
+                .add_context(
+                    input,
+                    &checkpoint,
+                    winnow::error::StrContext::Label("BER-OID value"),
+                )
+                .add_context(
+                    input,
+                    &checkpoint,
+                    winnow::error::StrContext::Expected(
+                        winnow::error::StrContextValue::Description(
+                            "enough bytes in stream for length encoding",
+                        ),
+                    ),
+                ));
         }
         // --------------------------------------------------
         // decode the length from the specified number of bytes
         // --------------------------------------------------
-        let output = parse_length_u128(input, num_bytes)?;
-        Ok(BerLength::Long(T::from_u128(output).unwrap()))
+        let output = match T::from_u128(parse_length_u128(input, num_bytes)?) {
+            Some(value) => value,
+            None => {
+                return Err(winnow::error::ContextError::new()
+                    .add_context(
+                        input,
+                        &checkpoint,
+                        winnow::error::StrContext::Label("BER-OID value"),
+                    )
+                    .add_context(
+                        input,
+                        &checkpoint,
+                        winnow::error::StrContext::Expected(
+                            winnow::error::StrContextValue::Description("less than u128::MAX"),
+                        ),
+                    ));
+            }
+        };
+        Ok(BerLength::Long(output))
     }
 }
 
@@ -326,14 +356,19 @@ impl<T: OfBerOid> crate::Decode<&[u8]> for BerOid<T> {
         let output = match T::from_u128(output) {
             Some(value) => value,
             None => {
-                return Err(winnow::error::ContextError::new().add_context(
-                    input,
-                    &checkpoint,
-                    winnow::error::StrContext::Label(
-                        "Unable to cast BER-OID value from u128 -> T. Perhaps value > T::max?.",
-                    ),
-                    // winnow::error::StrContext::Label(&format!("Unable to parse BER-OID value into type `{}`, got {}", std::any::type_name::<T>(), output)),
-                ));
+                return Err(winnow::error::ContextError::new()
+                    .add_context(
+                        input,
+                        &checkpoint,
+                        winnow::error::StrContext::Label("BER-OID value"),
+                    )
+                    .add_context(
+                        input,
+                        &checkpoint,
+                        winnow::error::StrContext::Expected(
+                            winnow::error::StrContextValue::Description("less than u128::MAX"),
+                        ),
+                    ));
             }
         };
         Ok(BerOid::new(&output))

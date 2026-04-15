@@ -1,3 +1,10 @@
+//! # Codec Naming Conventions
+//!
+//! - **`_as_usize`** (decode): follows Rust's `as` cast convention, e.g. `be_u16_as_usize`
+//! - **`_from_usize`** (encode): follows Rust's `From` conversion convention, e.g. `u16_from_usize`
+//!
+//! Both are intentional and consistent within their respective sides.
+
 pub mod ber;
 pub mod binary;
 pub mod string;

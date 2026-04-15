@@ -120,25 +120,21 @@ pub(crate) fn type2fish(ty: &syn::Type) -> proc_macro2::TokenStream {
                 }
                 let ident = &segment.ident;
                 tokens.extend(quote::quote!(#ident));
-                match &segment.arguments {
-                    syn::PathArguments::AngleBracketed(args) => {
-                        let args_tokens: Vec<proc_macro2::TokenStream> = args
-                            .args
-                            .iter()
-                            .map(|arg| {
-                                match arg {
-                                    syn::GenericArgument::Type(ty) => type2fish(ty),
-                                    // extend this match to handle other [`syn::GenericArgument`] variants as needed
-                                    _ => quote::quote!(#arg),
-                                }
-                            })
-                            .collect();
-                        if !args_tokens.is_empty() {
-                            tokens.extend(quote::quote!(::<#(#args_tokens),*>));
-                        }
+                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                    let args_tokens: Vec<proc_macro2::TokenStream> = args
+                        .args
+                        .iter()
+                        .map(|arg| {
+                            match arg {
+                                syn::GenericArgument::Type(ty) => type2fish(ty),
+                                // extend this match to handle other [`syn::GenericArgument`] variants as needed
+                                _ => quote::quote!(#arg),
+                            }
+                        })
+                        .collect();
+                    if !args_tokens.is_empty() {
+                        tokens.extend(quote::quote!(::<#(#args_tokens),*>));
                     }
-                    // handle other [`syn::PathArguments`] variants if necessary
-                    _ => {}
                 }
             }
             tokens

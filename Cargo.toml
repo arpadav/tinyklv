@@ -7,39 +7,39 @@ description = "The simplest Key-Length-Value (KLV) framework in Rust"
 repository = "https://github.com/arpadav/tinyklv"
 documentation = "https://docs.rs/tinyklv"
 readme = "README.md"
-keywords = ["klv", "tlv", "parsing", "decode", "encode"]
-categories = ["encoding", "parsing", "development-tools"]
+keywords = ["decode", "encode", "klv", "parsing", "tlv"]
+categories = ["development-tools", "encoding", "parsing"]
 edition = "2021"
-
-[dependencies]
-paste = "~1.0"
-memchr = "~2.7"
-num-traits = "~0.2"
-ascii = { version = "~1.1", optional = true }
-chrono = { version = "~0.4", optional = true }
-tracing = { version = "~0.1", optional = true }
-winnow = { version = "~0.7", features = ["simd"] }
-tinyklv-impl = { version = "0.0.1-alpha.1", path = "impl" }
-
-[dev-dependencies]
-rand = "~0.8"
-rand_distr = "~0.4"
-
-[features]
-default = []
-full = [ "chrono", "ascii" ]
-tracing = [ "dep:tracing", "tinyklv-impl/tracing" ]
 
 [workspace]
 members = ["impl"]
-exclude = [ "~archive" ]
+exclude = ["~archive"]
+
+[dependencies]
+ascii = { version = "1.1.0", optional = true }
+chrono = { version = "0.4.44", optional = true }
+memchr = "2.7.6"
+num-traits = "0.2.19"
+paste = "1.0.15"
+tinyklv-impl = { path = "impl", version = "0.0.1-alpha.1" }
+tracing = { version = "0.1.44", optional = true }
+winnow = { version = "1.0.1", features = ["simd", "parser"] }
+
+[dev-dependencies]
+rand = "^0.8"
+rand_distr = "^0.4"
+
+[features]
+default = []
+full = ["ascii", "chrono"]
+tracing = ["dep:tracing", "tinyklv-impl/tracing"]
 
 [profile.dev]
 opt-level = 0
 
 [profile.release]
-lto = true
-strip = true
 opt-level = 3
+strip = true
+lto = true
 panic = "abort"
 codegen-units = 1

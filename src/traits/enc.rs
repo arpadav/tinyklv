@@ -3,6 +3,10 @@
 // --------------------------------------------------
 pub use super::*;
 
+/// Encodes the value portion of a KLV field to owned stream-type `O`.
+///
+/// Decode counterpart: [`Decode`](crate::traits::Decode)
+///
 /// Trait for encoding ***data only*** to owned stream-type `O`, where `O` is an owned stream-type of [`winnow::stream::Stream`], with elements `T`.
 ///
 /// ```text
@@ -169,22 +173,35 @@ impl<O: EncodedOutput> IntoKlv<O> for O {
             encoded_key
                 .into()
                 .into_iter()
-                .chain(len_encoder(self.as_ref().len()).into_iter())
-                .chain(self.into_iter()),
+                .chain(len_encoder(self.as_ref().len()))
+                .chain(self),
         )
     }
 }
 /// [`IntoKlv`] implementation for all types [`Result<O>`] that implement [`EncodedOutput<T>`]
+///
+/// When the encoder returns `Err`, this produces an empty byte sequence and the
+/// field is silently omitted from the encoded output. Callers needing error
+/// propagation should unwrap before calling `into_klv`.
 impl<O: EncodedOutput, E> IntoKlv<O> for Result<O, E> {
     #[inline(always)]
     fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
         match self {
             Ok(x) => x.into_klv(encoded_key, len_encoder),
-            Err(_) => O::from_iter(std::iter::empty::<O::Element>()),
+            Err(_) => {
+                debug_assert!(
+                    false,
+                    "IntoKlv: encoder returned Err, field silently omitted"
+                );
+                O::from_iter(std::iter::empty::<O::Element>())
+            }
         }
     }
 }
 /// [`IntoKlv`] implementation for all types [`Option<O>`] that implement [`EncodedOutput<T>`]
+///
+/// `None` produces empty output (field omitted from encoded packet). This is
+/// typically the correct behavior for optional KLV fields.
 impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
     #[inline(always)]
     fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
@@ -195,6 +212,10 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
     }
 }
 
+/// Full KLV encode pipeline: prepends key and length to [`EncodeValue`] output.
+///
+/// Decode counterpart: [`Extract`](crate::traits::Extract)
+///
 /// Trait for encoding data to its full key-length-value representation.
 ///
 /// ```text

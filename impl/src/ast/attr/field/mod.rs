@@ -237,7 +237,6 @@ impl FieldParsed {
             }
         };
         let _init = f.contents.init.clone();
-        println!("init: {:?}", _init);
         // --------------------------------------------------
         // return parsed field
         // --------------------------------------------------

@@ -11,7 +11,7 @@ pub(crate) fn gen_encode_impl(
 ) -> proc_macro2::TokenStream {
     let name = &input.ident;
     let sentinel = input.attrs.sentinel.as_ref();
-    let items_encoded = gen_items_encoded(&input, &key_encoder, &len_encoder);
+    let items_encoded = gen_items_encoded(input, key_encoder, len_encoder);
     let encode_with_key_len = match sentinel {
         Some(sentinel) => quote! {
             #[automatically_derived]
@@ -44,10 +44,7 @@ fn gen_items_encoded(
     key_encoder: &types::XcoderType,
     len_encoder: &types::XcoderType,
 ) -> proc_macro2::TokenStream {
-    let items_encoded = input.data.iter().filter_map(|field| match &field.attrs {
-        Some(attr) => Some((&field.name, attr)),
-        None => None
-    }).map(|(name, attrs)| {
+    let items_encoded = input.data.iter().filter_map(|field| field.attrs.as_ref().map(|attr| (&field.name, attr))).map(|(name, attrs)| {
         #[allow(clippy::unwrap_used)]
         // `gen_encode_impl` call ensures that `attrs.enc` is `Some`
         let value_encoder = attrs.enc.as_ref().unwrap();

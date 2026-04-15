@@ -11,7 +11,7 @@ mod parsers;
 pub(crate) use parsers::*;
 
 // All symbols (all idents, e.g. no kebab-case)
-pub(crate) const KLV_ATTR: Symbol = Symbol(&crate::ATTR_NAME);
+pub(crate) const KLV_ATTR: Symbol = Symbol(crate::ATTR_NAME);
 pub(crate) const KEY: Symbol = Symbol("key");
 pub(crate) const TYPE: Symbol = Symbol("typ");
 pub(crate) const DEBUG: Symbol = Symbol("debug");
@@ -24,7 +24,6 @@ pub(crate) const SENTINEL: Symbol = Symbol("sentinel");
 pub(crate) const INITIAL_VALUE: Symbol = Symbol("init");
 pub(crate) const VARIABLE_LENGTH: Symbol = Symbol("var");
 pub(crate) const DENY_UNKNOWN_KEYS: Symbol = Symbol("deny_unknown_keys");
-pub(crate) const ALLOW_LENGTH_MISMATCH: Symbol = Symbol("allow_length_mismatch");
 pub(crate) const ALLOW_UNIMPLEMENTED_DECODE: Symbol = Symbol("allow_unimplemented_decode");
 pub(crate) const ALLOW_UNIMPLEMENTED_ENCODE: Symbol = Symbol("allow_unimplemented_encode");
 
@@ -36,7 +35,6 @@ pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
     DEFAULT,
     SENTINEL,
     DENY_UNKNOWN_KEYS,
-    ALLOW_LENGTH_MISMATCH,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,
 ]);

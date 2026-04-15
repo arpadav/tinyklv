@@ -76,11 +76,15 @@ pub fn to_string_utf8_strict(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Resul
 }
 
 #[inline(always)]
-/// Decodes a byte slice into a [`String`], using [`String::from_utf16_lossy`]
-pub fn to_string_utf16(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<String> {
+/// Decodes a byte slice into a [`String`] assuming little-endian UTF-16, using [`String::from_utf16_lossy`]
+///
+/// **Endianness warning**: Using the wrong endianness variant will silently
+/// produce corrupted string data. Verify the endianness of your KLV stream
+/// before selecting a variant.
+pub fn to_string_utf16_le(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<String> {
     move |input| {
         let checkpoint = input.checkpoint();
-        if len % 2 != 0 {
+        if !len.is_multiple_of(2) {
             return Err(winnow::error::ContextError::new().add_context(
                 input,
                 &checkpoint,
@@ -92,9 +96,10 @@ pub fn to_string_utf16(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<Stri
                 let utf16: Vec<u16> = slice
                     .chunks_exact(2)
                     .map(|chunk| {
-                        #[allow(clippy::unwrap_used)]
-                        // safe to unwrap, since `chunks_exact` returns exactly
-                        // 2 bytes
+                        #[allow(
+                            clippy::unwrap_used,
+                            reason = "safe to unwrap, since `chunks_exact` returns exactly 2 bytes"
+                        )]
                         let array: [u8; 2] = chunk.try_into().unwrap();
                         u16::from_le_bytes(array)
                     })
@@ -103,6 +108,51 @@ pub fn to_string_utf16(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<Stri
             })
             .parse_next(input)
     }
+}
+
+#[inline(always)]
+/// Decodes a byte slice into a [`String`] assuming big-endian UTF-16, using [`String::from_utf16_lossy`]
+///
+/// **Endianness warning**: Using the wrong endianness variant will silently
+/// produce corrupted string data. Verify the endianness of your KLV stream
+/// before selecting a variant.
+pub fn to_string_utf16_be(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<String> {
+    move |input| {
+        let checkpoint = input.checkpoint();
+        if !len.is_multiple_of(2) {
+            return Err(winnow::error::ContextError::new().add_context(
+                input,
+                &checkpoint,
+                winnow::error::StrContext::Label("Invalid UTF-16 slice length"),
+            ));
+        }
+        take(len)
+            .map(|slice: &[u8]| {
+                let utf16: Vec<u16> = slice
+                    .chunks_exact(2)
+                    .map(|chunk| {
+                        #[allow(
+                            clippy::unwrap_used,
+                            reason = "safe to unwrap, since `chunks_exact` returns exactly 2 bytes"
+                        )]
+                        let array: [u8; 2] = chunk.try_into().unwrap();
+                        u16::from_be_bytes(array)
+                    })
+                    .collect();
+                String::from_utf16_lossy(&utf16)
+            })
+            .parse_next(input)
+    }
+}
+
+#[deprecated(
+    since = "0.1.0",
+    note = "renamed to `to_string_utf16_le` to clarify endianness"
+)]
+#[inline(always)]
+/// Use [`to_string_utf16_le`] instead.
+pub fn to_string_utf16(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<String> {
+    to_string_utf16_le(len)
 }
 
 #[inline(always)]

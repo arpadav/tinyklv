@@ -65,7 +65,7 @@ pub fn derive(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
         cont.attrs.len.enc.as_ref(),
         all_encoders_exist,
     ) {
-        let encode_impls = encode_impl::gen_encode_impl(&cont, &key_enc, &len_enc);
+        let encode_impls = encode_impl::gen_encode_impl(&cont, key_enc, len_enc);
         expanded = quote! {
             #expanded
             #encode_impls

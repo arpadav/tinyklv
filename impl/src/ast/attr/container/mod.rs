@@ -34,7 +34,6 @@ pub(crate) struct Container {
     pub defaults: HashMap<syn::Type, DefaultXcoder>,
     pub debug: Option<syn::Path>,
     pub deny_unknown_keys: Option<syn::Path>,
-    pub allow_length_mismatch: Option<syn::Path>,
     pub allow_unimplemented_decode: Option<syn::Path>,
     pub allow_unimplemented_encode: Option<syn::Path>,
 }
@@ -54,7 +53,6 @@ impl Container {
         let mut defaults: HashMap<syn::Type, DefaultXcoder> = HashMap::new();
         let mut debug = None;
         let mut deny_unknown_keys = None;
-        let mut allow_length_mismatch = None;
         let mut allow_unimplemented_decode = None;
         let mut allow_unimplemented_encode = None;
 
@@ -165,10 +163,6 @@ impl Container {
                             &list.path,
                             err!(ExpectedAsPath(symbol::DENY_UNKNOWN_KEYS)),
                         ),
-                        symbol::ALLOW_LENGTH_MISMATCH => cx.error_spanned_by(
-                            &list.path,
-                            err!(ExpectedAsPath(symbol::ALLOW_LENGTH_MISMATCH)),
-                        ),
                         symbol::ALLOW_UNIMPLEMENTED_DECODE => cx.error_spanned_by(
                             &list.path,
                             err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_DECODE)),
@@ -221,10 +215,6 @@ impl Container {
                             &nv.path,
                             err!(ExpectedAsPath(symbol::DENY_UNKNOWN_KEYS)),
                         ),
-                        symbol::ALLOW_LENGTH_MISMATCH => cx.error_spanned_by(
-                            &nv.path,
-                            err!(ExpectedAsPath(symbol::ALLOW_LENGTH_MISMATCH)),
-                        ),
                         symbol::ALLOW_UNIMPLEMENTED_DECODE => cx.error_spanned_by(
                             &nv.path,
                             err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_DECODE)),
@@ -246,7 +236,6 @@ impl Container {
                     syn::Meta::Path(path) => match symbol::Symbol::from(&path) {
                         symbol::DEBUG => debug = Some(path),
                         symbol::DENY_UNKNOWN_KEYS => deny_unknown_keys = Some(path),
-                        symbol::ALLOW_LENGTH_MISMATCH => allow_length_mismatch = Some(path),
                         symbol::ALLOW_UNIMPLEMENTED_DECODE => {
                             allow_unimplemented_decode = Some(path)
                         }
@@ -312,7 +301,6 @@ impl Container {
             defaults,
             debug,
             deny_unknown_keys,
-            allow_length_mismatch,
             allow_unimplemented_decode,
             allow_unimplemented_encode,
         }
@@ -333,7 +321,6 @@ pub(crate) struct ContainerParsed {
     pub len: Xcoder,
     pub debug: Option<syn::Path>,
     pub _deny_unknown_keys: Option<syn::Path>,
-    pub _allow_length_mismatch: Option<syn::Path>,
     pub _allow_unimplemented_decode: Option<syn::Path>,
     pub _allow_unimplemented_encode: Option<syn::Path>,
 }
@@ -369,7 +356,6 @@ impl ContainerParsed {
             len,
             debug: cont.debug,
             _deny_unknown_keys: cont.deny_unknown_keys,
-            _allow_length_mismatch: cont.allow_length_mismatch,
             _allow_unimplemented_decode: cont.allow_unimplemented_decode,
             _allow_unimplemented_encode: cont.allow_unimplemented_encode,
         })

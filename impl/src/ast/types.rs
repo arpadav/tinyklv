@@ -28,11 +28,9 @@ impl syn::parse::Parse for XcoderLike {
         // prioritize macro: check for a path followed by '!'
         // --------------------------------------------------
         let fork = input.fork();
-        if let Ok(_) = fork.parse::<syn::Path>() {
-            if fork.peek(syn::Token![!]) {
-                let mcro: syn::Macro = input.parse()?;
-                return Ok(XcoderLike::Macro(mcro));
-            }
+        if fork.parse::<syn::Path>().is_ok() && fork.peek(syn::Token![!]) {
+            let mcro: syn::Macro = input.parse()?;
+            return Ok(XcoderLike::Macro(mcro));
         }
         drop(fork);
         // --------------------------------------------------

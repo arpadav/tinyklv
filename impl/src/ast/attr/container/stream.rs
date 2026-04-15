@@ -14,14 +14,13 @@ impl std::fmt::Debug for Stream {
 impl TryFrom<&syn::MetaNameValue> for Stream {
     type Error = syn::Error;
     fn try_from(input: &syn::MetaNameValue) -> syn::Result<Self> {
-        match symbol::nv_parse_maybestr_stream(&input) {
+        match symbol::nv_parse_maybestr_stream(input) {
             // `stream` keyword is detected, and value is parsed correctly
             Some(Ok(x)) => Ok(Stream(Some(x))),
             // `stream` keyword is detected, but value is not parsed correctly
-            Some(Err(err)) => return Err(err),
-            // // `stream` keyword is not detected
-            // None => return Err(syn::Error::new_spanned(input, "`stream` keyword is not detected")),
-            None => return Ok(Stream(None)),
+            Some(Err(err)) => Err(err),
+            // `stream` keyword is not detected
+            None => Ok(Stream(None)),
         }
     }
 }

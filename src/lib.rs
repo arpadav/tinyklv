@@ -44,62 +44,11 @@ pub mod prelude {
     pub use crate::traits::IntoKlv as _;
 
     pub use crate::traits::BreakCondition as _;
-    // pub use crate::traits::BreakConditionType as _;
+    pub use crate::traits::BreakConditionType;
+    pub use crate::traits::EncodedOutput;
 }
 
 pub type Result<T> = winnow::Result<T>;
-
-#[deprecated]
-#[macro_export]
-/// Returns a blank, unrecoverable error.
-///
-/// This is helpful for quick development. However, **it is not recommended
-/// to use this** since the error is non-descriptive.
-macro_rules! err2 {
-    () => {
-        winnow::error::ContextError::new()
-    };
-
-    ($input:ident, $checkpoint:ident, $msg:expr) => {
-        winnow::error::ErrMode::Cut(winnow::error::ContextError::new().add_context(
-            $input,
-            &$checkpoint,
-            winnow::error::StrContext::Label($msg),
-        ))
-    };
-}
-
-#[macro_export]
-/// Returns a blank, unrecoverable error.
-macro_rules! err {
-    ($input:ident, $checkpoint:ident, $msg:expr) => {
-        Err(winnow::error::ContextError::new().add_context(
-            $input,
-            &$checkpoint,
-            winnow::error::StrContext::Label($msg),
-        ))
-    };
-
-    ($err:ident, $input:ident, $checkpoint:ident, $msg:expr) => {
-        Err($err.add_context($input, &$checkpoint, winnow::error::StrContext::Label($msg)))
-    };
-}
-
-#[macro_export]
-/// Returns a blank, unrecoverable error.
-macro_rules! ctxt {
-    ($input:ident, $checkpoint:ident, $msg:expr) => {
-        winnow::error::ContextError::new().add_context(
-            $input,
-            &$checkpoint,
-            winnow::error::StrContext::Label($msg),
-        )
-    };
-
-    ($err:ident, $input:ident, $checkpoint:ident, $msg:expr) => {
-        $err.add_context($input, &$checkpoint, winnow::error::StrContext::Label($msg))
-    };
-}
 
 #[macro_export]
 /// Scales a parsed value of some predefined precision
@@ -162,6 +111,80 @@ macro_rules! cast {
 }
 
 #[macro_export]
+/// Encode counterpart of [`scale!`]. Divides by scale factor, casts to wire type, then encodes.
+///
+/// Can be used directly in a `#[klv(enc = ...)]` attribute
+///
+/// # Usage
+///
+/// ```rust ignore
+/// #[klv(enc = tinyklv::scale_enc!(tinyklv::codecs::binary::enc::be_u16, f64, u16, SCALE_FACTOR))]
+/// ```
+///
+/// # Example
+///
+/// ```rust
+/// let encoder = tinyklv::scale_enc!(tinyklv::codecs::binary::enc::be_u16, f64, u16, 3.0);
+/// let encoded = encoder(&3.0_f64);
+/// assert_eq!(encoded, vec![0x00, 0x01]);
+/// ```
+macro_rules! scale_enc {
+    ($encoder:path, $precision:ty, $wire:ty, $scale:tt $(,)*) => {
+        |input: &$precision| -> Vec<u8> { $encoder((*input / $scale) as $wire) }
+    };
+}
+
+#[macro_export]
+/// Encode counterpart of [`cast!`]. Casts to wire type, then encodes.
+///
+/// Can be used directly in a `#[klv(enc = ...)]` attribute
+///
+/// # Usage
+///
+/// ```rust ignore
+/// #[klv(enc = tinyklv::cast_enc!(tinyklv::codecs::binary::enc::be_u16, f64, u16))]
+/// ```
+///
+/// # Example
+///
+/// ```rust
+/// let encoder = tinyklv::cast_enc!(tinyklv::codecs::binary::enc::be_u16, f64, u16);
+/// let encoded = encoder(&1.0_f64);
+/// assert_eq!(encoded, vec![0x00, 0x01]);
+/// ```
+macro_rules! cast_enc {
+    ($encoder:path, $precision:ty, $wire:ty $(,)*) => {
+        |input: &$precision| -> Vec<u8> { $encoder(*input as $wire) }
+    };
+}
+
+#[macro_export]
+/// Encode counterpart of [`scale!`] with offset. Subtracts offset, divides by scale, casts to wire type, then encodes.
+///
+/// Useful for MISB 0601 fields that map a real-value range to a wire-value range
+/// via `wire_value = (real_value - offset) / scale`.
+///
+/// # Usage
+///
+/// ```rust ignore
+/// #[klv(enc = tinyklv::scale_offset_enc!(tinyklv::codecs::binary::enc::be_u32, f64, u32, SCALE, OFFSET))]
+/// ```
+///
+/// # Example
+///
+/// ```rust
+/// let encoder = tinyklv::scale_offset_enc!(tinyklv::codecs::binary::enc::be_u16, f64, u16, 2.0, 10.0);
+/// let encoded = encoder(&14.0_f64);
+/// // (14.0 - 10.0) / 2.0 = 2.0 as u16 = 2
+/// assert_eq!(encoded, vec![0x00, 0x02]);
+/// ```
+macro_rules! scale_offset_enc {
+    ($encoder:path, $precision:ty, $wire:ty, $scale:tt, $offset:tt $(,)*) => {
+        |input: &$precision| -> Vec<u8> { $encoder(((*input - $offset) / $scale) as $wire) }
+    };
+}
+
+#[macro_export]
 #[cfg(feature = "chrono")]
 /// Parses a string as a date, using [`chrono::NaiveDate::parse_from_str`]
 ///
@@ -181,11 +204,12 @@ macro_rules! cast {
 macro_rules! as_date {
     ($str_parser:path, $date_fmt:tt, $len:expr $(,)*) => {
         |input| -> ::tinyklv::Result<::tinyklv::__export::chrono::NaiveDate> {
-            ::tinyklv::__export::chrono::NaiveDate::parse_from_str(
-                &$str_parser($len)(input)?,
-                $date_fmt,
-            )
-            .map_err(|_| ::tinyklv::err!())
+            $str_parser($len)
+                .try_map(|s| ::tinyklv::__export::chrono::NaiveDate::parse_from_str(&s, $date_fmt))
+                .context(::tinyklv::__export::winnow::error::StrContext::Label(
+                    "date",
+                ))
+                .parse_next(input)
         }
     };
 }
@@ -209,11 +233,12 @@ macro_rules! as_date {
 macro_rules! as_time {
     ($str_parser:path, $time_fmt:tt, $len:expr $(,)*) => {
         |input| -> ::tinyklv::Result<::tinyklv::__export::chrono::NaiveTime> {
-            ::tinyklv::__export::chrono::NaiveTime::parse_from_str(
-                &$str_parser($len)(input)?,
-                $time_fmt,
-            )
-            .map_err(|_| ::tinyklv::err!())
+            $str_parser($len)
+                .try_map(|s| ::tinyklv::__export::chrono::NaiveTime::parse_from_str(&s, $time_fmt))
+                .context(::tinyklv::__export::winnow::error::StrContext::Label(
+                    "time",
+                ))
+                .parse_next(input)
         }
     };
 }
@@ -238,11 +263,14 @@ macro_rules! as_time {
 macro_rules! as_datetime {
     ($str_parser:path, $datetime_fmt:tt, $len:expr $(,)*) => {
         |input| -> ::tinyklv::Result<::tinyklv::__export::chrono::NaiveDateTime> {
-            ::tinyklv::__export::chrono::NaiveDateTime::parse_from_str(
-                &$str_parser($len)(input)?,
-                $datetime_fmt,
-            )
-            .map_err(|_| tinyklv::err!())
+            $str_parser($len)
+                .try_map(|s| {
+                    ::tinyklv::__export::chrono::NaiveDateTime::parse_from_str(&s, $datetime_fmt)
+                })
+                .context(::tinyklv::__export::winnow::error::StrContext::Label(
+                    "datetime",
+                ))
+                .parse_next(input)
         }
     };
 }

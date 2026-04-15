@@ -321,7 +321,7 @@ Got: `{l} = {0}`.",
     ExpectedLengthInField(String),
 
     #[error("\
-No encoder is found for field `{0}: {1}`. 
+No encoder is found for field `{0}: {1}`.
 
 If encoding is not required, use `#[{k}({aue})]` on the struct.
 
@@ -359,14 +359,10 @@ impl Error {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 enum Length {
     Fixed(syn::LitInt),
+    #[default]
     Implicit,
     Variable(syn::Path),
-}
-impl Default for Length {
-    fn default() -> Self {
-        Length::Implicit
-    }
 }
