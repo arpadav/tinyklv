@@ -21,6 +21,23 @@ pub mod __export {
     pub use winnow;
 }
 
+/// Wraps an owned-taking encoder for use in `#[klv(enc = ...)]`
+///
+/// The derive macro passes `&T` to encoder functions. If your encoder takes
+/// an owned `T` instead, wrap it with this macro:
+///
+/// ```rust,ignore
+/// #[klv(key = 0x01, dec = decode_color, enc = tinyklv::enc_owned!(encode_color))]
+/// ```
+///
+/// Requires `T: Clone`. Equivalent to `|v| encoder(Clone::clone(v))`.
+#[macro_export]
+macro_rules! enc_owned {
+    ($encoder:path) => {
+        |v| $encoder(::core::clone::Clone::clone(v))
+    };
+}
+
 /// Convenience re-export of all traits and parser primitives needed to
 /// work with KLV streams
 ///

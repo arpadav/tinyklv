@@ -1,6 +1,16 @@
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
+mod advanced_break;
+mod advanced_defaults;
+mod advanced_keys;
+mod advanced_nesting;
+mod advanced_repeated;
+mod advanced_roundtrip;
+mod advanced_scaling;
+mod advanced_sentinel;
+mod advanced_stream;
+mod advanced_variable;
 mod basic_fixed;
 mod basic_variable;
 mod ber_keyed;
@@ -9,6 +19,7 @@ mod custom_decoders;
 mod default_values;
 mod deny_unknown_keys;
 mod encode_roundtrip;
+mod enum_dispatch;
 mod field_ordering;
 mod mixed_types;
 mod multi_packet;
@@ -17,3 +28,4 @@ mod optional_fields;
 mod partial_decode;
 mod repeated_decode;
 mod sentinel_seek;
+mod types;

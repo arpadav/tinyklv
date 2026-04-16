@@ -11,7 +11,7 @@ fn enc_u32(v: &u32) -> Vec<u8> {
     tinyklv::enc::binary::be_u32(*v)
 }
 
-/// Required u16 field — decode must fail when value bytes are absent/insufficient
+/// Required u16 field - decode must fail when value bytes are absent/insufficient
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -23,7 +23,7 @@ struct RequiredU16 {
     value: u16,
 }
 
-/// Optional u32 — decode must succeed with None when value bytes are absent
+/// Optional u32 - decode must succeed with None when value bytes are absent
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -35,7 +35,7 @@ struct OptionalU32 {
     value: Option<u32>,
 }
 
-/// One required + one optional field — validates partial decode followed by oversized
+/// One required + one optional field - validates partial decode followed by oversized
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -85,7 +85,7 @@ fn oversized_length_with_zero_value_bytes_fails_required() {
 
 #[test]
 fn oversized_length_with_zero_value_bytes_optional_none() {
-    // Same stream but the field is optional — should decode to None.
+    // Same stream but the field is optional - should decode to None.
     let data: &[u8] = &[0x01, 0xFF];
     let result = OptionalU32::decode(&mut &data[..]).unwrap();
     assert_eq!(result.value, None);

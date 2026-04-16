@@ -44,7 +44,7 @@ fn repeated_decode_one_record() {
 #[test]
 fn repeated_decode_three_unframed_records_merge_last_wins() {
     // Without sentinel/length framing, decode() reads the entire stream.
-    // Three records with the same key — last-wins gives value=3.
+    // Three records with the same key - last-wins gives value=3.
     let data = build_multi_record(&[1, 2, 3]);
     let results = SimpleRecord::repeated(&mut data.as_slice()).unwrap();
     // All three KLV triples are consumed by one decode() call; repeated()

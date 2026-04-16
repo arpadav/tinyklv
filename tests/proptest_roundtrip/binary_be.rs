@@ -29,7 +29,7 @@ macro_rules! roundtrip_float {
     };
 }
 
-// u8 has no be_/le_ encoder variant — single byte, endianness irrelevant.
+// u8 has no be_/le_ encoder variant - single byte, endianness irrelevant.
 // The native-endian encoder is tinyklv::enc::binary::u8; the decoder is be_u8
 // (which is just winnow::binary::be_u8 with implied generics).
 roundtrip_test!(
@@ -62,7 +62,7 @@ roundtrip_test!(
     tinyklv::enc::binary::be_u128,
     tinyklv::dec::binary::be_u128
 );
-// i8 has no be_/le_ encoder variant — single byte, endianness irrelevant.
+// i8 has no be_/le_ encoder variant - single byte, endianness irrelevant.
 roundtrip_test!(
     be_i8_roundtrip,
     i8,

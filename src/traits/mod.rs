@@ -15,7 +15,7 @@
 //!
 //! **Why decode has more traits**: Decode must seek through a byte stream,
 //! handle unknown/malformed keys, and recover from partial parses. Encode
-//! starts from a valid Rust struct — seeking and error recovery are unnecessary.
+//! starts from a valid Rust struct - seeking and error recovery are unnecessary.
 //!
 //! **Encode output**: The encode path currently requires `alloc` (`Vec<u8>`).
 //! The [`EncodedOutput`] trait is the escape hatch for hand-written non-`Vec<u8>`

@@ -16,7 +16,7 @@ fn ber_length_0x80_claims_zero_extra_bytes() {
     // 0x80 = long form with 0 extra bytes (indefinite form, not supported).
     // The decoder reads 0 additional bytes from the stream.
     // With 0 bytes to form a u128 from parse_length_u128, it folds to 0.
-    // This actually succeeds and returns 0 — document the actual behavior.
+    // This actually succeeds and returns 0 - document the actual behavior.
     let mut input: &[u8] = &[0x80];
     let result = tinyklv::dec::ber::ber_length(&mut input);
     // Behavior: 0x80 has num_bytes=0; parse_length_u128 with 0 bytes
@@ -66,7 +66,7 @@ fn ber_oid_single_continuation_byte_no_terminator() {
 
 #[test]
 fn ber_oid_three_continuation_bytes_no_terminator() {
-    // 0x80 has MSB set — take_while_msb_set consumes all three, then take_one fails
+    // 0x80 has MSB set - take_while_msb_set consumes all three, then take_one fails
     let mut input: &[u8] = &[0x80, 0x80, 0x80];
     assert!(tinyklv::dec::ber::ber_oid::<u64>(&mut input).is_err());
 }
@@ -116,7 +116,7 @@ fn ber_length_u32_max_roundtrip() {
 #[test]
 fn ber_oid_large_value_roundtrip() {
     // Encode a 3-byte OID value (> 16383, needs 3 VLQ bytes)
-    let val = 0x00_20_00_00_u64; // 2_097_152 — needs 4 VLQ bytes
+    let val = 0x00_20_00_00_u64; // 2_097_152 - needs 4 VLQ bytes
     let encoded = tinyklv::enc::ber::ber_oid(&val);
     assert!(encoded.len() >= 3, "large OID needs multiple bytes");
     let decoded = tinyklv::dec::ber::ber_oid::<u64>(&mut encoded.as_slice()).unwrap();

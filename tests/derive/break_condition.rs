@@ -24,7 +24,7 @@ struct BreakPacket {
     b: Option<u32>,
 }
 
-// The default BreakCondition returns Proceed — all keys are processed.
+// The default BreakCondition returns Proceed - all keys are processed.
 
 #[test]
 fn default_break_condition_proceeds_through_all_keys() {
@@ -53,7 +53,7 @@ fn default_break_condition_empty_stream_fails_required() {
 
 #[test]
 fn default_break_condition_partial_stream_fails_required() {
-    // Only optional field present — required `a` absent → Err
+    // Only optional field present - required `a` absent → Err
     let data: &[u8] = &[0x02, 0x04, 0xDE, 0xAD, 0xBE, 0xEF];
     let result = BreakPacket::decode(&mut &data[..]);
     assert!(result.is_err());

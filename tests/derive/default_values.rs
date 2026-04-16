@@ -52,7 +52,7 @@ fn decode_with_init_key_absent_uses_default() {
 
 #[test]
 fn decode_without_init_still_required() {
-    // Key 0x02 is absent and has no init — should fail
+    // Key 0x02 is absent and has no init - should fail
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x10];
     let result = WithInit::decode(&mut &data[..]);
     assert!(result.is_err(), "field without init is required");
@@ -83,7 +83,7 @@ fn roundtrip_with_init() {
 struct WithExtraField {
     #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = enc_u8)]
     klv_field: u8,
-    // No #[klv] — uses Default::default()
+    // No #[klv] - uses Default::default()
     extra: String,
 }
 

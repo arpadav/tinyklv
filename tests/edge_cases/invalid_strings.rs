@@ -13,7 +13,7 @@ fn strict_utf8_0xff_0xfe_fails() {
     let result = to_string_utf8_strict(2)(&mut input);
     assert!(
         result.is_err(),
-        "0xFF 0xFE is not valid UTF-8 — strict decoder should fail"
+        "0xFF 0xFE is not valid UTF-8 - strict decoder should fail"
     );
 }
 
@@ -35,7 +35,7 @@ fn strict_utf8_truncated_multibyte_fails() {
 
 #[test]
 fn strict_utf8_overlong_fails() {
-    // 0xC0 0x80 is an overlong encoding of NUL — invalid UTF-8
+    // 0xC0 0x80 is an overlong encoding of NUL - invalid UTF-8
     let mut input: &[u8] = &[0xC0, 0x80];
     let result = to_string_utf8_strict(2)(&mut input);
     assert!(result.is_err());

@@ -21,7 +21,7 @@ fn ber_len_enc(v: usize) -> Vec<u8> {
 }
 
 // --------------------------------------------------
-// BER OID keys + BER lengths — MISB-style encoding
+// BER OID keys + BER lengths - MISB-style encoding
 // --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
@@ -137,7 +137,7 @@ struct BerLargePayload {
 
 #[test]
 fn encode_ber_large_length_roundtrip() {
-    // Build a string with 200 bytes — forces a multi-byte BER length (>= 128)
+    // Build a string with 200 bytes - forces a multi-byte BER length (>= 128)
     let s: String = "A".repeat(200);
     let original = BerLargePayload { payload: s };
     let encoded = original.encode_value();
@@ -155,7 +155,7 @@ fn encode_ber_large_length_roundtrip() {
 #[test]
 fn decode_ber_missing_required_fails() {
     let data: &[u8] = &[
-        0x02, 0x02, 0x00, 0x01, // wrong key — 0x01 absent
+        0x02, 0x02, 0x00, 0x01, // wrong key - 0x01 absent
     ];
     let result = BerLargePayload::decode(&mut &data[..]);
     assert!(result.is_err());
@@ -163,7 +163,7 @@ fn decode_ber_missing_required_fails() {
 
 #[test]
 fn decode_ber_fields_reversed_order() {
-    // Fields in reverse order — decoder must still match by key
+    // Fields in reverse order - decoder must still match by key
     let data = {
         let mut v = vec![];
         v.push(0x03_u8);

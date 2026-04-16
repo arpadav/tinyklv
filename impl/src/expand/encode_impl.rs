@@ -86,7 +86,7 @@ pub(crate) fn gen_encode_impl(
 ///
 /// # Safety
 ///
-/// Uses `.unwrap()` on `attrs.enc` — this is safe because `gen_encode_impl`
+/// Uses `.unwrap()` on `attrs.enc` - this is safe because `gen_encode_impl`
 /// only calls this function when `all_encoders_exist` is `true`, guaranteeing
 /// every field attribute carries a non-`None` encoder
 fn gen_items_encoded(

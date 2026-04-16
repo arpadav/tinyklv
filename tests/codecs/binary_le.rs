@@ -1,7 +1,7 @@
 use tinyklv::prelude::*;
 
 // --------------------------------------------------
-// u8 — endianness is irrelevant for single-byte
+// u8 - endianness is irrelevant for single-byte
 // types, but both decoders exist
 // --------------------------------------------------
 

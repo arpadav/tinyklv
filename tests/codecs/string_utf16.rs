@@ -37,7 +37,7 @@ fn utf16_le_empty_string() {
 
 #[test]
 fn utf16_le_odd_length_err() {
-    // 3 bytes is odd — not a valid UTF-16 length
+    // 3 bytes is odd - not a valid UTF-16 length
     let mut input: &[u8] = &[0x41, 0x00, 0x42];
     let result = to_string_utf16_le(3)(&mut input);
     assert!(result.is_err(), "odd byte length should fail for UTF-16 LE");

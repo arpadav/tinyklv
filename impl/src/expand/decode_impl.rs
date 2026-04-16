@@ -69,8 +69,8 @@ pub(crate) fn gen_decode_impl(
                     fn seek<'z>(input: &mut #stream_lifetimed) -> ::tinyklv::__export::winnow::Result<#stream_lifetimed> {
                     // ---- ^^^ ---- remember this is PACKET_LIFETIME_CHAR
                         let checkpoint = input.checkpoint();
-                        let input = match #sentinel_seeker_static_name.find(&input) {
-                            Some(position) => &mut &input[position + #sentinel_len_static_name..],
+                        match #sentinel_seeker_static_name.find(&input) {
+                            Some(position) => *input = &input[position + #sentinel_len_static_name..],
                             None => return Err(
                                 ::tinyklv::__export::winnow::error::ContextError::new().add_context(
                                     input,

@@ -49,7 +49,7 @@ fn custom_encoder_applies_inverse_transform() {
         plain: 7,
     };
     let encoded = packet.encode_value();
-    // Decode back — adjusted should come back as 101 (encode writes 100, decode adds 1)
+    // Decode back - adjusted should come back as 101 (encode writes 100, decode adds 1)
     let decoded = CustomDecoders::decode(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, packet);
 }

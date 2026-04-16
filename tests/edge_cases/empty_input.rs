@@ -132,7 +132,7 @@ fn to_string_utf8_nonzero_len_on_empty_fails() {
 
 #[test]
 fn to_string_utf16_le_zero_len_on_empty_ok() {
-    // len=0 on empty input is valid — zero bytes consumed, empty string returned
+    // len=0 on empty input is valid - zero bytes consumed, empty string returned
     let mut input: &[u8] = &[];
     let result = tinyklv::dec::binary::to_string_utf16_le(0)(&mut input);
     assert!(result.is_ok());
@@ -173,7 +173,7 @@ fn enc_u32(v: &u32) -> Vec<u8> {
     tinyklv::enc::binary::be_u32(*v)
 }
 
-/// A struct with all required fields — must fail on empty input
+/// A struct with all required fields - must fail on empty input
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -194,7 +194,7 @@ fn derive_all_required_empty_input_fails() {
     );
 }
 
-/// A struct with only optional fields — must succeed (all None) on empty input
+/// A struct with only optional fields - must succeed (all None) on empty input
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],

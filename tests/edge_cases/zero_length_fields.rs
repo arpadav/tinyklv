@@ -13,7 +13,7 @@ fn enc_u16(v: &u16) -> Vec<u8> {
 // --------------------------------------------------
 #[test]
 fn to_string_utf8_zero_len_returns_empty() {
-    let mut input: &[u8] = &[0x41, 0x42, 0x43]; // "ABC" — should not be consumed
+    let mut input: &[u8] = &[0x41, 0x42, 0x43]; // "ABC" - should not be consumed
     let result = to_string_utf8(0)(&mut input).unwrap();
     assert_eq!(result, "", "len=0 should return empty string");
     // Input must be unconsumed

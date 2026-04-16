@@ -29,7 +29,7 @@ use std::fmt::Display;
 /// References can be shared since this type uses run-time exclusive mut
 /// checking via [`RefCell`]
 pub(crate) struct Ctxt {
-    /// Error accumulator — set to `None` once [`Ctxt::check`] is called to
+    /// Error accumulator - set to `None` once [`Ctxt::check`] is called to
     /// prevent double-checking
     errors: RefCell<Option<Vec<syn::Error>>>,
 }

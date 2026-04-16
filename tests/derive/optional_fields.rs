@@ -114,7 +114,7 @@ fn decode_reversed_field_order() {
 // The macro uses `.ok().or(#name)` which keeps the first successful parse.
 #[test]
 fn decode_duplicate_required_field_last_wins() {
-    // key=0x01 len=1 val=0x01, then key=0x01 len=1 val=0x02 — last-wins semantics
+    // key=0x01 len=1 val=0x01, then key=0x01 len=1 val=0x02 - last-wins semantics
     let data: &[u8] = &[0x01, 0x01, 0x01, 0x01, 0x01, 0x02];
     let result = WithOptionals::decode(&mut &data[..]).unwrap();
     assert_eq!(result.required, 0x02);
