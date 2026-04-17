@@ -1,237 +1,194 @@
-# tinyklv: A [Key-Length-Value (KLV)](https://en.wikipedia.org/wiki/KLV) framework in Rust using [`winnow`](https://crates.io/crates/winnow)
+# tinyklv - KLV framework in Rust
 
-[![LICENSE](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Crates.io Version](https://img.shields.io/crates/v/tinyklv.svg)](https://crates.io/crates/tinyklv)
+[![Crates.io](https://img.shields.io/crates/v/tinyklv.svg)](https://crates.io/crates/tinyklv)
+[![Documentation](https://img.shields.io/docsrs/tinyklv)](https://docs.rs/tinyklv)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![MSRV](https://img.shields.io/badge/rustc-1.95%2B-orange.svg)](https://www.rust-lang.org)
+[![CI](https://img.shields.io/github/actions/workflow/status/arpadav/tinyklv/ci.yml?branch=main)](https://github.com/arpadav/tinyklv/actions)
 
-`tinyklv` is a derive-macro framework for encoding and decoding KLV (Key-Length-Value)
-binary streams. Define your packet struct, annotate with `#[derive(Klv)]`, and get
-`Decode`, `Encode`, `Seek`, and `Extract` implementations generated automatically.
+A derive-macro framework for encoding and decoding [Key-Length-Value (KLV)](https://en.wikipedia.org/wiki/KLV)
+binary streams, built on [`winnow`](https://crates.io/crates/winnow) parser combinators.
 
-Built on [`winnow`](https://crates.io/crates/winnow) for parsing. Designed for network
-packets, telemetry streams (MISB 0601/0903), and any TLV-structured binary protocol.
+## What is KLV?
 
-## Basic
+KLV is a generic Tag-Length-Value (TLV) framing pattern: every field in a byte
+stream is prefixed by a key identifying it and a length giving its size. It is
+the backbone of telemetry packets, video metadata streams, IoT sensor framing,
+and most custom binary protocols that need to evolve without breaking older
+parsers.
 
-A struct with primitive fields. Decode a raw KLV stream, encode it back.
+`tinyklv` is protocol-agnostic. It ships no baked-in standards - you declare
+your keys, your length encoding, your sentinel, and the codec for each field
+via attributes on a struct. The derive macro generates the wire format
+accessors; you control the schema.
 
-```rust,ignore
+## Quick Start
+
+```sh
+cargo add tinyklv
+```
+
+```rust
 use tinyklv::Klv;
 use tinyklv::prelude::*;
+
+fn enc_u8(v: &u8)   -> Vec<u8> { tinyklv::enc::binary::u8(*v) }
+fn enc_u16(v: &u16) -> Vec<u8> { tinyklv::enc::binary::be_u16(*v) }
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
+    sentinel = b"\x47\x48",
     key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    len(dec = tinyklv::dec::binary::be_u8_as_usize,
+        enc = tinyklv::enc::binary::u8_from_usize),
 )]
-struct BasicPacket {
-    #[klv(key = 0x01, var = true, dec = tinyklv::dec::binary::to_string_utf8, enc = tinyklv::enc::string::from_string_utf8)]
-    label: String,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = tinyklv::enc::binary::be_u16)]
-    value: u16,
+struct HeartbeatPacket {
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8,  enc = enc_u8)]
+    sequence: u8,
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    temperature_centideg: u16,
 }
 
-// Decode from raw bytes
-let stream: &[u8] = &[
-    0x01, 0x03, 0x4B, 0x4C, 0x56,  // key=0x01, len=3, "KLV"
-    0x02, 0x02, 0x01, 0x02,        // key=0x02, len=2, 258
-];
-let packet = BasicPacket::decode(&mut &*stream).unwrap();
-assert_eq!(packet.label, "KLV");
-assert_eq!(packet.value, 258);
+fn main() {
+    let original = HeartbeatPacket { sequence: 42, temperature_centideg: 2350 };
 
-// Encode back to bytes — roundtrip identity
-let encoded = packet.encode_value();
-let roundtrip = BasicPacket::decode(&mut encoded.as_slice()).unwrap();
-assert_eq!(roundtrip, packet);
+    let frame = original.encode_frame();
+    let decoded = HeartbeatPacket::decode_frame(&mut frame.as_slice()).unwrap();
+
+    assert_eq!(decoded, original);
+}
 ```
 
-## Intermediate
+Full annotated version: [`examples/01_hello_world.rs`](examples/01_hello_world.rs).
 
-Custom domain types, sentinel-based stream seeking, and optional fields.
-Each custom type implements `Decode` and `EncodeValue` manually — the derive
-macro calls your encoder/decoder functions per field.
+## Feature Highlights
 
-```rust,ignore
-use tinyklv::Klv;
-use tinyklv::prelude::*;
+- `#[derive(Klv)]` proc-macro generates encode and decode in one pass
+- Built-in codecs: binary (BE/LE for `u8..u64`, `i8..i64`, `f32/f64`), BER length, BER-OID keys, UTF-8 / UTF-16 / ASCII strings
+- Sentinel seeking - resync on noisy byte streams via `seek_sentinel`
+- Repeated decode with user-defined break conditions
+- Nested `Klv` structs - compose packets from sub-packets
+- Generic structs and lifetimes supported (see below)
+- `Option<T>` fields, per-field and per-container defaults, `deny_unknown_keys`
+- Stream type is user-selected (`&[u8]` is the default but not required) - any `winnow::Stream` works
 
-// -- Custom types with manual encode/decode --
+## Examples
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Priority { Low, Medium, High, Critical }
+Fifteen runnable examples live under [`examples/`](examples/). Run any with
+`cargo run --example <name>`.
 
-fn decode_priority(input: &mut &[u8]) -> winnow::Result<Priority> {
-    let b = tinyklv::dec::binary::be_u8(input)?;
-    match b {
-        0 => Ok(Priority::Low),
-        1 => Ok(Priority::Medium),
-        2 => Ok(Priority::High),
-        3 => Ok(Priority::Critical),
-        _ => Err(winnow::error::ParserError::from_input(input)),
-    }
-}
-fn encode_priority(v: &Priority) -> Vec<u8> {
-    vec![match v { Priority::Low => 0, Priority::Medium => 1, Priority::High => 2, Priority::Critical => 3 }]
-}
+### Beginner
 
-#[derive(Debug, Clone, PartialEq)]
-struct Coordinate { lat: f64, lon: f64 }
+| # | File | What it shows |
+|---|------|---------------|
+| 01 | [`01_hello_world.rs`](examples/01_hello_world.rs) | Minimal two-field struct, full roundtrip |
+| 02 | [`02_custom_key_types.rs`](examples/02_custom_key_types.rs) | Swap the key codec: `u8` vs BE-`u16` vs LE-`u16` |
+| 03 | [`03_strings_and_types.rs`](examples/03_strings_and_types.rs) | UTF-8 strings alongside fixed-width integers |
+| 04 | [`04_optional_fields.rs`](examples/04_optional_fields.rs) | `Option<T>` fields and missing-key handling |
+| 05 | [`05_basic_roundtrip.rs`](examples/05_basic_roundtrip.rs) | BER-keyed, `encode_value` vs `encode_frame` |
 
-fn decode_coordinate(input: &mut &[u8]) -> winnow::Result<Coordinate> {
-    Ok(Coordinate {
-        lat: tinyklv::dec::binary::be_f64(input)?,
-        lon: tinyklv::dec::binary::be_f64(input)?,
-    })
-}
-fn encode_coordinate(v: &Coordinate) -> Vec<u8> {
-    [tinyklv::enc::binary::be_f64(v.lat), tinyklv::enc::binary::be_f64(v.lon)].concat()
-}
+### Intermediate
 
-// -- Sentinel packet: seek + decode in one step --
+| # | File | What it shows |
+|---|------|---------------|
+| 06 | [`06_custom_encoder_decoder.rs`](examples/06_custom_encoder_decoder.rs) | User-written scaled-`f64` codec |
+| 07 | [`07_sentinel_seeking.rs`](examples/07_sentinel_seeking.rs) | Recover from prefix noise using `seek_sentinel` |
+| 08 | [`08_nested_packets.rs`](examples/08_nested_packets.rs) | Nested `Klv` structs as fields |
+| 09 | [`09_ber_keyed.rs`](examples/09_ber_keyed.rs) | Multi-byte BER-OID keys |
+| 10 | [`10_defaults_and_init.rs`](examples/10_defaults_and_init.rs) | Container-level and field-level defaults |
 
-#[derive(Klv, Debug, PartialEq)]
-#[klv(
-    stream = &[u8],
-    sentinel = b"\xBE\xEF",
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
-)]
-struct NavPacket {
-    #[klv(key = 0x01, dec = decode_coordinate, enc = encode_coordinate)]
-    position: Coordinate,
-    #[klv(key = 0x02, dec = decode_priority, enc = encode_priority)]
-    priority: Priority,
-    #[klv(key = 0x03, dec = decode_coordinate, enc = encode_coordinate)]
-    destination: Option<Coordinate>,
-}
+### Advanced
 
-let packet = NavPacket {
-    position:    Coordinate { lat: 37.7749, lon: -122.4194 },
-    priority:    Priority::High,
-    destination: None,  // optional — omitted from encoding
-};
+| # | File | What it shows |
+|---|------|---------------|
+| 11 | [`11_repeated_extraction.rs`](examples/11_repeated_extraction.rs) | Loop `decode_frame` over N concatenated frames |
+| 12 | [`12_enum_dispatch_stream.rs`](examples/12_enum_dispatch_stream.rs) | Peek-dispatch heterogeneous packets into an enum |
+| 13 | [`13_variable_length_fields.rs`](examples/13_variable_length_fields.rs) | Variable-width BER lengths |
+| 14 | [`14_break_condition_custom.rs`](examples/14_break_condition_custom.rs) | Manual `DecodeValue` with skip/break logic |
+| 15 | [`15_tokio_stream_e2e.rs`](examples/15_tokio_stream_e2e.rs) | End-to-end async pipeline with `tokio::mpsc` |
 
-// encode() prepends sentinel + length automatically
-let encoded = packet.encode();
-assert_eq!(&encoded[0..2], b"\xBE\xEF");
+## Traits at a Glance
 
-// extract() seeks the sentinel in any stream, then decodes
-let mut stream = encoded.as_slice();
-let decoded = NavPacket::extract(&mut stream).unwrap();
-assert_eq!(decoded, packet);
-assert_eq!(decoded.destination, None);
+Everything ships through `tinyklv::prelude::*` (re-exports are anonymized via
+`as _`, so the import does not pollute your namespace).
 
-// Garbage bytes before the sentinel are skipped
-let mut noisy = vec![0xDE, 0xAD, 0xFF];
-noisy.extend(&encoded);
-let decoded = NavPacket::extract(&mut noisy.as_slice()).unwrap();
-assert_eq!(decoded.position.lat, 37.7749);
-```
+| Trait | Purpose | Typical call-site |
+|-------|---------|-------------------|
+| `EncodeValue<O>` | Encode only the value body (KLV triples, no frame header) | `val.encode_value()` |
+| `EncodeFrame<O>` | Encode sentinel + length + value body | `val.encode_frame()` |
+| `DecodeValue<S>` | Decode value body from an unframed slice | `T::decode_value(&mut s)` |
+| `DecodeFrame<S>` | Seek sentinel, read length, subslice, then decode | `T::decode_frame(&mut s)` |
+| `SeekSentinel<S>` | Advance the stream to the next sentinel occurrence | `T::seek_sentinel(&mut s)` |
+| `RepeatedDecode<S>` | Decode a loop of N frames into a `Vec<T>` | internal to `repeated` fields |
+| `BreakCondition<S>` | User-supplied stop predicate for repeated decode | advanced use |
+| `IntoKlv<O>` | Marker for types emitted into the KLV output alphabet | codec authors |
 
-## Advanced
+## Attributes Cheat Sheet
 
-Multiple packet types on one stream. Each has a unique sentinel. A thin
-enum wrapper peeks the sentinel bytes and dispatches to the correct
-`extract()` call — the derive macro handles everything else.
+### Container-level `#[klv(...)]`
 
-```rust,ignore
-use tinyklv::Klv;
-use tinyklv::prelude::*;
+| Attribute | Purpose |
+|-----------|---------|
+| `stream = &[u8]` | Input stream type (any `winnow::Stream`) |
+| `sentinel = b"\xNN..."` | Magic bytes marking frame start - enables `decode_frame` / `SeekSentinel` |
+| `key(dec = path, enc = path)` | Codec pair for the key field |
+| `len(dec = path, enc = path)` | Codec pair for the length field (must produce `usize` on decode) |
+| `default(typ = T, dec = path, enc = path)` | Default codec pair for every field of type `T` |
+| `debug` | Emit the generated impl blocks at compile time |
+| `deny_unknown_keys` | Error on unrecognized keys instead of skipping |
+| `allow_unimplemented_encode` | Skip generating `EncodeValue`/`EncodeFrame` |
+| `allow_unimplemented_decode` | Skip generating `DecodeValue`/`DecodeFrame` |
 
-// NavPacket (sentinel 0xBEEF) and WeatherPacket (sentinel 0xCAFE)
-// defined with #[derive(Klv)] as in the Intermediate example...
+### Field-level `#[klv(...)]`
 
-#[derive(Debug)]
-enum Packet {
-    Nav(NavPacket),
-    Weather(WeatherPacket),
-}
+| Attribute | Purpose |
+|-----------|---------|
+| `key = 0xNN` | Key value for this field |
+| `dec = path` | Decoder function `fn(&mut S) -> winnow::Result<T>` |
+| `enc = path` | Encoder function `fn(&T) -> Vec<u8>` |
+| `var = true` | Field has variable-width value (length prefix is authoritative) |
+| `default = expr` | Value used if the key is absent on decode |
+| `sentinel = b"..."` | Per-field sentinel for nested framed fields |
+| `stream = &[u8]` | Per-field stream override |
+| `break` | Break repeated decode when this condition fires |
+| `repeated` | Decode this field as a `Vec<T>` of repeated inner frames |
 
-/// Peek 2 bytes, dispatch to the matching extract()
-fn dispatch(input: &mut &[u8]) -> Option<Packet> {
-    if input.len() < 2 {
-        *input = &[];
-        return None;
-    }
-    match &input[0..2] {
-        b"\xBE\xEF" => NavPacket::extract(input).ok().map(Packet::Nav),
-        b"\xCA\xFE" => WeatherPacket::extract(input).ok().map(Packet::Weather),
-        _ => { *input = &input[1..]; None } // skip unknown byte
-    }
-}
+## Generic Structs
 
-// Build a mixed stream: Nav, Weather, Nav
-let mut stream: Vec<u8> = Vec::new();
-stream.extend(nav1.encode());
-stream.extend(weather1.encode());
-stream.extend(nav2.encode());
-
-// Drain the stream
-let mut slice = stream.as_slice();
-let mut packets = Vec::new();
-while !slice.is_empty() {
-    if let Some(p) = dispatch(&mut slice) {
-        packets.push(p);
-    }
-}
-assert_eq!(packets.len(), 3);
-```
-
-### Extracting repeated packets
-
-For a single packet type, loop `extract()` directly:
+`#[derive(Klv)]` preserves generics and lifetimes verbatim via
+`split_for_impl()`, so you can do:
 
 ```rust,ignore
-let stream: Vec<u8> = waypoints.iter().flat_map(|w| w.encode()).collect();
-let mut slice = stream.as_slice();
-let mut results = Vec::new();
-while let Ok(w) = Waypoint::extract(&mut slice) {
-    results.push(w);
-}
-assert_eq!(results.len(), waypoints.len());
-```
-
-### Owned-value encoders
-
-Encoder functions receive `&T` by default. If your encoder takes `T` by value,
-wrap it with `enc_owned!`:
-
-```rust,ignore
-fn encode_priority_owned(v: Priority) -> Vec<u8> { /* ... */ }
-
 #[derive(Klv)]
 #[klv(/* ... */)]
-struct Packet {
-    #[klv(key = 0x01, dec = decode_priority, enc = tinyklv::enc_owned!(encode_priority_owned))]
-    priority: Priority,
+struct Packet<'a, T: MyBound> {
+    #[klv(key = 0x01, dec = ..., enc = ...)]
+    payload: T,
+    _marker: std::marker::PhantomData<&'a T>,
 }
 ```
 
-## Features
+Bounded type parameters, lifetimes, and `PhantomData` all compose cleanly with
+the generated `EncodeValue` / `DecodeFrame` / friends. See
+[`tests/derive/advanced_generics.rs`](tests/derive/advanced_generics.rs) for
+the canonical reference.
 
-| Feature | Description |
-|---------|-------------|
-| `full` | Enables all optional features |
-| `ascii` | ASCII string codec |
-| `chrono` | Date/time parsing via `chrono` |
-| `tracing` | Debug logging during decode |
+## mdBook Documentation
 
-## Key Concepts
+Long-form conceptual docs (how the macro expands, codec authoring, performance
+notes) are being scaffolded. Placeholder: <https://arpadav.github.io/tinyklv/>.
 
-| Trait | Direction | What it does |
-|-------|-----------|--------------|
-| `Decode<S>` | Decode | Parse fields from a KLV byte stream |
-| `EncodeValue<O>` | Encode | Serialize fields to KLV bytes |
-| `Seek<S>` | Decode | Find a packet by its sentinel |
-| `Extract<S>` | Decode | `Seek` + `Decode` in one step |
-| `Encode<O>` | Encode | Sentinel + length + `EncodeValue` |
+## Contributing
 
-- **`decode()`** — parse KLV triples from a byte stream (no sentinel)
-- **`extract()`** — seek sentinel, then decode (use for framed streams)
-- **`encode_value()`** — serialize fields as KLV triples
-- **`encode()`** — sentinel + length prefix + `encode_value()` (for sentinel types)
+Issues and pull requests are welcome at
+<https://github.com/arpadav/tinyklv>. Run `cargo test --all` and
+`cargo clippy --all-targets -- -D warnings` before opening a PR.
+
+## Changelog
+
+See [releases](https://github.com/arpadav/tinyklv/releases).
 
 ## License
 
-`tinyklv` is licensed under the [MIT License](./LICENSE).
+Licensed under the MIT License. See [LICENSE](LICENSE) for details.
