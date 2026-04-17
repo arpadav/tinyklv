@@ -5,9 +5,6 @@ use tinyklv::codecs::binary::dec::{to_string_utf16_le, to_string_utf8};
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
-fn enc_u16(v: &u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(*v)
-}
 // --------------------------------------------------
 // len=0 behavior across all relevant decoders
 // --------------------------------------------------
@@ -89,13 +86,13 @@ fn enc_be_u64_lengthed_zero_produces_empty() {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct ZeroLenOptional {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     numeric: Option<u16>,
     #[klv(
         key = 0x02,
         varlen = true,
         dec = tinyklv::dec::binary::to_string_utf8,
-        enc = tinyklv::enc::string::from_string_utf8
+        enc = &tinyklv::enc::string::from_string_utf8
     )]
     label: Option<String>,
 }

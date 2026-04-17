@@ -1,181 +1,103 @@
-# EncOwned: Autoref-Deref Specialization Attempt
+# Encoder Dispatch: Why `EncodeAs` Instead of Autoref-Deref
 
-Personal notes on the attempt to automatically dispatch between `fn(&T) -> Vec<u8>`
-and `fn(T) -> Vec<u8>` encoder signatures using dtolnay's autoref-deref trick.
+Postmortem on an abandoned experiment, and the rationale for the
+current `EncodeAs`-trait design. For current usage, see
+[Encoder dispatch sigils](../reference/attributes.md#encoder-dispatch-sigils).
 
-**Outcome:** Abandoned. Stable Rust cannot do this. Replaced with `enc_owned!` macro.
+## Problem
 
----
+`#[derive(Klv)]` codegen emits one call-site per field encoder. Some
+encoders take `&T`, others want a borrowed slice form (`&str`, `&[T]`),
+and primitives are cheapest when passed by value. We wanted the macro
+to pick the right shape without clones or heap allocation, and without
+making the user write a different attribute per field type.
 
-## Goal
+## Abandoned approach: dtolnay-style autoref specialization
 
-The `#[derive(Klv)]` proc macro generates encoder calls as `encoder(&self.field)`.
-This works for `fn(&T) -> Vec<u8>` but fails for `fn(T) -> Vec<u8>`.
+The autoref-deref trick works when the thing being specialized is a
+**method** on a wrapper type - method resolution prefers the inherent
+impl over a `Deref`-reached one. We attempted to lift this to `Fn`
+traits: two wrappers, one implementing a trait for `Fn(&T) -> O`, the
+other (via `Deref`) for `Fn(T) -> O`.
 
-Wanted: proc macro emits one call site that resolves to either signature automatically.
+It does not work. `Fn` traits are **invariant** over their argument
+types. Method resolution does not re-examine trait impls after an
+initial candidate is selected, and trait-based dispatch has no
+equivalent of method-resolution priority. The autoref-deref pattern is
+specific to inherent methods on concrete types - not generalizable to
+trait selection on closure-like values.
 
-## Approach: dtolnay Autoref-Deref Specialization
+## Second iteration: three lexical sigils with `Clone::clone`
 
-Based on [dtolnay's autoref specialization pattern](https://github.com/dtolnay/case-studies/blob/master/autoref-specialization/README.md).
+An earlier revision of the proc macro accepted three sigils:
 
-Two wrapper structs - one with an inherent method (higher priority in method resolution),
-one reached via `Deref` (lower priority fallback):
+| Sigil | Emitted |
+|-------|---------|
+| none | `func(&self.field)` |
+| `&` | `func(Clone::clone(&self.field))` |
+| `*` | `func(&*self.field)` |
+
+This got the call shapes right but:
+
+- `&` cloned every `Copy` primitive (`Clone::clone(&u32)` is waste the
+  optimizer *usually* removes, but the IR churn is real and the intent
+  reads backwards).
+- `&` allocated for `String` (`Clone::clone(&String)` → new heap
+  buffer) when the encoder only needed `&str`.
+- `*` meaning "`&*self.field` at the call site" was counterintuitive -
+  users read `*func` as dereferencing the encoder, not as
+  pre-dereferencing the value.
+- Three shapes for what is, at the value level, one decision
+  (how to hand the owned field to the encoder).
+
+## Current approach: `&` sigil routed through `EncodeAs`
+
+Rust specialization is still unstable, but we do not need it - a
+dedicated trait with a GAT for the borrowed form resolves the dispatch
+cleanly:
 
 ```rust
-pub mod __enc {
-    use std::ops::Deref;
-
-    /// Primary wrapper - inherent method matches `Fn(&T) -> O`
-    pub struct EncCall<F>(pub F);
-
-    /// Fallback wrapper - reached via Deref, matches `Fn(T) -> O`
-    pub struct EncCallOwned<F>(pub F);
-
-    // Deref from EncCall → EncCallOwned so method resolution
-    // tries EncCall::call first, then falls back to EncCallOwned::call
-    impl<F> Deref for EncCall<F> {
-        type Target = EncCallOwned<F>;
-        fn deref(&self) -> &Self::Target {
-            // Same repr - single-field newtype
-            unsafe { &*(self as *const EncCall<F> as *const EncCallOwned<F>) }
-        }
-    }
-
-    // Priority 1: encoder takes &T
-    impl<F, T, O> EncCall<F>
-    where
-        F: Fn(&T) -> O,
-    {
-        pub fn call(&self, v: &T) -> O {
-            (self.0)(v)
-        }
-    }
-
-    // Priority 2 (via Deref): encoder takes T by value
-    impl<F, T, O> EncCallOwned<F>
-    where
-        F: Fn(T) -> O,
-        T: Clone,
-    {
-        pub fn call(&self, v: &T) -> O {
-            (self.0)(v.clone())
-        }
-    }
+pub trait EncodeAs {
+    type Borrowed<'a> where Self: 'a;
+    fn encode_as(&self) -> Self::Borrowed<'_>;
 }
 ```
 
-Proc macro would generate:
+The crate ships impls for the shapes where no-sigil `&T` is wrong:
 
-```rust
-// Instead of: #value_encoder(&self.#name)
-// Emit:
-::tinyklv::__enc::EncCall(#value_encoder).call(&self.#name)
-```
+| `T` | `Borrowed<'_>` | `encode_as(&self)` |
+|-----|----------------|--------------------|
+| primitives (`u8..u128`, `i…`, `usize`, `f32/f64`, `bool`, `char`) | `Self` | `*self` (by value, no clone) |
+| `String` | `&str` | `self.as_str()` |
+| `Vec<T>` | `&[T]` | `self.as_slice()` |
+| `Cow<'_, str>` / `Cow<'_, [T]>` | `&str` / `&[T]` | `self` |
+| `Box<T>`, `Rc<T>`, `Arc<T>` (`T: ?Sized`) | `&T` | `&**self` |
 
-Method resolution should try `EncCall::call` (inherent, `Fn(&T)`) first.
-If encoder is `fn(T)`, that fails, and Deref fallback resolves to `EncCallOwned::call`.
+Codegen collapses to two templates:
 
-## Why It Failed
+| Sigil | Emitted (required) | Emitted (`Option<T>`) |
+|-------|--------------------|------------------------|
+| none | `func(&self.field)` | `func(__val)` |
+| `&` | `func(EncodeAs::encode_as(&self.field))` | `func(EncodeAs::encode_as(__val))` |
 
-### Problem 1: Fn trait invariance breaks &String → &str coercion
+No `Clone::clone` anywhere in the generated encode path. Primitives
+compile down to a by-value pass; `String`/`Vec<T>`/`Cow`/`Box`/`Rc`/`Arc`
+compile down to the zero-cost borrow. Custom types are opt-in - a
+`Copy` enum gets it with a one-liner returning `*self`; otherwise the
+user stays on the no-sigil form and deref coercion handles
+`&String → &str`, `&Vec<u8> → &[u8]` at the call site as before.
 
-```rust
-fn from_string_utf8(input: &str) -> Vec<u8> { input.as_bytes().to_vec() }
-```
+See `src/traits/coerce.rs` for the trait and its impls,
+`impl/src/ast/types.rs` (`XcoderSigil`, `SiguledXcoder`) for the
+two-variant sigil enum, and `impl/src/expand/encode_impl.rs` for the
+per-sigil `quote_spanned!` blocks.
 
-The proc macro wraps a `String` field, so the call site is:
+## Why not a blanket `impl<T> EncodeAs for T`?
 
-```rust
-EncCall(from_string_utf8).call(&self.label)  // label: String
-```
-
-This requires `from_string_utf8: Fn(&String) -> Vec<u8>`, but `from_string_utf8`
-is `fn(&str) -> Vec<u8>`. At a direct call site, Rust auto-derefs `&String → &str`.
-But inside a `Fn(&T)` trait bound, `T` is inferred as `String`, and `Fn(&String)`
-does NOT match `fn(&str)` - **Fn traits are invariant in their input types**.
-
-#### Attempted fix: Borrow constraint
-
-```rust
-impl<F, T, B, O> EncCall<F>
-where
-    F: Fn(&B) -> O,
-    T: std::borrow::Borrow<B>,
-    B: ?Sized,
-{
-    pub fn call(&self, v: &T) -> O {
-        (self.0)(v.borrow())
-    }
-}
-```
-
-This fixes `String`/`str` coercion. But introduces Problem 2.
-
-### Problem 2: Method resolution does NOT fall through
-
-The autoref-deref trick works when the **receiver type** (`&self` vs `&&self`)
-disambiguates. Here, both wrappers take `&self` - the dispatch relies on
-**argument type inference** of the `F` bound.
-
-Rust's method resolution:
-
-1. Find candidates by receiver type (inherent methods first, then Deref chain)
-2. `EncCall::call` is inherent → it's the first candidate
-3. Rust **commits** to this candidate
-4. Then attempts type inference on `F: Fn(&B) -> O` with `T: Borrow<B>`
-5. If inference fails → **compile error**, not fallback to `EncCallOwned::call`
-
-The trick requires the compiler to see that `EncCall::call` is not applicable
-and *then* try the Deref target. But it commits before checking bounds fully.
-
-This is a fundamental limitation: the autoref-deref trick dispatches on
-**receiver type** (number of `&` wrappers), not on **generic bound satisfaction**.
-
-### Problem 3: Closure vs fn-pointer ambiguity
-
-Even if fallthrough worked, closures and function pointers have different `Fn` impls.
-A bare `fn(T) -> O` is both `Fn(T) -> O` and `Fn(&T) -> O` (for some inference paths),
-creating ambiguous resolution.
-
-## Solution: `enc_owned!` macro
-
-Explicit opt-in. No magic. User wraps owned-taking encoders:
-
-```rust
-#[macro_export]
-macro_rules! enc_owned {
-    ($encoder:path) => {
-        |v| $encoder(::core::clone::Clone::clone(v))
-    };
-}
-```
-
-Usage:
-
-```rust
-fn encode_priority_owned(v: Priority) -> Vec<u8> { /* ... */ }
-
-#[derive(Klv)]
-#[klv(/* ... */)]
-struct Packet {
-    #[klv(key = 0x01, dec = decode_priority, enc = tinyklv::enc_owned!(encode_priority_owned))]
-    priority: Priority,
-}
-```
-
-The macro expands to a closure `|v: &Priority| encode_priority_owned(v.clone())`,
-which satisfies the proc macro's `encoder(&self.field)` call pattern.
-
-Requires `T: Clone`. Proc macro already supports `XcoderLike::Macro` variant
-in the attribute parser, so `enc = tinyklv::enc_owned!(...)` works out of the box.
-
-## Takeaway
-
-Stable Rust cannot dispatch on function argument types at a single call site.
-The autoref-deref trick only works for **receiver-based** dispatch (inherent vs Deref).
-Generic bound satisfaction happens *after* candidate selection, not during.
-
-For dual-signature support, the options are:
-1. **`enc_owned!` macro** - explicit, zero-cost, works today ✓
-2. **Specialization** - unstable, `min_specialization` doesn't cover this
-3. **Proc macro detection** - would need to resolve types at macro expansion time (impossible without compiler integration)
+A blanket `fn encode_as(&self) -> &Self` would conflict with the
+specialized impls (`String → &str`, `Vec<T> → &[T]`, etc.) - Rust has
+no specialization to break the tie. Making users opt-in for custom
+types is a small papercut compared to the alternative (forcing every
+field through the slow path, or requiring negative impls). The blanket
+is deliberately omitted; `EncodeAs` is only consulted when the user
+writes `&` in the attribute.

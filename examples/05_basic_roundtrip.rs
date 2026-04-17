@@ -18,12 +18,6 @@ fn ber_key_enc(v: u64) -> Vec<u8> {
 fn ber_len_enc(v: usize) -> Vec<u8> {
     tinyklv::enc::ber::ber_length(&v)
 }
-fn enc_u32(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
-}
-fn enc_u16(v: &u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(*v)
-}
 
 /// Atmospheric sensor packet using BER-encoded keys and lengths.
 #[derive(Klv, Debug, PartialEq)]
@@ -38,11 +32,11 @@ fn enc_u16(v: &u16) -> Vec<u8> {
 )]
 struct AtmoSensor {
     // Key 0x01: pressure in Pascal (u32, big-endian)
-    #[klv(key = 0x01_u64, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x01_u64, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     pressure_pa: u32,
 
     // Key 0x02: temperature in 0.01 °C units (u16, big-endian)
-    #[klv(key = 0x02_u64, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x02_u64, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     temperature_centideg: u16,
 }
 

@@ -11,16 +11,6 @@ use rand::prelude::*;
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
-fn enc_u32(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
-}
-fn enc_f32(v: &f32) -> Vec<u8> {
-    tinyklv::enc::binary::be_f32(*v)
-}
-fn enc_u8(v: &u8) -> Vec<u8> {
-    tinyklv::enc::binary::u8(*v)
-}
-
 #[derive(Klv, Debug, PartialEq, Clone)]
 /// IoT environment sensor reading transmitted over a UDP-like async channel
 #[klv(
@@ -30,15 +20,15 @@ fn enc_u8(v: &u8) -> Vec<u8> {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct EnvReading {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     /// Sensor node ID
     node_id: u32,
 
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_f32, enc = enc_f32)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_f32, enc = &tinyklv::enc::binary::be_f32)]
     /// Temperature in 0.01 °C units stored as f32
     temperature_c: f32,
 
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u8, enc = enc_u8)]
+    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
     /// Relative humidity 0-100%
     humidity_pct: u8,
 }

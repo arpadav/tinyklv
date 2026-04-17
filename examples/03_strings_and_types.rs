@@ -12,10 +12,6 @@
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
-fn enc_u32(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
-}
-
 /// Weather-station registration metadata transmitted over a telemetry bus.
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -26,7 +22,7 @@ fn enc_u32(v: &u32) -> Vec<u8> {
 )]
 struct StationRegistration {
     // Key 0x01: 4-byte big-endian serial number (fixed-width decoder)
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     serial: u32,
 
     // Key 0x02: variable-length UTF-8 region name.
@@ -34,13 +30,13 @@ struct StationRegistration {
     //   fn(len: usize) -> impl Fn(&mut &[u8]) -> Result<String>
     #[klv(key = 0x02, varlen = true,
           dec = tinyklv::dec::binary::to_string_utf8,
-          enc = tinyklv::enc::string::from_string_utf8)]
+          enc = &tinyklv::enc::string::from_string_utf8)]
     region_name: String,
 
     // Key 0x03: variable-length UTF-8 station identifier
     #[klv(key = 0x03, varlen = true,
           dec = tinyklv::dec::binary::to_string_utf8,
-          enc = tinyklv::enc::string::from_string_utf8)]
+          enc = &tinyklv::enc::string::from_string_utf8)]
     station_id: String,
 }
 

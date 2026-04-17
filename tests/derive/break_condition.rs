@@ -4,13 +4,6 @@
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
-fn enc_u16(v: &u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(*v)
-}
-fn enc_u32(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
-}
-
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -18,9 +11,9 @@ fn enc_u32(v: &u32) -> Vec<u8> {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct BreakPacket {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     a: u16,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     b: Option<u32>,
 }
 

@@ -16,9 +16,6 @@ directly unless you are writing a custom codec.
 use tinyklv::Klv;
 use tinyklv::prelude::*;
 
-fn enc_u8(v: &u8)   -> Vec<u8> { tinyklv::enc::binary::u8(*v) }
-fn enc_u16(v: &u16) -> Vec<u8> { tinyklv::enc::binary::be_u16(*v) }
-
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -28,9 +25,9 @@ fn enc_u16(v: &u16) -> Vec<u8> { tinyklv::enc::binary::be_u16(*v) }
         enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct HeartbeatPacket {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8,  enc = enc_u8)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8,  enc = &tinyklv::enc::binary::u8)]
     sequence: u8,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     temperature_centideg: u16,
 }
 

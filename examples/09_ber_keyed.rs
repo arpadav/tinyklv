@@ -21,16 +21,6 @@ fn ber_len_enc(v: usize) -> Vec<u8> {
     tinyklv::enc::ber::ber_length(&v)
 }
 
-fn enc_u8(v: &u8) -> Vec<u8> {
-    tinyklv::enc::binary::u8(*v)
-}
-fn enc_u32(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
-}
-fn enc_u16(v: &u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(*v)
-}
-
 /// Process-control packet with BER-OID keys spanning different byte widths.
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -43,15 +33,15 @@ fn enc_u16(v: &u16) -> Vec<u8> {
 )]
 struct ProcessControl {
     // Key 0x01 (single byte on the wire - value < 128)
-    #[klv(key = 0x01_u64, dec = tinyklv::dec::binary::be_u8, enc = enc_u8)]
+    #[klv(key = 0x01_u64, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
     device_class: u8,
 
     // Key 0x0100 = 256 - requires 2 BER-OID bytes: [0x82, 0x00]
-    #[klv(key = 0x0100_u64, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x0100_u64, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     set_point: u32,
 
     // Key 0x4001 = 16385 - requires 3 BER-OID bytes: [0xC0, 0x80, 0x01]
-    #[klv(key = 0x4001_u64, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x4001_u64, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     alarm_code: u16,
 }
 

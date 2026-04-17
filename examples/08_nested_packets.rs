@@ -12,19 +12,6 @@
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
-fn enc_u8(v: &u8) -> Vec<u8> {
-    tinyklv::enc::binary::u8(*v)
-}
-fn enc_u16(v: &u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(*v)
-}
-fn enc_u32(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
-}
-fn enc_f32(v: &f32) -> Vec<u8> {
-    tinyklv::enc::binary::be_f32(*v)
-}
-
 /// Engine-health sub-packet (inner). Can be encoded/decoded stand-alone.
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -34,15 +21,15 @@ fn enc_f32(v: &f32) -> Vec<u8> {
 )]
 struct EngineHealth {
     // RPM as u16
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     rpm: u16,
 
     // Coolant temperature in 0.1 °C units (u16)
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     coolant_temp_decideg: u16,
 
     // Oil pressure in kPa (u8, 0-255)
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u8, enc = enc_u8)]
+    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
     oil_pressure_kpa: u8,
 }
 
@@ -56,11 +43,11 @@ struct EngineHealth {
 )]
 struct VehicleStatus {
     // Key 0x01: vehicle ID
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     vehicle_id: u32,
 
     // Key 0x02: speed in km/h as f32
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_f32, enc = enc_f32)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_f32, enc = &tinyklv::enc::binary::be_f32)]
     speed_kmh: f32,
 
     // Key 0x03: nested EngineHealth - decode_value / encode_value are

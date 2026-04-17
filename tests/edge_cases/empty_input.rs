@@ -164,13 +164,6 @@ fn le_u16_as_usize_empty() {
     assert!(tinyklv::dec::binary::le_u16_as_usize(&mut input).is_err());
 }
 
-fn enc_u16(v: &u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(*v)
-}
-fn enc_u32(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
-}
-
 #[derive(Klv, Debug, PartialEq)]
 /// A struct with all required fields - must fail on empty input
 #[klv(
@@ -179,7 +172,7 @@ fn enc_u32(v: &u32) -> Vec<u8> {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct AllRequired {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     val: u16,
 }
 
@@ -200,9 +193,9 @@ fn derive_all_required_empty_input_fails() {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct AllOptional {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     val: Option<u16>,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     other: Option<u32>,
 }
 

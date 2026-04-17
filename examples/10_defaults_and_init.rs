@@ -73,10 +73,6 @@ impl tinyklv::EncodeValue<Vec<u8>> for NetworkMode {
     }
 }
 
-fn enc_u16(v: &u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(*v)
-}
-
 // --- Struct using container-level defaults and field-level init -------------
 
 /// Radio telemetry config. Both enum fields share codec defaults at container
@@ -109,7 +105,7 @@ struct RadioConfig {
     mode: NetworkMode,
 
     // Explicit codec + init fallback: if key 0x04 is absent, channel = 1
-    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_u16, enc = tinyklv::enc::binary::be_u16, init = 1_u16)]
+    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16, init = 1_u16)]
     channel: u16,
 }
 

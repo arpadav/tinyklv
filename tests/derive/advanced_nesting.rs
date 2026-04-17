@@ -10,10 +10,6 @@ use super::types::*;
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
-// --------------------------------------------------
-// test 1: single level of Klv-derived nesting
-// --------------------------------------------------
-
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -34,7 +30,7 @@ struct SensorModule {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct Platform {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     id: u16,
     #[klv(key = 0x02, dec = SensorModule::decode_value, enc = SensorModule::encode_value)]
     sensor: SensorModule,
@@ -113,7 +109,7 @@ fn nested_klv_derived_roundtrip_zero_values() {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct Core {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     value: u32,
 }
 
@@ -213,7 +209,7 @@ fn nested_two_deep_max_values() {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct PlatformOptional {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     id: u16,
     #[klv(key = 0x02, dec = SensorModule::decode_value, enc = SensorModule::encode_value)]
     sensor: Option<SensorModule>,

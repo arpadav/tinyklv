@@ -10,16 +10,6 @@
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
-fn enc_f64(v: &f64) -> Vec<u8> {
-    tinyklv::enc::binary::be_f64(*v)
-}
-fn enc_u8(v: &u8) -> Vec<u8> {
-    tinyklv::enc::binary::u8(*v)
-}
-fn enc_u32(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
-}
-
 /// Autonomous-navigation waypoint packet.
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -31,19 +21,19 @@ fn enc_u32(v: &u32) -> Vec<u8> {
 )]
 struct Waypoint {
     // Sequential waypoint index
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     index: u32,
 
     // Latitude in decimal degrees (f64)
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_f64, enc = enc_f64)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_f64, enc = &tinyklv::enc::binary::be_f64)]
     lat_deg: f64,
 
     // Longitude in decimal degrees (f64)
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_f64, enc = enc_f64)]
+    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_f64, enc = &tinyklv::enc::binary::be_f64)]
     lon_deg: f64,
 
     // Speed limit at this waypoint in 0.1 m/s units
-    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_u8, enc = enc_u8)]
+    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
     speed_limit_dms: u8,
 }
 

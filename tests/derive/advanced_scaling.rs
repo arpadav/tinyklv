@@ -10,13 +10,13 @@ use tinyklv::Klv;
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct TelemetryPacket {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     id: u16,
     #[klv(key = 0x02, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
     timestamp: Timestamp,
     #[klv(key = 0x03, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
     position: Coordinate,
-    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_f32, enc = enc_f32)]
+    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_f32, enc = &tinyklv::enc::binary::be_f32)]
     altitude: f32,
     #[klv(key = 0x05, dec = Velocity::decode_value, enc = Velocity::encode_value)]
     velocity: Velocity,
@@ -36,7 +36,7 @@ struct TelemetryPacket {
     #[klv(
         key = 0x0C,
         dec = tinyklv::dec::binary::be_u8,
-        enc = enc_u8,
+        enc = &tinyklv::enc::binary::u8,
     )]
     battery: u8,
 }
@@ -167,10 +167,10 @@ fn required_suite_fixture() -> RequiredSuite {
 
 fn build_telemetry_bytes(p: &TelemetryPacket) -> Vec<u8> {
     let mut data = vec![];
-    push_tlv(&mut data, 0x01, enc_u16(&p.id));
+    push_tlv(&mut data, 0x01, tinyklv::enc::binary::be_u16(p.id));
     push_tlv(&mut data, 0x02, p.timestamp.encode_value());
     push_tlv(&mut data, 0x03, p.position.encode_value());
-    push_tlv(&mut data, 0x04, enc_f32(&p.altitude));
+    push_tlv(&mut data, 0x04, tinyklv::enc::binary::be_f32(p.altitude));
     push_tlv(&mut data, 0x05, p.velocity.encode_value());
     push_tlv(&mut data, 0x06, p.attitude.encode_value());
     push_tlv(&mut data, 0x07, p.color.encode_value());
@@ -178,7 +178,7 @@ fn build_telemetry_bytes(p: &TelemetryPacket) -> Vec<u8> {
     push_tlv(&mut data, 0x09, p.material.encode_value());
     push_tlv(&mut data, 0x0A, p.status.encode_value());
     push_tlv(&mut data, 0x0B, p.mode.encode_value());
-    push_tlv(&mut data, 0x0C, enc_u8(&p.battery));
+    push_tlv(&mut data, 0x0C, tinyklv::enc::binary::u8(p.battery));
     data
 }
 

@@ -34,7 +34,7 @@
 # Architecture
 
 - [Overview](./architecture/overview.md)
-- [The `enc_owned!` Pattern](./architecture/encowned.md)
+- [Encoder Dispatch Sigils](./architecture/encowned.md)
 
 # Appendix
 

@@ -9,13 +9,6 @@
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
-fn enc_u8(v: &u8) -> Vec<u8> {
-    tinyklv::enc::binary::u8(*v)
-}
-fn enc_u32(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
-}
-
 #[derive(Klv, Debug, PartialEq)]
 /// IoT soil-moisture reading keyed with single-byte tags
 #[klv(
@@ -31,9 +24,9 @@ fn enc_u32(v: &u32) -> Vec<u8> {
     ),
 )]
 struct SoilSensorU8Key {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = enc_u8)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
     node_id: u8,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     moisture_ppb: u32,
 }
 
@@ -53,9 +46,9 @@ struct SoilSensorU8Key {
     ),
 )]
 struct SoilSensorBeU16Key {
-    #[klv(key = 0x0001_u16, dec = tinyklv::dec::binary::be_u8, enc = enc_u8)]
+    #[klv(key = 0x0001_u16, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
     node_id: u8,
-    #[klv(key = 0x0002_u16, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x0002_u16, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     moisture_ppb: u32,
 }
 
@@ -75,9 +68,9 @@ struct SoilSensorBeU16Key {
     ),
 )]
 struct SoilSensorLeU16Key {
-    #[klv(key = 0x0001_u16, dec = tinyklv::dec::binary::be_u8, enc = enc_u8)]
+    #[klv(key = 0x0001_u16, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
     node_id: u8,
-    #[klv(key = 0x0002_u16, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x0002_u16, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     moisture_ppb: u32,
 }
 

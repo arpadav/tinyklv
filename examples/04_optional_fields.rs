@@ -9,16 +9,6 @@
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
-fn enc_u8(v: &u8) -> Vec<u8> {
-    tinyklv::enc::binary::u8(*v)
-}
-fn enc_u16(v: &u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(*v)
-}
-fn enc_i32(v: &i32) -> Vec<u8> {
-    tinyklv::enc::binary::be_i32(*v)
-}
-
 /// Drone telemetry frame. Latitude and longitude are always present;
 /// altitude and battery level are optional (may not be fitted on all units).
 #[derive(Klv, Debug, PartialEq)]
@@ -30,23 +20,23 @@ fn enc_i32(v: &i32) -> Vec<u8> {
 )]
 struct DroneTelemetry {
     // Mandatory: latitude in micro-degrees (i32)
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_i32, enc = enc_i32)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_i32, enc = &tinyklv::enc::binary::be_i32)]
     lat_udeg: i32,
 
     // Mandatory: longitude in micro-degrees (i32)
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_i32, enc = enc_i32)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_i32, enc = &tinyklv::enc::binary::be_i32)]
     lon_udeg: i32,
 
     // Optional: altitude above sea level in centimetres
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_i32, enc = enc_i32)]
+    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_i32, enc = &tinyklv::enc::binary::be_i32)]
     altitude_cm: Option<i32>,
 
     // Optional: battery percentage 0-100
-    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_u8, enc = enc_u8)]
+    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
     battery_pct: Option<u8>,
 
     // Optional: heading in 0.01° units (u16)
-    #[klv(key = 0x05, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x05, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     heading_centideg: Option<u16>,
 }
 

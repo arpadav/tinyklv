@@ -127,9 +127,9 @@ fn encode_color_owned(v: Color) -> Vec<u8> {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct OwnedEncoderStruct {
-    #[klv(key = 0x01, dec = Priority::decode_value, enc = tinyklv::enc_owned!(encode_priority_owned))]
+    #[klv(key = 0x01, dec = Priority::decode_value, enc = &encode_priority_owned)]
     priority: Priority,
-    #[klv(key = 0x02, dec = Color::decode_value,    enc = tinyklv::enc_owned!(encode_color_owned))]
+    #[klv(key = 0x02, dec = Color::decode_value,    enc = &encode_color_owned)]
     color: Color,
 }
 
@@ -297,8 +297,8 @@ fn roundtrip_identity_mixed_shape_none() {
 
 #[test]
 fn roundtrip_owned_encoder() {
-    // Encoder functions take T by value (not &T) - enc_owned! macro
-    // clones the field and passes owned value to the encoder.
+    // Encoder functions take T by value (not &T) - the `&` sigil on
+    // `enc =` clones the field and passes the owned value to the encoder.
     let original = OwnedEncoderStruct {
         priority: Priority::Critical,
         color: Color::Blue,

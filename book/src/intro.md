@@ -21,7 +21,7 @@ accessors; you control the schema.
 - **Getting Started** - install, write your first packet, run a roundtrip.
 - **Tutorials** - 15 progressively deeper examples, Beginner → Advanced.
 - **Reference** - every attribute, every trait, every built-in codec.
-- **Architecture** - how the proc-macro expands; why `enc_owned!` exists.
+- **Architecture** - how the proc-macro expands; why encoder dispatch uses sigils.
 
 ## Who this is for
 

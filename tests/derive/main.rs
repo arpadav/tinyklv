@@ -29,4 +29,5 @@ mod optional_fields;
 mod partial_decode;
 mod repeated_decode;
 mod sentinel_seek;
+mod sigil_dispatch;
 mod types;

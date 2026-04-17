@@ -12,13 +12,6 @@
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
-fn enc_u32(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
-}
-fn enc_u16(v: &u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(*v)
-}
-
 /// Video-metadata tag set embedded inside a UDP payload.
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -30,11 +23,11 @@ fn enc_u16(v: &u16) -> Vec<u8> {
 )]
 struct VideoMeta {
     // Frame sequence number
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     frame_seq: u32,
 
     // Codec bitrate in kbit/s
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     bitrate_kbps: u16,
 }
 

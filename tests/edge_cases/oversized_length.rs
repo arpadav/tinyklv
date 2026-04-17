@@ -4,13 +4,6 @@
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
-fn enc_u16(v: &u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(*v)
-}
-fn enc_u32(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
-}
-
 /// Required u16 field - decode must fail when value bytes are absent/insufficient
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -19,7 +12,7 @@ fn enc_u32(v: &u32) -> Vec<u8> {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct RequiredU16 {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     value: u16,
 }
 
@@ -31,7 +24,7 @@ struct RequiredU16 {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct OptionalU32 {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     value: Option<u32>,
 }
 
@@ -43,9 +36,9 @@ struct OptionalU32 {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct MixedFields {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     required: u16,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     optional: Option<u32>,
 }
 

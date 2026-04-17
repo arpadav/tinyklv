@@ -19,9 +19,6 @@ fn ber_key_enc(v: u64) -> Vec<u8> {
 fn ber_len_enc(v: usize) -> Vec<u8> {
     tinyklv::enc::ber::ber_length(&v)
 }
-fn enc_u32(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
-}
 
 /// Sensor log entry with a variable-length annotation string.
 #[derive(Klv, Debug, PartialEq)]
@@ -35,13 +32,13 @@ fn enc_u32(v: &u32) -> Vec<u8> {
 )]
 struct SensorLog {
     // Timestamp field using a named encoder function (required by the macro)
-    #[klv(key = 0x01_u64, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x01_u64, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     timestamp_s: u32,
 
     // Variable-length UTF-8 annotation; length encoded by the field's own len
     #[klv(key = 0x02_u64, varlen = true,
           dec = tinyklv::dec::binary::to_string_utf8,
-          enc = tinyklv::enc::string::from_string_utf8)]
+          enc = &tinyklv::enc::string::from_string_utf8)]
     annotation: String,
 }
 

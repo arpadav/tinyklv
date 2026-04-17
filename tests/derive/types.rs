@@ -38,6 +38,15 @@ impl tinyklv::EncodeValue<Vec<u8>> for Color {
         tinyklv::enc::binary::be_u16(v)
     }
 }
+/// User-side escape hatch for the `&` sigil: a `Copy` enum is cheapest to
+/// pass by value, so [`EncodeAs::Borrowed`] resolves to `Self`.
+impl tinyklv::EncodeAs for Color {
+    type Borrowed<'a> = Color;
+    #[inline(always)]
+    fn encode_as(&self) -> Color {
+        *self
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 /// 1-byte priority level
@@ -68,6 +77,15 @@ impl tinyklv::EncodeValue<Vec<u8>> for Priority {
             Priority::Critical => 3,
         };
         tinyklv::enc::binary::u8(v)
+    }
+}
+/// User-side escape hatch for the `&` sigil: a `Copy` enum is cheapest to
+/// pass by value, so [`EncodeAs::Borrowed`] resolves to `Self`.
+impl tinyklv::EncodeAs for Priority {
+    type Borrowed<'a> = Priority;
+    #[inline(always)]
+    fn encode_as(&self) -> Priority {
+        *self
     }
 }
 
@@ -337,20 +355,4 @@ pub fn encode_sensor_readings(v: &Vec<SensorReading>) -> Vec<u8> {
         out.extend(r.encode_value());
     }
     out
-}
-
-pub fn enc_u8(v: &u8) -> Vec<u8> {
-    tinyklv::enc::binary::u8(*v)
-}
-
-pub fn enc_u16(v: &u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(*v)
-}
-
-pub fn enc_u32(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
-}
-
-pub fn enc_f32(v: &f32) -> Vec<u8> {
-    tinyklv::enc::binary::be_f32(*v)
 }

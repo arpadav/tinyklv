@@ -40,10 +40,6 @@ fn scale_lat_dec(input: &mut &[u8]) -> tinyklv::Result<f64> {
     Ok(wire as f64 * LAT_SCALE)
 }
 
-fn enc_u16(v: &u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(*v)
-}
-
 /// GPS fix with scaled-integer lat/lon and a u16 fix-quality indicator.
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -62,7 +58,7 @@ struct GpsFix {
     longitude_deg: f64,
 
     // Key 0x03: HDOP * 100 as u16 (no custom codec needed)
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     hdop_centiunits: u16,
 }
 

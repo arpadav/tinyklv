@@ -12,13 +12,6 @@
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
-fn enc_u16(v: &u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(*v)
-}
-fn enc_u32(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
-}
-
 // --- A struct we will encode WITH the derive macro -------------------------
 
 /// Simple sensor frame used on the encode side.
@@ -30,11 +23,11 @@ fn enc_u32(v: &u32) -> Vec<u8> {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct SensorFrame {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     /// Key 0x01: temperature in 0.01 °C units
     temperature_centideg: u16,
 
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = enc_u32)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
     /// Key 0x02: CO₂ concentration in ppm
     co2_ppm: u32,
 }

@@ -12,16 +12,6 @@
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
-fn enc_f32(v: &f32) -> Vec<u8> {
-    tinyklv::enc::binary::be_f32(*v)
-}
-fn enc_u16(v: &u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(*v)
-}
-fn enc_u8(v: &u8) -> Vec<u8> {
-    tinyklv::enc::binary::u8(*v)
-}
-
 // --- Nav packet: sentinel 0xAA 0x01 ----------------------------------------
 
 /// Navigation position and heading update.
@@ -33,11 +23,11 @@ fn enc_u8(v: &u8) -> Vec<u8> {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct NavFrame {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_f32, enc = enc_f32)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_f32, enc = &tinyklv::enc::binary::be_f32)]
     lat_deg: f32,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_f32, enc = enc_f32)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_f32, enc = &tinyklv::enc::binary::be_f32)]
     lon_deg: f32,
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     heading_centideg: u16,
 }
 
@@ -52,9 +42,9 @@ struct NavFrame {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct WeatherFrame {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
     pressure_hpa: u16,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u8, enc = enc_u8)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
     humidity_pct: u8,
 }
 
