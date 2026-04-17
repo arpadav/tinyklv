@@ -1,0 +1,12 @@
+[book]
+title = "tinyklv"
+authors = ["Arpad Voros <arpadav@gmail.com>"]
+language = "en"
+src = "src"
+
+[output.html]
+git-repository-url = "https://github.com/arpadav/tinyklv"
+edit-url-template = "https://github.com/arpadav/tinyklv/edit/main/book/{path}"
+
+[output.html.playground]
+runnable = false
