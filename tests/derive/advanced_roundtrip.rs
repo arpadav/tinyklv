@@ -24,17 +24,17 @@ use tinyklv::Klv;
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct SixField {
-    #[klv(key = 0x01, dec = decode_color,     enc = encode_color)]
+    #[klv(key = 0x01, dec = Color::decode_value,     enc = Color::encode_value)]
     color: Color,
-    #[klv(key = 0x02, dec = decode_priority,  enc = encode_priority)]
+    #[klv(key = 0x02, dec = Priority::decode_value,  enc = Priority::encode_value)]
     priority: Priority,
-    #[klv(key = 0x03, dec = decode_velocity,  enc = encode_velocity)]
+    #[klv(key = 0x03, dec = Velocity::decode_value,  enc = Velocity::encode_value)]
     velocity: Velocity,
-    #[klv(key = 0x04, dec = decode_coordinate, enc = encode_coordinate)]
+    #[klv(key = 0x04, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
     coordinate: Coordinate,
-    #[klv(key = 0x05, dec = decode_attitude,  enc = encode_attitude)]
+    #[klv(key = 0x05, dec = Attitude::decode_value,  enc = Attitude::encode_value)]
     attitude: Attitude,
-    #[klv(key = 0x06, dec = decode_timestamp, enc = encode_timestamp)]
+    #[klv(key = 0x06, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
     timestamp: Timestamp,
 }
 
@@ -47,11 +47,11 @@ struct SixField {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct ThreeOptFields {
-    #[klv(key = 0x01, dec = decode_color,    enc = encode_color)]
+    #[klv(key = 0x01, dec = Color::decode_value,    enc = Color::encode_value)]
     color: Option<Color>,
-    #[klv(key = 0x02, dec = decode_velocity, enc = encode_velocity)]
+    #[klv(key = 0x02, dec = Velocity::decode_value, enc = Velocity::encode_value)]
     velocity: Option<Velocity>,
-    #[klv(key = 0x03, dec = decode_coordinate, enc = encode_coordinate)]
+    #[klv(key = 0x03, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
     coordinate: Option<Coordinate>,
 }
 
@@ -66,9 +66,9 @@ struct ThreeOptFields {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct AllRequired {
-    #[klv(key = 0x01, dec = decode_color,     enc = encode_color)]
+    #[klv(key = 0x01, dec = Color::decode_value,     enc = Color::encode_value)]
     color: Color,
-    #[klv(key = 0x02, dec = decode_timestamp, enc = encode_timestamp)]
+    #[klv(key = 0x02, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
     timestamp: Timestamp,
 }
 
@@ -83,9 +83,9 @@ struct AllRequired {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct AllOptional {
-    #[klv(key = 0x01, dec = decode_color,    enc = encode_color)]
+    #[klv(key = 0x01, dec = Color::decode_value,    enc = Color::encode_value)]
     color: Option<Color>,
-    #[klv(key = 0x02, dec = decode_velocity, enc = encode_velocity)]
+    #[klv(key = 0x02, dec = Velocity::decode_value, enc = Velocity::encode_value)]
     velocity: Option<Velocity>,
 }
 
@@ -100,9 +100,9 @@ struct AllOptional {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct MixedShape {
-    #[klv(key = 0x01, dec = decode_priority, enc = encode_priority)]
+    #[klv(key = 0x01, dec = Priority::decode_value, enc = Priority::encode_value)]
     priority: Priority,
-    #[klv(key = 0x02, dec = decode_attitude, enc = encode_attitude)]
+    #[klv(key = 0x02, dec = Attitude::decode_value, enc = Attitude::encode_value)]
     attitude: Option<Attitude>,
 }
 
@@ -110,14 +110,14 @@ struct MixedShape {
 // owned-encoder structs (encoder takes T, not &T)
 // --------------------------------------------------
 
-/// Encoder that takes Priority by value — tests autoref-deref dispatch
+/// Encoder that takes Priority by value - tests autoref-deref dispatch
 fn encode_priority_owned(v: Priority) -> Vec<u8> {
-    encode_priority(&v)
+    v.encode_value()
 }
 
 /// Encoder that takes Color by value
 fn encode_color_owned(v: Color) -> Vec<u8> {
-    encode_color(&v)
+    v.encode_value()
 }
 
 #[derive(Klv, Debug, PartialEq, Clone)]
@@ -127,9 +127,9 @@ fn encode_color_owned(v: Color) -> Vec<u8> {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct OwnedEncoderStruct {
-    #[klv(key = 0x01, dec = decode_priority, enc = tinyklv::enc_owned!(encode_priority_owned))]
+    #[klv(key = 0x01, dec = Priority::decode_value, enc = tinyklv::enc_owned!(encode_priority_owned))]
     priority: Priority,
-    #[klv(key = 0x02, dec = decode_color,    enc = tinyklv::enc_owned!(encode_color_owned))]
+    #[klv(key = 0x02, dec = Color::decode_value,    enc = tinyklv::enc_owned!(encode_color_owned))]
     color: Color,
 }
 
@@ -197,7 +197,7 @@ fn duplicate_6field_last_wins() {
     let mut stream = a.encode_value();
     stream.extend(b.encode_value());
 
-    let decoded = SixField::decode(&mut stream.as_slice()).unwrap();
+    let decoded = SixField::decode_value(&mut stream.as_slice()).unwrap();
 
     // b's values must win for every field
     assert_eq!(decoded.color, b.color);
@@ -236,7 +236,7 @@ fn encode_skips_none() {
     );
 
     // Roundtrip
-    let decoded = ThreeOptFields::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = ThreeOptFields::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, val);
 }
 
@@ -250,7 +250,7 @@ fn roundtrip_identity_all_required() {
         },
     };
     let encoded = original.encode_value();
-    let decoded = AllRequired::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = AllRequired::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -265,7 +265,7 @@ fn roundtrip_identity_all_optional_some() {
         }),
     };
     let encoded = original.encode_value();
-    let decoded = AllOptional::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = AllOptional::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -280,7 +280,7 @@ fn roundtrip_identity_mixed_shape() {
         }),
     };
     let encoded = original.encode_value();
-    let decoded = MixedShape::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = MixedShape::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -291,19 +291,19 @@ fn roundtrip_identity_mixed_shape_none() {
         attitude: None,
     };
     let encoded = original.encode_value();
-    let decoded = MixedShape::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = MixedShape::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
 #[test]
 fn roundtrip_owned_encoder() {
-    // Encoder functions take T by value (not &T) — enc_owned! macro
+    // Encoder functions take T by value (not &T) - enc_owned! macro
     // clones the field and passes owned value to the encoder.
     let original = OwnedEncoderStruct {
         priority: Priority::Critical,
         color: Color::Blue,
     };
     let encoded = original.encode_value();
-    let decoded = OwnedEncoderStruct::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = OwnedEncoderStruct::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }

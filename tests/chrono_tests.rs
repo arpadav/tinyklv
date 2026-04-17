@@ -1,12 +1,5 @@
 #![cfg(feature = "chrono")]
-// --------------------------------------------------
-// local
-// --------------------------------------------------
 use tinyklv::prelude::*;
-
-// --------------------------------------------------
-// NaiveDate parsing
-// --------------------------------------------------
 
 #[test]
 fn parse_date_ymd() {
@@ -81,10 +74,6 @@ fn parse_date_dmy_format() {
     );
 }
 
-// --------------------------------------------------
-// NaiveTime parsing
-// --------------------------------------------------
-
 #[test]
 fn parse_time_hms() {
     let mut input: &[u8] = b"12:34:56";
@@ -134,10 +123,6 @@ fn parse_time_not_a_time() {
     let time = tinyklv::as_time!(tinyklv::dec::binary::to_string_utf8, "%H:%M:%S", 8)(&mut input);
     assert!(time.is_err());
 }
-
-// --------------------------------------------------
-// NaiveDateTime parsing
-// --------------------------------------------------
 
 #[test]
 fn parse_datetime() {

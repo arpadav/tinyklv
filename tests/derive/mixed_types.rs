@@ -27,7 +27,7 @@ struct Mixed {
     int_val: u32,
     #[klv(
         key = 0x03,
-        var = true,
+        varlen = true,
         dec = tinyklv::dec::binary::to_string_utf8,
         enc = tinyklv::enc::string::from_string_utf8
     )]
@@ -54,7 +54,7 @@ fn decode_all_fields_present() {
     ];
     data.extend_from_slice(name);
     data.extend_from_slice(&[0x04, 0x02, 0x12, 0x34]);
-    let result = Mixed::decode(&mut data.as_slice()).unwrap();
+    let result = Mixed::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.byte_val, 0xAB);
     assert_eq!(result.int_val, 0x00010203);
     assert_eq!(result.name, "KLV");
@@ -78,7 +78,7 @@ fn decode_optional_absent() {
         name.len() as u8,
     ];
     data.extend_from_slice(name);
-    let result = Mixed::decode(&mut data.as_slice()).unwrap();
+    let result = Mixed::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.byte_val, 0x01);
     assert_eq!(result.int_val, u32::MAX);
     assert_eq!(result.name, "TEST");
@@ -94,7 +94,7 @@ fn roundtrip_mixed_types() {
         optional_short: Some(0x1234),
     };
     let encoded = original.encode_value();
-    let decoded = Mixed::decode(&mut &encoded[..]).unwrap();
+    let decoded = Mixed::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -107,7 +107,7 @@ fn roundtrip_mixed_types_no_optional() {
         optional_short: None,
     };
     let encoded = original.encode_value();
-    let decoded = Mixed::decode(&mut &encoded[..]).unwrap();
+    let decoded = Mixed::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -117,7 +117,7 @@ fn decode_missing_required_fails() {
     let name = b"X";
     let mut data = vec![0x02_u8, 0x04, 0x00, 0x00, 0x00, 0x01, 0x03, 1];
     data.extend_from_slice(name);
-    let result = Mixed::decode(&mut data.as_slice());
+    let result = Mixed::decode_value(&mut data.as_slice());
     assert!(result.is_err());
 }
 
@@ -127,7 +127,7 @@ fn decode_reversed_field_order() {
     let mut data = vec![0x04_u8, 0x02, 0x00, 0x07, 0x03, name.len() as u8];
     data.extend_from_slice(name);
     data.extend_from_slice(&[0x02, 0x04, 0x00, 0x00, 0x00, 0x05, 0x01, 0x01, 0x09]);
-    let result = Mixed::decode(&mut data.as_slice()).unwrap();
+    let result = Mixed::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.byte_val, 9);
     assert_eq!(result.int_val, 5);
     assert_eq!(result.name, "rev");

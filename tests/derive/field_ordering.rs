@@ -46,7 +46,7 @@ fn build_packet(a_first: bool) -> Vec<u8> {
 #[test]
 fn normal_key_order() {
     let data = build_packet(true);
-    let result = OrderIndependent::decode(&mut data.as_slice()).unwrap();
+    let result = OrderIndependent::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.a, 0x42);
     assert_eq!(result.b, 0x0102);
     assert_eq!(result.c, 0xABCDEF01);
@@ -55,7 +55,7 @@ fn normal_key_order() {
 #[test]
 fn reversed_key_order_same_result() {
     let data = build_packet(false);
-    let result = OrderIndependent::decode(&mut data.as_slice()).unwrap();
+    let result = OrderIndependent::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.a, 0x42);
     assert_eq!(result.b, 0x0102);
     assert_eq!(result.c, 0xABCDEF01);
@@ -65,8 +65,8 @@ fn reversed_key_order_same_result() {
 fn both_orderings_produce_identical_structs() {
     let fwd = build_packet(true);
     let rev = build_packet(false);
-    let r_fwd = OrderIndependent::decode(&mut fwd.as_slice()).unwrap();
-    let r_rev = OrderIndependent::decode(&mut rev.as_slice()).unwrap();
+    let r_fwd = OrderIndependent::decode_value(&mut fwd.as_slice()).unwrap();
+    let r_rev = OrderIndependent::decode_value(&mut rev.as_slice()).unwrap();
     assert_eq!(r_fwd, r_rev);
 }
 
@@ -76,7 +76,7 @@ fn interleaved_order() {
     let data: &[u8] = &[
         0x02, 0x02, 0x01, 0x02, 0x01, 0x01, 0x42, 0x03, 0x04, 0xAB, 0xCD, 0xEF, 0x01,
     ];
-    let result = OrderIndependent::decode(&mut &data[..]).unwrap();
+    let result = OrderIndependent::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.a, 0x42);
     assert_eq!(result.b, 0x0102);
     assert_eq!(result.c, 0xABCDEF01);

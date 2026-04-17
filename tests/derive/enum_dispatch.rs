@@ -26,9 +26,9 @@ use tinyklv::Klv;
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct NavPacket {
-    #[klv(key = 0x01, dec = decode_coordinate, enc = encode_coordinate)]
+    #[klv(key = 0x01, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
     position: Coordinate,
-    #[klv(key = 0x02, dec = decode_velocity,   enc = encode_velocity)]
+    #[klv(key = 0x02, dec = Velocity::decode_value,   enc = Velocity::encode_value)]
     velocity: Velocity,
 }
 
@@ -44,9 +44,9 @@ struct NavPacket {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct WeatherPacket {
-    #[klv(key = 0x01, dec = decode_priority, enc = encode_priority)]
+    #[klv(key = 0x01, dec = Priority::decode_value, enc = Priority::encode_value)]
     priority: Priority,
-    #[klv(key = 0x02, dec = decode_color,    enc = encode_color)]
+    #[klv(key = 0x02, dec = Color::decode_value,    enc = Color::encode_value)]
     sky_color: Color,
 }
 
@@ -73,8 +73,8 @@ fn dispatch_one(input: &mut &[u8]) -> Option<Packet> {
     }
 
     match &input[0..2] {
-        b"\xBE\xEF" => NavPacket::extract(input).ok().map(Packet::Nav),
-        b"\xCA\xFE" => WeatherPacket::extract(input).ok().map(Packet::Weather),
+        b"\xBE\xEF" => NavPacket::decode_frame(input).ok().map(Packet::Nav),
+        b"\xCA\xFE" => WeatherPacket::decode_frame(input).ok().map(Packet::Weather),
         _ => {
             // Advance one byte and signal unknown
             *input = &input[1..];
@@ -117,8 +117,8 @@ fn dispatch_by_sentinel() {
     let nav = make_nav();
     let weather = make_weather();
 
-    let mut stream: Vec<u8> = nav.encode();
-    stream.extend(weather.encode());
+    let mut stream: Vec<u8> = nav.encode_frame();
+    stream.extend(weather.encode_frame());
 
     let mut slice = stream.as_slice();
     let mut packets: Vec<Packet> = Vec::new();
@@ -151,9 +151,9 @@ fn dispatch_nav_then_weather_then_nav() {
         },
     };
 
-    let mut stream: Vec<u8> = n1.encode();
-    stream.extend(w1.encode());
-    stream.extend(n2.encode());
+    let mut stream: Vec<u8> = n1.encode_frame();
+    stream.extend(w1.encode_frame());
+    stream.extend(n2.encode_frame());
 
     let mut slice = stream.as_slice();
     let mut packets: Vec<Packet> = Vec::new();
@@ -174,7 +174,7 @@ fn dispatch_unknown_sentinel_skips_byte() {
     // Stream: 2 garbage bytes, then a valid NavPacket
     let nav = make_nav();
     let mut stream: Vec<u8> = vec![0xDE, 0xAD];
-    stream.extend(nav.encode());
+    stream.extend(nav.encode_frame());
 
     let mut slice = stream.as_slice();
     let mut packets: Vec<Packet> = Vec::new();

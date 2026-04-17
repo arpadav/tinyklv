@@ -1,11 +1,6 @@
 use tinyklv::codecs::ber::BerOid;
 use tinyklv::prelude::*;
 
-// --------------------------------------------------
-// single-byte values (< 128): encode as one byte
-// with MSB=0
-// --------------------------------------------------
-
 #[test]
 fn ber_oid_zero() {
     // Value 0 encodes as empty (while loop never executes)
@@ -33,10 +28,6 @@ fn ber_oid_127() {
     assert_eq!(decoded, 127_u64);
 }
 
-// --------------------------------------------------
-// multi-byte values (>= 128)
-// --------------------------------------------------
-
 #[test]
 fn ber_oid_128() {
     // 128 = 0b10000000; in BER OID: [0x81, 0x00]
@@ -59,7 +50,7 @@ fn ber_oid_23298_known() {
     // From doctest: 23298 encodes as [129, 182, 2]
     let encoded = BerOid::encode_value(&23298_u64);
     assert_eq!(encoded, vec![129, 182, 2]);
-    let decoded = BerOid::<u64>::decode(&mut vec![129, 182, 2].as_slice()).unwrap();
+    let decoded = BerOid::<u64>::decode_value(&mut vec![129, 182, 2].as_slice()).unwrap();
     assert_eq!(decoded.value, 23298_u64);
 }
 
@@ -87,14 +78,20 @@ fn ber_oid_large_value() {
     assert_eq!(decoded, val);
 }
 
-// --------------------------------------------------
-// roundtrip across a range
-// --------------------------------------------------
-
 #[test]
 fn ber_oid_roundtrip_range() {
     for val in [
-        1_u32, 2, 63, 64, 127, 128, 255, 256, 16383, 16384, 0x7FFF_FF,
+        1_u32,
+        2,
+        63,
+        64,
+        127,
+        128,
+        255,
+        256,
+        16383,
+        16384,
+        0x007F_FFFF,
     ] {
         let encoded = tinyklv::enc::ber::ber_oid(&val);
         let decoded = tinyklv::dec::ber::ber_oid::<u32>(&mut encoded.as_slice()).unwrap();
@@ -102,22 +99,14 @@ fn ber_oid_roundtrip_range() {
     }
 }
 
-// --------------------------------------------------
-// BerOid struct direct roundtrip
-// --------------------------------------------------
-
 #[test]
 fn ber_oid_struct_roundtrip() {
     let val = 23298_u64;
     let oid = BerOid::new(&val);
     let encoded = oid.encode_value();
-    let decoded = BerOid::<u64>::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = BerOid::<u64>::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded.value, val);
 }
-
-// --------------------------------------------------
-// error cases
-// --------------------------------------------------
 
 #[test]
 fn ber_oid_empty_input_fails() {

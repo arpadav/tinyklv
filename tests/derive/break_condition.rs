@@ -29,7 +29,7 @@ struct BreakPacket {
 #[test]
 fn default_break_condition_proceeds_through_all_keys() {
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x2A, 0x02, 0x04, 0xDE, 0xAD, 0xBE, 0xEF];
-    let result = BreakPacket::decode(&mut &data[..]).unwrap();
+    let result = BreakPacket::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.a, 42);
     assert_eq!(result.b, Some(0xDEAD_BEEF));
 }
@@ -41,13 +41,13 @@ fn default_break_condition_unknown_key_skipped_not_aborted() {
         0xAA, 0x01, 0x00, // unknown key, skipped
         0x01, 0x02, 0x00, 0x07, // known key a=7
     ];
-    let result = BreakPacket::decode(&mut &data[..]).unwrap();
+    let result = BreakPacket::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.a, 7);
 }
 
 #[test]
 fn default_break_condition_empty_stream_fails_required() {
-    let result = BreakPacket::decode(&mut [].as_slice());
+    let result = BreakPacket::decode_value(&mut [].as_slice());
     assert!(result.is_err());
 }
 
@@ -55,6 +55,6 @@ fn default_break_condition_empty_stream_fails_required() {
 fn default_break_condition_partial_stream_fails_required() {
     // Only optional field present - required `a` absent → Err
     let data: &[u8] = &[0x02, 0x04, 0xDE, 0xAD, 0xBE, 0xEF];
-    let result = BreakPacket::decode(&mut &data[..]);
+    let result = BreakPacket::decode_value(&mut &data[..]);
     assert!(result.is_err());
 }

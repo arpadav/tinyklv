@@ -54,7 +54,7 @@ fn oversized_inner_length_causes_break() {
     // key=0x01, len=50 (much larger than remaining data), only 2 bytes of value.
     // The inner take(50) fails -> loop breaks -> required field never decoded -> Err.
     let data: &[u8] = &[0x01, 50, 0x00, 0x01];
-    let result = RequiredU16::decode(&mut &data[..]);
+    let result = RequiredU16::decode_value(&mut &data[..]);
     assert!(
         result.is_err(),
         "oversized length exceeding available data should fail for required field"
@@ -65,14 +65,14 @@ fn oversized_inner_length_causes_break() {
 fn slightly_oversized_length_fails() {
     // key=0x01, len=3 but only 2 bytes available for the value.
     let data: &[u8] = &[0x01, 3, 0x00, 0x01];
-    let result = RequiredU16::decode(&mut &data[..]);
+    let result = RequiredU16::decode_value(&mut &data[..]);
     assert!(result.is_err());
 }
 
 #[test]
 fn correct_length_succeeds() {
     let data: &[u8] = &[0x01, 2, 0xAB, 0xCD];
-    let result = RequiredU16::decode(&mut &data[..]).unwrap();
+    let result = RequiredU16::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.value, 0xABCD);
 }
 
@@ -80,39 +80,38 @@ fn correct_length_succeeds() {
 fn oversized_length_with_zero_value_bytes_fails_required() {
     // key=0x01, len=255, but nothing follows.
     let data: &[u8] = &[0x01, 0xFF];
-    assert!(RequiredU16::decode(&mut &data[..]).is_err());
+    assert!(RequiredU16::decode_value(&mut &data[..]).is_err());
 }
 
 #[test]
-fn oversized_length_with_zero_value_bytes_optional_none() {
-    // Same stream but the field is optional - should decode to None.
+fn oversized_length_with_zero_value_bytes_optional_fails() {
+    // A declared length that overruns the remaining input is a truncated frame,
+    // not "field absent". Even for optional fields, decode must fail loudly so
+    // the caller can distinguish malformed input from legitimate absence.
     let data: &[u8] = &[0x01, 0xFF];
-    let result = OptionalU32::decode(&mut &data[..]).unwrap();
-    assert_eq!(result.value, None);
+    let err = OptionalU32::decode_value(&mut &data[..]).expect_err("declared len overruns input");
+    assert!(format!("{err:?}").contains("truncated"));
 }
 
 #[test]
-fn optional_oversized_gives_none() {
-    // key=0x01, len=100, only 4 value bytes follow.
+fn optional_oversized_fails() {
     let data: &[u8] = &[0x01, 100, 0x00, 0x00, 0x00, 0x01];
-    let result = OptionalU32::decode(&mut &data[..]).unwrap();
-    assert_eq!(result.value, None);
+    let err = OptionalU32::decode_value(&mut &data[..]).expect_err("declared len overruns input");
+    assert!(format!("{err:?}").contains("truncated"));
 }
 
 #[test]
-fn first_field_valid_second_oversized_optional_none() {
-    // key=0x01 len=2 val=0x1234 (valid), key=0x02 len=200 val=… (oversized).
-    // required gets decoded, optional stays None.
+fn first_field_valid_second_oversized_fails() {
     let data: &[u8] = &[0x01, 0x02, 0x12, 0x34, 0x02, 200];
-    let result = MixedFields::decode(&mut &data[..]).unwrap();
-    assert_eq!(result.required, 0x1234);
-    assert_eq!(result.optional, None);
+    let err = MixedFields::decode_value(&mut &data[..])
+        .expect_err("second field declared len overruns input");
+    assert!(format!("{err:?}").contains("truncated"));
 }
 
 #[test]
 fn both_fields_valid_succeeds() {
     let data: &[u8] = &[0x01, 0x02, 0xBE, 0xEF, 0x02, 0x04, 0xDE, 0xAD, 0xBE, 0xEF];
-    let result = MixedFields::decode(&mut &data[..]).unwrap();
+    let result = MixedFields::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.required, 0xBEEF);
     assert_eq!(result.optional, Some(0xDEADBEEF));
 }

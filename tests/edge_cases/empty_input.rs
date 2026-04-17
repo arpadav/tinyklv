@@ -163,9 +163,7 @@ fn le_u16_as_usize_empty() {
     let mut input: &[u8] = &[];
     assert!(tinyklv::dec::binary::le_u16_as_usize(&mut input).is_err());
 }
-// --------------------------------------------------
-// derive struct: empty input behaviour
-// --------------------------------------------------
+
 fn enc_u16(v: &u16) -> Vec<u8> {
     tinyklv::enc::binary::be_u16(*v)
 }
@@ -173,8 +171,8 @@ fn enc_u32(v: &u32) -> Vec<u8> {
     tinyklv::enc::binary::be_u32(*v)
 }
 
-/// A struct with all required fields - must fail on empty input
 #[derive(Klv, Debug, PartialEq)]
+/// A struct with all required fields - must fail on empty input
 #[klv(
     stream = &[u8],
     key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
@@ -187,7 +185,7 @@ struct AllRequired {
 
 #[test]
 fn derive_all_required_empty_input_fails() {
-    let result = AllRequired::decode(&mut &[][..]);
+    let result = AllRequired::decode_value(&mut &[][..]);
     assert!(
         result.is_err(),
         "struct with required field must fail on empty input"
@@ -210,7 +208,7 @@ struct AllOptional {
 
 #[test]
 fn derive_all_optional_empty_input_ok_all_none() {
-    let result = AllOptional::decode(&mut &[][..]);
+    let result = AllOptional::decode_value(&mut &[][..]);
     assert!(
         result.is_ok(),
         "struct with only optional fields must succeed on empty input"

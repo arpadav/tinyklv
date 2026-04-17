@@ -40,7 +40,7 @@ fn decode_basic_fixed() {
         0x01, 0x01, 0x42, 0x02, 0x02, 0x01, 0x02, 0x03, 0x04, 0x00, 0x01, 0x02, 0x03, 0x04, 0x08,
         0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
     ];
-    let result = BasicFixed::decode(&mut &data[..]).unwrap();
+    let result = BasicFixed::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.byte_val, 0x42);
     assert_eq!(result.short_val, 0x0102);
     assert_eq!(result.int_val, 0x00010203);
@@ -53,7 +53,7 @@ fn decode_basic_fixed_all_zeros() {
         0x01, 0x01, 0x00, 0x02, 0x02, 0x00, 0x00, 0x03, 0x04, 0x00, 0x00, 0x00, 0x00, 0x04, 0x08,
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     ];
-    let result = BasicFixed::decode(&mut &data[..]).unwrap();
+    let result = BasicFixed::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.byte_val, 0);
     assert_eq!(result.short_val, 0);
     assert_eq!(result.int_val, 0);
@@ -66,7 +66,7 @@ fn decode_basic_fixed_max_values() {
         0x01, 0x01, 0xFF, 0x02, 0x02, 0xFF, 0xFF, 0x03, 0x04, 0xFF, 0xFF, 0xFF, 0xFF, 0x04, 0x08,
         0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
     ];
-    let result = BasicFixed::decode(&mut &data[..]).unwrap();
+    let result = BasicFixed::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.byte_val, u8::MAX);
     assert_eq!(result.short_val, u16::MAX);
     assert_eq!(result.int_val, u32::MAX);
@@ -82,7 +82,7 @@ fn encode_value_roundtrip() {
         long_val: 0x0001020304050607,
     };
     let encoded = packet.encode_value();
-    let decoded = BasicFixed::decode(&mut &encoded[..]).unwrap();
+    let decoded = BasicFixed::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, packet);
 }
 
@@ -93,7 +93,7 @@ fn decode_fields_reversed_order() {
         0x04, 0x08, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE, 0x03, 0x04, 0x00, 0x00, 0x00,
         0x01, 0x02, 0x02, 0x00, 0x02, 0x01, 0x01, 0x03,
     ];
-    let result = BasicFixed::decode(&mut &data[..]).unwrap();
+    let result = BasicFixed::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.byte_val, 3);
     assert_eq!(result.short_val, 2);
     assert_eq!(result.int_val, 1);
@@ -103,7 +103,7 @@ fn decode_fields_reversed_order() {
 #[test]
 fn decode_missing_required_field_fails() {
     let data: &[u8] = &[0x01, 0x01, 0x42, 0x02, 0x02, 0x01, 0x02];
-    let result = BasicFixed::decode(&mut &data[..]);
+    let result = BasicFixed::decode_value(&mut &data[..]);
     assert!(result.is_err(), "missing required fields should return Err");
 }
 
@@ -126,11 +126,11 @@ fn decode_two_packets_back_to_back() {
     };
     let mut stream = p1.encode_value();
     stream.extend(p2.encode_value());
-    let r_full = BasicFixed::decode(&mut &stream[..]).unwrap();
+    let r_full = BasicFixed::decode_value(&mut &stream[..]).unwrap();
     // Last-wins: p2 values overwrite p1 values when reading the whole stream
     assert_eq!(r_full, p2);
     // Decoding only p2's slice yields p2
     let offset = p1.encode_value().len();
-    let r2 = BasicFixed::decode(&mut &stream[offset..]).unwrap();
+    let r2 = BasicFixed::decode_value(&mut &stream[offset..]).unwrap();
     assert_eq!(r2, p2);
 }

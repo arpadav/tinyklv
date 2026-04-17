@@ -24,9 +24,9 @@ use tinyklv::Klv;
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct SimplePosition {
-    #[klv(key = 0x01, dec = decode_coordinate, enc = encode_coordinate)]
+    #[klv(key = 0x01, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
     coordinate: Coordinate,
-    #[klv(key = 0x02, dec = decode_color, enc = encode_color)]
+    #[klv(key = 0x02, dec = Color::decode_value, enc = Color::encode_value)]
     color: Color,
 }
 
@@ -41,11 +41,11 @@ struct SimplePosition {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct PartialReading {
-    #[klv(key = 0x01, dec = decode_color, enc = encode_color)]
+    #[klv(key = 0x01, dec = Color::decode_value, enc = Color::encode_value)]
     color: Option<Color>,
-    #[klv(key = 0x02, dec = decode_velocity, enc = encode_velocity)]
+    #[klv(key = 0x02, dec = Velocity::decode_value, enc = Velocity::encode_value)]
     velocity: Option<Velocity>,
-    #[klv(key = 0x03, dec = decode_timestamp, enc = encode_timestamp)]
+    #[klv(key = 0x03, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
     timestamp: Option<Timestamp>,
 }
 
@@ -61,11 +61,11 @@ struct PartialReading {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct Waypoint {
-    #[klv(key = 0x01, dec = decode_coordinate, enc = encode_coordinate)]
+    #[klv(key = 0x01, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
     coordinate: Coordinate,
-    #[klv(key = 0x02, dec = decode_timestamp, enc = encode_timestamp)]
+    #[klv(key = 0x02, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
     timestamp: Timestamp,
-    #[klv(key = 0x03, dec = decode_priority, enc = encode_priority)]
+    #[klv(key = 0x03, dec = Priority::decode_value, enc = Priority::encode_value)]
     priority: Priority,
 }
 
@@ -81,9 +81,9 @@ struct Waypoint {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct Alert {
-    #[klv(key = 0x01, dec = decode_color, enc = encode_color)]
+    #[klv(key = 0x01, dec = Color::decode_value, enc = Color::encode_value)]
     color: Color,
-    #[klv(key = 0x02, dec = decode_status_flags, enc = encode_status_flags)]
+    #[klv(key = 0x02, dec = StatusFlags::decode_value, enc = StatusFlags::encode_value)]
     flags: StatusFlags,
 }
 
@@ -94,21 +94,21 @@ struct Alert {
 /// Encode a `SimplePosition` manually so we can inject arbitrary bytes between
 /// its fields.  Layout: key(1) + len(1) + value for each TLV triple.
 fn encode_coordinate_tlv(key: u8, coord: &Coordinate) -> Vec<u8> {
-    let val = encode_coordinate(coord);
+    let val = Coordinate::encode_value(coord);
     let mut out = vec![key, val.len() as u8];
     out.extend(val);
     out
 }
 
 fn encode_color_tlv(key: u8, color: &Color) -> Vec<u8> {
-    let val = encode_color(color);
+    let val = Color::encode_value(color);
     let mut out = vec![key, val.len() as u8];
     out.extend(val);
     out
 }
 
 fn encode_timestamp_tlv(key: u8, ts: &Timestamp) -> Vec<u8> {
-    let val = encode_timestamp(ts);
+    let val = Timestamp::encode_value(ts);
     let mut out = vec![key, val.len() as u8];
     out.extend(val);
     out
@@ -134,7 +134,7 @@ fn unknown_keys_between_valid() {
     stream.extend_from_slice(&[0xBB, 0x02, 0xCA, 0xFE]);
     stream.extend(encode_color_tlv(0x02, &color));
 
-    let result = SimplePosition::decode(&mut stream.as_slice()).unwrap();
+    let result = SimplePosition::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(
         result.coordinate, coord,
         "coordinate should decode despite unknown keys"
@@ -146,30 +146,23 @@ fn unknown_keys_between_valid() {
 }
 
 #[test]
-fn corrupt_length_graceful() {
-    // Stream: valid color(0x01), then key 0x02 with len=100 but only 2 bytes
-    // follow before end-of-input.  take(100) fails → loop breaks.
-    // color = Some, velocity = None, timestamp = None.
+fn corrupt_length_fails_loudly() {
+    // Stream: valid color(0x01), then key 0x02 with declared len=100 but only
+    // 2 bytes of body before end-of-input. The declared length overruns the
+    // remaining input - this is a truncated/malformed frame, not a clean EOF,
+    // and decode must surface it as an error (not silently return partial data).
     let color = Color::Blue;
 
     let mut stream: Vec<u8> = Vec::new();
     stream.extend(encode_color_tlv(0x01, &color));
-    // key 0x02, claims len=100, but only 2 bytes of body
     stream.extend_from_slice(&[0x02, 100, 0x00, 0x01]);
 
-    let result = PartialReading::decode(&mut stream.as_slice()).unwrap();
-    assert_eq!(
-        result.color,
-        Some(color),
-        "color should have decoded before corrupt length"
-    );
-    assert_eq!(
-        result.velocity, None,
-        "velocity should be None - take(100) failed"
-    );
-    assert_eq!(
-        result.timestamp, None,
-        "timestamp should be None - loop broke early"
+    let err = PartialReading::decode_value(&mut stream.as_slice())
+        .expect_err("declared length 100 exceeds remaining 2 bytes - must error");
+    let rendered = format!("{err:?}");
+    assert!(
+        rendered.contains("truncated"),
+        "error context should mention truncation; got: {rendered}"
     );
 }
 
@@ -190,7 +183,7 @@ fn corrupt_value_recoverable() {
     stream.extend_from_slice(&[0x02, 0x05, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
     stream.extend(encode_timestamp_tlv(0x03, &ts));
 
-    let result = PartialReading::decode(&mut stream.as_slice()).unwrap();
+    let result = PartialReading::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(result.color, Some(color), "color should have decoded");
     assert_eq!(
         result.velocity, None,
@@ -225,12 +218,12 @@ fn auto_generate_10_packets() {
         })
         .collect();
 
-    let stream: Vec<u8> = waypoints.iter().flat_map(|w| w.encode()).collect();
+    let stream: Vec<u8> = waypoints.iter().flat_map(|w| w.encode_frame()).collect();
 
     let mut slice = stream.as_slice();
     let mut decoded: Vec<Waypoint> = Vec::new();
     for _ in 0..10 {
-        decoded.push(Waypoint::extract(&mut slice).unwrap());
+        decoded.push(Waypoint::decode_frame(&mut slice).unwrap());
     }
 
     assert_eq!(decoded.len(), 10);
@@ -310,21 +303,21 @@ fn auto_generate_mixed_types() {
     // Interleave: W A W A W A
     let mut stream: Vec<u8> = Vec::new();
     for i in 0..3 {
-        stream.extend(waypoints[i].encode());
-        stream.extend(alerts[i].encode());
+        stream.extend(waypoints[i].encode_frame());
+        stream.extend(alerts[i].encode_frame());
     }
 
     // Extract all 3 Waypoints via advancing cursor
     let mut wp_slice = stream.as_slice();
     let got_wp: Vec<Waypoint> = (0..3)
-        .map(|_| Waypoint::extract(&mut wp_slice).unwrap())
+        .map(|_| Waypoint::decode_frame(&mut wp_slice).unwrap())
         .collect();
     assert_eq!(got_wp, waypoints);
 
     // Extract all 3 Alerts via a fresh cursor
     let mut al_slice = stream.as_slice();
     let got_al: Vec<Alert> = (0..3)
-        .map(|_| Alert::extract(&mut al_slice).unwrap())
+        .map(|_| Alert::decode_frame(&mut al_slice).unwrap())
         .collect();
     assert_eq!(got_al, alerts);
 }

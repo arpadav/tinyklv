@@ -3,6 +3,7 @@
 // --------------------------------------------------
 mod advanced_break;
 mod advanced_defaults;
+mod advanced_generics;
 mod advanced_keys;
 mod advanced_nesting;
 mod advanced_repeated;

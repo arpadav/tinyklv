@@ -93,7 +93,7 @@ struct ZeroLenOptional {
     numeric: Option<u16>,
     #[klv(
         key = 0x02,
-        var = true,
+        varlen = true,
         dec = tinyklv::dec::binary::to_string_utf8,
         enc = tinyklv::enc::string::from_string_utf8
     )]
@@ -108,7 +108,7 @@ fn derive_optional_numeric_zero_len_in_stream_gives_none() {
         0x01, 0x00, // key=1, len=0
         0x02, 0x00, // key=2, len=0
     ];
-    let result = ZeroLenOptional::decode(&mut &data[..]).unwrap();
+    let result = ZeroLenOptional::decode_value(&mut &data[..]).unwrap();
     assert_eq!(
         result.numeric, None,
         "be_u16 on 0-byte slice should fail -> None"
@@ -125,7 +125,7 @@ fn derive_optional_numeric_normal_then_zero_len() {
     // key=0x01 with len=2: valid u16
     // key=0x02 with len=0: empty string
     let data: &[u8] = &[0x01, 0x02, 0xFF, 0x00, 0x02, 0x00];
-    let result = ZeroLenOptional::decode(&mut &data[..]).unwrap();
+    let result = ZeroLenOptional::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.numeric, Some(0xFF00_u16));
     assert_eq!(result.label, Some(String::from("")));
 }

@@ -20,7 +20,7 @@ struct SentinelPacket {
     id: u16,
     #[klv(
         key = 0x02,
-        var = true,
+        varlen = true,
         dec = tinyklv::dec::binary::to_string_utf8,
         enc = tinyklv::enc::string::from_string_utf8
     )]
@@ -45,7 +45,7 @@ fn extract_finds_sentinel_and_decodes() {
     ];
     stream.extend_from_slice(&body);
 
-    let result = SentinelPacket::extract(&mut stream.as_slice()).unwrap();
+    let result = SentinelPacket::decode_frame(&mut stream.as_slice()).unwrap();
     assert_eq!(result.id, 42);
     assert_eq!(result.name, "KLV");
 }
@@ -53,7 +53,7 @@ fn extract_finds_sentinel_and_decodes() {
 #[test]
 fn extract_no_sentinel_fails() {
     let data: &[u8] = &[0x00, 0x01, 0x02, 0x03, 0x04, 0x05];
-    assert!(SentinelPacket::extract(&mut &data[..]).is_err());
+    assert!(SentinelPacket::decode_frame(&mut &data[..]).is_err());
 }
 
 #[test]
@@ -61,7 +61,7 @@ fn decode_without_seek_works_directly() {
     let name = b"KLV";
     let mut data: Vec<u8> = vec![0x01, 0x02, 0x00, 0x42, 0x02, name.len() as u8];
     data.extend_from_slice(name);
-    let result = SentinelPacket::decode(&mut data.as_slice()).unwrap();
+    let result = SentinelPacket::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.id, 0x42);
     assert_eq!(result.name, "KLV");
 }
@@ -72,7 +72,7 @@ fn encode_prepends_sentinel() {
         id: 100,
         name: String::from("AB"),
     };
-    let encoded = packet.encode();
+    let encoded = packet.encode_frame();
     assert_eq!(&encoded[..2], b"\xAA\xBB", "encode() must prepend sentinel");
 }
 
@@ -82,7 +82,7 @@ fn extract_roundtrip() {
         id: 999,
         name: String::from("TEST"),
     };
-    let encoded = original.encode();
-    let decoded = SentinelPacket::extract(&mut encoded.as_slice()).unwrap();
+    let encoded = original.encode_frame();
+    let decoded = SentinelPacket::decode_frame(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }

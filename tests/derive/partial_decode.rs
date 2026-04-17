@@ -14,11 +14,6 @@ fn enc_u32(v: &u32) -> Vec<u8> {
     tinyklv::enc::binary::be_u32(*v)
 }
 
-// --------------------------------------------------
-// required field absent → Err
-// optional field absent → None
-// --------------------------------------------------
-
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -42,7 +37,7 @@ fn all_fields_present_succeeds() {
         0x01, 0x02, 0x00, 0x2A, 0x02, 0x04, 0x00, 0x01, 0x00, 0x00, 0x03, 0x01, 0x07, 0x04, 0x02,
         0x01, 0x23,
     ];
-    let result = WithRequiredAndOptional::decode(&mut &data[..]).unwrap();
+    let result = WithRequiredAndOptional::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.required_a, 42);
     assert_eq!(result.required_b, 65536);
     assert_eq!(result.optional_c, Some(7));
@@ -52,7 +47,7 @@ fn all_fields_present_succeeds() {
 #[test]
 fn all_optionals_absent_succeeds() {
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x2A, 0x02, 0x04, 0x00, 0x01, 0x00, 0x00];
-    let result = WithRequiredAndOptional::decode(&mut &data[..]).unwrap();
+    let result = WithRequiredAndOptional::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.optional_c, None);
     assert_eq!(result.optional_d, None);
 }
@@ -62,7 +57,7 @@ fn one_optional_present_other_absent() {
     let data: &[u8] = &[
         0x01, 0x02, 0x00, 0x2A, 0x02, 0x04, 0x00, 0x01, 0x00, 0x00, 0x03, 0x01, 0xFF,
     ];
-    let result = WithRequiredAndOptional::decode(&mut &data[..]).unwrap();
+    let result = WithRequiredAndOptional::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.optional_c, Some(0xFF));
     assert_eq!(result.optional_d, None);
 }
@@ -70,7 +65,7 @@ fn one_optional_present_other_absent() {
 #[test]
 fn required_a_missing_fails() {
     let data: &[u8] = &[0x02, 0x04, 0x00, 0x00, 0x00, 0x01];
-    let result = WithRequiredAndOptional::decode(&mut &data[..]);
+    let result = WithRequiredAndOptional::decode_value(&mut &data[..]);
     assert!(
         result.is_err(),
         "missing required field `required_a` should fail"
@@ -83,7 +78,7 @@ fn required_b_missing_fails() {
         0x01, 0x02, 0x00, 0x2A, // 0x02 absent
         0x03, 0x01, 0x07,
     ];
-    let result = WithRequiredAndOptional::decode(&mut &data[..]);
+    let result = WithRequiredAndOptional::decode_value(&mut &data[..]);
     assert!(
         result.is_err(),
         "missing required field `required_b` should fail"
@@ -93,13 +88,13 @@ fn required_b_missing_fails() {
 #[test]
 fn both_required_missing_fails() {
     let data: &[u8] = &[0x03, 0x01, 0x07, 0x04, 0x02, 0xFF, 0xFF];
-    let result = WithRequiredAndOptional::decode(&mut &data[..]);
+    let result = WithRequiredAndOptional::decode_value(&mut &data[..]);
     assert!(result.is_err());
 }
 
 #[test]
 fn empty_stream_fails() {
     let data: &[u8] = &[];
-    let result = WithRequiredAndOptional::decode(&mut &data[..]);
+    let result = WithRequiredAndOptional::decode_value(&mut &data[..]);
     assert!(result.is_err());
 }

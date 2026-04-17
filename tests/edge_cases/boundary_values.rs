@@ -1,6 +1,4 @@
-// --------------------------------------------------
-// numeric boundary values: 0, 1, MIN, MAX for each type
-// --------------------------------------------------
+/// numeric boundary values: 0, 1, MIN, MAX for each type
 macro_rules! boundary_roundtrip {
     ($name:ident, $ty:ty, $enc:path, $dec:path, [$($val:expr),+]) => {
         #[test]
@@ -93,9 +91,7 @@ boundary_roundtrip!(
     tinyklv::dec::binary::be_i64,
     [i64::MIN, -1, 0, 1, i64::MAX]
 );
-// --------------------------------------------------
-// BER boundary values
-// --------------------------------------------------
+
 #[test]
 fn ber_length_boundary_0() {
     let encoded = tinyklv::enc::ber::ber_length(&0_u64);
@@ -139,9 +135,7 @@ fn ber_length_boundary_u32_max() {
     let decoded = tinyklv::dec::ber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, u32::MAX as usize);
 }
-// --------------------------------------------------
-// f32/f64 boundary values
-// --------------------------------------------------
+
 boundary_roundtrip!(
     be_u128_boundaries,
     u128,
@@ -253,9 +247,7 @@ fn be_f64_neg_zero_roundtrip() {
     let decoded = tinyklv::dec::binary::be_f64(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded.to_bits(), bits);
 }
-// --------------------------------------------------
-// LE float boundaries
-// --------------------------------------------------
+
 #[test]
 fn le_f32_boundaries() {
     for bits in [

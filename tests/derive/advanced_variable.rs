@@ -24,15 +24,15 @@ use tinyklv::Klv;
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct MixedVarFixed {
-    #[klv(key = 0x01, dec = decode_coordinate, enc = encode_coordinate)]
+    #[klv(key = 0x01, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
     coord: Coordinate,
-    #[klv(key = 0x02, dec = decode_color, enc = encode_color)]
+    #[klv(key = 0x02, dec = Color::decode_value, enc = Color::encode_value)]
     color: Color,
-    #[klv(key = 0x03, dec = decode_timestamp, enc = encode_timestamp)]
+    #[klv(key = 0x03, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
     timestamp: Timestamp,
     #[klv(
         key = 0x04,
-        var = true,
+        varlen = true,
         dec = tinyklv::dec::binary::to_string_utf8,
         enc = tinyklv::enc::string::from_string_utf8
     )]
@@ -48,11 +48,11 @@ struct MixedVarFixed {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct OptVarString {
-    #[klv(key = 0x01, dec = decode_priority, enc = encode_priority)]
+    #[klv(key = 0x01, dec = Priority::decode_value, enc = Priority::encode_value)]
     priority: Priority,
     #[klv(
         key = 0x02,
-        var = true,
+        varlen = true,
         dec = tinyklv::dec::binary::to_string_utf8,
         enc = tinyklv::enc::string::from_string_utf8
     )]
@@ -68,11 +68,11 @@ struct OptVarString {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct VarSensorArray {
-    #[klv(key = 0x01, dec = decode_color, enc = encode_color)]
+    #[klv(key = 0x01, dec = Color::decode_value, enc = Color::encode_value)]
     color: Color,
     #[klv(
         key = 0x02,
-        var = true,
+        varlen = true,
         dec = decode_sensor_readings,
         enc = encode_sensor_readings
     )]
@@ -98,7 +98,7 @@ fn mixed_var_fixed_roundtrip() {
         label: String::from("Paris"),
     };
     let encoded = original.encode_value();
-    let decoded = MixedVarFixed::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = MixedVarFixed::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -109,7 +109,7 @@ fn option_var_present() {
         0x01, 0x01, 0x00, // priority Low
         0x02, 0x05, b'h', b'e', b'l', b'l', b'o', // label "hello"
     ];
-    let result = OptVarString::decode(&mut &data[..]).unwrap();
+    let result = OptVarString::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.priority, Priority::Low);
     assert_eq!(result.label, Some(String::from("hello")));
 }
@@ -118,7 +118,7 @@ fn option_var_present() {
 fn option_var_absent() {
     // only priority present, label key absent
     let data: &[u8] = &[0x01, 0x01, 0x02]; // priority=High
-    let result = OptVarString::decode(&mut &data[..]).unwrap();
+    let result = OptVarString::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.priority, Priority::High);
     assert_eq!(result.label, None);
 }
@@ -130,7 +130,7 @@ fn option_var_zero_len() {
         0x01, 0x01, 0x01, // priority=Medium
         0x02, 0x00, // label key, zero length
     ];
-    let result = OptVarString::decode(&mut &data[..]).unwrap();
+    let result = OptVarString::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.priority, Priority::Medium);
     assert_eq!(result.label, Some(String::from("")));
 }
@@ -157,7 +157,7 @@ fn var_sensor_array() {
         readings: readings.clone(),
     };
     let encoded = original.encode_value();
-    let decoded = VarSensorArray::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = VarSensorArray::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded.color, Color::Blue);
     assert_eq!(decoded.readings.len(), 3);
     // compare kind exactly; f32 value comparison with tolerance

@@ -33,7 +33,7 @@ struct CustomDecoders {
 fn custom_decoder_applies_transform() {
     // Wire value is 0x0064 = 100; custom decoder adds 1 → 101
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x64, 0x02, 0x01, 0x07];
-    let result = CustomDecoders::decode(&mut &data[..]).unwrap();
+    let result = CustomDecoders::decode_value(&mut &data[..]).unwrap();
     assert_eq!(
         result.adjusted, 101,
         "custom decoder should add 1 to wire value"
@@ -50,7 +50,7 @@ fn custom_encoder_applies_inverse_transform() {
     };
     let encoded = packet.encode_value();
     // Decode back - adjusted should come back as 101 (encode writes 100, decode adds 1)
-    let decoded = CustomDecoders::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = CustomDecoders::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, packet);
 }
 
@@ -62,7 +62,7 @@ fn custom_encoder_decode_roundtrip() {
             plain: 0,
         };
         let encoded = packet.encode_value();
-        let decoded = CustomDecoders::decode(&mut encoded.as_slice()).unwrap();
+        let decoded = CustomDecoders::decode_value(&mut encoded.as_slice()).unwrap();
         assert_eq!(decoded.adjusted, adj);
     }
 }
@@ -92,7 +92,7 @@ struct WithMethodDecoder {
 fn method_decoder_scales_correctly() {
     // Wire value 0x01F4 = 500; scaled = 500 / 100 = 5.0
     let data: &[u8] = &[0x01, 0x02, 0x01, 0xF4];
-    let result = WithMethodDecoder::decode(&mut &data[..]).unwrap();
+    let result = WithMethodDecoder::decode_value(&mut &data[..]).unwrap();
     assert!((result.scaled_value - 5.0).abs() < 1e-6);
 }
 
@@ -102,6 +102,6 @@ fn method_encoder_roundtrip() {
         scaled_value: 12.34,
     };
     let encoded = packet.encode_value();
-    let decoded = WithMethodDecoder::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = WithMethodDecoder::decode_value(&mut encoded.as_slice()).unwrap();
     assert!((decoded.scaled_value - packet.scaled_value).abs() < 0.01);
 }

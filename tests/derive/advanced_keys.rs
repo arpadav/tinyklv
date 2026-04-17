@@ -18,13 +18,13 @@ use tinyklv::Klv;
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct WideKeySpacing {
-    #[klv(key = 0x01, dec = decode_color, enc = encode_color)]
+    #[klv(key = 0x01, dec = Color::decode_value, enc = Color::encode_value)]
     color: Color,
-    #[klv(key = 0x40, dec = decode_priority, enc = encode_priority)]
+    #[klv(key = 0x40, dec = Priority::decode_value, enc = Priority::encode_value)]
     priority: Priority,
-    #[klv(key = 0x80, dec = decode_velocity, enc = encode_velocity)]
+    #[klv(key = 0x80, dec = Velocity::decode_value, enc = Velocity::encode_value)]
     velocity: Velocity,
-    #[klv(key = 0xFE, dec = decode_status_flags, enc = encode_status_flags)]
+    #[klv(key = 0xFE, dec = StatusFlags::decode_value, enc = StatusFlags::encode_value)]
     flags: StatusFlags,
 }
 
@@ -38,13 +38,13 @@ struct WideKeySpacing {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct BoundaryKeys {
-    #[klv(key = 0x00, dec = decode_timestamp, enc = encode_timestamp)]
+    #[klv(key = 0x00, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
     timestamp: Timestamp,
-    #[klv(key = 0x7F, dec = decode_color, enc = encode_color)]
+    #[klv(key = 0x7F, dec = Color::decode_value, enc = Color::encode_value)]
     color: Color,
-    #[klv(key = 0x80, dec = decode_attitude, enc = encode_attitude)]
+    #[klv(key = 0x80, dec = Attitude::decode_value, enc = Attitude::encode_value)]
     attitude: Attitude,
-    #[klv(key = 0xFF, dec = decode_coordinate, enc = encode_coordinate)]
+    #[klv(key = 0xFF, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
     coord: Coordinate,
 }
 
@@ -58,13 +58,13 @@ struct BoundaryKeys {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct WideKeySpacingOptional {
-    #[klv(key = 0x01, dec = decode_color, enc = encode_color)]
+    #[klv(key = 0x01, dec = Color::decode_value, enc = Color::encode_value)]
     color: Option<Color>,
-    #[klv(key = 0x40, dec = decode_priority, enc = encode_priority)]
+    #[klv(key = 0x40, dec = Priority::decode_value, enc = Priority::encode_value)]
     priority: Option<Priority>,
-    #[klv(key = 0x80, dec = decode_velocity, enc = encode_velocity)]
+    #[klv(key = 0x80, dec = Velocity::decode_value, enc = Velocity::encode_value)]
     velocity: Option<Velocity>,
-    #[klv(key = 0xFE, dec = decode_status_flags, enc = encode_status_flags)]
+    #[klv(key = 0xFE, dec = StatusFlags::decode_value, enc = StatusFlags::encode_value)]
     flags: Option<StatusFlags>,
 }
 
@@ -85,25 +85,27 @@ fn klv_triple(key: u8, value: &[u8]) -> Vec<u8> {
 
 #[test]
 fn wide_key_spacing_roundtrip() {
-    let color_bytes = encode_color(&Color::Green);
-    let priority_bytes = encode_priority(&Priority::High);
-    let velocity_bytes = encode_velocity(&Velocity {
+    let color_bytes = Color::Green.encode_value();
+    let priority_bytes = Priority::High.encode_value();
+    let velocity_bytes = Velocity {
         dx: 100,
         dy: -50,
         dz: 25,
-    });
-    let flags_bytes = encode_status_flags(&StatusFlags {
+    }
+    .encode_value();
+    let flags_bytes = StatusFlags {
         active: true,
         armed: false,
         locked: true,
         mode: 3,
-    });
+    }
+    .encode_value();
     let mut data: Vec<u8> = Vec::new();
     data.extend(klv_triple(0x01, &color_bytes));
     data.extend(klv_triple(0x40, &priority_bytes));
     data.extend(klv_triple(0x80, &velocity_bytes));
     data.extend(klv_triple(0xFE, &flags_bytes));
-    let result = WideKeySpacing::decode(&mut &data[..]).unwrap();
+    let result = WideKeySpacing::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.color, Color::Green);
     assert_eq!(result.priority, Priority::High);
     assert_eq!(
@@ -125,7 +127,7 @@ fn wide_key_spacing_roundtrip() {
     );
     // encode -> decode roundtrip
     let encoded = result.encode_value();
-    let decoded = WideKeySpacing::decode(&mut &encoded[..]).unwrap();
+    let decoded = WideKeySpacing::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded.color, Color::Green);
     assert_eq!(decoded.priority, Priority::High);
     assert_eq!(
@@ -156,7 +158,7 @@ fn boundary_keys_roundtrip() {
     let attitude = Attitude {
         roll: 1.5,
         pitch: -0.5,
-        yaw: 3.14,
+        yaw: 3.13,
     };
     let coord = Coordinate {
         lat: 48.8566,
@@ -169,7 +171,7 @@ fn boundary_keys_roundtrip() {
         coord: coord.clone(),
     };
     let encoded = original.encode_value();
-    let decoded = BoundaryKeys::decode(&mut &encoded[..]).unwrap();
+    let decoded = BoundaryKeys::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded.timestamp, ts);
     assert_eq!(decoded.color, Color::Blue);
     assert_eq!(decoded.attitude, attitude);
@@ -179,26 +181,28 @@ fn boundary_keys_roundtrip() {
 #[test]
 fn wide_keys_reversed_order() {
     // Same struct as WideKeySpacing, but KLV triples arrive in reverse key order
-    let color_bytes = encode_color(&Color::Red);
-    let priority_bytes = encode_priority(&Priority::Critical);
-    let velocity_bytes = encode_velocity(&Velocity {
+    let color_bytes = Color::Red.encode_value();
+    let priority_bytes = Priority::Critical.encode_value();
+    let velocity_bytes = Velocity {
         dx: 0,
         dy: 0,
         dz: -1,
-    });
-    let flags_bytes = encode_status_flags(&StatusFlags {
+    }
+    .encode_value();
+    let flags_bytes = StatusFlags {
         active: false,
         armed: true,
         locked: false,
         mode: 7,
-    });
+    }
+    .encode_value();
     let mut data: Vec<u8> = Vec::new();
     // reversed: 0xFE, 0x80, 0x40, 0x01
     data.extend(klv_triple(0xFE, &flags_bytes));
     data.extend(klv_triple(0x80, &velocity_bytes));
     data.extend(klv_triple(0x40, &priority_bytes));
     data.extend(klv_triple(0x01, &color_bytes));
-    let result = WideKeySpacing::decode(&mut &data[..]).unwrap();
+    let result = WideKeySpacing::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.color, Color::Red);
     assert_eq!(result.priority, Priority::Critical);
     assert_eq!(
@@ -223,16 +227,17 @@ fn wide_keys_reversed_order() {
 #[test]
 fn wide_keys_partial_optional() {
     // Only keys 0x01 (Color) and 0x80 (Velocity) present; 0x40 and 0xFE absent
-    let color_bytes = encode_color(&Color::Alpha);
-    let velocity_bytes = encode_velocity(&Velocity {
+    let color_bytes = Color::Alpha.encode_value();
+    let velocity_bytes = Velocity {
         dx: 10,
         dy: 20,
         dz: 30,
-    });
+    }
+    .encode_value();
     let mut data: Vec<u8> = Vec::new();
     data.extend(klv_triple(0x01, &color_bytes));
     data.extend(klv_triple(0x80, &velocity_bytes));
-    let result = WideKeySpacingOptional::decode(&mut &data[..]).unwrap();
+    let result = WideKeySpacingOptional::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.color, Some(Color::Alpha));
     assert_eq!(result.priority, None);
     assert_eq!(

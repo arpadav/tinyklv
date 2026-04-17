@@ -1,14 +1,7 @@
 #[cfg(kani)]
 mod proofs {
-    // --------------------------------------------------
-    // local
-    // --------------------------------------------------
     use tinyklv::codecs::ber::{BerLength, BerOid};
     use tinyklv::prelude::*;
-
-    // --------------------------------------------------
-    // ber length proofs
-    // --------------------------------------------------
 
     #[kani::proof]
     #[kani::unwind(8)]
@@ -67,10 +60,6 @@ mod proofs {
         assert!(slice.is_empty());
     }
 
-    // --------------------------------------------------
-    // ber oid proofs
-    // --------------------------------------------------
-
     #[kani::proof]
     #[kani::unwind(8)]
     fn ber_oid_roundtrip_u8_nonzero() {
@@ -122,10 +111,6 @@ mod proofs {
         let encoded = BerOid::new(&(val as u64)).encode_value();
         assert!(!encoded.is_empty());
     }
-
-    // --------------------------------------------------
-    // binary codec proofs
-    // --------------------------------------------------
 
     #[kani::proof]
     #[kani::unwind(4)]
@@ -239,10 +224,6 @@ mod proofs {
         let encoded = tinyklv::enc::binary::le_u16(val);
         assert_eq!(encoded, val.to_le_bytes().to_vec());
     }
-
-    // --------------------------------------------------
-    // lengthed proofs
-    // --------------------------------------------------
 
     #[kani::proof]
     #[kani::unwind(12)]

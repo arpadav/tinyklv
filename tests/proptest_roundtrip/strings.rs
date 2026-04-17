@@ -1,11 +1,4 @@
-// --------------------------------------------------
-// external
-// --------------------------------------------------
 use proptest::prelude::*;
-
-// --------------------------------------------------
-// UTF-8 roundtrips
-// --------------------------------------------------
 
 proptest! {
     /// Strict roundtrip: Rust &str is always valid UTF-8, so enc -> strict dec
@@ -44,10 +37,6 @@ proptest! {
     }
 }
 
-// --------------------------------------------------
-// UTF-16 LE roundtrips
-// --------------------------------------------------
-
 proptest! {
     /// UTF-16 LE roundtrip: Rust strings that have no surrogate pairs survive
     /// lossless encode/decode; ASCII-range input guarantees no surrogates
@@ -78,10 +67,6 @@ proptest! {
         prop_assert!(result.is_err(), "odd-length input must be rejected by utf16_le decoder");
     }
 }
-
-// --------------------------------------------------
-// UTF-16 BE roundtrips
-// --------------------------------------------------
 
 proptest! {
     /// UTF-16 BE roundtrip over ASCII-safe strings

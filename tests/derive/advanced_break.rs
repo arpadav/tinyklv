@@ -8,30 +8,18 @@
 //! a concrete type. The idiomatic pattern is therefore to embed the break
 //! logic directly in the manual `Decode` loop using the concrete `u8` key
 //! value, which is exactly what the derive macro expansion does.
-//!
-//! Author: aav
-
-// --------------------------------------------------
-// local
-// --------------------------------------------------
 use super::types::*;
 use tinyklv::prelude::*;
-
-// --------------------------------------------------
-// BreakOnDone - stops loop when key 0xFF is seen
-// --------------------------------------------------
 
 #[derive(Debug, PartialEq, Default)]
 struct BreakOnDone {
     color: Option<Color>,
     priority: Option<Priority>,
 }
-
-impl tinyklv::Decode<&[u8]> for BreakOnDone {
-    fn decode(input: &mut &[u8]) -> tinyklv::Result<Self> {
+impl tinyklv::DecodeValue<&[u8]> for BreakOnDone {
+    fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
         let mut color: Option<Color> = None;
         let mut priority: Option<Priority> = None;
-
         loop {
             let key = match tinyklv::dec::binary::be_u8(input) {
                 Ok(k) => k,
@@ -41,44 +29,35 @@ impl tinyklv::Decode<&[u8]> for BreakOnDone {
                 Ok(l) => l,
                 Err(_) => break,
             };
-
             // Done: stop the loop, attempt to return what we have
             if key == 0xFF {
                 break;
             }
-
             match key {
                 0x01 => {
-                    color = decode_color(input).ok().or(color);
+                    color = Color::decode_value(input).ok().or(color);
                 }
                 0x02 => {
-                    priority = decode_priority(input).ok().or(priority);
+                    priority = Priority::decode_value(input).ok().or(priority);
                 }
                 _ => {
                     let _: tinyklv::Result<_> = winnow::token::take(len).parse_next(input);
                 }
             }
         }
-
         Ok(BreakOnDone { color, priority })
     }
 }
-
-// --------------------------------------------------
-// BreakOnAbort - returns Err when key 0xFE is seen
-// --------------------------------------------------
 
 #[derive(Debug, PartialEq, Default)]
 struct BreakOnAbort {
     color: Option<Color>,
     priority: Option<Priority>,
 }
-
-impl tinyklv::Decode<&[u8]> for BreakOnAbort {
-    fn decode(input: &mut &[u8]) -> tinyklv::Result<Self> {
+impl tinyklv::DecodeValue<&[u8]> for BreakOnAbort {
+    fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
         let mut color: Option<Color> = None;
         let mut priority: Option<Priority> = None;
-
         loop {
             let key = match tinyklv::dec::binary::be_u8(input) {
                 Ok(k) => k,
@@ -96,10 +75,10 @@ impl tinyklv::Decode<&[u8]> for BreakOnAbort {
 
             match key {
                 0x01 => {
-                    color = decode_color(input).ok().or(color);
+                    color = Color::decode_value(input).ok().or(color);
                 }
                 0x02 => {
-                    priority = decode_priority(input).ok().or(priority);
+                    priority = Priority::decode_value(input).ok().or(priority);
                 }
                 _ => {
                     let _: tinyklv::Result<_> = winnow::token::take(len).parse_next(input);
@@ -111,18 +90,13 @@ impl tinyklv::Decode<&[u8]> for BreakOnAbort {
     }
 }
 
-// --------------------------------------------------
-// BreakOnSkip - skips key 0xAA payload without decoding
-// --------------------------------------------------
-
 #[derive(Debug, PartialEq, Default)]
 struct BreakOnSkip {
     color: Option<Color>,
     priority: Option<Priority>,
 }
-
-impl tinyklv::Decode<&[u8]> for BreakOnSkip {
-    fn decode(input: &mut &[u8]) -> tinyklv::Result<Self> {
+impl tinyklv::DecodeValue<&[u8]> for BreakOnSkip {
+    fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
         let mut color: Option<Color> = None;
         let mut priority: Option<Priority> = None;
 
@@ -144,10 +118,10 @@ impl tinyklv::Decode<&[u8]> for BreakOnSkip {
 
             match key {
                 0x01 => {
-                    color = decode_color(input).ok().or(color);
+                    color = Color::decode_value(input).ok().or(color);
                 }
                 0x02 => {
-                    priority = decode_priority(input).ok().or(priority);
+                    priority = Priority::decode_value(input).ok().or(priority);
                 }
                 _ => {
                     let _: tinyklv::Result<_> = winnow::token::take(len).parse_next(input);
@@ -159,10 +133,6 @@ impl tinyklv::Decode<&[u8]> for BreakOnSkip {
     }
 }
 
-// --------------------------------------------------
-// tests
-// --------------------------------------------------
-
 #[test]
 fn break_done_stops_decode() {
     // Color(0x01), Done terminator(0xFF, len=0), Priority(0x02) - last must not be decoded
@@ -171,7 +141,7 @@ fn break_done_stops_decode() {
         0xFF, 0x00, // Done terminator
         0x02, 0x01, 0x02, // Priority::High - unreachable
     ];
-    let result = BreakOnDone::decode(&mut &data[..]).unwrap();
+    let result = BreakOnDone::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.color, Some(Color::Red));
     assert_eq!(
         result.priority, None,
@@ -183,7 +153,7 @@ fn break_done_stops_decode() {
 fn break_done_empty_after_terminator() {
     // Terminator at the very start - nothing decoded
     let data: &[u8] = &[0xFF, 0x00];
-    let result = BreakOnDone::decode(&mut &data[..]).unwrap();
+    let result = BreakOnDone::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.color, None);
     assert_eq!(result.priority, None);
 }
@@ -196,7 +166,7 @@ fn break_abort_returns_error() {
         0xFE, 0x00, // Abort trigger
         0x02, 0x01, 0x01, // Priority::Medium - unreachable
     ];
-    let result = BreakOnAbort::decode(&mut &data[..]);
+    let result = BreakOnAbort::decode_value(&mut &data[..]);
     assert!(result.is_err(), "Abort condition must return Err");
 }
 
@@ -204,7 +174,7 @@ fn break_abort_returns_error() {
 fn break_abort_at_start_returns_error() {
     // Abort trigger before any useful data
     let data: &[u8] = &[0xFE, 0x00];
-    assert!(BreakOnAbort::decode(&mut &data[..]).is_err());
+    assert!(BreakOnAbort::decode_value(&mut &data[..]).is_err());
 }
 
 #[test]
@@ -215,7 +185,7 @@ fn break_skip_deprecated() {
         0xAA, 0x03, 0xDE, 0xAD, 0xBE, // deprecated key - payload consumed, not decoded
         0x02, 0x01, 0x03, // Priority::Critical
     ];
-    let result = BreakOnSkip::decode(&mut &data[..]).unwrap();
+    let result = BreakOnSkip::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.color, Some(Color::Blue));
     assert_eq!(result.priority, Some(Priority::Critical));
 }
@@ -229,7 +199,7 @@ fn break_skip_multiple_deprecated() {
         0xAA, 0x01, 0x00, // second deprecated - skipped
         0x02, 0x01, 0x00, // Priority::Low
     ];
-    let result = BreakOnSkip::decode(&mut &data[..]).unwrap();
+    let result = BreakOnSkip::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.color, Some(Color::Alpha));
     assert_eq!(result.priority, Some(Priority::Low));
 }

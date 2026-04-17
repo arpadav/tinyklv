@@ -27,7 +27,7 @@ struct Strict {
 #[test]
 fn strict_known_key_only_ok() {
     let data: &[u8] = &[0x01, 0x02, 0xAB, 0xCD];
-    let result = Strict::decode(&mut &data[..]).unwrap();
+    let result = Strict::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.known, 0xABCD);
 }
 
@@ -37,7 +37,7 @@ fn strict_unknown_key_fails() {
         0x01, 0x02, 0xAB, 0xCD, // known key 0x01
         0xFF, 0x01, 0x00, // unknown key 0xFF
     ];
-    let result = Strict::decode(&mut &data[..]);
+    let result = Strict::decode_value(&mut &data[..]);
     assert!(
         result.is_err(),
         "deny_unknown_keys should fail on unknown key 0xFF"
@@ -47,7 +47,7 @@ fn strict_unknown_key_fails() {
 #[test]
 fn strict_only_unknown_key_fails() {
     let data: &[u8] = &[0xFF, 0x02, 0x00, 0x00];
-    let result = Strict::decode(&mut &data[..]);
+    let result = Strict::decode_value(&mut &data[..]);
     assert!(result.is_err());
 }
 
@@ -72,7 +72,7 @@ fn permissive_unknown_key_is_skipped() {
         0xFF, 0x01, 0x00, // unknown key 0xFF, len=1, val=0x00
         0x01, 0x02, 0xAB, 0xCD, // known key 0x01
     ];
-    let result = Permissive::decode(&mut &data[..]).unwrap();
+    let result = Permissive::decode_value(&mut &data[..]).unwrap();
     assert_eq!(
         result.known, 0xABCD,
         "known field should be decoded even after unknown key"
@@ -86,6 +86,6 @@ fn permissive_multiple_unknown_keys_skipped() {
         0xBB, 0x01, 0x00, // unknown key 0xBB
         0x01, 0x02, 0x00, 0x07, // known key 0x01 = 7
     ];
-    let result = Permissive::decode(&mut &data[..]).unwrap();
+    let result = Permissive::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.known, 7);
 }

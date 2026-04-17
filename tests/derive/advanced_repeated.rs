@@ -25,15 +25,11 @@ use tinyklv::Klv;
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct Waypoint {
-    #[klv(key = 0x01, dec = decode_coordinate, enc = encode_coordinate)]
+    #[klv(key = 0x01, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
     coordinate: Coordinate,
-    #[klv(key = 0x02, dec = decode_priority,   enc = encode_priority)]
+    #[klv(key = 0x02, dec = Priority::decode_value,   enc = Priority::encode_value)]
     priority: Priority,
 }
-
-// --------------------------------------------------
-// UnframedPacket - no sentinel, two distinct fields
-// --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -42,15 +38,11 @@ struct Waypoint {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct UnframedPacket {
-    #[klv(key = 0x01, dec = decode_color,     enc = encode_color)]
+    #[klv(key = 0x01, dec = Color::decode_value,     enc = Color::encode_value)]
     color: Color,
-    #[klv(key = 0x02, dec = decode_timestamp, enc = encode_timestamp)]
+    #[klv(key = 0x02, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
     timestamp: Timestamp,
 }
-
-// --------------------------------------------------
-// helpers
-// --------------------------------------------------
 
 fn make_waypoint(lat: f64, lon: f64, prio: Priority) -> Waypoint {
     Waypoint {
@@ -58,10 +50,6 @@ fn make_waypoint(lat: f64, lon: f64, prio: Priority) -> Waypoint {
         priority: prio,
     }
 }
-
-// --------------------------------------------------
-// tests
-// --------------------------------------------------
 
 #[test]
 fn repeated_sentinel_extract_loop() {
@@ -71,13 +59,13 @@ fn repeated_sentinel_extract_loop() {
     let w2 = make_waypoint(51.5074, -0.1278, Priority::Medium);
     let w3 = make_waypoint(40.7128, -74.0060, Priority::High);
 
-    let mut stream: Vec<u8> = w1.encode();
-    stream.extend(w2.encode());
-    stream.extend(w3.encode());
+    let mut stream: Vec<u8> = w1.encode_frame();
+    stream.extend(w2.encode_frame());
+    stream.extend(w3.encode_frame());
 
     let mut results: Vec<Waypoint> = Vec::new();
     let mut slice = stream.as_slice();
-    while let Ok(w) = Waypoint::extract(&mut slice) {
+    while let Ok(w) = Waypoint::decode_frame(&mut slice) {
         results.push(w);
     }
 
@@ -90,15 +78,15 @@ fn repeated_sentinel_extract_loop() {
 #[test]
 fn repeated_sentinel_extract_empty_stream() {
     let mut slice: &[u8] = &[];
-    let result = Waypoint::extract(&mut slice);
+    let result = Waypoint::decode_frame(&mut slice);
     assert!(result.is_err(), "empty stream must fail extract");
 }
 
 #[test]
 fn repeated_sentinel_extract_single() {
     let w = make_waypoint(35.6762, 139.6503, Priority::Critical);
-    let encoded = w.encode();
-    let decoded = Waypoint::extract(&mut encoded.as_slice()).unwrap();
+    let encoded = w.encode_frame();
+    let decoded = Waypoint::decode_frame(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, w);
 }
 
@@ -152,16 +140,16 @@ fn repeated_decode_unframed_empty_returns_empty() {
 #[test]
 fn repeated_sentinel_three_roundtrip_values() {
     // Verify field values survive encode → extract loop without drift.
-    let waypoints = vec![
+    let waypoints = [
         make_waypoint(0.0, 0.0, Priority::Low),
         make_waypoint(-90.0, 180.0, Priority::Critical),
         make_waypoint(90.0, -180.0, Priority::High),
     ];
 
-    let stream: Vec<u8> = waypoints.iter().flat_map(|w| w.encode()).collect();
+    let stream: Vec<u8> = waypoints.iter().flat_map(|w| w.encode_frame()).collect();
     let mut slice = stream.as_slice();
     let mut decoded: Vec<Waypoint> = Vec::new();
-    while let Ok(w) = Waypoint::extract(&mut slice) {
+    while let Ok(w) = Waypoint::decode_frame(&mut slice) {
         decoded.push(w);
     }
 

@@ -20,10 +20,6 @@ fn ber_len_enc(v: usize) -> Vec<u8> {
     tinyklv::enc::ber::ber_length(&v)
 }
 
-// --------------------------------------------------
-// BER OID keys + BER lengths - MISB-style encoding
-// --------------------------------------------------
-
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -44,28 +40,25 @@ struct BerPacket {
 
 // BER OID encoding for values < 128 is a single byte equal to the value.
 // BER length < 128 is a single byte equal to the length.
-
 fn ber_packet_bytes(small: u8, word: u16, dword: u32) -> Vec<u8> {
-    let mut v = vec![];
     // key=0x01, len=1, val
-    v.push(0x01);
-    v.push(0x01);
-    v.push(small);
+    let mut v1 = vec![0x01, 0x01, small];
     // key=0x02, len=2, val
-    v.push(0x02);
-    v.push(0x02);
-    v.extend_from_slice(&word.to_be_bytes());
+    let mut v2 = vec![0x02, 0x02];
+    v2.extend_from_slice(&word.to_be_bytes());
     // key=0x03, len=4, val
-    v.push(0x03);
-    v.push(0x04);
-    v.extend_from_slice(&dword.to_be_bytes());
-    v
+    let mut v3 = vec![0x03, 0x04];
+    v3.extend_from_slice(&dword.to_be_bytes());
+    // acc
+    v1.extend_from_slice(&v2);
+    v1.extend_from_slice(&v3);
+    v1
 }
 
 #[test]
 fn decode_ber_single_byte_keys() {
     let data = ber_packet_bytes(0xAB, 0x1234, 0xDEAD_BEEF);
-    let result = BerPacket::decode(&mut data.as_slice()).unwrap();
+    let result = BerPacket::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.small_key_field, 0xAB);
     assert_eq!(result.word_field, 0x1234);
     assert_eq!(result.dword_field, 0xDEAD_BEEF);
@@ -74,7 +67,7 @@ fn decode_ber_single_byte_keys() {
 #[test]
 fn decode_ber_zero_values() {
     let data = ber_packet_bytes(0x00, 0x0000, 0x0000_0000);
-    let result = BerPacket::decode(&mut data.as_slice()).unwrap();
+    let result = BerPacket::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.small_key_field, 0);
     assert_eq!(result.word_field, 0);
     assert_eq!(result.dword_field, 0);
@@ -83,7 +76,7 @@ fn decode_ber_zero_values() {
 #[test]
 fn decode_ber_max_values() {
     let data = ber_packet_bytes(u8::MAX, u16::MAX, u32::MAX);
-    let result = BerPacket::decode(&mut data.as_slice()).unwrap();
+    let result = BerPacket::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.small_key_field, u8::MAX);
     assert_eq!(result.word_field, u16::MAX);
     assert_eq!(result.dword_field, u32::MAX);
@@ -97,7 +90,7 @@ fn encode_ber_roundtrip() {
         dword_field: 0x0001_0203,
     };
     let encoded = original.encode_value();
-    let decoded = BerPacket::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = BerPacket::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -109,7 +102,7 @@ fn encode_ber_roundtrip_all_zeros() {
         dword_field: 0,
     };
     let encoded = original.encode_value();
-    let decoded = BerPacket::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = BerPacket::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -128,7 +121,7 @@ fn encode_ber_roundtrip_all_zeros() {
 struct BerLargePayload {
     #[klv(
         key = 0x01_u64,
-        var = true,
+        varlen = true,
         dec = tinyklv::dec::binary::to_string_utf8,
         enc = tinyklv::enc::string::from_string_utf8,
     )]
@@ -148,7 +141,7 @@ fn encode_ber_large_length_roundtrip() {
         "expected BER long-form length marker 0x81"
     );
     assert_eq!(encoded[2], 200, "expected BER length byte 200");
-    let decoded = BerLargePayload::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = BerLargePayload::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -157,7 +150,7 @@ fn decode_ber_missing_required_fails() {
     let data: &[u8] = &[
         0x02, 0x02, 0x00, 0x01, // wrong key - 0x01 absent
     ];
-    let result = BerLargePayload::decode(&mut &data[..]);
+    let result = BerLargePayload::decode_value(&mut &data[..]);
     assert!(result.is_err());
 }
 
@@ -177,7 +170,7 @@ fn decode_ber_fields_reversed_order() {
         v.push(0xAB);
         v
     };
-    let result = BerPacket::decode(&mut data.as_slice()).unwrap();
+    let result = BerPacket::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.small_key_field, 0xAB);
     assert_eq!(result.word_field, 0x1234);
     assert_eq!(result.dword_field, 0xDEAD_BEEF);

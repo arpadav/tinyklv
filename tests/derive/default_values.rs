@@ -34,7 +34,7 @@ struct WithInit {
 #[test]
 fn decode_with_init_key_present() {
     let data: &[u8] = &[0x01, 0x02, 0x01, 0x00, 0x02, 0x04, 0x00, 0x00, 0x00, 0xFF];
-    let result = WithInit::decode(&mut &data[..]).unwrap();
+    let result = WithInit::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.with_init, 256);
     assert_eq!(result.without_init, 255);
 }
@@ -42,7 +42,7 @@ fn decode_with_init_key_present() {
 #[test]
 fn decode_with_init_key_absent_uses_default() {
     let data: &[u8] = &[0x02, 0x04, 0x00, 0x00, 0x00, 0xFF];
-    let result = WithInit::decode(&mut &data[..]).unwrap();
+    let result = WithInit::decode_value(&mut &data[..]).unwrap();
     assert_eq!(
         result.with_init, 42,
         "init default should be used when key is absent"
@@ -54,7 +54,7 @@ fn decode_with_init_key_absent_uses_default() {
 fn decode_without_init_still_required() {
     // Key 0x02 is absent and has no init - should fail
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x10];
-    let result = WithInit::decode(&mut &data[..]);
+    let result = WithInit::decode_value(&mut &data[..]);
     assert!(result.is_err(), "field without init is required");
 }
 
@@ -65,7 +65,7 @@ fn roundtrip_with_init() {
         without_init: 0xDEAD_BEEF,
     };
     let encoded = original.encode_value();
-    let decoded = WithInit::decode(&mut &encoded[..]).unwrap();
+    let decoded = WithInit::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -90,7 +90,7 @@ struct WithExtraField {
 #[test]
 fn decode_non_klv_field_is_default() {
     let data: &[u8] = &[0x01, 0x01, 0x07];
-    let result = WithExtraField::decode(&mut &data[..]).unwrap();
+    let result = WithExtraField::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.klv_field, 7);
     assert_eq!(
         result.extra,
@@ -103,7 +103,7 @@ fn decode_non_klv_field_is_default() {
 fn decode_non_klv_field_unchanged_by_stream() {
     // Even if stream has extra bytes with unknown keys, the non-KLV field stays at default
     let data: &[u8] = &[0x01, 0x01, 0xAB, 0xFF, 0x01, 0x00];
-    let result = WithExtraField::decode(&mut &data[..]).unwrap();
+    let result = WithExtraField::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.klv_field, 0xAB);
     assert_eq!(result.extra, "");
 }

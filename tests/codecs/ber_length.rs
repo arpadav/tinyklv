@@ -91,7 +91,7 @@ fn berlength_struct_47() {
     let ber = BerLength::new(&val);
     let encoded = ber.encode_value();
     assert_eq!(encoded, vec![47]);
-    let decoded = BerLength::<u64>::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = BerLength::<u64>::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, BerLength::new(&val));
 }
 
@@ -101,7 +101,7 @@ fn berlength_struct_201() {
     let ber = BerLength::new(&val);
     let encoded = ber.encode_value();
     assert_eq!(encoded, vec![128 + 1, 201]);
-    let decoded = BerLength::<u64>::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = BerLength::<u64>::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, BerLength::new(&val));
 }
 
@@ -111,7 +111,7 @@ fn berlength_struct_large() {
     let ber = BerLength::new(&val);
     let encoded = ber.encode_value();
     assert_eq!(encoded, vec![128 + 6, 112, 173, 208, 117, 220, 22]);
-    let decoded = BerLength::<u64>::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = BerLength::<u64>::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, BerLength::new(&val));
 }
 
@@ -119,13 +119,9 @@ fn berlength_struct_large() {
 fn berlength_8500738_u32() {
     let encoded = BerLength::new(&8_500_738_u32).encode_value();
     assert_eq!(encoded, vec![128 + 3, 129, 182, 2]);
-    let decoded = BerLength::<u32>::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = BerLength::<u32>::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, BerLength::new(&8_500_738_u32));
 }
-
-// --------------------------------------------------
-// error cases
-// --------------------------------------------------
 
 #[test]
 fn ber_length_empty_input_fails() {

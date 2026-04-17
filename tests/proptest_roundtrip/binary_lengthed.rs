@@ -1,11 +1,4 @@
-// --------------------------------------------------
-// external
-// --------------------------------------------------
 use proptest::prelude::*;
-
-// --------------------------------------------------
-// exact-size roundtrips: enc(x) |> dec(sizeof(T)) == x
-// --------------------------------------------------
 
 proptest! {
     #[test]
@@ -51,11 +44,6 @@ proptest! {
     }
 }
 
-// --------------------------------------------------
-// output length invariant: enc always produces
-// exactly `len` bytes
-// --------------------------------------------------
-
 proptest! {
     #[test]
     fn be_u16_lengthed_output_len(val: u16, len in 1usize..=4) {
@@ -82,12 +70,6 @@ proptest! {
     }
 }
 
-// --------------------------------------------------
-// idempotency: enc(dec(enc(x, len), len), len) == enc(x, len)
-// verifies that a re-encode after a decode produces
-// identical bytes
-// --------------------------------------------------
-
 proptest! {
     #[test]
     fn be_u16_lengthed_idempotent(val: u16) {
@@ -105,13 +87,6 @@ proptest! {
         prop_assert_eq!(enc1, enc2);
     }
 }
-
-// --------------------------------------------------
-// truncation: values that fit in fewer bytes survive
-// a shorter-than-sizeof enc/dec cycle
-// the low byte(s) must survive a 1-byte lengthed
-// encode/decode cycle
-// --------------------------------------------------
 
 proptest! {
     #[test]

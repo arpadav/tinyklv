@@ -1,6 +1,3 @@
-// --------------------------------------------------
-// local
-// --------------------------------------------------
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
@@ -18,7 +15,7 @@ fn enc_u32(v: &u32) -> Vec<u8> {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct SingleField {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = enc_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = tinyklv::enc::binary::be_u16)]
     value: u16,
 }
 
@@ -43,7 +40,7 @@ fn duplicate_key_last_wins() {
         0x01, 0x02, 0x00, 0x01, // first occurrence: 1
         0x01, 0x02, 0x00, 0x02, // second occurrence: 2 (last wins)
     ];
-    let result = SingleField::decode(&mut &data[..]).unwrap();
+    let result = SingleField::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.value, 2, "last occurrence should win");
 }
 
@@ -54,14 +51,14 @@ fn duplicate_key_three_times_last_wins() {
         0x01, 0x02, 0x00, 0x14, // 20
         0x01, 0x02, 0x00, 0x1E, // 30 (last wins)
     ];
-    let result = SingleField::decode(&mut &data[..]).unwrap();
+    let result = SingleField::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.value, 30, "last of three occurrences should win");
 }
 
 #[test]
 fn duplicate_key_single_occurrence_works_normally() {
     let data: &[u8] = &[0x01, 0x02, 0xAB, 0xCD];
-    let result = SingleField::decode(&mut &data[..]).unwrap();
+    let result = SingleField::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.value, 0xABCD);
 }
 
@@ -69,7 +66,7 @@ fn duplicate_key_single_occurrence_works_normally() {
 fn duplicate_key_same_value_both_times() {
     // Idempotent: same value repeated, result unchanged regardless of last-wins.
     let data: &[u8] = &[0x01, 0x02, 0xFF, 0xFF, 0x01, 0x02, 0xFF, 0xFF];
-    let result = SingleField::decode(&mut &data[..]).unwrap();
+    let result = SingleField::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.value, u16::MAX);
 }
 
@@ -81,7 +78,7 @@ fn duplicate_of_first_field_other_field_unaffected() {
         0x01, 0x02, 0x00, 0x02, // a = 2 (last wins)
         0x02, 0x04, 0xDE, 0xAD, 0xBE, 0xEF, // b = 0xDEADBEEF
     ];
-    let result = TwoFields::decode(&mut &data[..]).unwrap();
+    let result = TwoFields::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.a, 2);
     assert_eq!(result.b, Some(0xDEAD_BEEF));
 }
@@ -94,7 +91,7 @@ fn duplicate_of_second_field_other_field_unaffected() {
         0x02, 0x04, 0x00, 0x00, 0x00, 0x01, // b = 1
         0x02, 0x04, 0x00, 0x00, 0x00, 0x02, // b = 2 (last wins)
     ];
-    let result = TwoFields::decode(&mut &data[..]).unwrap();
+    let result = TwoFields::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.a, 0xBEEF);
     assert_eq!(result.b, Some(2));
 }
@@ -108,7 +105,7 @@ fn interleaved_duplicates_last_wins_for_each() {
         0x01, 0x02, 0x00, 0x14, // a = 20 (last wins)
         0x02, 0x04, 0x00, 0x00, 0x00, 0xC8, // b = 200 (last wins)
     ];
-    let result = TwoFields::decode(&mut &data[..]).unwrap();
+    let result = TwoFields::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.a, 20);
     assert_eq!(result.b, Some(200));
 }
@@ -120,7 +117,7 @@ fn duplicate_key_max_value_last() {
         0x01, 0x02, 0x00, 0x00, // 0
         0x01, 0x02, 0xFF, 0xFF, // u16::MAX (last wins)
     ];
-    let result = SingleField::decode(&mut &data[..]).unwrap();
+    let result = SingleField::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.value, u16::MAX);
 }
 
@@ -131,6 +128,6 @@ fn duplicate_key_zero_last() {
         0x01, 0x02, 0xFF, 0xFF, // u16::MAX
         0x01, 0x02, 0x00, 0x00, // 0 (last wins)
     ];
-    let result = SingleField::decode(&mut &data[..]).unwrap();
+    let result = SingleField::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.value, 0_u16);
 }

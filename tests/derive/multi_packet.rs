@@ -40,30 +40,30 @@ struct PacketB {
 fn build_stream(a_val: u16, b_val: u32) -> Vec<u8> {
     let a = PacketA { value: a_val };
     let b = PacketB { value: b_val };
-    let mut stream = a.encode();
-    stream.extend(b.encode());
+    let mut stream = a.encode_frame();
+    stream.extend(b.encode_frame());
     stream
 }
 
 #[test]
 fn extract_packet_a_from_stream() {
     let stream = build_stream(0x1234, 0xDEAD_BEEF);
-    let decoded = PacketA::extract(&mut stream.as_slice()).unwrap();
+    let decoded = PacketA::decode_frame(&mut stream.as_slice()).unwrap();
     assert_eq!(decoded.value, 0x1234);
 }
 
 #[test]
 fn extract_packet_b_from_stream() {
     let stream = build_stream(0x1234, 0xDEAD_BEEF);
-    let decoded = PacketB::extract(&mut stream.as_slice()).unwrap();
+    let decoded = PacketB::decode_frame(&mut stream.as_slice()).unwrap();
     assert_eq!(decoded.value, 0xDEAD_BEEF);
 }
 
 #[test]
 fn both_packets_independent() {
     let stream = build_stream(999, 123456);
-    let a = PacketA::extract(&mut stream.as_slice()).unwrap();
-    let b = PacketB::extract(&mut stream.as_slice()).unwrap();
+    let a = PacketA::decode_frame(&mut stream.as_slice()).unwrap();
+    let b = PacketB::decode_frame(&mut stream.as_slice()).unwrap();
     assert_eq!(a.value, 999);
     assert_eq!(b.value, 123456);
 }
@@ -71,6 +71,6 @@ fn both_packets_independent() {
 #[test]
 fn packet_a_missing_sentinel_fails() {
     // Stream only contains PacketA; extracting PacketB should fail
-    let a_only = PacketA { value: 1 }.encode();
-    assert!(PacketB::extract(&mut a_only.as_slice()).is_err());
+    let a_only = PacketA { value: 1 }.encode_frame();
+    assert!(PacketB::decode_frame(&mut a_only.as_slice()).is_err());
 }

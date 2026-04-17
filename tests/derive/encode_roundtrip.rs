@@ -59,7 +59,7 @@ fn all_numerics_roundtrip_typical() {
         i32_field: -100_000,
     };
     let encoded = original.encode_value();
-    let decoded = AllNumerics::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = AllNumerics::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -74,7 +74,7 @@ fn all_numerics_roundtrip_zeros() {
         i32_field: 0,
     };
     let encoded = original.encode_value();
-    let decoded = AllNumerics::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = AllNumerics::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -89,7 +89,7 @@ fn all_numerics_roundtrip_max_values() {
         i32_field: i32::MAX,
     };
     let encoded = original.encode_value();
-    let decoded = AllNumerics::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = AllNumerics::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -104,7 +104,7 @@ fn all_numerics_roundtrip_min_signed() {
         i32_field: i32::MIN,
     };
     let encoded = original.encode_value();
-    let decoded = AllNumerics::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = AllNumerics::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -132,7 +132,7 @@ fn optional_some_roundtrip() {
         optional: Some(0x1234),
     };
     let encoded = original.encode_value();
-    let decoded = WithOptionalRoundtrip::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = WithOptionalRoundtrip::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -143,7 +143,7 @@ fn optional_none_roundtrip() {
         optional: None,
     };
     let encoded = original.encode_value();
-    let decoded = WithOptionalRoundtrip::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = WithOptionalRoundtrip::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -162,7 +162,7 @@ struct WithStringRoundtrip {
     id: u16,
     #[klv(
         key = 0x02,
-        var = true,
+        varlen = true,
         dec = tinyklv::dec::binary::to_string_utf8,
         enc = tinyklv::enc::string::from_string_utf8
     )]
@@ -176,7 +176,7 @@ fn string_field_roundtrip_ascii() {
         name: String::from("MISSION01"),
     };
     let encoded = original.encode_value();
-    let decoded = WithStringRoundtrip::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = WithStringRoundtrip::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -187,7 +187,7 @@ fn string_field_roundtrip_empty() {
         name: String::new(),
     };
     let encoded = original.encode_value();
-    let decoded = WithStringRoundtrip::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = WithStringRoundtrip::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
@@ -198,6 +198,6 @@ fn string_field_roundtrip_unicode() {
         name: String::from("Héllo 🌍"),
     };
     let encoded = original.encode_value();
-    let decoded = WithStringRoundtrip::decode(&mut encoded.as_slice()).unwrap();
+    let decoded = WithStringRoundtrip::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }

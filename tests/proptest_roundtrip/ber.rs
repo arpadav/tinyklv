@@ -1,20 +1,13 @@
-// --------------------------------------------------
-// external
-// --------------------------------------------------
 use proptest::prelude::*;
 use tinyklv::codecs::ber::{BerLength, BerOid};
 use tinyklv::prelude::*;
-
-// --------------------------------------------------
-// BerLength roundtrips
-// --------------------------------------------------
 
 proptest! {
     /// Full u32-range roundtrip via the typed struct API
     #[test]
     fn ber_length_roundtrip_u32_range(val in 0u32..u32::MAX) {
         let encoded = BerLength::new(&(val as u64)).encode_value();
-        let decoded = BerLength::<u64>::decode(&mut encoded.as_slice()).unwrap();
+        let decoded = BerLength::<u64>::decode_value(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(val as u128, decoded.as_u128());
     }
 
@@ -45,15 +38,10 @@ proptest! {
     fn ber_length_decode_consumes_all(val in 0u32..u32::MAX) {
         let encoded = BerLength::new(&(val as u64)).encode_value();
         let mut slice = encoded.as_slice();
-        let _ = BerLength::<u64>::decode(&mut slice).unwrap();
+        let _ = BerLength::<u64>::decode_value(&mut slice).unwrap();
         prop_assert!(slice.is_empty(), "decode must consume all encoded bytes");
     }
 }
-
-// --------------------------------------------------
-// BerLength function-API roundtrip
-// (dec::ber_length / enc::ber_length)
-// --------------------------------------------------
 
 proptest! {
     /// Function-API roundtrip: enc::ber_length -> dec::ber_length
@@ -67,16 +55,12 @@ proptest! {
     }
 }
 
-// --------------------------------------------------
-// BerOid roundtrips
-// --------------------------------------------------
-
 proptest! {
     /// Full u32-range OID roundtrip via the typed struct API
     #[test]
     fn ber_oid_roundtrip_u32_range(val in 1u32..u32::MAX) {
         let encoded = BerOid::new(&(val as u64)).encode_value();
-        let decoded = BerOid::<u64>::decode(&mut encoded.as_slice()).unwrap();
+        let decoded = BerOid::<u64>::decode_value(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(val as u64, decoded.value);
     }
 
@@ -110,7 +94,7 @@ proptest! {
     fn ber_oid_decode_consumes_all(val in 1u32..u32::MAX) {
         let encoded = BerOid::new(&(val as u64)).encode_value();
         let mut slice = encoded.as_slice();
-        let _ = BerOid::<u64>::decode(&mut slice).unwrap();
+        let _ = BerOid::<u64>::decode_value(&mut slice).unwrap();
         prop_assert!(slice.is_empty(), "decode must consume all encoded bytes");
     }
 
@@ -122,11 +106,6 @@ proptest! {
         prop_assert_eq!(encoded[0], val);
     }
 }
-
-// --------------------------------------------------
-// BerOid function-API roundtrip
-// (dec::ber_oid / enc::ber_oid)
-// --------------------------------------------------
 
 proptest! {
     #[test]
