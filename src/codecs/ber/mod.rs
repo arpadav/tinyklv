@@ -58,14 +58,28 @@ impl<T> OfBerOid for T where T: OfBerCommon {}
 /// use tinyklv::codecs::ber::BerLength;
 ///
 /// assert_eq!(vec![128 + 3, 129, 182, 2], BerLength::new(&8_500_738_u32).encode_value());
-/// assert_eq!(BerLength::new(&8_500_738_u32), BerLength::decode(&mut &vec![128 + 3, 129, 182, 2][..]).unwrap());
+/// assert_eq!(BerLength::new(&8_500_738_u32), BerLength::decode_value(&mut &vec![128 + 3, 129, 182, 2][..]).unwrap());
 /// ```
 pub enum BerLength<T: OfBerLength> {
+    /// A
     Short(u8),
     Long(T),
 }
 /// [`BerLength`] implementation
 impl<T: OfBerLength> BerLength<T> {
+    #[inline(always)]
+    /// Checks if the input value can be represented as BER short form, which must
+    /// be less than 128
+    fn can_be_short(val: &T) -> bool {
+        #![allow(
+            clippy::expect_used,
+            reason = "this should never panic, due to trait bounds"
+        )]
+        val < &T::from_u8(0x80).expect(
+            "converting 128 -> u{8,16,32,64,128} should always be permissible, why did this panic?",
+        )
+    }
+
     /// Creates a new [BerLength] from a [`num_traits::Unsigned`]
     ///
     /// # Arguments
@@ -76,8 +90,12 @@ impl<T: OfBerLength> BerLength<T> {
     ///
     /// This should never panic, due to trait bounds
     pub fn new(len: &T) -> Self {
-        match len < &T::from_u8(128).unwrap() {
-            true => BerLength::Short(len.to_u8().unwrap()),
+        match Self::can_be_short(len) {
+            #[allow(
+                clippy::expect_used,
+                reason = "this should never panic, due to trait bounds"
+            )]
+            true => BerLength::Short(len.to_u8().expect("if unsigned int is less than 128, then it can always fit into u8, why did this panic?")),
             false => BerLength::Long(*len),
         }
     }
@@ -131,8 +149,12 @@ impl<T: OfBerLength> crate::EncodeValue<Vec<u8>> for BerLength<T> {
                 // --------------------------------------------------
                 // This should never happen: upon creation, length is checked to be < 128
                 // --------------------------------------------------
-                if len < &T::from_u8(128).unwrap() {
-                    return vec![len.to_u8().unwrap()];
+                if Self::can_be_short(len) {
+                    #[allow(
+                        clippy::expect_used,
+                        reason = "this should never panic, due to trait bounds"
+                    )]
+                    return vec![len.to_u8().expect("if unsigned int is less than 128, then it can always fit into u8, why did this panic?")];
                 }
                 // --------------------------------------------------
                 // skip leading zeroes
@@ -160,7 +182,7 @@ impl<T: OfBerLength> crate::EncodeValue<Vec<u8>> for BerLength<T> {
     }
 }
 /// [`BerLength`] implementation of [`Decode`]
-impl<T: OfBerLength> crate::Decode<&[u8]> for BerLength<T> {
+impl<T: OfBerLength> crate::DecodeValue<&[u8]> for BerLength<T> {
     /// Decode a [`BerLength`] from a [`&[u8]`]
     ///
     /// # Example
@@ -173,11 +195,11 @@ impl<T: OfBerLength> crate::Decode<&[u8]> for BerLength<T> {
     /// let value1 = vec![128 + 1, 201];
     /// let value2 = vec![128 + 6, 112, 173, 208, 117, 220, 22];
     ///
-    /// assert_eq!(BerLength::decode(&mut &value0[..]).unwrap(), BerLength::new(&47_u64));
-    /// assert_eq!(BerLength::decode(&mut &value1[..]).unwrap(), BerLength::new(&201_u64));
-    /// assert_eq!(BerLength::decode(&mut &value2[..]).unwrap(), BerLength::new(&123891829038102_u64));
+    /// assert_eq!(BerLength::decode_value(&mut &value0[..]).unwrap(), BerLength::new(&47_u64));
+    /// assert_eq!(BerLength::decode_value(&mut &value1[..]).unwrap(), BerLength::new(&201_u64));
+    /// assert_eq!(BerLength::decode_value(&mut &value2[..]).unwrap(), BerLength::new(&123891829038102_u64));
     /// ```
-    fn decode(input: &mut &[u8]) -> winnow::Result<Self> {
+    fn decode_value(input: &mut &[u8]) -> winnow::Result<Self> {
         let checkpoint = input.checkpoint();
         // --------------------------------------------------
         // err if no bytes
@@ -258,7 +280,7 @@ impl<T: OfBerLength> crate::Decode<&[u8]> for BerLength<T> {
 /// use tinyklv::codecs::ber::BerOid;
 ///
 /// assert_eq!(vec![129, 182, 2], BerOid::encode_value(&23298_u64));
-/// assert_eq!(23298_u64, BerOid::decode(&mut &vec![129, 182, 2][..]).unwrap().value);
+/// assert_eq!(23298_u64, BerOid::decode_value(&mut &vec![129, 182, 2][..]).unwrap().value);
 /// ```
 pub struct BerOid<T: OfBerOid> {
     pub value: T,
@@ -320,7 +342,7 @@ impl<T: OfBerOid> crate::EncodeValue<Vec<u8>> for BerOid<T> {
     }
 }
 /// [`BerOid`] implementation of [`Decode`]
-impl<T: OfBerOid> crate::Decode<&[u8]> for BerOid<T> {
+impl<T: OfBerOid> crate::DecodeValue<&[u8]> for BerOid<T> {
     /// Decode a [`BerOid`] from a [`&[u8]`]
     ///
     /// # Example
@@ -329,30 +351,46 @@ impl<T: OfBerOid> crate::Decode<&[u8]> for BerOid<T> {
     /// use tinyklv::prelude::*;
     /// use tinyklv::codecs::ber::BerOid;
     ///
-    /// assert_eq!(23298_u64, BerOid::decode(&mut &vec![129, 182, 2][..]).unwrap().value);
+    /// assert_eq!(23298_u64, BerOid::decode_value(&mut &vec![129, 182, 2][..]).unwrap().value);
     /// ```
     ///
     /// Please use [`crate::codecs::ber::dec::ber_oid`] instead for
     /// all parsing needs. This struct is meant to be used as a development
     /// tool for parsing BER encoded values.
-    fn decode(input: &mut &[u8]) -> winnow::Result<Self> {
+    fn decode_value(input: &mut &[u8]) -> winnow::Result<Self> {
         let checkpoint = input.checkpoint();
         // --------------------------------------------------
-        // take while MSB = 1, then take last byte and exit
-        // if fails, it means it's a single byte with no
-        // MSB set
+        // BER-OID grammar: `(msb-set)* (msb-unset)`
+        //   - zero or more continuation bytes with MSB = 1
+        //   - exactly one terminator byte with MSB = 0
         // --------------------------------------------------
-        let output = match take_while_msb_set(input) {
-            Ok(packets) => packets
-                .iter()
-                .chain(take_one(input)?)
-                // --------------------------------------------------
-                // extract the 7 bits from the byte (ignoring the MSB)
-                // and insert to correct position
-                // --------------------------------------------------
-                .fold(0u128, |acc, &b| (acc << 7) | (b & 0x7F) as u128),
-            Err(_) => winnow::binary::be_u8(input)? as u128,
-        };
+        let prefix: &[u8] = take_while(0.., msb_is_set).parse_next(input).map_err(
+            |e: winnow::error::ContextError| {
+                e.add_context(
+                    input,
+                    &checkpoint,
+                    winnow::error::StrContext::Label("BER-OID continuation bytes"),
+                )
+            },
+        )?;
+        let terminator =
+            winnow::binary::be_u8(input).map_err(|e: winnow::error::ContextError| {
+                e.add_context(
+                    input,
+                    &checkpoint,
+                    winnow::error::StrContext::Label(
+                        "BER-OID missing terminator byte (MSB unset) at end of input",
+                    ),
+                )
+            })?;
+        // --------------------------------------------------
+        // accumulate 7 bits per byte, prefix first then terminator
+        // --------------------------------------------------
+        let output = prefix
+            .iter()
+            .copied()
+            .chain(std::iter::once(terminator))
+            .fold(0u128, |acc, b| (acc << 7) | (b & 0x7F) as u128);
         let output = match T::from_u128(output) {
             Some(value) => value,
             None => {
@@ -376,14 +414,7 @@ impl<T: OfBerOid> crate::Decode<&[u8]> for BerOid<T> {
 }
 
 #[inline(always)]
-/// Parses out all bytes while MSB is set to 1
-fn take_while_msb_set<'s>(input: &mut &'s [u8]) -> winnow::Result<&'s [u8]> {
-    take_while(1.., msb_is_set).parse_next(input)
-}
-
-#[inline(always)]
-/// Parses out a single byte. MSB is **assumed** set to 0, since
-/// this function is only called after [`take_while_msb_set`]
+/// Parses out a single byte, returning it as a 1-element slice
 fn take_one<'s>(input: &mut &'s [u8]) -> winnow::Result<&'s [u8]> {
     take(1usize).parse_next(input)
 }

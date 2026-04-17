@@ -4,7 +4,6 @@
 //! - **`_from_usize`** (encode): follows Rust's `From` conversion convention, e.g. `u16_from_usize`
 //!
 //! Both are intentional and consistent within their respective sides.
-
 pub mod ber;
 pub mod binary;
 pub mod string;

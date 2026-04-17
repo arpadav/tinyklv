@@ -23,8 +23,6 @@ pub(crate) struct FieldXcoder {
     /// syn errors
     pub errors: Option<syn::Error>,
 
-    /// testing: len
-    pub len: crate::Length,
     /// testing: init
     pub init: Option<syn::Expr>,
 }
@@ -39,7 +37,6 @@ impl From<&syn::MetaList> for FieldXcoder {
         let mut enc: Option<XcoderType> = None;
         let mut dec: Option<XcoderType> = None;
         let mut var: Option<syn::LitBool> = None;
-        let mut len: Option<crate::Length> = None;
         let mut init: Option<syn::Expr> = None;
         // --------------------------------------------------
         // parse nested meta
@@ -49,12 +46,11 @@ impl From<&syn::MetaList> for FieldXcoder {
                 handle_unique_nested_meta_values! {
                     meta;
                     err!(UnknownFieldField(meta.path));
-                    6;
+                    5;
                     key: symbol::parse_pnm_key              => err!(DuplicateKeyInField),
                     enc: symbol::pnm_parse_maybestr_encoder => err!(DuplicateEncoderInField),
                     dec: symbol::pnm_parse_maybestr_decoder => err!(DuplicateDecoderInField),
                     var: symbol::parse_pnm_variable_length  => err!(DuplicateVariableLengthInField),
-                    len: symbol::parse_pnm_length           => err!(DuplicateLengthInField),
                     init: symbol::parse_pnm_initial_value,
                 }
             })
@@ -70,7 +66,6 @@ impl From<&syn::MetaList> for FieldXcoder {
             var,
             errors,
 
-            len: len.unwrap_or_default(),
             init,
         }
     }

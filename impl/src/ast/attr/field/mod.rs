@@ -220,7 +220,6 @@ pub(crate) struct FieldParsed {
     pub dec: Option<XcoderType>,
     pub var: Option<syn::LitBool>,
 
-    pub _len: crate::Length,
     pub _init: Option<syn::Expr>,
 }
 /// [`FieldParsed`] implementation
@@ -246,7 +245,6 @@ impl FieldParsed {
             dec: f.contents.dec.clone(),
             var: f.contents.var.clone(),
 
-            _len: f.contents.len.clone(),
             _init: f.contents.init.clone(),
         })
     }

@@ -1108,7 +1108,7 @@ mod tests {
 
         let random_usize: Box<dyn Fn(usize) -> Vec<usize>> = Box::new(|max| {
             let pareto = rand_distr::Pareto::new(2.0, 1.0).unwrap();
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             (0..TRIALS)
                 .map(|_| (pareto.sample(&mut rng) as usize).clamp(1, max))
                 .collect()

@@ -17,6 +17,7 @@
 // local
 // --------------------------------------------------
 use crate::prelude::*;
+
 // --------------------------------------------------
 // external
 // --------------------------------------------------
@@ -177,16 +178,6 @@ pub fn to_string_utf16_be(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<S
             })
             .parse_next(input)
     }
-}
-
-#[deprecated(
-    since = "0.1.0",
-    note = "renamed to `to_string_utf16_le` to clarify endianness"
-)]
-#[inline(always)]
-/// Use [`to_string_utf16_le`] instead.
-pub fn to_string_utf16(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<String> {
-    to_string_utf16_le(len)
 }
 
 #[inline(always)]

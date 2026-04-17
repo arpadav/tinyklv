@@ -8,7 +8,7 @@ use winnow::error::ContextError;
 // --------------------------------------------------
 pub use crate::prelude::*;
 
-/// Decodes the value portion of a KLV field from stream-type `S`.
+/// Decodes the value portion of a KLV field from stream-type `S`
 ///
 /// Encode counterpart: [`EncodeValue`](crate::traits::EncodeValue)
 ///
@@ -20,112 +20,87 @@ pub use crate::prelude::*;
 ///
 /// * fixed length:     `fn <name>(input: &mut S)   -> tinyklv::Result<Self>;`
 /// * variable length:  `fn <name>(len: usize)      -> impl Fn(&mut S) -> tinyklv::Result<Self>;`
-pub trait Decode<S>: Sized
+pub trait DecodeValue<S>: Sized
 where
     S: winnow::stream::Stream,
 {
-    fn decode(input: &mut S) -> winnow::Result<Self>;
+    fn decode_value(input: &mut S) -> winnow::Result<Self>;
 }
 
-/// Seeks to the beginning of the prescribed type from a stream using the sentinel.
+/// Seeks to the beginning of the prescribed type from a stream using the sentinel
 ///
 /// Encode counterpart: sentinel bytes are prepended by [`Encode`](crate::traits::Encode)
 ///
 /// This is automatically implemented when `sentinel` is set in the [`crate::Klv`](crate::Klv) attribute
-pub trait Seek<S>: Sized
+pub trait SeekSentinel<S>: Sized
 where
     S: winnow::stream::Stream,
 {
-    fn seek(input: &mut S) -> winnow::Result<S>;
+    fn seek_sentinel(input: &mut S) -> winnow::Result<S>;
 }
 
-/// Full KLV decode pipeline: [`Seek`] + [`Decode`].
+/// Full KLV decode pipeline: [`SeekSentinel`] + [`DecodeValue`]
 ///
 /// Encode counterpart: [`Encode`](crate::traits::Encode)
-pub trait Extract<S>: Sized
+pub trait DecodeFrame<S>: Sized
 where
     S: winnow::stream::Stream,
 {
-    fn extract(input: &mut S) -> winnow::Result<Self>;
+    fn decode_frame(input: &mut S) -> winnow::Result<Self>;
 }
-/// [`Extract`] implementation for all types `T` that implement [`Seek`] and [`Decode`]
-impl<S, T> Extract<S> for T
+/// [`DecodeFrame`] implementation for all types `T` that implement [`SeekSentinel`] and [`DecodeValue`]
+///
+/// Flow:
+///
+/// * [`SeekSentinel::seek_sentinel`] locates the sentinel in `input`, consumes sentinel + length + body, and returns the body as a sub-slice (`sought`).
+/// * [`DecodeValue::decode_value`] is then run on the sub-slice, so partial consumption during decode does not bleed into the outer `input`.
+/// * On decode failure, context is attached referencing the outer `input` position for better error messages.
+impl<S, T> DecodeFrame<S> for T
 where
     S: winnow::stream::Stream,
-    T: Seek<S> + Decode<S>,
+    T: SeekSentinel<S> + DecodeValue<S>,
 {
-    fn extract(input: &mut S) -> winnow::Result<Self> {
-        let mut sought = T::seek.parse_next(input)?;
-        let result = T::then_decode(&mut sought).parse_next(input);
-        result
+    fn decode_frame(input: &mut S) -> winnow::Result<Self> {
+        let mut sought = T::seek_sentinel.parse_next(input)?;
+        let checkpoint = input.checkpoint();
+        Self::decode_value(&mut sought).map_err(|e| {
+            e.add_context(
+                input,
+                &checkpoint,
+                winnow::error::StrContext::Label("Unable to parse data embedded in packet"),
+            )
+        })
     }
 }
 
-/// Internal trait for parsing and decoding embedded data
+/// Decodes repeatedly, accumulating results into a [`Vec`].
 ///
-/// See [`Extract`] for more information
-///
-/// Idea is:
-///
-/// * [`Seek`] finds the data using the recognition sentinel
-/// * [`Decode`] decodes the data of the packet, without finding it
-/// * [`Extract`] performs [`Seek`] -> [`Decode`]. But upon failure, it has to return the checkpoint to the next item of input, rather than the checkpoint of the sub-slice used in the [`Decode`] call
-///
-/// [`ThenDecode`] solves this issue by taking the sub-slice as an input, passing it to the [`Decode`] implementation, and upon failure, returning to the original input checkpoint.
-trait ThenDecode<S>: Sized
-where
-    S: winnow::stream::Stream,
-{
-    fn then_decode(subslice: &mut S) -> impl FnMut(&mut S) -> winnow::Result<Self>;
-}
-/// [`ThenDecode`] implementation for all types `T` that implement [`Decode`]
-impl<S, T> ThenDecode<S> for T
-where
-    S: winnow::stream::Stream,
-    T: Decode<S>,
-{
-    fn then_decode(subslice: &mut S) -> impl FnMut(&mut S) -> winnow::Result<Self> {
-        move |input: &mut S| {
-            let checkpoint = input.checkpoint();
-            match Self::decode(subslice) {
-                Ok(parsed) => Ok(parsed),
-                Err(e) => Err(e.add_context(
-                    input,
-                    &checkpoint,
-                    winnow::error::StrContext::Label("Unable to parse data embedded in packet"),
-                )),
-            }
-        }
-    }
-}
-
-/// Decodes repeatedly, until it can no longer
-///
-/// Accumulates results in a [`Vec`] and returns
-///
-/// Note that this **always** returns [`Ok`]: if there is a failure, it will return [`Ok`] with [an empty vector](Vec::new)
+/// Semantics: decodes zero or more items until either (a) the next call to
+/// [`DecodeValue::decode_value`] fails to start consuming (clean EOF-style end),
+/// or (b) a real mid-stream parser error is encountered. In case (a), returns
+/// `Ok(items)` with whatever has been accumulated so far. In case (b), the
+/// error is propagated with full context - callers are not left guessing
+/// whether an empty `Vec` means "no items" or "parse failed on item N".
 pub trait RepeatedDecode<S>: Sized
 where
     S: winnow::stream::Stream,
 {
     fn repeated(input: &mut S) -> winnow::Result<Vec<Self>>;
 }
-/// [`RepeatedDecode`] implementation for all types `T` that implement [`Decode`]
+/// [`RepeatedDecode`] implementation for all types `T` that implement [`DecodeValue`]
 impl<S, T> RepeatedDecode<S> for T
 where
-    T: Decode<S>,
+    T: DecodeValue<S>,
     S: winnow::stream::Stream,
 {
     fn repeated(input: &mut S) -> winnow::Result<Vec<Self>> {
-        Ok(winnow::combinator::repeat(0.., Self::decode)
-            .parse_next(input)
-            .unwrap_or_default())
+        winnow::combinator::repeat(0.., Self::decode_value).parse_next(input)
     }
 }
 
 /// Decoding-loop break types
 pub enum BreakConditionType {
-    /// Do nothing in the decoding loop in [`crate::prelude::Decode::decode`].
+    /// Do nothing in the decoding loop in [`crate::prelude::DecodeValue::decode_value`].
     ///
     /// This is the default, it just means there is nothing to be done and
     /// continue the decoding loop.
@@ -229,7 +204,7 @@ pub trait BreakCondition<S> {
 /// [`BreakCondition`] implementation of [`Decode`] for all types `T` that implement [`Decode`]
 impl<T, S> BreakCondition<S> for T
 where
-    T: crate::traits::dec::Decode<S>,
+    T: crate::traits::dec::DecodeValue<S>,
     S: winnow::stream::Stream,
 {
 }

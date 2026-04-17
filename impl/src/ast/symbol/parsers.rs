@@ -8,7 +8,6 @@ use tk_syn_macros::create_parser;
 // --------------------------------------------------
 use crate::ast::types::*;
 use crate::symbol::*;
-use crate::Length;
 
 /// Attempts to parse a type `T` from a [`syn::meta::ParseNestedMeta`]
 ///
@@ -88,63 +87,5 @@ create_parser!(SENTINEL: syn::Lit; nv);
 // variable length
 // --------------------------------------------------
 create_parser!(VARIABLE_LENGTH: syn::LitBool; pnm);
-
-// --------------------------------------------------
-// variable length x 2
-// --------------------------------------------------
-pub(crate) fn parse_pnm_length(input: &syn::meta::ParseNestedMeta) -> Option<syn::Result<Length>> {
-    if input.path != LENGTH {
-        return None;
-    }
-    match input.value() {
-        Ok(value) => {
-            // --------------------------------------------------
-            // try parse as integer
-            // --------------------------------------------------
-            if let Ok(litint) = value.parse::<syn::LitInt>() {
-                let int: isize = match litint.base10_parse() {
-                    Ok(int) => int,
-                    Err(err) => return Some(Err(err)),
-                };
-                // --------------------------------------------------
-                // if negative, return error
-                // --------------------------------------------------
-                if int < 0 {
-                    return Some(Err(syn::Error::new_spanned(
-                        litint,
-                        err!(ExpectedLengthInField(int)),
-                    )));
-                }
-                return Some(Ok(Length::Fixed(litint)));
-            }
-            // --------------------------------------------------
-            // try to parse as path
-            // --------------------------------------------------
-            if let Ok(x) = value.parse::<syn::Path>() {
-                // --------------------------------------------------
-                // if not designated `VARIABLE_LENGTH`, return error
-                // --------------------------------------------------
-                if x != VARIABLE_LENGTH {
-                    return Some(Err(syn::Error::new_spanned(
-                        &x,
-                        err!(ExpectedLengthInField(x)),
-                    )));
-                }
-                return Some(Ok(Length::Variable(x)));
-            }
-            // --------------------------------------------------
-            // can not parse correctly, return an error
-            // --------------------------------------------------
-            Some(Err(syn::Error::new_spanned(
-                &input.path,
-                err!(ExpectedLengthInField(@String value.to_string())),
-            )))
-        }
-        // --------------------------------------------------
-        // failed to get value, return error
-        // --------------------------------------------------
-        Err(err) => Some(Err(err)),
-    }
-}
 
 create_parser!(INITIAL_VALUE: syn::Expr; pnm);

@@ -10,6 +10,8 @@ readme = "README.md"
 keywords = ["decode", "encode", "klv", "parsing", "tlv"]
 categories = ["development-tools", "encoding", "parsing"]
 edition = "2021"
+rust-version = "1.95"
+exclude = ["TODO.md", "TODO2.md", "review_*.md", "creplace.sh", "book/book/"]
 
 [workspace]
 members = ["impl"]
@@ -42,8 +44,70 @@ winnow = { version = "1.0.1", features = ["parser", "simd"] }
 
 [dev-dependencies]
 proptest = "1.4"
-rand = "^0.8"
-rand_distr = "^0.4"
+rand = "^0.10"
+rand_distr = "^0.6"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
+
+[[example]]
+name = "01_hello_world"
+path = "examples/01_hello_world.rs"
+
+[[example]]
+name = "02_custom_key_types"
+path = "examples/02_custom_key_types.rs"
+
+[[example]]
+name = "03_strings_and_types"
+path = "examples/03_strings_and_types.rs"
+
+[[example]]
+name = "04_optional_fields"
+path = "examples/04_optional_fields.rs"
+
+[[example]]
+name = "05_basic_roundtrip"
+path = "examples/05_basic_roundtrip.rs"
+
+[[example]]
+name = "06_custom_encoder_decoder"
+path = "examples/06_custom_encoder_decoder.rs"
+
+[[example]]
+name = "07_sentinel_seeking"
+path = "examples/07_sentinel_seeking.rs"
+
+[[example]]
+name = "08_nested_packets"
+path = "examples/08_nested_packets.rs"
+
+[[example]]
+name = "09_ber_keyed"
+path = "examples/09_ber_keyed.rs"
+
+[[example]]
+name = "10_defaults_and_init"
+path = "examples/10_defaults_and_init.rs"
+
+[[example]]
+name = "11_repeated_extraction"
+path = "examples/11_repeated_extraction.rs"
+
+[[example]]
+name = "12_enum_dispatch_stream"
+path = "examples/12_enum_dispatch_stream.rs"
+
+[[example]]
+name = "13_variable_length_fields"
+path = "examples/13_variable_length_fields.rs"
+
+[[example]]
+name = "14_break_condition_custom"
+path = "examples/14_break_condition_custom.rs"
+
+[[example]]
+name = "15_tokio_stream_e2e"
+path = "examples/15_tokio_stream_e2e.rs"
+required-features = []
 
 [features]
 default = []

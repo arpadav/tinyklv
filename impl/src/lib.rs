@@ -26,7 +26,7 @@ const CRATE_NAME: &str = "tinyklv";
 const DERIVE_NAME: &str = "Klv";
 const ATTR_NAME: &str = "klv";
 
-#[proc_macro_derive(Klv, attributes(klv, allow))]
+#[proc_macro_derive(Klv, attributes(klv))]
 /// [`tinyklv`](crate) proc-macro
 pub fn klv_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -298,27 +298,10 @@ Currently only one key per field is supported.",
     DuplicateVariableLengthInField,
 
     #[error("\
-        Duplicate `{s}` field.",
-        s = symbol::LENGTH,
-    )]
-    DuplicateLengthInField,
-
-    #[error("\
         Missing required `{s}` field.",
         s = symbol::KEY,
     )]
     MissingKeyInField,
-
-    #[error("\
-Expected
-    1. Fixed-length decoder:    `{l} = <usize>`.
-    2. Variable-length decoder: `{l} = {vl}`.
-    3. Implicit-length decoder: remove `{l}` field.
-Got: `{l} = {0}`.",
-        vl = symbol::VARIABLE_LENGTH,
-        l = symbol::LENGTH,
-    )]
-    ExpectedLengthInField(String),
 
     #[error("\
 No encoder is found for field `{0}: {1}`.
@@ -357,12 +340,4 @@ impl Error {
     fn as_str(&self) -> std::borrow::Cow<'_, str> {
         std::borrow::Cow::Owned(self.to_string())
     }
-}
-
-#[derive(Debug, Clone, Default)]
-enum Length {
-    Fixed(syn::LitInt),
-    #[default]
-    Implicit,
-    Variable(syn::Path),
 }

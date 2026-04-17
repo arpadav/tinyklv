@@ -8,6 +8,7 @@
 // --------------------------------------------------
 use crate::ast::attr::MainContainer;
 use crate::ast::types;
+
 // --------------------------------------------------
 // external
 // --------------------------------------------------
@@ -36,19 +37,20 @@ pub(crate) fn gen_encode_impl(
     // --------------------------------------------------
     let name = &input.ident;
     let sentinel = input.attrs.sentinel.as_ref();
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     // --------------------------------------------------
     // generate the per-field encoding token stream
     // --------------------------------------------------
     let items_encoded = gen_items_encoded(input, key_encoder, len_encoder);
     // --------------------------------------------------
     // if a sentinel is present, also emit the full
-    // `Encode` impl that wraps the value in a KLV packet
+    // `EncodeFrame` impl that wraps the value in a KLV packet
     // --------------------------------------------------
     let encode_with_key_len = match sentinel {
         Some(sentinel) => quote! {
             #[automatically_derived]
-            impl ::tinyklv::traits::Encode<Vec<u8>> for #name {
-                fn encode(&self) -> Vec<u8> {
+            impl #impl_generics ::tinyklv::traits::EncodeFrame<Vec<u8>> for #name #ty_generics #where_clause {
+                fn encode_frame(&self) -> Vec<u8> {
                     self.encode_value().into_klv(
                         #sentinel,
                         #len_encoder ,
@@ -60,7 +62,7 @@ pub(crate) fn gen_encode_impl(
     };
     quote! {
         #[automatically_derived]
-        impl ::tinyklv::traits::EncodeValue<Vec<u8>> for #name {
+        impl #impl_generics ::tinyklv::traits::EncodeValue<Vec<u8>> for #name #ty_generics #where_clause {
             fn encode_value(&self) -> Vec<u8> {
                 let mut output = vec![];
                 #items_encoded
@@ -97,25 +99,36 @@ fn gen_items_encoded(
     // --------------------------------------------------
     // map each attributed field to its encoding expression
     // --------------------------------------------------
-    let items_encoded = input.data.iter().filter_map(|field| field.attrs.as_ref().map(|attr| (&field.name, &field.ty, attr))).map(|(name, ty, attrs)| {
-        #[allow(clippy::unwrap_used)]
-        // `gen_encode_impl` call ensures that `attrs.enc` is `Some`
-        let value_encoder = attrs.enc.as_ref().unwrap();
-        let key = &attrs.key;
-        // --------------------------------------------------
-        // optional fields are skipped when absent
-        // --------------------------------------------------
-        if crate::expand::helpers::is_option(ty) {
-            quote! {
-                if let Some(ref __val) = self.#name {
-                    output.extend(#value_encoder(__val).into_klv(#key_encoder(#key), #len_encoder));
+    let items_encoded = input
+        .data
+        .iter()
+        .filter_map(|field| {
+            field
+                .attrs
+                .as_ref()
+                .map(|attr| (&field.name, &field.ty, attr))
+        })
+        .map(|(name, ty, attrs)| {
+            #[allow(
+                clippy::unwrap_used,
+                reason = "`gen_encode_impl` call ensures that `attrs.enc` is `Some`"
+            )]
+            let value_encoder = attrs.enc.as_ref().unwrap();
+            let key = &attrs.key;
+            // --------------------------------------------------
+            // optional fields are skipped when absent
+            // --------------------------------------------------
+            if crate::expand::helpers::is_option(ty) {
+                quote! {
+                    if let Some(ref __val) = self.#name {
+                        output.extend(#value_encoder(__val).into_klv(#key_encoder(#key), #len_encoder));
+                    }
+                }
+            } else {
+                quote! {
+                    output.extend(#value_encoder(&self.#name).into_klv(#key_encoder(#key), #len_encoder));
                 }
             }
-        } else {
-            quote! {
-                output.extend(#value_encoder(&self.#name).into_klv(#key_encoder(#key), #len_encoder));
-            }
-        }
-    });
+        });
     quote! { #(#items_encoded)* }
 }

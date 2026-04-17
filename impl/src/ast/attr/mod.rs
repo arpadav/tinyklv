@@ -5,16 +5,16 @@ mod container;
 mod field;
 
 // --------------------------------------------------
-// external
-// --------------------------------------------------
-use std::collections::HashMap;
-use syn::{punctuated::Punctuated, Token};
-
-// --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::Ctxt;
 use container::{default::DefaultXcoder, ContainerParsed};
+
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use std::collections::HashMap;
+use syn::{punctuated::Punctuated, Token};
 
 /// A source data structure annotated with `#[derive(Klv)]` parsed into an internal representation.
 pub(crate) struct MainContainer<'a> {
