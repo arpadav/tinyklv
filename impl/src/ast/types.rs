@@ -20,6 +20,54 @@ pub(crate) enum XcoderLike {
     Expr(syn::Expr),
     Macro(syn::Macro),
 }
+
+/// Dispatch-intent sigil for field encoders
+///
+/// Written before the path/macro in `#[klv(enc = <sigil><fn>)]`:
+///
+/// * `None` (`enc = func`)  → emit `func(&self.field)` - fn takes `&T`
+///   (deref coercion handles `&String → &str`, `&Vec<u8> → &[u8]`, etc.)
+/// * `Ref`  (`enc = &func`) → emit `func(EncodeAs::encode_as(&self.field))` -
+///   dispatches via the [`EncodeAs`](tinyklv::traits::EncodeAs) trait:
+///   primitives pass by value (Copy), `String → &str`, `Vec<T> → &[T]`,
+///   `Box<T>/Rc<T>/Arc<T> → &T`. No clone, no heap allocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum XcoderSigil {
+    None,
+    Ref,
+}
+
+/// Wraps an [`XcoderLike`] with an optional leading dispatch sigil
+///
+/// Only used for field-level encoders. Container-level `key.enc` / `len.enc` /
+/// `default.enc` keep raw [`XcoderLike`] because their call shape has no
+/// owned/borrowed ambiguity.
+#[derive(Debug, Clone)]
+pub(crate) struct SiguledXcoder {
+    pub(crate) sigil: XcoderSigil,
+    pub(crate) inner: XcoderLike,
+}
+/// [`SiguledXcoder`] implementation of [`syn::parse::Parse`]
+///
+/// Consumes an optional leading `&` or `*` before delegating to
+/// [`XcoderLike::parse`]. No change to [`XcoderLike::parse`] itself.
+impl syn::parse::Parse for SiguledXcoder {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let sigil = if input.peek(syn::Token![&]) {
+            let _: syn::Token![&] = input.parse()?;
+            XcoderSigil::Ref
+        } else if input.peek(syn::Token![*]) {
+            return Err(input.error(
+                "`*` sigil removed: use `&func` - EncodeAs dispatch already covers \
+                 String→&str, Vec→&[T], Box/Rc/Arc→&T, primitives-by-value",
+            ));
+        } else {
+            XcoderSigil::None
+        };
+        let inner: XcoderLike = input.parse()?;
+        Ok(SiguledXcoder { sigil, inner })
+    }
+}
 /// [`XcoderLike`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for XcoderLike {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {

@@ -14,7 +14,7 @@ use xcoder::FieldXcoder;
 // local
 // --------------------------------------------------
 use crate::ast::attr::container::default::DefaultXcoder;
-use crate::ast::types::XcoderType;
+use crate::ast::types::{SiguledXcoder, XcoderSigil, XcoderType};
 use crate::symbol;
 use crate::Ctxt;
 
@@ -176,7 +176,10 @@ impl Field {
             crate::expand::helpers::unwrap_option_type(&field.ty).unwrap_or(&field.ty);
         if let Some(default) = container_defaults.get(typ_maybe_unwrapped) {
             if let (Some(default_enc), false) = (&default.enc, keep_enc_none) {
-                field_xcoder.enc = Some(default_enc.clone());
+                field_xcoder.enc = Some(SiguledXcoder {
+                    sigil: XcoderSigil::None,
+                    inner: default_enc.clone(),
+                });
             }
             if let (Some(default_dec), false) = (&default.dec, keep_dec_none) {
                 field_xcoder.dec = Some(default_dec.clone());
@@ -216,7 +219,7 @@ impl Field {
 /// A parsed field
 pub(crate) struct FieldParsed {
     pub key: syn::Lit,
-    pub enc: Option<XcoderType>,
+    pub enc: Option<SiguledXcoder>,
     pub dec: Option<XcoderType>,
     pub var: Option<syn::LitBool>,
 

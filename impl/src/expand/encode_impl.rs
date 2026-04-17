@@ -7,12 +7,12 @@
 // local
 // --------------------------------------------------
 use crate::ast::attr::MainContainer;
-use crate::ast::types;
+use crate::ast::types::{self, XcoderSigil};
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use quote::quote;
+use quote::{quote, quote_spanned};
 
 /// Generates the tokens for the entire [`tinyklv::prelude::Encode`](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.Encode.html)
 /// and [`tinyklv::prelude::EncodeValue`](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.EncodeValue.html)
@@ -114,19 +114,42 @@ fn gen_items_encoded(
                 reason = "`gen_encode_impl` call ensures that `attrs.enc` is `Some`"
             )]
             let value_encoder = attrs.enc.as_ref().unwrap();
+            let inner = &value_encoder.inner;
             let key = &attrs.key;
+            let span = name.span();
+            // --------------------------------------------------
+            // per-sigil argument shaping:
+            //
+            // * `None` → `func(&self.field)` - fn takes `&T`
+            //   (deref coercion handles `&String → &str`, `&Vec<u8> → &[u8]`, etc.)
+            // * `Ref`  → `func(EncodeAs::encode_as(&self.field))` - trait dispatches:
+            //   primitives by value (Copy), `String → &str`, `Vec<T> → &[T]`,
+            //   `Box<T>/Rc<T>/Arc<T> → &T`. No clone, no heap allocation.
+            //
+            // Optional (`Option<T>`) mirrors these by operating on `__val: &T`
+            // --------------------------------------------------
+            let (nonopt_arg, opt_arg) = match value_encoder.sigil {
+                XcoderSigil::None => (
+                    quote_spanned! { span => &self.#name },
+                    quote_spanned! { span => __val },
+                ),
+                XcoderSigil::Ref => (
+                    quote_spanned! { span => ::tinyklv::traits::EncodeAs::encode_as(&self.#name) },
+                    quote_spanned! { span => ::tinyklv::traits::EncodeAs::encode_as(__val) },
+                ),
+            };
             // --------------------------------------------------
             // optional fields are skipped when absent
             // --------------------------------------------------
             if crate::expand::helpers::is_option(ty) {
-                quote! {
+                quote_spanned! { span =>
                     if let Some(ref __val) = self.#name {
-                        output.extend(#value_encoder(__val).into_klv(#key_encoder(#key), #len_encoder));
+                        output.extend(#inner(#opt_arg).into_klv(#key_encoder(#key), #len_encoder));
                     }
                 }
             } else {
-                quote! {
-                    output.extend(#value_encoder(&self.#name).into_klv(#key_encoder(#key), #len_encoder));
+                quote_spanned! { span =>
+                    output.extend(#inner(#nonopt_arg).into_klv(#key_encoder(#key), #len_encoder));
                 }
             }
         });

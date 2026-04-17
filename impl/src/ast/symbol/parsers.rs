@@ -65,6 +65,21 @@ create_parser!(
     nv_parse_maybestr => syn::MetaNameValue
 );
 
+/// Field-encoder parser that also captures an optional leading `&` or `*`
+/// dispatch sigil
+///
+/// Matches the `enc` keyword like [`pnm_parse_maybestr_encoder`], but returns
+/// a [`SiguledXcoder`] so the codegen can adapt the call-site for owned-taking
+/// or deref-taking encoder functions
+pub(crate) fn pnm_parse_maybestr_field_encoder(
+    input: &syn::meta::ParseNestedMeta,
+) -> Option<syn::Result<SiguledXcoder>> {
+    if input.path != ENCODER {
+        return None;
+    }
+    Some(pnm_parse_maybestr(input))
+}
+
 // --------------------------------------------------
 // type / stream
 // --------------------------------------------------
