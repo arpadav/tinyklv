@@ -85,6 +85,7 @@ struct AllSigils {
 }
 
 #[test]
+/// Verifies frame roundtrip across a struct that mixes no-sigil and `&` sigil encoders covering `u8`, custom enums, `u16`, `String`, and `Vec<u8>` fields.
 fn all_sigils_roundtrip() {
     let original = AllSigils {
         count: 42,
@@ -123,6 +124,7 @@ struct AllSigilsOptional {
 }
 
 #[test]
+/// Verifies that the `&` sigil dispatches through `EncodeAs` correctly for `Option<T>` fields when every optional is `Some(_)`.
 fn all_sigils_optional_all_present() {
     let original = AllSigilsOptional {
         count: Some(7),
@@ -138,6 +140,7 @@ fn all_sigils_optional_all_present() {
 }
 
 #[test]
+/// Tests that when every `Option<T>` field is `None`, both sigil code paths emit nothing and the frame decodes back to all-`None`.
 fn all_sigils_optional_all_absent() {
     let original = AllSigilsOptional {
         count: None,
@@ -153,6 +156,7 @@ fn all_sigils_optional_all_absent() {
 }
 
 #[test]
+/// Tests a mixed `Some`/`None` pattern across every sigil-dispatched optional field to exercise the optional branch of the codegen.
 fn all_sigils_optional_partial() {
     let original = AllSigilsOptional {
         count: Some(99),
@@ -212,6 +216,7 @@ struct SmartPointerSigils {
 }
 
 #[test]
+/// Verifies that the `&` sigil dispatches through `EncodeAs` for smart-pointer fields (`Box<T>`, `Rc<T>`, `Arc<str>`) without cloning.
 fn smart_pointer_sigils_roundtrip() {
     let original = SmartPointerSigils {
         boxed: Box::new(0xAABBCCDD),
@@ -249,6 +254,7 @@ struct SigilMixture {
 }
 
 #[test]
+/// Tests that a struct mixing both sigil shapes across multiple fields of each type codegens one call-shape per attribute and roundtrips correctly.
 fn sigil_mixture_roundtrip() {
     let original = SigilMixture {
         a: 1,

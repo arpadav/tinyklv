@@ -38,6 +38,7 @@ struct WithNestedType {
 }
 
 #[test]
+/// Tests that a user-defined `Point` struct (implementing `DecodeValue`) decodes correctly as a nested field.
 fn decode_nested_type() {
     let data: &[u8] = &[
         0x01, 0x02, 0x00, 0x2A, // id = 42
@@ -51,6 +52,7 @@ fn decode_nested_type() {
 }
 
 #[test]
+/// Verifies encode/decode roundtrip when a field is a user-defined nested struct with signed coordinates.
 fn encode_nested_type_roundtrip() {
     let original = WithNestedType {
         id: 99,
@@ -62,6 +64,7 @@ fn encode_nested_type_roundtrip() {
 }
 
 #[test]
+/// Tests nested-type roundtrip with the zero/origin case `Point { x: 0, y: 0 }`.
 fn nested_type_origin_point() {
     let original = WithNestedType {
         id: 0,
@@ -73,6 +76,7 @@ fn nested_type_origin_point() {
 }
 
 #[test]
+/// Tests nested-type roundtrip at signed-integer extremes (`i16::MIN`/`MAX`) to exercise sign-boundary encoding.
 fn nested_type_extreme_coordinates() {
     let original = WithNestedType {
         id: u16::MAX,

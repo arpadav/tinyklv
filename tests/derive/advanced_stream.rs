@@ -119,6 +119,7 @@ fn encode_timestamp_tlv(key: u8, ts: &Timestamp) -> Vec<u8> {
 // --------------------------------------------------
 
 #[test]
+/// Tests that unknown TLV triples inserted between valid keys are skipped without disrupting decode of known fields.
 fn unknown_keys_between_valid() {
     // Build stream manually: valid coord(0x01), unknown 0xAA(len=3, garbage),
     // unknown 0xBB(len=2, garbage), valid color(0x02).
@@ -146,6 +147,7 @@ fn unknown_keys_between_valid() {
 }
 
 #[test]
+/// Tests that a declared length exceeding the remaining input surfaces a truncation error rather than silently returning partial data.
 fn corrupt_length_fails_loudly() {
     // Stream: valid color(0x01), then key 0x02 with declared len=100 but only
     // 2 bytes of body before end-of-input. The declared length overruns the
@@ -167,6 +169,7 @@ fn corrupt_length_fails_loudly() {
 }
 
 #[test]
+/// Tests that a field-decoder failure on an optional (e.g. short velocity) leaves the field `None` and decoding continues for subsequent keys.
 fn corrupt_value_recoverable() {
     // Stream: valid color(0x01), key 0x02 len=6 but garbage bytes (Velocity
     // decode fails → .ok()→None, loop continues), then valid timestamp(0x03).
@@ -197,6 +200,7 @@ fn corrupt_value_recoverable() {
 }
 
 #[test]
+/// Tests that a concatenated stream of 10 sentinel-framed `Waypoint` packets decodes back to the original sequence in order.
 fn auto_generate_10_packets() {
     // Build 10 distinct Waypoints, encode each, concatenate, then extract all.
     let waypoints: Vec<Waypoint> = (0..10)
@@ -233,6 +237,7 @@ fn auto_generate_10_packets() {
 }
 
 #[test]
+/// Tests that interleaved `Waypoint` and `Alert` frames can each be extracted independently using separate cursors keyed on their sentinels.
 fn auto_generate_mixed_types() {
     // 3 Waypoints + 3 Alerts interleaved, then extract each type independently.
     let waypoints: Vec<Waypoint> = vec![

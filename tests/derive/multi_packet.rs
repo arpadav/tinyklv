@@ -39,6 +39,7 @@ fn build_stream(a_val: u16, b_val: u32) -> Vec<u8> {
 }
 
 #[test]
+/// Tests that `PacketA` is extracted from a stream containing both `PacketA` and `PacketB` by matching its sentinel.
 fn extract_packet_a_from_stream() {
     let stream = build_stream(0x1234, 0xDEAD_BEEF);
     let decoded = PacketA::decode_frame(&mut stream.as_slice()).unwrap();
@@ -46,6 +47,7 @@ fn extract_packet_a_from_stream() {
 }
 
 #[test]
+/// Tests that `PacketB` is extracted from the same mixed stream by locking onto its distinct sentinel.
 fn extract_packet_b_from_stream() {
     let stream = build_stream(0x1234, 0xDEAD_BEEF);
     let decoded = PacketB::decode_frame(&mut stream.as_slice()).unwrap();
@@ -53,6 +55,7 @@ fn extract_packet_b_from_stream() {
 }
 
 #[test]
+/// Verifies that two distinct packet types can be extracted from the same byte stream without interference.
 fn both_packets_independent() {
     let stream = build_stream(999, 123456);
     let a = PacketA::decode_frame(&mut stream.as_slice()).unwrap();
@@ -62,8 +65,8 @@ fn both_packets_independent() {
 }
 
 #[test]
+/// Tests that extracting `PacketB` fails when the stream contains only `PacketA` bytes, since `PacketB`'s sentinel is absent.
 fn packet_a_missing_sentinel_fails() {
-    // Stream only contains PacketA; extracting PacketB should fail
     let a_only = PacketA { value: 1 }.encode_frame();
     assert!(PacketB::decode_frame(&mut a_only.as_slice()).is_err());
 }

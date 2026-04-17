@@ -3,36 +3,42 @@
 // --------------------------------------------------
 
 #[test]
+/// Tests `u8_as_usize` decodes native-endian `1_u8` bytes to `1_usize`.
 fn u8_as_usize_one() {
     let mut input: &[u8] = &(1_u8).to_ne_bytes();
     assert_eq!(tinyklv::dec::binary::u8_as_usize(&mut input), Ok(1_usize));
 }
 
 #[test]
+/// Tests `u8_as_usize` decodes `0x00` to `0_usize`.
 fn u8_as_usize_zero() {
     let mut input: &[u8] = &[0x00];
     assert_eq!(tinyklv::dec::binary::u8_as_usize(&mut input), Ok(0_usize));
 }
 
 #[test]
+/// Tests `u8_as_usize` decodes `0xFF` to `255_usize`.
 fn u8_as_usize_max() {
     let mut input: &[u8] = &[0xFF];
     assert_eq!(tinyklv::dec::binary::u8_as_usize(&mut input), Ok(255_usize));
 }
 
 #[test]
+/// Tests `u16_as_usize` decodes native-endian `1_u16` bytes to `1_usize`.
 fn u16_as_usize_one() {
     let mut input: &[u8] = &(1_u16).to_ne_bytes();
     assert_eq!(tinyklv::dec::binary::u16_as_usize(&mut input), Ok(1_usize));
 }
 
 #[test]
+/// Tests `u32_as_usize` decodes native-endian `1_u32` bytes to `1_usize`.
 fn u32_as_usize_one() {
     let mut input: &[u8] = &(1_u32).to_ne_bytes();
     assert_eq!(tinyklv::dec::binary::u32_as_usize(&mut input), Ok(1_usize));
 }
 
 #[test]
+/// Tests `u64_as_usize` decodes native-endian `1_u64` bytes to `1_usize`.
 fn u64_as_usize_one() {
     let mut input: &[u8] = &(1_u64).to_ne_bytes();
     assert_eq!(tinyklv::dec::binary::u64_as_usize(&mut input), Ok(1_usize));
@@ -43,6 +49,7 @@ fn u64_as_usize_one() {
 // --------------------------------------------------
 
 #[test]
+/// Tests `be_u8_as_usize` decodes `1_u8` big-endian bytes to `1_usize`.
 fn be_u8_as_usize_one() {
     let mut input: &[u8] = &(1_u8).to_be_bytes();
     assert_eq!(
@@ -52,6 +59,7 @@ fn be_u8_as_usize_one() {
 }
 
 #[test]
+/// Tests `be_u16_as_usize` decodes `1_u16` big-endian bytes to `1_usize`.
 fn be_u16_as_usize_one() {
     let mut input: &[u8] = &(1_u16).to_be_bytes();
     assert_eq!(
@@ -61,6 +69,7 @@ fn be_u16_as_usize_one() {
 }
 
 #[test]
+/// Tests `be_u16_as_usize` decodes `[0x01, 0x00]` (`0x0100` BE) to `256_usize`.
 fn be_u16_as_usize_known() {
     let mut input: &[u8] = &[0x01, 0x00]; // 0x0100 = 256 BE
     assert_eq!(
@@ -70,6 +79,7 @@ fn be_u16_as_usize_known() {
 }
 
 #[test]
+/// Tests `be_u32_as_usize` decodes `[0x00, 0x01, 0x00, 0x00]` to `65536_usize`.
 fn be_u32_as_usize_known() {
     let mut input: &[u8] = &[0x00, 0x01, 0x00, 0x00]; // 0x00010000 = 65536
     assert_eq!(
@@ -79,6 +89,7 @@ fn be_u32_as_usize_known() {
 }
 
 #[test]
+/// Tests `be_u64_as_usize` decodes `1_u64` big-endian bytes to `1_usize`.
 fn be_u64_as_usize_one() {
     let mut input: &[u8] = &(1_u64).to_be_bytes();
     assert_eq!(
@@ -92,6 +103,7 @@ fn be_u64_as_usize_one() {
 // --------------------------------------------------
 
 #[test]
+/// Tests `le_u8_as_usize` decodes `1_u8` little-endian bytes to `1_usize`.
 fn le_u8_as_usize_one() {
     let mut input: &[u8] = &(1_u8).to_le_bytes();
     assert_eq!(
@@ -101,6 +113,7 @@ fn le_u8_as_usize_one() {
 }
 
 #[test]
+/// Tests `le_u16_as_usize` decodes `[0x00, 0x01]` (`0x0100` LE) to `256_usize`.
 fn le_u16_as_usize_known() {
     let mut input: &[u8] = &[0x00, 0x01]; // 0x0100 = 256 LE
     assert_eq!(
@@ -110,6 +123,7 @@ fn le_u16_as_usize_known() {
 }
 
 #[test]
+/// Tests `le_u32_as_usize` decodes `1_u32` little-endian bytes to `1_usize`.
 fn le_u32_as_usize_one() {
     let mut input: &[u8] = &(1_u32).to_le_bytes();
     assert_eq!(
@@ -123,16 +137,19 @@ fn le_u32_as_usize_one() {
 // --------------------------------------------------
 
 #[test]
+/// Tests `u8_from_usize(1)` encodes to `[0x01]`.
 fn u8_from_usize_one() {
     assert_eq!(tinyklv::enc::binary::u8_from_usize(1), vec![0x01]);
 }
 
 #[test]
+/// Tests `u8_from_usize(0)` encodes to `[0x00]`.
 fn u8_from_usize_zero() {
     assert_eq!(tinyklv::enc::binary::u8_from_usize(0), vec![0x00]);
 }
 
 #[test]
+/// Tests `u16_from_usize(1)` encodes and native-endian decodes back to `1_u16`.
 fn u16_from_usize_one() {
     let encoded = tinyklv::enc::binary::u16_from_usize(1);
     assert_eq!(encoded.len(), 2);
@@ -142,24 +159,28 @@ fn u16_from_usize_one() {
 }
 
 #[test]
+/// Tests `be_u16_from_usize(1)` encodes to big-endian `[0x00, 0x01]`.
 fn be_u16_from_usize_one() {
     let encoded = tinyklv::enc::binary::be_u16_from_usize(1);
     assert_eq!(encoded, vec![0x00, 0x01]);
 }
 
 #[test]
+/// Tests `be_u16_from_usize(256)` encodes to big-endian `[0x01, 0x00]`.
 fn be_u16_from_usize_256() {
     let encoded = tinyklv::enc::binary::be_u16_from_usize(256);
     assert_eq!(encoded, vec![0x01, 0x00]);
 }
 
 #[test]
+/// Tests `le_u16_from_usize(256)` encodes to little-endian `[0x00, 0x01]`.
 fn le_u16_from_usize_256() {
     let encoded = tinyklv::enc::binary::le_u16_from_usize(256);
     assert_eq!(encoded, vec![0x00, 0x01]);
 }
 
 #[test]
+/// Tests `be_u32_from_usize`/`be_u32_as_usize` roundtrip across boundary values.
 fn be_u32_from_usize_roundtrip() {
     for val in [0_usize, 1, 255, 65536] {
         let encoded = tinyklv::enc::binary::be_u32_from_usize(val);
@@ -174,6 +195,7 @@ fn be_u32_from_usize_roundtrip() {
 // --------------------------------------------------
 
 #[test]
+/// Tests `u8_from_usize(256)` truncates to `0x00` (wraps modulo 256).
 fn u8_from_usize_truncates() {
     // 256 as u8 = 0
     let encoded = tinyklv::enc::binary::u8_from_usize(256);

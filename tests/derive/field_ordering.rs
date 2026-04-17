@@ -34,6 +34,7 @@ fn build_packet(a_first: bool) -> Vec<u8> {
 }
 
 #[test]
+/// Tests decoding when keys appear in their declared struct order (`0x01`, `0x02`, `0x03`).
 fn normal_key_order() {
     let data = build_packet(true);
     let result = OrderIndependent::decode_value(&mut data.as_slice()).unwrap();
@@ -43,6 +44,7 @@ fn normal_key_order() {
 }
 
 #[test]
+/// Verifies that decoding yields the same struct when keys appear in fully reversed wire order.
 fn reversed_key_order_same_result() {
     let data = build_packet(false);
     let result = OrderIndependent::decode_value(&mut data.as_slice()).unwrap();
@@ -52,6 +54,7 @@ fn reversed_key_order_same_result() {
 }
 
 #[test]
+/// Tests that forward- and reverse-ordered key streams decode to identical struct values, confirming order-independence.
 fn both_orderings_produce_identical_structs() {
     let fwd = build_packet(true);
     let rev = build_packet(false);
@@ -61,8 +64,8 @@ fn both_orderings_produce_identical_structs() {
 }
 
 #[test]
+/// Tests decoding when keys arrive in an arbitrary interleaved order (`b`, `a`, `c`).
 fn interleaved_order() {
-    // b first, a second, c third
     let data: &[u8] = &[
         0x02, 0x02, 0x01, 0x02, 0x01, 0x01, 0x42, 0x03, 0x04, 0xAB, 0xCD, 0xEF, 0x01,
     ];

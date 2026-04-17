@@ -6,6 +6,7 @@ use tinyklv::codecs::string::enc::from_string_utf8;
 // --------------------------------------------------
 
 #[test]
+/// Tests that `to_string_utf8(6)` decodes ASCII bytes to `"AF-101"`.
 fn utf8_decode_af101() {
     let mut input: &[u8] = &[0x41, 0x46, 0x2D, 0x31, 0x30, 0x31];
     let result = to_string_utf8(6)(&mut input).unwrap();
@@ -13,6 +14,7 @@ fn utf8_decode_af101() {
 }
 
 #[test]
+/// Tests that `to_string_utf8(9)` decodes ASCII bytes to `"MISSION01"`.
 fn utf8_decode_mission01() {
     let mut input: &[u8] = &[0x4D, 0x49, 0x53, 0x53, 0x49, 0x4F, 0x4E, 0x30, 0x31];
     let result = to_string_utf8(9)(&mut input).unwrap();
@@ -20,12 +22,14 @@ fn utf8_decode_mission01() {
 }
 
 #[test]
+/// Tests that `from_string_utf8("AF-101")` encodes to the expected ASCII byte sequence.
 fn utf8_encode_af101() {
     let encoded = from_string_utf8("AF-101");
     assert_eq!(encoded, vec![0x41, 0x46, 0x2D, 0x31, 0x30, 0x31]);
 }
 
 #[test]
+/// Tests ASCII string encode/decode roundtrip.
 fn utf8_ascii_roundtrip() {
     let text = "Hello, World!";
     let encoded = from_string_utf8(text);
@@ -38,6 +42,7 @@ fn utf8_ascii_roundtrip() {
 // --------------------------------------------------
 
 #[test]
+/// Tests UTF-8 roundtrip preserves Latin-1 extended characters (`"Héllo"`).
 fn utf8_unicode_roundtrip() {
     let text = "Héllo";
     let encoded = from_string_utf8(text);
@@ -46,6 +51,7 @@ fn utf8_unicode_roundtrip() {
 }
 
 #[test]
+/// Tests UTF-8 roundtrip preserves CJK characters (`"你好世界"`).
 fn utf8_cjk_roundtrip() {
     let text = "你好世界";
     let encoded = from_string_utf8(text);
@@ -54,6 +60,7 @@ fn utf8_cjk_roundtrip() {
 }
 
 #[test]
+/// Tests UTF-8 roundtrip preserves 4-byte emoji sequences.
 fn utf8_emoji_roundtrip() {
     let text = "Hello 🌍";
     let encoded = from_string_utf8(text);
@@ -66,6 +73,7 @@ fn utf8_emoji_roundtrip() {
 // --------------------------------------------------
 
 #[test]
+/// Tests that `to_string_utf8(0)` decodes an empty input to an empty string.
 fn utf8_empty_string_decode() {
     let mut input: &[u8] = &[];
     let result = to_string_utf8(0)(&mut input).unwrap();
@@ -73,6 +81,7 @@ fn utf8_empty_string_decode() {
 }
 
 #[test]
+/// Tests that `from_string_utf8("")` produces an empty byte vector.
 fn utf8_empty_string_encode() {
     let encoded = from_string_utf8("");
     assert!(encoded.is_empty());
@@ -83,6 +92,7 @@ fn utf8_empty_string_encode() {
 // --------------------------------------------------
 
 #[test]
+/// Tests that lossy `to_string_utf8` returns Ok with U+FFFD for invalid bytes `0xFF 0xFE`.
 fn utf8_lossy_invalid_bytes_ok() {
     // 0xFF, 0xFE are not valid UTF-8
     let mut input: &[u8] = &[0xFF, 0xFE];
@@ -100,6 +110,7 @@ fn utf8_lossy_invalid_bytes_ok() {
 }
 
 #[test]
+/// Tests that lossy `to_string_utf8` preserves valid leading ASCII and replaces following invalid bytes.
 fn utf8_lossy_mixed_valid_invalid() {
     // 'A' followed by invalid 0xFF
     let mut input: &[u8] = &[0x41, 0xFF];
@@ -113,6 +124,7 @@ fn utf8_lossy_mixed_valid_invalid() {
 // --------------------------------------------------
 
 #[test]
+/// Tests that `to_string_utf8_strict(6)` succeeds on valid ASCII bytes.
 fn utf8_strict_valid_bytes_ok() {
     let mut input: &[u8] = &[0x41, 0x46, 0x2D, 0x31, 0x30, 0x31];
     let result = to_string_utf8_strict(6)(&mut input);
@@ -121,6 +133,7 @@ fn utf8_strict_valid_bytes_ok() {
 }
 
 #[test]
+/// Tests that `to_string_utf8_strict(2)` errors on invalid UTF-8 bytes `0xFF 0xFE`.
 fn utf8_strict_invalid_bytes_err() {
     let mut input: &[u8] = &[0xFF, 0xFE];
     let result = to_string_utf8_strict(2)(&mut input);
@@ -131,6 +144,7 @@ fn utf8_strict_invalid_bytes_err() {
 }
 
 #[test]
+/// Tests that strict UTF-8 decoder accepts valid multi-byte Unicode sequences.
 fn utf8_strict_unicode_ok() {
     let text = "Héllo";
     let bytes = text.as_bytes();
@@ -144,6 +158,7 @@ fn utf8_strict_unicode_ok() {
 // --------------------------------------------------
 
 #[test]
+/// Tests that `to_string_utf8(6)` consumes exactly 6 bytes and leaves the rest in the input stream.
 fn utf8_partial_consumption() {
     // 6 bytes of "AF-101" followed by extra bytes
     let mut input: &[u8] = &[0x41, 0x46, 0x2D, 0x31, 0x30, 0x31, 0xAA, 0xBB];

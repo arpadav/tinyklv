@@ -122,6 +122,7 @@ fn make_status() -> StatusPacket {
 // --------------------------------------------------
 
 #[test]
+/// Tests that a sentinel-framed `NavPacket` carrying four domain types roundtrips through `encode_frame`/`decode_frame`.
 fn sentinel_complex_roundtrip() {
     let original = make_nav();
     let encoded = original.encode_frame();
@@ -130,6 +131,7 @@ fn sentinel_complex_roundtrip() {
 }
 
 #[test]
+/// Verifies that `encode_frame` prepends the configured sentinel bytes (`0xBEEF`) at the start of the output.
 fn sentinel_encode_prefix() {
     let encoded = make_nav().encode_frame();
     assert_eq!(
@@ -140,6 +142,7 @@ fn sentinel_encode_prefix() {
 }
 
 #[test]
+/// Tests that three concatenated frames with distinct sentinels can each be decoded sequentially from a shared cursor.
 fn multi_type_extract() {
     let nav = make_nav();
     let weather = make_weather();
@@ -159,6 +162,7 @@ fn multi_type_extract() {
 }
 
 #[test]
+/// Tests that sentinel seek tolerates leading garbage and a near-miss prefix (`0xBEEE`) between two valid `NavPacket` frames.
 fn multi_packet_garbage() {
     let nav1 = make_nav();
     let nav2 = NavPacket {
@@ -193,6 +197,7 @@ fn multi_packet_garbage() {
 }
 
 #[test]
+/// Tests that `decode_frame` errors when the expected sentinel is absent from the stream or the stream is empty.
 fn sentinel_not_found() {
     // Stream contains only a WeatherPacket - NavPacket sentinel 0xBEEF absent
     let weather_bytes = make_weather().encode_frame();
@@ -209,6 +214,7 @@ fn sentinel_not_found() {
 }
 
 #[test]
+/// Tests that interleaved `NavPacket`/`WeatherPacket` frames can be extracted independently by type using separate cursors.
 fn interleaved_extract() {
     let nav1 = make_nav();
     let nav2 = NavPacket {

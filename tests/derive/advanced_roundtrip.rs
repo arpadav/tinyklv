@@ -189,8 +189,8 @@ fn make_six_field_b() -> SixField {
 // --------------------------------------------------
 
 #[test]
+/// Verifies last-wins semantics across all six fields when two `SixField` encodings are concatenated and decoded.
 fn duplicate_6field_last_wins() {
-    // Encode two different SixField values and concatenate - last-wins per key.
     let a = make_six_field_a();
     let b = make_six_field_b();
 
@@ -209,6 +209,7 @@ fn duplicate_6field_last_wins() {
 }
 
 #[test]
+/// Tests that a `None` optional field contributes zero bytes to the encoded output and its key/length header is absent.
 fn encode_skips_none() {
     let val = ThreeOptFields {
         color: Some(Color::Green),
@@ -241,6 +242,7 @@ fn encode_skips_none() {
 }
 
 #[test]
+/// Tests encode/decode identity roundtrip for a struct whose fields are all required (`Color` + `Timestamp`).
 fn roundtrip_identity_all_required() {
     let original = AllRequired {
         color: Color::Blue,
@@ -255,6 +257,7 @@ fn roundtrip_identity_all_required() {
 }
 
 #[test]
+/// Tests roundtrip for a fully-optional struct where every optional is `Some(_)`.
 fn roundtrip_identity_all_optional_some() {
     let original = AllOptional {
         color: Some(Color::Alpha),
@@ -270,6 +273,7 @@ fn roundtrip_identity_all_optional_some() {
 }
 
 #[test]
+/// Tests roundtrip for a struct mixing a required and an optional field, with the optional as `Some(_)`.
 fn roundtrip_identity_mixed_shape() {
     let original = MixedShape {
         priority: Priority::Medium,
@@ -285,6 +289,7 @@ fn roundtrip_identity_mixed_shape() {
 }
 
 #[test]
+/// Tests roundtrip for a mixed-shape struct when the optional is `None`.
 fn roundtrip_identity_mixed_shape_none() {
     let original = MixedShape {
         priority: Priority::High,
@@ -296,9 +301,8 @@ fn roundtrip_identity_mixed_shape_none() {
 }
 
 #[test]
+/// Verifies that the `&` sigil dispatches through `EncodeAs` when the encoder function takes `T` by value rather than `&T`.
 fn roundtrip_owned_encoder() {
-    // Encoder functions take T by value (not &T) - the `&` sigil on
-    // `enc =` clones the field and passes the owned value to the encoder.
     let original = OwnedEncoderStruct {
         priority: Priority::Critical,
         color: Color::Blue,

@@ -134,6 +134,7 @@ impl tinyklv::DecodeValue<&[u8]> for BreakOnSkip {
 }
 
 #[test]
+/// Tests that a `Done` break condition (key `0xFF`) halts the decode loop and leaves subsequent keys unread.
 fn break_done_stops_decode() {
     // Color(0x01), Done terminator(0xFF, len=0), Priority(0x02) - last must not be decoded
     let data: &[u8] = &[
@@ -150,8 +151,8 @@ fn break_done_stops_decode() {
 }
 
 #[test]
+/// Tests that a `Done` terminator at the very start of input yields a fully-`None` struct.
 fn break_done_empty_after_terminator() {
-    // Terminator at the very start - nothing decoded
     let data: &[u8] = &[0xFF, 0x00];
     let result = BreakOnDone::decode_value(&mut &data[..]).unwrap();
     assert_eq!(result.color, None);
@@ -159,8 +160,8 @@ fn break_done_empty_after_terminator() {
 }
 
 #[test]
+/// Tests that an `Abort` break condition (key `0xFE`) returns `Err` immediately, discarding any partial state.
 fn break_abort_returns_error() {
-    // Color(0x01), abort trigger(0xFE, len=0), Priority(0x02) - must Err
     let data: &[u8] = &[
         0x01, 0x02, 0x00, 0x02, // Color::Green
         0xFE, 0x00, // Abort trigger
@@ -171,13 +172,14 @@ fn break_abort_returns_error() {
 }
 
 #[test]
+/// Tests that an `Abort` trigger encountered before any useful data produces an error.
 fn break_abort_at_start_returns_error() {
-    // Abort trigger before any useful data
     let data: &[u8] = &[0xFE, 0x00];
     assert!(BreakOnAbort::decode_value(&mut &data[..]).is_err());
 }
 
 #[test]
+/// Tests that a `Skip` break condition consumes a deprecated key's payload and continues decoding subsequent fields.
 fn break_skip_deprecated() {
     // Color(0x01), deprecated(0xAA, len=3, 3 junk bytes), Priority(0x02)
     let data: &[u8] = &[
@@ -191,6 +193,7 @@ fn break_skip_deprecated() {
 }
 
 #[test]
+/// Tests skipping multiple deprecated keys, where a deprecated key is defined by the break-condition closure.
 fn break_skip_multiple_deprecated() {
     // Two deprecated keys surrounding real fields
     let data: &[u8] = &[

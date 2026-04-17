@@ -52,9 +52,8 @@ fn make_waypoint(lat: f64, lon: f64, prio: Priority) -> Waypoint {
 }
 
 #[test]
+/// Tests that sentinel framing lets `decode_frame` extract three independent back-to-back packets from one stream.
 fn repeated_sentinel_extract_loop() {
-    // Three Waypoints encoded back-to-back; sentinel framing lets extract()
-    // find and decode each packet independently.
     let w1 = make_waypoint(48.8566, 2.3522, Priority::Low);
     let w2 = make_waypoint(51.5074, -0.1278, Priority::Medium);
     let w3 = make_waypoint(40.7128, -74.0060, Priority::High);
@@ -76,6 +75,7 @@ fn repeated_sentinel_extract_loop() {
 }
 
 #[test]
+/// Tests that `decode_frame` on an empty stream errors because the sentinel cannot be found.
 fn repeated_sentinel_extract_empty_stream() {
     let mut slice: &[u8] = &[];
     let result = Waypoint::decode_frame(&mut slice);
@@ -83,6 +83,7 @@ fn repeated_sentinel_extract_empty_stream() {
 }
 
 #[test]
+/// Verifies encode/decode roundtrip for a single sentinel-framed `Waypoint` via `encode_frame`/`decode_frame`.
 fn repeated_sentinel_extract_single() {
     let w = make_waypoint(35.6762, 139.6503, Priority::Critical);
     let encoded = w.encode_frame();
@@ -96,8 +97,8 @@ fn repeated_sentinel_extract_single() {
 /// When both packets share the same key set (0x01, 0x02), all four triples
 /// are processed in one pass and the last-seen value for each key wins.
 /// `repeated()` calls `decode()` repeatedly until failure; the first call
-/// consumes everything, so `repeated()` returns a Vec of length 1.
 #[test]
+/// consumes everything, so `repeated()` returns a Vec of length 1.
 fn repeated_decode_unframed_last_wins_merge() {
     let p1 = UnframedPacket {
         color: Color::Red,
@@ -132,14 +133,15 @@ fn repeated_decode_unframed_last_wins_merge() {
 }
 
 #[test]
+/// Verifies that `repeated` returns an empty `Vec` for an unframed struct fed an empty input.
 fn repeated_decode_unframed_empty_returns_empty() {
     let results = UnframedPacket::repeated(&mut [].as_slice()).unwrap();
     assert!(results.is_empty());
 }
 
 #[test]
+/// Tests that field values survive the encode -> extract-loop roundtrip without numerical drift across three framed waypoints.
 fn repeated_sentinel_three_roundtrip_values() {
-    // Verify field values survive encode → extract loop without drift.
     let waypoints = [
         make_waypoint(0.0, 0.0, Priority::Low),
         make_waypoint(-90.0, 180.0, Priority::Critical),

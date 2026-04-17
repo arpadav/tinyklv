@@ -26,8 +26,9 @@ struct CustomDecoders {
 }
 
 #[test]
+/// Tests that a user-provided `dec` function (wire_value + 1) is applied during decode.
 fn custom_decoder_applies_transform() {
-    // Wire value is 0x0064 = 100; custom decoder adds 1 → 101
+    // Wire value is 0x0064 = 100; custom decoder adds 1 -> 101
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x64, 0x02, 0x01, 0x07];
     let result = CustomDecoders::decode_value(&mut &data[..]).unwrap();
     assert_eq!(
@@ -38,19 +39,19 @@ fn custom_decoder_applies_transform() {
 }
 
 #[test]
+/// Verifies that the custom `enc`/`dec` pair compose as mutual inverses across a roundtrip.
 fn custom_encoder_applies_inverse_transform() {
-    // Encoding value 101 should write 100 on the wire (subtract 1)
     let packet = CustomDecoders {
         adjusted: 101,
         plain: 7,
     };
     let encoded = packet.encode_value();
-    // Decode back - adjusted should come back as 101 (encode writes 100, decode adds 1)
     let decoded = CustomDecoders::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, packet);
 }
 
 #[test]
+/// Tests the custom-encoder/decoder roundtrip across a spread of values including edge cases like `u16::MAX`.
 fn custom_encoder_decode_roundtrip() {
     for adj in [1_u16, 100, 1000, u16::MAX] {
         let packet = CustomDecoders {
@@ -85,6 +86,7 @@ struct WithMethodDecoder {
 }
 
 #[test]
+/// Tests that an associated-function decoder (`Transformer::decode_scaled`) applies the `u16 / 100.0` scaling.
 fn method_decoder_scales_correctly() {
     // Wire value 0x01F4 = 500; scaled = 500 / 100 = 5.0
     let data: &[u8] = &[0x01, 0x02, 0x01, 0xF4];
@@ -93,6 +95,7 @@ fn method_decoder_scales_correctly() {
 }
 
 #[test]
+/// Verifies roundtrip precision for an associated-function encoder/decoder pair over a fractional `f32` value.
 fn method_encoder_roundtrip() {
     let packet = WithMethodDecoder {
         scaled_value: 12.34,

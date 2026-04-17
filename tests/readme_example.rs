@@ -32,6 +32,7 @@ struct Foo {
 }
 
 #[test]
+/// Tests the README example end-to-end: decodes two streams via `decode_frame` (with sentinel seek) and `decode_value` (direct value decode) for the `Foo` struct.
 fn main() {
     #[rustfmt::skip]
     let mut stream1: &[u8] = &[

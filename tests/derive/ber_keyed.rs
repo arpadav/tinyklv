@@ -47,6 +47,7 @@ fn ber_packet_bytes(small: u8, word: u16, dword: u32) -> Vec<u8> {
 }
 
 #[test]
+/// Tests decoding a BER-keyed/BER-length struct where every key and length fit in a single byte.
 fn decode_ber_single_byte_keys() {
     let data = ber_packet_bytes(0xAB, 0x1234, 0xDEAD_BEEF);
     let result = BerPacket::decode_value(&mut data.as_slice()).unwrap();
@@ -56,6 +57,7 @@ fn decode_ber_single_byte_keys() {
 }
 
 #[test]
+/// Verifies BER-keyed decoding when every value is zero.
 fn decode_ber_zero_values() {
     let data = ber_packet_bytes(0x00, 0x0000, 0x0000_0000);
     let result = BerPacket::decode_value(&mut data.as_slice()).unwrap();
@@ -65,6 +67,7 @@ fn decode_ber_zero_values() {
 }
 
 #[test]
+/// Verifies BER-keyed decoding when every value is at its type maximum.
 fn decode_ber_max_values() {
     let data = ber_packet_bytes(u8::MAX, u16::MAX, u32::MAX);
     let result = BerPacket::decode_value(&mut data.as_slice()).unwrap();
@@ -74,6 +77,7 @@ fn decode_ber_max_values() {
 }
 
 #[test]
+/// Tests encode/decode roundtrip for a BER-keyed struct with arbitrary non-trivial values.
 fn encode_ber_roundtrip() {
     let original = BerPacket {
         small_key_field: 0x7F,
@@ -86,6 +90,7 @@ fn encode_ber_roundtrip() {
 }
 
 #[test]
+/// Tests encode/decode roundtrip for a BER-keyed struct with all-zero values.
 fn encode_ber_roundtrip_all_zeros() {
     let original = BerPacket {
         small_key_field: 0,
@@ -120,8 +125,8 @@ struct BerLargePayload {
 }
 
 #[test]
+/// Tests BER long-form length encoding for a payload of 200 bytes, forcing the `0x81 0xC8` two-byte length header.
 fn encode_ber_large_length_roundtrip() {
-    // Build a string with 200 bytes - forces a multi-byte BER length (>= 128)
     let s: String = "A".repeat(200);
     let original = BerLargePayload { payload: s };
     let encoded = original.encode_value();
@@ -137,6 +142,7 @@ fn encode_ber_large_length_roundtrip() {
 }
 
 #[test]
+/// Tests that a BER-keyed struct errors when its required key is absent from the stream.
 fn decode_ber_missing_required_fails() {
     let data: &[u8] = &[
         0x02, 0x02, 0x00, 0x01, // wrong key - 0x01 absent
@@ -146,8 +152,8 @@ fn decode_ber_missing_required_fails() {
 }
 
 #[test]
+/// Verifies that BER-keyed fields arriving in reverse order still match correctly by key.
 fn decode_ber_fields_reversed_order() {
-    // Fields in reverse order - decoder must still match by key
     let data = {
         let mut v = vec![];
         v.push(0x03_u8);

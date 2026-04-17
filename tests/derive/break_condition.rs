@@ -20,6 +20,7 @@ struct BreakPacket {
 // The default BreakCondition returns Proceed - all keys are processed.
 
 #[test]
+/// Tests that the default `BreakCondition::Proceed` processes every key in the stream.
 fn default_break_condition_proceeds_through_all_keys() {
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x2A, 0x02, 0x04, 0xDE, 0xAD, 0xBE, 0xEF];
     let result = BreakPacket::decode_value(&mut &data[..]).unwrap();
@@ -28,8 +29,8 @@ fn default_break_condition_proceeds_through_all_keys() {
 }
 
 #[test]
+/// Verifies that an unrecognized key is skipped rather than aborting the decode under the default break condition.
 fn default_break_condition_unknown_key_skipped_not_aborted() {
-    // Unknown key 0xAA (not in struct); default Proceed means loop continues.
     let data: &[u8] = &[
         0xAA, 0x01, 0x00, // unknown key, skipped
         0x01, 0x02, 0x00, 0x07, // known key a=7
@@ -39,14 +40,15 @@ fn default_break_condition_unknown_key_skipped_not_aborted() {
 }
 
 #[test]
+/// Ensures that decoding an empty stream under the default break condition fails because the required field is missing.
 fn default_break_condition_empty_stream_fails_required() {
     let result = BreakPacket::decode_value(&mut [].as_slice());
     assert!(result.is_err());
 }
 
 #[test]
+/// Tests that decoding errors when only the optional field is present and the required field is absent.
 fn default_break_condition_partial_stream_fails_required() {
-    // Only optional field present - required `a` absent → Err
     let data: &[u8] = &[0x02, 0x04, 0xDE, 0xAD, 0xBE, 0xEF];
     let result = BreakPacket::decode_value(&mut &data[..]);
     assert!(result.is_err());

@@ -27,6 +27,7 @@ struct Mixed {
 }
 
 #[test]
+/// Tests decoding a struct mixing fixed-width integers, a variable-length string, and an optional field with all keys present.
 fn decode_all_fields_present() {
     let name = b"KLV";
     let mut data = vec![
@@ -52,6 +53,7 @@ fn decode_all_fields_present() {
 }
 
 #[test]
+/// Verifies that in a mixed-type struct the optional field decodes to `None` when its key is absent.
 fn decode_optional_absent() {
     let name = b"TEST";
     let mut data = vec![
@@ -76,6 +78,7 @@ fn decode_optional_absent() {
 }
 
 #[test]
+/// Tests encode/decode roundtrip for a struct mixing integers, a `String`, and a `Some` optional.
 fn roundtrip_mixed_types() {
     let original = Mixed {
         byte_val: 0xAB,
@@ -89,6 +92,7 @@ fn roundtrip_mixed_types() {
 }
 
 #[test]
+/// Tests roundtrip for a mixed-type struct with zeros, an empty string, and `None` optional.
 fn roundtrip_mixed_types_no_optional() {
     let original = Mixed {
         byte_val: 0,
@@ -102,8 +106,8 @@ fn roundtrip_mixed_types_no_optional() {
 }
 
 #[test]
+/// Tests that a missing required `byte_val` (key `0x01`) causes decode to return `Err` even when other fields are present.
 fn decode_missing_required_fails() {
-    // byte_val (key 0x01) absent
     let name = b"X";
     let mut data = vec![0x02_u8, 0x04, 0x00, 0x00, 0x00, 0x01, 0x03, 1];
     data.extend_from_slice(name);
@@ -112,6 +116,7 @@ fn decode_missing_required_fails() {
 }
 
 #[test]
+/// Verifies mixed-type decoding when the optional, variable, and fixed fields appear in reverse key order on the wire.
 fn decode_reversed_field_order() {
     let name = b"rev";
     let mut data = vec![0x04_u8, 0x02, 0x00, 0x07, 0x03, name.len() as u8];

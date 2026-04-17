@@ -30,6 +30,7 @@ struct AllNumerics {
 }
 
 #[test]
+/// Tests encode/decode roundtrip across `u8/u16/u32/u64/i16/i32` fields with typical non-zero values including negatives.
 fn all_numerics_roundtrip_typical() {
     let original = AllNumerics {
         u8_field: 0xAB,
@@ -45,6 +46,7 @@ fn all_numerics_roundtrip_typical() {
 }
 
 #[test]
+/// Tests that all-zero numeric fields roundtrip through encode/decode unchanged.
 fn all_numerics_roundtrip_zeros() {
     let original = AllNumerics {
         u8_field: 0,
@@ -60,6 +62,7 @@ fn all_numerics_roundtrip_zeros() {
 }
 
 #[test]
+/// Tests that type-maximum values for every numeric field roundtrip correctly.
 fn all_numerics_roundtrip_max_values() {
     let original = AllNumerics {
         u8_field: u8::MAX,
@@ -75,6 +78,7 @@ fn all_numerics_roundtrip_max_values() {
 }
 
 #[test]
+/// Tests that `i16::MIN` and `i32::MIN` roundtrip correctly (exercises two's-complement sign-bit boundary).
 fn all_numerics_roundtrip_min_signed() {
     let original = AllNumerics {
         u8_field: 0,
@@ -107,6 +111,7 @@ struct WithOptionalRoundtrip {
 }
 
 #[test]
+/// Verifies roundtrip when the optional field carries `Some(value)`.
 fn optional_some_roundtrip() {
     let original = WithOptionalRoundtrip {
         required: 0xABCD,
@@ -118,6 +123,7 @@ fn optional_some_roundtrip() {
 }
 
 #[test]
+/// Verifies that a `None` optional is omitted on encode and decodes back to `None`.
 fn optional_none_roundtrip() {
     let original = WithOptionalRoundtrip {
         required: 0xABCD,
@@ -151,6 +157,7 @@ struct WithStringRoundtrip {
 }
 
 #[test]
+/// Tests roundtrip of a plain ASCII UTF-8 string field.
 fn string_field_roundtrip_ascii() {
     let original = WithStringRoundtrip {
         id: 1,
@@ -162,6 +169,7 @@ fn string_field_roundtrip_ascii() {
 }
 
 #[test]
+/// Tests roundtrip when the UTF-8 string field is empty.
 fn string_field_roundtrip_empty() {
     let original = WithStringRoundtrip {
         id: 0,
@@ -173,6 +181,7 @@ fn string_field_roundtrip_empty() {
 }
 
 #[test]
+/// Tests roundtrip for a UTF-8 string containing multi-byte characters and an emoji code point.
 fn string_field_roundtrip_unicode() {
     let original = WithStringRoundtrip {
         id: 42,

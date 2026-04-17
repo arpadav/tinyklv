@@ -22,6 +22,7 @@ struct WithRequiredAndOptional {
 }
 
 #[test]
+/// Tests decoding when all two required and both optional fields are present.
 fn all_fields_present_succeeds() {
     let data: &[u8] = &[
         0x01, 0x02, 0x00, 0x2A, 0x02, 0x04, 0x00, 0x01, 0x00, 0x00, 0x03, 0x01, 0x07, 0x04, 0x02,
@@ -35,6 +36,7 @@ fn all_fields_present_succeeds() {
 }
 
 #[test]
+/// Verifies that both optional fields decode to `None` when absent while required fields still succeed.
 fn all_optionals_absent_succeeds() {
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x2A, 0x02, 0x04, 0x00, 0x01, 0x00, 0x00];
     let result = WithRequiredAndOptional::decode_value(&mut &data[..]).unwrap();
@@ -43,6 +45,7 @@ fn all_optionals_absent_succeeds() {
 }
 
 #[test]
+/// Tests that when only one of two optional fields is present, the other decodes to `None`.
 fn one_optional_present_other_absent() {
     let data: &[u8] = &[
         0x01, 0x02, 0x00, 0x2A, 0x02, 0x04, 0x00, 0x01, 0x00, 0x00, 0x03, 0x01, 0xFF,
@@ -53,6 +56,7 @@ fn one_optional_present_other_absent() {
 }
 
 #[test]
+/// Ensures that a missing required field (`required_a`) causes decode to return `Err` even if other fields are present.
 fn required_a_missing_fails() {
     let data: &[u8] = &[0x02, 0x04, 0x00, 0x00, 0x00, 0x01];
     let result = WithRequiredAndOptional::decode_value(&mut &data[..]);
@@ -63,6 +67,7 @@ fn required_a_missing_fails() {
 }
 
 #[test]
+/// Ensures that a missing second required field (`required_b`) causes decode to return `Err`.
 fn required_b_missing_fails() {
     let data: &[u8] = &[
         0x01, 0x02, 0x00, 0x2A, // 0x02 absent
@@ -76,6 +81,7 @@ fn required_b_missing_fails() {
 }
 
 #[test]
+/// Ensures that decoding fails when both required fields are absent but optional fields are present.
 fn both_required_missing_fails() {
     let data: &[u8] = &[0x03, 0x01, 0x07, 0x04, 0x02, 0xFF, 0xFF];
     let result = WithRequiredAndOptional::decode_value(&mut &data[..]);
@@ -83,6 +89,7 @@ fn both_required_missing_fails() {
 }
 
 #[test]
+/// Tests that decoding an empty stream returns `Err` because required fields cannot be satisfied.
 fn empty_stream_fails() {
     let data: &[u8] = &[];
     let result = WithRequiredAndOptional::decode_value(&mut &data[..]);

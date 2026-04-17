@@ -74,6 +74,7 @@ fn tlv(key: u8, value: Vec<u8>) -> Vec<u8> {
 }
 
 #[test]
+/// Tests that `default(typ = ...)` container attributes resolve `dec`/`enc` for fields that omit them.
 fn default_type_color_and_priority() {
     let original = DefaultTyped {
         color: Color::Alpha,
@@ -94,6 +95,7 @@ fn default_type_color_and_priority() {
 }
 
 #[test]
+/// Verifies encode/decode roundtrip when most fields rely on container-level `default(typ = ...)` codecs.
 fn default_type_roundtrip() {
     let original = DefaultTyped {
         color: Color::Red,
@@ -110,6 +112,7 @@ fn default_type_roundtrip() {
 }
 
 #[test]
+/// Tests that `init = Color::Red` supplies the default when the field's key is absent from the stream.
 fn init_color_enum_absent() {
     // Stream has no key 0x01 - init value Color::Red should be used
     let result = InitColor::decode_value(&mut [].as_slice()).unwrap();
@@ -121,6 +124,7 @@ fn init_color_enum_absent() {
 }
 
 #[test]
+/// Tests that a present key overrides the `init = Color::Red` default at decode time.
 fn init_color_enum_present() {
     // Stream has key 0x01 = Color::Blue - decoded value overrides init
     let stream = tlv(0x01, Color::Blue.encode_value());
@@ -133,6 +137,7 @@ fn init_color_enum_present() {
 }
 
 #[test]
+/// Tests that a struct-valued `init = Timestamp { ... }` default is applied when the key is absent.
 fn init_timestamp_struct_absent() {
     let zero = Timestamp {
         seconds: 0,
@@ -146,6 +151,7 @@ fn init_timestamp_struct_absent() {
 }
 
 #[test]
+/// Tests that decoding a present `Timestamp` key overrides the struct-valued `init` default.
 fn init_timestamp_struct_present() {
     let ts = Timestamp {
         seconds: 1_700_000_000,
@@ -160,8 +166,8 @@ fn init_timestamp_struct_present() {
 }
 
 #[test]
+/// Verifies explicitly that the decoded value (`Color::Blue`) wins over the init default (`Color::Red`) when both are available.
 fn init_overridden_when_present() {
-    // init = Color::Red, but stream carries Color::Blue
     let stream = tlv(0x01, Color::Blue.encode_value());
     let result = InitColor::decode_value(&mut stream.as_slice()).unwrap();
     assert_ne!(
@@ -177,6 +183,7 @@ fn init_overridden_when_present() {
 }
 
 #[test]
+/// Tests that a struct field without `#[klv(...)]` resolves to `Default::default()` while other fields decode normally.
 fn non_klv_field_default() {
     let stream = tlv(0x01, Color::Green.encode_value());
     let result = WithNonKlvField::decode_value(&mut stream.as_slice()).unwrap();
@@ -192,8 +199,8 @@ fn non_klv_field_default() {
 }
 
 #[test]
+/// Tests that unknown keys in the stream do not perturb the default-valued non-KLV field.
 fn non_klv_field_unaffected_by_unknown_keys() {
-    // Even if stream has unknown keys, the non-KLV field stays at 0
     let mut stream: Vec<u8> = tlv(0x01, Color::Alpha.encode_value());
     stream.extend_from_slice(&[0xFF, 0x02, 0xAB, 0xCD]);
 

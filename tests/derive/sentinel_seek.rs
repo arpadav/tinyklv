@@ -24,8 +24,8 @@ struct SentinelPacket {
 }
 
 #[test]
+/// Tests that `decode_frame` skips leading garbage bytes, locks onto the sentinel `0xAA 0xBB`, and decodes the framed payload.
 fn extract_finds_sentinel_and_decodes() {
-    // Garbage bytes, then sentinel 0xAA 0xBB, then packet length byte, then fields
     let name = b"KLV";
     let mut body: Vec<u8> = vec![
         0x01, 0x02, 0x00, 0x2A, // key=1 len=2 val=42
@@ -47,12 +47,14 @@ fn extract_finds_sentinel_and_decodes() {
 }
 
 #[test]
+/// Verifies that `decode_frame` errors when the sentinel bytes never appear in the input.
 fn extract_no_sentinel_fails() {
     let data: &[u8] = &[0x00, 0x01, 0x02, 0x03, 0x04, 0x05];
     assert!(SentinelPacket::decode_frame(&mut &data[..]).is_err());
 }
 
 #[test]
+/// Tests that `decode_value` parses the KLV body directly without requiring the sentinel/length prefix.
 fn decode_without_seek_works_directly() {
     let name = b"KLV";
     let mut data: Vec<u8> = vec![0x01, 0x02, 0x00, 0x42, 0x02, name.len() as u8];
@@ -63,6 +65,7 @@ fn decode_without_seek_works_directly() {
 }
 
 #[test]
+/// Verifies that `encode_frame` prepends the configured sentinel bytes to the output.
 fn encode_prepends_sentinel() {
     let packet = SentinelPacket {
         id: 100,
@@ -73,6 +76,7 @@ fn encode_prepends_sentinel() {
 }
 
 #[test]
+/// Verifies a full `encode_frame` -> `decode_frame` roundtrip over the sentinel-framed `SentinelPacket`.
 fn extract_roundtrip() {
     let original = SentinelPacket {
         id: 999,

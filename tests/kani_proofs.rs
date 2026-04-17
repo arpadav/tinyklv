@@ -3,6 +3,7 @@ mod proofs {
     use tinyklv::codecs::ber::{BerLength, BerOid};
     use tinyklv::prelude::*;
 
+    /// Proof: `BerLength` encode/decode roundtrip holds for every u8 value.
     #[kani::proof]
     #[kani::unwind(8)]
     fn ber_length_roundtrip_u8() {
@@ -12,6 +13,7 @@ mod proofs {
         assert_eq!(val as u128, decoded.as_u128());
     }
 
+    /// Proof: `BerLength` encode/decode roundtrip holds for every u16 value.
     #[kani::proof]
     #[kani::unwind(12)]
     #[kani::solver(cadical)]
@@ -22,6 +24,7 @@ mod proofs {
         assert_eq!(val as u128, decoded.as_u128());
     }
 
+    /// Proof: `BerLength::encode_value` never produces an empty byte sequence for any u8.
     #[kani::proof]
     #[kani::unwind(8)]
     fn ber_length_never_empty() {
@@ -30,6 +33,7 @@ mod proofs {
         assert!(!encoded.is_empty());
     }
 
+    /// Proof: for all `val < 128`, short-form encoding is exactly one byte equal to the value.
     #[kani::proof]
     #[kani::unwind(4)]
     fn ber_length_short_form_single_byte() {
@@ -40,6 +44,7 @@ mod proofs {
         assert_eq!(encoded[0], val);
     }
 
+    /// Proof: for all `val >= 128`, the long-form first byte has MSB set.
     #[kani::proof]
     #[kani::unwind(12)]
     #[kani::solver(cadical)]
@@ -50,6 +55,7 @@ mod proofs {
         assert!(encoded[0] & 0x80 != 0);
     }
 
+    /// Proof: `BerLength::decode` consumes exactly the number of bytes produced by `encode_value` (no leftovers).
     #[kani::proof]
     #[kani::unwind(8)]
     fn ber_length_decode_consumes_all() {
@@ -60,6 +66,7 @@ mod proofs {
         assert!(slice.is_empty());
     }
 
+    /// Proof: `BerOid` encode/decode roundtrip holds for every non-zero u8.
     #[kani::proof]
     #[kani::unwind(8)]
     fn ber_oid_roundtrip_u8_nonzero() {
@@ -70,6 +77,7 @@ mod proofs {
         assert_eq!(val as u64, decoded.value);
     }
 
+    /// Proof: `BerOid` encode/decode roundtrip holds for every non-zero u16.
     #[kani::proof]
     #[kani::unwind(12)]
     #[kani::solver(cadical)]
@@ -81,6 +89,7 @@ mod proofs {
         assert_eq!(val as u64, decoded.value);
     }
 
+    /// Proof: the final byte of any `BerOid` encoding (for non-zero u8) has MSB clear.
     #[kani::proof]
     #[kani::unwind(8)]
     fn ber_oid_final_byte_msb_clear() {
@@ -91,6 +100,7 @@ mod proofs {
         assert_eq!(last & 0x80, 0);
     }
 
+    /// Proof: all non-final bytes of a multi-byte `BerOid` encoding have MSB set (continuation bit).
     #[kani::proof]
     #[kani::unwind(12)]
     #[kani::solver(cadical)]
@@ -103,6 +113,7 @@ mod proofs {
         }
     }
 
+    /// Proof: `BerOid` encoding of any non-zero u8 is never empty.
     #[kani::proof]
     #[kani::unwind(8)]
     fn ber_oid_encoding_never_empty_nonzero() {
@@ -112,6 +123,7 @@ mod proofs {
         assert!(!encoded.is_empty());
     }
 
+    /// Proof: `u8` encode/`be_u8` decode roundtrip holds for every u8.
     #[kani::proof]
     #[kani::unwind(4)]
     fn be_u8_roundtrip() {
@@ -121,6 +133,7 @@ mod proofs {
         assert_eq!(val, decoded);
     }
 
+    /// Proof: `i8` encode/`be_i8` decode roundtrip holds for every i8.
     #[kani::proof]
     #[kani::unwind(4)]
     fn be_i8_roundtrip() {
@@ -130,6 +143,7 @@ mod proofs {
         assert_eq!(val, decoded);
     }
 
+    /// Proof: `be_u16` encode/decode roundtrip holds for every u16.
     #[kani::proof]
     #[kani::unwind(8)]
     fn be_u16_roundtrip() {
@@ -139,6 +153,7 @@ mod proofs {
         assert_eq!(val, decoded);
     }
 
+    /// Proof: `be_i16` encode/decode roundtrip holds for every i16.
     #[kani::proof]
     #[kani::unwind(8)]
     fn be_i16_roundtrip() {
@@ -148,6 +163,7 @@ mod proofs {
         assert_eq!(val, decoded);
     }
 
+    /// Proof: `be_u32` encode/decode roundtrip holds for every u32.
     #[kani::proof]
     #[kani::unwind(12)]
     fn be_u32_roundtrip() {
@@ -157,6 +173,7 @@ mod proofs {
         assert_eq!(val, decoded);
     }
 
+    /// Proof: `le_u16` encode/decode roundtrip holds for every u16.
     #[kani::proof]
     #[kani::unwind(8)]
     fn le_u16_roundtrip() {
@@ -166,6 +183,7 @@ mod proofs {
         assert_eq!(val, decoded);
     }
 
+    /// Proof: `le_i16` encode/decode roundtrip holds for every i16.
     #[kani::proof]
     #[kani::unwind(8)]
     fn le_i16_roundtrip() {
@@ -175,6 +193,7 @@ mod proofs {
         assert_eq!(val, decoded);
     }
 
+    /// Proof: `le_u32` encode/decode roundtrip holds for every u32.
     #[kani::proof]
     #[kani::unwind(12)]
     fn le_u32_roundtrip() {
@@ -184,6 +203,7 @@ mod proofs {
         assert_eq!(val, decoded);
     }
 
+    /// Proof: BE and LE u16 encodings have equal length for every u16.
     #[kani::proof]
     #[kani::unwind(8)]
     fn be_le_same_length_u16() {
@@ -193,6 +213,7 @@ mod proofs {
         assert_eq!(be.len(), le.len());
     }
 
+    /// Proof: `be_u16` encoding length equals `size_of::<u16>()` for every u16.
     #[kani::proof]
     #[kani::unwind(8)]
     fn encoding_length_equals_sizeof_u16() {
@@ -201,6 +222,7 @@ mod proofs {
         assert_eq!(encoded.len(), std::mem::size_of::<u16>());
     }
 
+    /// Proof: `be_u32` encoding length equals `size_of::<u32>()` for every u32.
     #[kani::proof]
     #[kani::unwind(12)]
     fn encoding_length_equals_sizeof_u32() {
@@ -209,6 +231,7 @@ mod proofs {
         assert_eq!(encoded.len(), std::mem::size_of::<u32>());
     }
 
+    /// Proof: `be_u16` output matches `u16::to_be_bytes` for every u16.
     #[kani::proof]
     #[kani::unwind(8)]
     fn be_matches_to_be_bytes_u16() {
@@ -217,6 +240,7 @@ mod proofs {
         assert_eq!(encoded, val.to_be_bytes().to_vec());
     }
 
+    /// Proof: `le_u16` output matches `u16::to_le_bytes` for every u16.
     #[kani::proof]
     #[kani::unwind(8)]
     fn le_matches_to_le_bytes_u16() {
@@ -225,6 +249,7 @@ mod proofs {
         assert_eq!(encoded, val.to_le_bytes().to_vec());
     }
 
+    /// Proof: `be_u16_lengthed(len)` output has exactly `len` bytes for every u16 and `len` in `1..=4`.
     #[kani::proof]
     #[kani::unwind(12)]
     fn be_lengthed_output_length_u16() {
@@ -235,6 +260,7 @@ mod proofs {
         assert_eq!(encoded.len(), len);
     }
 
+    /// Proof: `le_u16_lengthed(len)` output has exactly `len` bytes for every u16 and `len` in `1..=4`.
     #[kani::proof]
     #[kani::unwind(12)]
     fn le_lengthed_output_length_u16() {
@@ -245,6 +271,7 @@ mod proofs {
         assert_eq!(encoded.len(), len);
     }
 
+    /// Proof: `be_u16_lengthed(2)` encode/decode roundtrip holds for every u16.
     #[kani::proof]
     #[kani::unwind(8)]
     fn lengthed_roundtrip_exact_size_u16() {
@@ -254,6 +281,7 @@ mod proofs {
         assert_eq!(val, decoded);
     }
 
+    /// Proof: `be_u16_from_usize` matches `be_u16` directly for every u16 value cast to usize.
     #[kani::proof]
     #[kani::unwind(8)]
     fn from_usize_matches_direct_u16() {

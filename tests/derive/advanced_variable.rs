@@ -84,6 +84,7 @@ struct VarSensorArray {
 // --------------------------------------------------
 
 #[test]
+/// Tests encode/decode roundtrip of a struct mixing fixed-length fields with a `varlen = true` UTF-8 label.
 fn mixed_var_fixed_roundtrip() {
     let original = MixedVarFixed {
         coord: Coordinate {
@@ -103,6 +104,7 @@ fn mixed_var_fixed_roundtrip() {
 }
 
 #[test]
+/// Tests that an `Option<String>` with `varlen = true` decodes to `Some` when its key and non-zero payload are present.
 fn option_var_present() {
     // priority=Low(0), label="hello" (5 bytes)
     let data: &[u8] = &[
@@ -115,6 +117,7 @@ fn option_var_present() {
 }
 
 #[test]
+/// Tests that an `Option<String>` with `varlen = true` decodes to `None` when its key is absent from the stream.
 fn option_var_absent() {
     // only priority present, label key absent
     let data: &[u8] = &[0x01, 0x01, 0x02]; // priority=High
@@ -124,6 +127,7 @@ fn option_var_absent() {
 }
 
 #[test]
+/// Tests that a `varlen` optional with length zero decodes to `Some("")` rather than `None`.
 fn option_var_zero_len() {
     // key present but len=0 → Some("")
     let data: &[u8] = &[
@@ -136,6 +140,7 @@ fn option_var_zero_len() {
 }
 
 #[test]
+/// Tests roundtrip of a variable-length `Vec<SensorReading>` packed into a single TLV payload.
 fn var_sensor_array() {
     // 3 sensor readings × 5 bytes = 15 bytes payload
     let readings = vec![

@@ -196,6 +196,7 @@ fn build_required_bytes(s: &RequiredSuite) -> Vec<u8> {
 }
 
 #[test]
+/// Tests decoding a 12-field telemetry packet combining primitives, enums, coordinates, and status flags.
 fn large_struct_decode() {
     let fixture = telemetry_fixture();
     let data = build_telemetry_bytes(&fixture);
@@ -215,6 +216,7 @@ fn large_struct_decode() {
 }
 
 #[test]
+/// Tests full encode/decode roundtrip for the 12-field telemetry packet.
 fn large_struct_roundtrip() {
     let original = telemetry_fixture();
     let encoded = original.encode_value();
@@ -223,6 +225,7 @@ fn large_struct_roundtrip() {
 }
 
 #[test]
+/// Tests that when all eight optional fields have keys present on the wire, they all decode to `Some(_)`.
 fn all_optional_8_all_present() {
     let color = Color::Red;
     let priority = Priority::Medium;
@@ -271,6 +274,7 @@ fn all_optional_8_all_present() {
 }
 
 #[test]
+/// Tests that decoding an empty input into an all-optional struct yields `None` for every field without error.
 fn all_optional_8_all_absent() {
     let result = OptionalSuite::decode_value(&mut [].as_slice()).unwrap();
     assert_eq!(result.color, None);
@@ -284,6 +288,7 @@ fn all_optional_8_all_absent() {
 }
 
 #[test]
+/// Tests that only the `color` optional decodes to `Some` when its key is the sole key present; others stay `None`.
 fn all_optional_each_alone_color() {
     let val = Color::Alpha;
     let mut data = vec![];
@@ -300,6 +305,7 @@ fn all_optional_each_alone_color() {
 }
 
 #[test]
+/// Tests that only the `priority` optional decodes to `Some` when it is the sole key present.
 fn all_optional_each_alone_priority() {
     let val = Priority::Low;
     let mut data = vec![];
@@ -316,6 +322,7 @@ fn all_optional_each_alone_priority() {
 }
 
 #[test]
+/// Tests that only the `velocity` optional decodes to `Some` when it is the sole key present.
 fn all_optional_each_alone_velocity() {
     let val = Velocity {
         dx: -100,
@@ -336,6 +343,7 @@ fn all_optional_each_alone_velocity() {
 }
 
 #[test]
+/// Tests that only the `attitude` optional decodes to `Some` when it is the sole key present.
 fn all_optional_each_alone_attitude() {
     let val = Attitude {
         roll: 1.0_f32,
@@ -356,6 +364,7 @@ fn all_optional_each_alone_attitude() {
 }
 
 #[test]
+/// Tests that only the `timestamp` optional decodes to `Some` when it is the sole key present.
 fn all_optional_each_alone_timestamp() {
     let val = Timestamp {
         seconds: 999,
@@ -375,6 +384,7 @@ fn all_optional_each_alone_timestamp() {
 }
 
 #[test]
+/// Tests that only the `coordinate` optional decodes to `Some` when it is the sole key present.
 fn all_optional_each_alone_coordinate() {
     let val = Coordinate {
         lat: 51.5074,
@@ -394,6 +404,7 @@ fn all_optional_each_alone_coordinate() {
 }
 
 #[test]
+/// Tests that only the `status` optional decodes to `Some` when it is the sole key present.
 fn all_optional_each_alone_status() {
     let val = StatusFlags {
         active: false,
@@ -415,6 +426,7 @@ fn all_optional_each_alone_status() {
 }
 
 #[test]
+/// Tests that only the `material` optional decodes to `Some` when it is the sole key present.
 fn all_optional_each_alone_material() {
     let val = Material::Ceramic;
     let mut data = vec![];
@@ -435,6 +447,7 @@ fn all_optional_each_alone_material() {
 // --------------------------------------------------
 
 #[test]
+/// Tests that all eight required fields decode correctly when every key is present on the wire.
 fn all_required_8_present() {
     let fixture = required_suite_fixture();
     let data = build_required_bytes(&fixture);
@@ -447,6 +460,7 @@ fn all_required_8_present() {
 // --------------------------------------------------
 
 #[test]
+/// Tests that decoding fails when the required `color` key is absent from the stream.
 fn all_required_each_missing_color() {
     let s = required_suite_fixture();
     let mut data = vec![];
@@ -462,6 +476,7 @@ fn all_required_each_missing_color() {
 }
 
 #[test]
+/// Tests that decoding fails when the required `priority` key is absent from the stream.
 fn all_required_each_missing_priority() {
     let s = required_suite_fixture();
     let mut data = vec![];
@@ -477,6 +492,7 @@ fn all_required_each_missing_priority() {
 }
 
 #[test]
+/// Tests that decoding fails when the required `velocity` key is absent from the stream.
 fn all_required_each_missing_velocity() {
     let s = required_suite_fixture();
     let mut data = vec![];
@@ -492,6 +508,7 @@ fn all_required_each_missing_velocity() {
 }
 
 #[test]
+/// Tests that decoding fails when the required `attitude` key is absent from the stream.
 fn all_required_each_missing_attitude() {
     let s = required_suite_fixture();
     let mut data = vec![];
@@ -507,6 +524,7 @@ fn all_required_each_missing_attitude() {
 }
 
 #[test]
+/// Tests that decoding fails when the required `timestamp` key is absent from the stream.
 fn all_required_each_missing_timestamp() {
     let s = required_suite_fixture();
     let mut data = vec![];
@@ -522,6 +540,7 @@ fn all_required_each_missing_timestamp() {
 }
 
 #[test]
+/// Tests that decoding fails when the required `coordinate` key is absent from the stream.
 fn all_required_each_missing_coordinate() {
     let s = required_suite_fixture();
     let mut data = vec![];
@@ -537,6 +556,7 @@ fn all_required_each_missing_coordinate() {
 }
 
 #[test]
+/// Tests that decoding fails when the required `status` key is absent from the stream.
 fn all_required_each_missing_status() {
     let s = required_suite_fixture();
     let mut data = vec![];
@@ -552,6 +572,7 @@ fn all_required_each_missing_status() {
 }
 
 #[test]
+/// Tests that decoding fails when the required `material` key is absent from the stream.
 fn all_required_each_missing_material() {
     let s = required_suite_fixture();
     let mut data = vec![];

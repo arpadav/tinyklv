@@ -4,19 +4,9 @@
 //! * lifetime-generic stream structs
 //! * type-generic structs carrying `PhantomData<T>` (zero-size, skipped by derive)
 //! * user-authored `where` clauses preserved verbatim via `split_for_impl`
-//!
-//! Author: aav
-
-// --------------------------------------------------
-// local
-// --------------------------------------------------
 use std::marker::PhantomData;
 use tinyklv::prelude::*;
 use tinyklv::Klv;
-
-// --------------------------------------------------
-// Type-generic container with PhantomData<T>
-// --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -33,16 +23,10 @@ struct Tagged<T> {
     _phantom: PhantomData<T>,
 }
 
-// phantom marker types
 #[derive(Debug, PartialEq)]
 struct MarkerA;
 #[derive(Debug, PartialEq)]
 struct MarkerB;
-
-// --------------------------------------------------
-// Type-generic container with user `where` clause
-// (preserved verbatim via split_for_impl)
-// --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -59,10 +43,6 @@ where
     _phantom: PhantomData<T>,
 }
 
-// --------------------------------------------------
-// Multi-parameter generic container
-// --------------------------------------------------
-
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -78,11 +58,8 @@ struct TwoParams<T, U> {
     _u: PhantomData<U>,
 }
 
-// --------------------------------------------------
-// tests
-// --------------------------------------------------
-
 #[test]
+/// Tests that a type-generic struct `Tagged<MarkerA>` with a `PhantomData` marker roundtrips via sentinel-framed encode/decode.
 fn tagged_roundtrip_marker_a() {
     let original: Tagged<MarkerA> = Tagged {
         id: 0xBEEF,
@@ -95,6 +72,7 @@ fn tagged_roundtrip_marker_a() {
 }
 
 #[test]
+/// Tests that a type-generic struct `Tagged<MarkerB>` roundtrips independently of the `MarkerA` instantiation.
 fn tagged_roundtrip_marker_b() {
     let original: Tagged<MarkerB> = Tagged {
         id: 0x0101,
@@ -107,8 +85,8 @@ fn tagged_roundtrip_marker_b() {
 }
 
 #[test]
+/// Verifies that `Tagged<MarkerA>` and `Tagged<MarkerB>` have distinct monomorphized impls sharing identical wire bytes.
 fn tagged_distinct_marker_types_have_separate_impls() {
-    // Proves separate monomorphized impls - same bytes decode into either T.
     let a: Tagged<MarkerA> = Tagged {
         id: 0x1234,
         counter: 0x56789ABC,
@@ -122,6 +100,7 @@ fn tagged_distinct_marker_types_have_separate_impls() {
 }
 
 #[test]
+/// Tests that a struct with a user-supplied `where T: Send + Sync + 'static` clause preserves that clause through codegen and roundtrips.
 fn bounded_where_clause_roundtrip() {
     let original: Bounded<u64> = Bounded {
         value: 0xCAFE,
@@ -133,6 +112,7 @@ fn bounded_where_clause_roundtrip() {
 }
 
 #[test]
+/// Tests that a struct generic over two independent type parameters (`TwoParams<T, U>`) roundtrips correctly.
 fn two_params_roundtrip() {
     let original: TwoParams<MarkerA, MarkerB> = TwoParams {
         first: 0xAAAA,

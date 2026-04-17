@@ -113,6 +113,7 @@ fn make_weather() -> WeatherPacket {
 // --------------------------------------------------
 
 #[test]
+/// Tests that a concatenated Nav+Weather stream routes each frame to its matching `Packet` variant via sentinel peeking.
 fn dispatch_by_sentinel() {
     let nav = make_nav();
     let weather = make_weather();
@@ -136,6 +137,7 @@ fn dispatch_by_sentinel() {
 }
 
 #[test]
+/// Tests that interleaved packet types (Nav, Weather, Nav) are dispatched in order with variants preserved.
 fn dispatch_nav_then_weather_then_nav() {
     let n1 = make_nav();
     let w1 = make_weather();
@@ -170,6 +172,7 @@ fn dispatch_nav_then_weather_then_nav() {
 }
 
 #[test]
+/// Tests that garbage leading bytes are skipped one at a time until a recognised sentinel is found and decoded.
 fn dispatch_unknown_sentinel_skips_byte() {
     // Stream: 2 garbage bytes, then a valid NavPacket
     let nav = make_nav();
@@ -189,6 +192,7 @@ fn dispatch_unknown_sentinel_skips_byte() {
 }
 
 #[test]
+/// Tests that a stream containing no recognised sentinels yields zero packets without panicking.
 fn dispatch_all_unknown_returns_empty() {
     // Stream contains no recognised sentinels
     let stream: &[u8] = &[0x00, 0x11, 0x22, 0x33, 0x44];
@@ -203,6 +207,7 @@ fn dispatch_all_unknown_returns_empty() {
 }
 
 #[test]
+/// Tests that dispatching on an empty stream returns `None` without attempting to read.
 fn dispatch_empty_stream() {
     let mut slice: &[u8] = &[];
     let result = dispatch_one(&mut slice);

@@ -9,6 +9,7 @@ use tinyklv::Klv;
 // len=0 behavior across all relevant decoders
 // --------------------------------------------------
 #[test]
+/// Tests that `to_string_utf8(0)` returns an empty string without consuming any input bytes.
 fn to_string_utf8_zero_len_returns_empty() {
     let mut input: &[u8] = &[0x41, 0x42, 0x43]; // "ABC" - should not be consumed
     let result = to_string_utf8(0)(&mut input).unwrap();
@@ -18,6 +19,7 @@ fn to_string_utf8_zero_len_returns_empty() {
 }
 
 #[test]
+/// Tests that `to_string_utf8(0)` succeeds and returns an empty string on empty input.
 fn to_string_utf8_zero_len_on_empty_returns_empty() {
     let mut input: &[u8] = &[];
     let result = to_string_utf8(0)(&mut input).unwrap();
@@ -25,6 +27,7 @@ fn to_string_utf8_zero_len_on_empty_returns_empty() {
 }
 
 #[test]
+/// Tests that `to_string_utf16_le(0)` returns an empty string without consuming any input bytes.
 fn to_string_utf16_le_zero_len_returns_empty() {
     let mut input: &[u8] = &[0x41, 0x00];
     let result = to_string_utf16_le(0)(&mut input).unwrap();
@@ -34,6 +37,7 @@ fn to_string_utf16_le_zero_len_returns_empty() {
 }
 
 #[test]
+/// Tests that `be_u16_lengthed(0)` returns `0u16` without consuming input.
 fn be_u16_lengthed_zero_returns_zero() {
     let mut input: &[u8] = &[0x01, 0x02]; // should not be consumed
     let result = tinyklv::dec::binary::be_u16_lengthed(0)(&mut input).unwrap();
@@ -42,6 +46,7 @@ fn be_u16_lengthed_zero_returns_zero() {
 }
 
 #[test]
+/// Tests that `be_u32_lengthed(0)` returns `0u32` without consuming input.
 fn be_u32_lengthed_zero_returns_zero() {
     let mut input: &[u8] = &[0xAB, 0xCD, 0xEF, 0x01];
     let result = tinyklv::dec::binary::be_u32_lengthed(0)(&mut input).unwrap();
@@ -49,6 +54,7 @@ fn be_u32_lengthed_zero_returns_zero() {
 }
 
 #[test]
+/// Tests that `be_u64_lengthed(0)` returns `0u64` without consuming input.
 fn be_u64_lengthed_zero_returns_zero() {
     let mut input: &[u8] = &[0x01; 8];
     let result = tinyklv::dec::binary::be_u64_lengthed(0)(&mut input).unwrap();
@@ -58,18 +64,21 @@ fn be_u64_lengthed_zero_returns_zero() {
 // encoder zero-length variants
 // --------------------------------------------------
 #[test]
+/// Tests that `enc::binary::be_u16_lengthed(0)` produces an empty byte vector regardless of value.
 fn enc_be_u16_lengthed_zero_produces_empty() {
     let result = tinyklv::enc::binary::be_u16_lengthed(0)(0x1234_u16);
     assert!(result.is_empty());
 }
 
 #[test]
+/// Tests that `enc::binary::le_u32_lengthed(0)` produces an empty byte vector regardless of value.
 fn enc_le_u32_lengthed_zero_produces_empty() {
     let result = tinyklv::enc::binary::le_u32_lengthed(0)(0xDEADBEEF_u32);
     assert!(result.is_empty());
 }
 
 #[test]
+/// Tests that `enc::binary::be_u64_lengthed(0)` produces an empty byte vector regardless of value.
 fn enc_be_u64_lengthed_zero_produces_empty() {
     let result = tinyklv::enc::binary::be_u64_lengthed(0)(u64::MAX);
     assert!(result.is_empty());
@@ -98,6 +107,7 @@ struct ZeroLenOptional {
 }
 
 #[test]
+/// Tests that a zero-length numeric optional becomes `None` (decoder needs bytes) while a zero-length string optional becomes `Some("")`.
 fn derive_optional_numeric_zero_len_in_stream_gives_none() {
     // key=0x01 with len=0: be_u16 gets an empty sub-slice -> fails -> Option stays None
     // key=0x02 with len=0: to_string_utf8(0) returns "" -> Some("")
@@ -118,6 +128,7 @@ fn derive_optional_numeric_zero_len_in_stream_gives_none() {
 }
 
 #[test]
+/// Tests that a valid `u16` decodes followed by a zero-length string yielding `Some("")`.
 fn derive_optional_numeric_normal_then_zero_len() {
     // key=0x01 with len=2: valid u16
     // key=0x02 with len=0: empty string
