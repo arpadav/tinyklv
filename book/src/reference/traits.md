@@ -75,7 +75,7 @@ invoke it directly; `Vec<T>` fields get the behavior for free.
 The user-extensible stop predicate for repeated decode. A blanket
 implementation covers the common cases; override only when you need
 custom termination logic (see the
-[Custom Break Conditions](../tutorials/14-break-condition.md) tutorial).
+[Tutorial 12 - Break conditions](../tutorial/12-break-condition.md)).
 
 ## `IntoKlv<O>`
 

@@ -106,7 +106,7 @@ boundary_roundtrip!(
 #[test]
 /// Tests BER length roundtrip at the lower boundary value `0`.
 fn ber_length_boundary_0() {
-    let encoded = tinyklv::enc::ber::ber_length(&0_u64);
+    let encoded = tinyklv::enc::ber::ber_length(0_u64);
     let decoded = tinyklv::dec::ber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, 0_usize);
 }
@@ -114,7 +114,7 @@ fn ber_length_boundary_0() {
 #[test]
 /// Tests BER length roundtrip at the short-form upper boundary `127` (1-byte encoding).
 fn ber_length_boundary_127() {
-    let encoded = tinyklv::enc::ber::ber_length(&127_u64);
+    let encoded = tinyklv::enc::ber::ber_length(127_u64);
     assert_eq!(encoded.len(), 1, "127 must encode as short form (1 byte)");
     let decoded = tinyklv::dec::ber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, 127_usize);
@@ -123,7 +123,7 @@ fn ber_length_boundary_127() {
 #[test]
 /// Tests BER length roundtrip at `128`, the first long-form value (encoding must exceed 1 byte).
 fn ber_length_boundary_128() {
-    let encoded = tinyklv::enc::ber::ber_length(&128_u64);
+    let encoded = tinyklv::enc::ber::ber_length(128_u64);
     assert!(encoded.len() > 1, "128 must encode as long form (> 1 byte)");
     let decoded = tinyklv::dec::ber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, 128_usize);
@@ -132,7 +132,7 @@ fn ber_length_boundary_128() {
 #[test]
 /// Tests BER length roundtrip at `255`, a common 1-extra-byte long-form boundary.
 fn ber_length_boundary_255() {
-    let encoded = tinyklv::enc::ber::ber_length(&255_u64);
+    let encoded = tinyklv::enc::ber::ber_length(255_u64);
     let decoded = tinyklv::dec::ber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, 255_usize);
 }
@@ -140,7 +140,7 @@ fn ber_length_boundary_255() {
 #[test]
 /// Tests BER length roundtrip at `256`, the first value requiring 2 long-form bytes.
 fn ber_length_boundary_256() {
-    let encoded = tinyklv::enc::ber::ber_length(&256_u64);
+    let encoded = tinyklv::enc::ber::ber_length(256_u64);
     let decoded = tinyklv::dec::ber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, 256_usize);
 }
@@ -148,7 +148,7 @@ fn ber_length_boundary_256() {
 #[test]
 /// Tests BER length roundtrip at the upper boundary `u32::MAX`.
 fn ber_length_boundary_u32_max() {
-    let encoded = tinyklv::enc::ber::ber_length(&u32::MAX);
+    let encoded = tinyklv::enc::ber::ber_length(u32::MAX);
     let decoded = tinyklv::dec::ber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, u32::MAX as usize);
 }

@@ -22,7 +22,7 @@ fn logger() -> proc_macro2::TokenStream {
         quote! { ::std::println! }
     }
 }
-/// Generates the tokens for the entire [`tinyklv::prelude::DecodeValue`](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.DecodeValue.html) implementation
+/// Generates the tokens for the entire [`tinyklv::prelude::DecodeValue`] implementation
 pub(crate) fn gen_decode_impl(
     input: &MainContainer,
     key_decoder: &types::XcoderType,
@@ -67,9 +67,9 @@ pub(crate) fn gen_decode_impl(
                 #[doc(hidden)]
                 #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::SeekSentinel`] for [`", stringify!(#stream), "`]")]
                 impl #impl_generics ::tinyklv::traits::SeekSentinel<#stream> for #name #ty_generics #where_clause {
-                    // ---- vvv ---- remember this is PACKET_LIFETIME_CHAR
+                    // ------------- vvv ---- remember this is PACKET_LIFETIME_CHAR
                     fn seek_sentinel<'z>(input: &mut #stream_lifetimed) -> ::tinyklv::__export::winnow::Result<#stream_lifetimed> {
-                    // ---- ^^^ ---- remember this is PACKET_LIFETIME_CHAR
+                    // ------------- ^^^ ---- remember this is PACKET_LIFETIME_CHAR
                         let checkpoint = input.checkpoint();
                         match #sentinel_seeker_static_name.find(&input) {
                             Some(position) => *input = &input[position + #sentinel_len_static_name..],
@@ -226,7 +226,7 @@ pub(crate) fn gen_decode_impl(
 fn gen_items_init(fatts: &Vec<MainField>) -> proc_macro2::TokenStream {
     let field_initializations = fatts.iter().map(|field| {
         let MainField { name, ty, .. } = field;
-        let init = field.attrs.as_ref().and_then(|f| f._init.clone());
+        let init = field.attrs.as_ref().and_then(|f| f.init.clone());
         let ty = helpers::unwrap_option_type(ty).unwrap_or(ty);
         match init {
             Some(init) => quote! {
@@ -271,6 +271,23 @@ fn gen_items_match(fields: &Vec<MainField>, debug: bool) -> proc_macro2::TokenSt
                 quote! {}
             };
             // --------------------------------------------------
+            // post-decode latebind
+            // --------------------------------------------------
+            // consuming (`is_mut == false`): `.map(inner)` - `Fn(T) -> U`
+            // mutating  (`is_mut == true`):  `.map(|mut __v| { inner(&mut __v); __v })` - `Fn(&mut T)`
+            // --------------------------------------------------
+            let latebind_map = match attrs.latebind.as_ref() {
+                Some(lb) => {
+                    let inner = &lb.inner;
+                    if lb.is_mut {
+                        quote! { .map(|mut __v| { #inner(&mut __v); __v }) }
+                    } else {
+                        quote! { .map(#inner) }
+                    }
+                }
+                None => quote! {},
+            };
+            // --------------------------------------------------
             // return
             // --------------------------------------------------
             match debug {
@@ -280,12 +297,12 @@ fn gen_items_match(fields: &Vec<MainField>, debug: bool) -> proc_macro2::TokenSt
                         #key => {
                             let val = #dec #optional_len_arg (&mut subinput);
                             #logger ("\t{}: {:?}", stringify!(#name), val);
-                            #name = val.ok().or(#name);
+                            #name = val.ok() #latebind_map .or(#name);
                         },
                     }
                 }
                 false => quote! {
-                    #key => #name = #dec #optional_len_arg (&mut subinput).ok().or(#name),
+                    #key => #name = #dec #optional_len_arg (&mut subinput).ok() #latebind_map .or(#name),
                 },
             }
         });

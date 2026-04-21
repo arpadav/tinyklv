@@ -1,85 +1,91 @@
+#![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! BER-length, BER-key container; encode_value vs encode_frame comparison.
+//! Example 05 - encode/decode symmetry.
 //!
-//! Basic Encoding Rules (BER) are used in many real-world protocols because
-//! they give a compact, variable-width representation for both keys and
-//! lengths. This example builds a two-field struct that uses BER OID keys and
-//! BER lengths, then shows the numeric difference between `encode_value`
-//! (field triples only) and `encode_frame` (sentinel + outer-length +
-//! field triples). The byte-layout annotations in the output make it easy to
-//! see exactly where the extra bytes come from.
+//! `#[derive(Klv)]` generates matched pairs of traits on both sides of the
+//! wire: `EncodeValue`/`DecodeValue` for the raw KLV triples and
+//! `EncodeFrame`/`DecodeFrame` for the sentinel-wrapped envelope. This
+//! example walks through both pairs on a single struct and asserts the
+//! invariants that tie them together:
+//!
+//! * `decode_value(encode_value(x)) == x`
+//! * `decode_frame(encode_frame(x)) == x`
+//! * `encode_frame(x).len() > encode_value(x).len()` (the frame adds
+//!   sentinel + outer-length bytes around the value region)
+//!
+//! Showcases:
+//! * `encode_value` vs `encode_frame`
+//! * `decode_value` vs `decode_frame`
+//! * Sentinel + outer-length accounting
+//!
+//! See also: book Tutorial 05.
+use tinyklv::prelude::*;            // Klv proc-macro + traits
+use tinyklv::dec::binary as decb;   // binary decoders
+use tinyklv::enc::binary as encb;   // binary encoders
 
-use tinyklv::prelude::*;
-use tinyklv::Klv;
-
-fn ber_key_enc(v: u64) -> Vec<u8> {
-    tinyklv::enc::ber::ber_oid(&v)
-}
-fn ber_len_enc(v: usize) -> Vec<u8> {
-    tinyklv::enc::ber::ber_length(&v)
-}
-
-/// Atmospheric sensor packet using BER-encoded keys and lengths.
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
-    stream = &[u8],
-    // sentinel bytes that identify this packet type on the wire
-    sentinel = b"\xA5\x5A",
-    // BER OID key codec - keys < 128 are single bytes; larger keys use more
-    key(dec = tinyklv::dec::ber::ber_oid::<u64>, enc = ber_key_enc),
-    // BER length codec - lengths < 128 are single bytes
-    len(dec = tinyklv::dec::ber::ber_length,      enc = ber_len_enc),
+    stream = &[u8],                                              // default, shown for clarity
+    sentinel = b"ATMOSAMPLE",
+    key(dec = decb::u8,          enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
-struct AtmoSensor {
-    // Key 0x01: pressure in Pascal (u32, big-endian)
-    #[klv(key = 0x01_u64, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
+/// Two-field atmospheric sample: pressure in Pascal + temperature in 0.01 C
+struct AtmoSample {
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
+    /// Barometric pressure in Pascal (big-endian u32)
     pressure_pa: u32,
 
-    // Key 0x02: temperature in 0.01 °C units (u16, big-endian)
-    #[klv(key = 0x02_u64, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
+    /// Temperature in 0.01 C units (big-endian u16)
     temperature_centideg: u16,
 }
 
 fn main() {
-    let original = AtmoSensor {
-        pressure_pa: 101_325,        // standard atmosphere
-        temperature_centideg: 2_050, // 20.50 °C
+    // build
+    let original = AtmoSample {
+        pressure_pa:          101_325, // standard atmosphere
+        temperature_centideg: 2_050,   // 20.50 C
     };
 
-    // encode_value: only the field KLV triples, no outer wrapper
+    // encode - value bytes contain only the field KLV triples
     let value_bytes = original.encode_value();
-    println!(
-        "encode_value ({} bytes): {:02X?}",
-        value_bytes.len(),
-        value_bytes
-    );
 
-    // encode_frame: sentinel + BER-length + field triples
+    // encode - frame bytes wrap the value region in sentinel + outer length
     let frame_bytes = original.encode_frame();
-    println!(
-        "encode_frame ({} bytes): {:02X?}",
-        frame_bytes.len(),
-        frame_bytes
-    );
 
-    // The frame must start with the sentinel and be longer than the value
-    assert_eq!(
-        &frame_bytes[0..2],
-        b"\xA5\x5A",
-        "frame must begin with sentinel"
-    );
+    // the framed form must be strictly larger (sentinel + outer length)
     assert!(
         frame_bytes.len() > value_bytes.len(),
-        "frame includes sentinel + length bytes"
+        "frame must wrap the value region with sentinel + length",
     );
 
-    // decode_frame recovers the struct from the framed bytes
-    let decoded = AtmoSensor::decode_frame(&mut frame_bytes.as_slice()).unwrap();
-    println!(
-        "Decoded: pressure={}Pa, temperature={}(x0.01°C)",
-        decoded.pressure_pa, decoded.temperature_centideg
+    // the framed form must begin with the sentinel
+    assert_eq!(
+        &frame_bytes[0..b"ATMOSAMPLE".len()],
+        b"ATMOSAMPLE",
+        "frame must begin with the sentinel bytes",
     );
 
-    assert_eq!(decoded, original);
-    println!("SUCCESS");
+    // decode - value form round-trips
+    let from_value = AtmoSample::decode_value(
+        &mut value_bytes.as_slice(),
+    ).unwrap();
+
+    // decode - frame form round-trips
+    let from_frame = AtmoSample::decode_frame(
+        &mut frame_bytes.as_slice(),
+    ).unwrap();
+
+    // assert - both decode paths reconstruct the original
+    assert_eq!(from_value, original);
+    assert_eq!(from_frame, original);
 }

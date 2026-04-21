@@ -10,13 +10,13 @@ use tinyklv::Klv;
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct TelemetryPacket {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
     id: u16,
     #[klv(key = 0x02, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
     timestamp: Timestamp,
     #[klv(key = 0x03, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
     position: Coordinate,
-    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_f32, enc = &tinyklv::enc::binary::be_f32)]
+    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_f32, enc = *tinyklv::enc::binary::be_f32)]
     altitude: f32,
     #[klv(key = 0x05, dec = Velocity::decode_value, enc = Velocity::encode_value)]
     velocity: Velocity,
@@ -36,7 +36,7 @@ struct TelemetryPacket {
     #[klv(
         key = 0x0C,
         dec = tinyklv::dec::binary::be_u8,
-        enc = &tinyklv::enc::binary::u8,
+        enc = *tinyklv::enc::binary::u8,
     )]
     battery: u8,
 }

@@ -33,10 +33,11 @@ pub mod prelude {
     // local
     // --------------------------------------------------
     pub use crate::traits::{
-        BreakCondition as _, BreakConditionType, DecodeFrame as _, DecodeValue as _, EncodeAs,
-        EncodeFrame as _, EncodeValue as _, EncodedOutput as _, IntoKlv as _, RepeatedDecode as _,
+        BreakCondition as _, BreakConditionType, DecodeFrame as _, DecodeValue, EncodeAs,
+        EncodeFrame as _, EncodeValue, EncodedOutput as _, IntoKlv as _, RepeatedDecode as _,
         SeekSentinel as _,
     };
+    pub use tinyklv_impl::Klv;
     // --------------------------------------------------
     // external
     // --------------------------------------------------

@@ -31,7 +31,7 @@ impl tinyklv::EncodeValue<Vec<u8>> for Point {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct WithNestedType {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
     id: u16,
     #[klv(key = 0x02, dec = Point::decode_value, enc = Point::encode_value)]
     location: Point,

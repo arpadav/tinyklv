@@ -15,17 +15,17 @@ use tinyklv::Klv;
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct AllNumerics {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = *tinyklv::enc::binary::u8)]
     u8_field: u8,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
     u16_field: u16,
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
+    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
     u32_field: u32,
-    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_u64, enc = &tinyklv::enc::binary::be_u64)]
+    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_u64, enc = *tinyklv::enc::binary::be_u64)]
     u64_field: u64,
-    #[klv(key = 0x05, dec = tinyklv::dec::binary::be_i16, enc = &tinyklv::enc::binary::be_i16)]
+    #[klv(key = 0x05, dec = tinyklv::dec::binary::be_i16, enc = *tinyklv::enc::binary::be_i16)]
     i16_field: i16,
-    #[klv(key = 0x06, dec = tinyklv::dec::binary::be_i32, enc = &tinyklv::enc::binary::be_i32)]
+    #[klv(key = 0x06, dec = tinyklv::dec::binary::be_i32, enc = *tinyklv::enc::binary::be_i32)]
     i32_field: i32,
 }
 
@@ -104,9 +104,9 @@ fn all_numerics_roundtrip_min_signed() {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct WithOptionalRoundtrip {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
     required: u32,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
     optional: Option<u32>,
 }
 
@@ -145,7 +145,7 @@ fn optional_none_roundtrip() {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct WithStringRoundtrip {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
     id: u16,
     #[klv(
         key = 0x02,

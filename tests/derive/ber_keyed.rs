@@ -1,31 +1,25 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use tinyklv::enc::ber as encber;
 use tinyklv::prelude::*;
 use tinyklv::Klv;
-
-fn ber_key_enc(v: u64) -> Vec<u8> {
-    tinyklv::enc::ber::ber_oid(&v)
-}
-fn ber_len_enc(v: usize) -> Vec<u8> {
-    tinyklv::enc::ber::ber_length(&v)
-}
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::ber::ber_oid::<u64>, enc = ber_key_enc),
-    len(dec = tinyklv::dec::ber::ber_length, enc = ber_len_enc),
+    key(dec = tinyklv::dec::ber::ber_oid::<u64>, enc = encber::ber_oid),
+    len(dec = tinyklv::dec::ber::ber_length, enc = encber::ber_length),
 )]
 struct BerPacket {
     // Key 0x01 (single-byte BER OID, value < 128)
-    #[klv(key = 0x01_u64, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
+    #[klv(key = 0x01_u64, dec = tinyklv::dec::binary::be_u8, enc = *tinyklv::enc::binary::u8)]
     small_key_field: u8,
     // Key 0x02 (single-byte BER OID)
-    #[klv(key = 0x02_u64, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
+    #[klv(key = 0x02_u64, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
     word_field: u16,
     // Key 0x03 (single-byte BER OID)
-    #[klv(key = 0x03_u64, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
+    #[klv(key = 0x03_u64, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
     dword_field: u32,
 }
 
@@ -111,8 +105,8 @@ fn encode_ber_roundtrip_all_zeros() {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::ber::ber_oid::<u64>, enc = ber_key_enc),
-    len(dec = tinyklv::dec::ber::ber_length, enc = ber_len_enc),
+    key(dec = tinyklv::dec::ber::ber_oid::<u64>, enc = encber::ber_oid),
+    len(dec = tinyklv::dec::ber::ber_length, enc = encber::ber_length),
 )]
 struct BerLargePayload {
     #[klv(

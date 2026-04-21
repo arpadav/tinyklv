@@ -11,9 +11,9 @@ use tinyklv::Klv;
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct WithOptionals {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = *tinyklv::enc::binary::u8)]
     required: u8,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
     opt_num: Option<u16>,
     #[klv(
         key = 0x03,

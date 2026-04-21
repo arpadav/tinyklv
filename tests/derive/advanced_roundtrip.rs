@@ -127,9 +127,9 @@ fn encode_color_owned(v: Color) -> Vec<u8> {
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct OwnedEncoderStruct {
-    #[klv(key = 0x01, dec = Priority::decode_value, enc = &encode_priority_owned)]
+    #[klv(key = 0x01, dec = Priority::decode_value, enc = *encode_priority_owned)]
     priority: Priority,
-    #[klv(key = 0x02, dec = Color::decode_value,    enc = &encode_color_owned)]
+    #[klv(key = 0x02, dec = Color::decode_value,    enc = *encode_color_owned)]
     color: Color,
 }
 

@@ -1,76 +1,91 @@
+#![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Three structs showing different key-codec choices: u8, big-endian u16, and
-//! little-endian u16. Swapping the key codec changes how the tag bytes are
-//! interpreted on the wire but leaves the value fields identical, so the same
-//! domain data can be framed three different ways. This example encodes each
-//! struct, prints its raw bytes, decodes it back, and confirms the roundtrip.
-//! It also shows that a u8-keyed and a be_u16-keyed packet produce different
-//! byte layouts even for the same logical key value (0x01).
-use tinyklv::prelude::*;
-use tinyklv::Klv;
+//! Example 02 - non-`u8` key types.
+//!
+//! The key codec is configured once at the container level and every field
+//! key is interpreted through it. Three mirrored structs carry the same two
+//! logical fields but are keyed with `u8`, big-endian `u16`, and
+//! little-endian `u16` respectively - demonstrating that the wire layout of
+//! the tag is a property of the codec pair, not the field.
+//!
+//! Showcases:
+//! * `key(dec = ..., enc = ...)` with different integer widths
+//! * Typed key literals like `0x0001_u16` on the field attribute
+//! * Endianness selection (`be_u16` vs `le_u16`) at the container level
+//!
+//! See also: book Tutorial 02.
+use tinyklv::prelude::*;            // Klv proc-macro + traits
+use tinyklv::dec::binary as decb;   // binary decoders
+use tinyklv::enc::binary as encb;   // binary encoders
 
 #[derive(Klv, Debug, PartialEq)]
-/// IoT soil-moisture reading keyed with single-byte tags
 #[klv(
     stream = &[u8],
-    // 1-byte key - the most compact representation
-    key(
-        dec = tinyklv::dec::binary::be_u8,
-        enc = tinyklv::enc::binary::u8,
-    ),
-    len(
-        dec = tinyklv::dec::binary::be_u8_as_usize,
-        enc = tinyklv::enc::binary::u8_from_usize,
-    ),
+    key(dec = decb::u8,          enc = encb::u8),                // 1-byte key, most compact
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Soil-moisture reading keyed with single-byte tags
 struct SoilSensorU8Key {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
+    #[klv(
+        key = 0x01,
+        dec = decb::u8,
+        enc = *encb::u8,
+    )]
+    /// Node identifier on the mesh
     node_id: u8,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
+
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
+    /// Moisture in parts-per-billion
     moisture_ppb: u32,
 }
 
 #[derive(Klv, Debug, PartialEq)]
-/// Same sensor payload, but the tag field is 2 bytes big-endian, allowing
-/// 65 535 distinct field codes - useful for extensible protocols.
 #[klv(
     stream = &[u8],
-    // 2-byte BE key - wider namespace
-    key(
-        dec = tinyklv::dec::binary::be_u16,
-        enc = tinyklv::enc::binary::be_u16,
-    ),
-    len(
-        dec = tinyklv::dec::binary::be_u8_as_usize,
-        enc = tinyklv::enc::binary::u8_from_usize,
-    ),
+    key(dec = decb::be_u16,      enc = encb::be_u16),            // 2-byte BE key
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Same payload keyed with a big-endian 2-byte tag (wider namespace)
 struct SoilSensorBeU16Key {
-    #[klv(key = 0x0001_u16, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
+    #[klv(
+        key = 0x0001_u16,
+        dec = decb::u8,
+        enc = *encb::u8,
+    )]
     node_id: u8,
-    #[klv(key = 0x0002_u16, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
+
+    #[klv(
+        key = 0x0002_u16,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
     moisture_ppb: u32,
 }
 
-/// Same again with LE u16 tags - demonstrates that the endianness of the key
-/// is controlled entirely by the key(dec/enc) codec pair.
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    // 2-byte LE key
-    key(
-        dec = tinyklv::dec::binary::le_u16,
-        enc = tinyklv::enc::binary::le_u16,
-    ),
-    len(
-        dec = tinyklv::dec::binary::be_u8_as_usize,
-        enc = tinyklv::enc::binary::u8_from_usize,
-    ),
+    key(dec = decb::le_u16,      enc = encb::le_u16),            // 2-byte LE key
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Same payload keyed with a little-endian 2-byte tag
 struct SoilSensorLeU16Key {
-    #[klv(key = 0x0001_u16, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
+    #[klv(
+        key = 0x0001_u16,
+        dec = decb::u8,
+        enc = *encb::u8,
+    )]
     node_id: u8,
-    #[klv(key = 0x0002_u16, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
+
+    #[klv(
+        key = 0x0002_u16,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
     moisture_ppb: u32,
 }
 
@@ -78,39 +93,32 @@ fn main() {
     let node_id: u8 = 7;
     let moisture_ppb: u32 = 42_000;
 
-    // --- u8 key ---
-    let a = SoilSensorU8Key {
-        node_id,
-        moisture_ppb,
-    };
+    // build + encode + decode each of the three keyings
+    let a = SoilSensorU8Key   { node_id, moisture_ppb };
+    let b = SoilSensorBeU16Key { node_id, moisture_ppb };
+    let c = SoilSensorLeU16Key { node_id, moisture_ppb };
+
     let enc_a = a.encode_value();
-    println!("u8-key   bytes: {:02X?}", enc_a);
-    let dec_a = SoilSensorU8Key::decode_value(&mut enc_a.as_slice()).unwrap();
-    assert_eq!(dec_a, a);
-
-    // --- BE u16 key ---
-    let b = SoilSensorBeU16Key {
-        node_id,
-        moisture_ppb,
-    };
     let enc_b = b.encode_value();
-    println!("BE-u16-key bytes: {:02X?}", enc_b);
-    let dec_b = SoilSensorBeU16Key::decode_value(&mut enc_b.as_slice()).unwrap();
-    assert_eq!(dec_b, b);
-
-    // --- LE u16 key ---
-    let c = SoilSensorLeU16Key {
-        node_id,
-        moisture_ppb,
-    };
     let enc_c = c.encode_value();
-    println!("LE-u16-key bytes: {:02X?}", enc_c);
-    let dec_c = SoilSensorLeU16Key::decode_value(&mut enc_c.as_slice()).unwrap();
+
+    // decode - each uses its own container key codec
+    let dec_a = SoilSensorU8Key::decode_value(
+        &mut enc_a.as_slice(),
+    ).unwrap();
+    let dec_b = SoilSensorBeU16Key::decode_value(
+        &mut enc_b.as_slice(),
+    ).unwrap();
+    let dec_c = SoilSensorLeU16Key::decode_value(
+        &mut enc_c.as_slice(),
+    ).unwrap();
+
+    // assert - each format round-trips cleanly
+    assert_eq!(dec_a, a);
+    assert_eq!(dec_b, b);
     assert_eq!(dec_c, c);
 
-    // The three wire formats must be distinct (different key widths/endianness)
+    // different key widths / endianness produce distinct byte layouts
     assert_ne!(enc_a, enc_b);
     assert_ne!(enc_b, enc_c);
-
-    println!("SUCCESS");
 }

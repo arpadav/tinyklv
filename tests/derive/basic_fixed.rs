@@ -11,13 +11,13 @@ use tinyklv::Klv;
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct BasicFixed {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = *tinyklv::enc::binary::u8)]
     byte_val: u8,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
     short_val: u16,
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
+    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
     int_val: u32,
-    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_u64, enc = &tinyklv::enc::binary::be_u64)]
+    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_u64, enc = *tinyklv::enc::binary::be_u64)]
     long_val: u64,
 }
 

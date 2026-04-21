@@ -31,19 +31,21 @@ cargo add tinyklv
 ```rust
 use tinyklv::Klv;
 use tinyklv::prelude::*;
+use tinyklv::dec::binary as dec;
+use tinyklv::enc::binary as enc;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
     sentinel = b"\x47\x48",
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize,
-        enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = dec::be_u8, enc = enc::u8),
+    len(dec = dec::be_u8_as_usize,
+        enc = enc::u8_from_usize),
 )]
 struct HeartbeatPacket {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8,  enc = &tinyklv::enc::binary::u8)]
+    #[klv(key = 0x01, dec = dec::be_u8,  enc = &enc::u8)]
     sequence: u8,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
+    #[klv(key = 0x02, dec = dec::be_u16, enc = &enc::be_u16)]
     temperature_centideg: u16,
 }
 
@@ -145,12 +147,11 @@ Everything ships through `tinyklv::prelude::*` (re-exports are anonymized via
 | `dec = path` | Decoder function `fn(&mut S) -> winnow::Result<T>` |
 | `enc = path` | Encoder taking `&T` → emits `enc(&self.field)` (deref coercion covers `&String → &str`, `&Vec<u8> → &[u8]`) |
 | `enc = &path` | `EncodeAs`-dispatched: primitives pass by value (Copy), `String → &str`, `Vec<T> → &[T]`, `Box/Rc/Arc<T> → &T`. No clone, no alloc. |
-| `var = true` | Field has variable-width value (length prefix is authoritative) |
+| `varlen` | Field has variable-width value (length prefix is authoritative) |
 | `default = expr` | Value used if the key is absent on decode |
 | `sentinel = b"..."` | Per-field sentinel for nested framed fields |
 | `stream = &[u8]` | Per-field stream override |
-| `break` | Break repeated decode when this condition fires |
-| `repeated` | Decode this field as a `Vec<T>` of repeated inner frames |
+| `latebind` | Post-decode conversion or mutation. `latebind = path` consumes (`Fn(T) -> U`); `latebind = &mut path` mutates in place (`Fn(&mut T)`). |
 
 ## Generic Structs
 

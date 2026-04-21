@@ -15,9 +15,9 @@ use tinyklv::Klv;
     len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
 )]
 struct WithInit {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16, init = 42)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16, init = 42)]
     with_init: u16,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
     without_init: u32,
 }
 
@@ -74,7 +74,7 @@ fn roundtrip_with_init() {
     allow_unimplemented_encode,
 )]
 struct WithExtraField {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
+    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = *tinyklv::enc::binary::u8)]
     klv_field: u8,
     // No #[klv] - uses Default::default()
     extra: String,

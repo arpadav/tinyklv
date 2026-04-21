@@ -1045,6 +1045,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// Tests known-good outputs of the lengthed BE/LE encoders (`be_u32_lengthed`, `le_u16_lengthed`, `le_u32_lengthed`, `le_u64_lengthed`, `be_u64_lengthed`) across truncate and pad cases.
     fn test_some() {
         let output1 = vec![0x00, 0x01, 0xE0, 0xFF, 0xFF];
         let output2 = vec![0x00, 0x01, 0xE0, 0xFF];
@@ -1097,6 +1098,7 @@ mod tests {
     use rand_distr::Distribution;
 
     #[test]
+    /// Randomized roundtrip test: encodes then decodes random values across every numeric type (u8/u16/u32/u64/u128, i8/i16/i32/i64/i128, f32/f64) using native/BE/LE and their lengthed variants, asserting equality.
     fn randoms() {
         const TRIALS: usize = 10;
 

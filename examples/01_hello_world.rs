@@ -1,56 +1,63 @@
+#![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Minimal KLV encode/decode roundtrip for a 2-field telemetry struct.
+//! Example 01 - Hello, KLV
 //!
-//! This example shows the simplest possible use of `#[derive(Klv)]`: a struct
-//! with a `u8` sequence-number field and a `u16` temperature reading. It
-//! demonstrates `encode_frame` (sentinel + length + value bytes) and the
-//! complementary `decode_frame` that seeks the sentinel and recovers the
-//! struct. After running you should see the raw bytes printed alongside the
-//! decoded values, confirming a perfect roundtrip.
-use tinyklv::prelude::*;
-use tinyklv::Klv;
+//! The smallest useful derive: a two-field heartbeat packet that round-trips
+//! through the binary encoder and decoder. Read this first to see how the
+//! container attribute sets the key/length codecs once for the whole struct,
+//! and how each field attribute wires a single key to its own value codec.
+//!
+//! Showcases:
+//! * `#[derive(Klv)]` with `stream`, `sentinel`, `key(...)`, `len(...)`
+//! * `EncodeFrame::encode_frame` emitting sentinel + length + KLV triples
+//! * `DecodeFrame::decode_frame` seeking the sentinel and rebuilding the struct
+//!
+//! See also: book Tutorial 01.
+use tinyklv::prelude::*;            // Klv proc-macro + traits
+use tinyklv::dec::binary as decb;   // binary decoders
+use tinyklv::enc::binary as encb;   // binary encoders
 
-/// A minimal sensor-heartbeat packet: one byte sequence number, one u16
-/// temperature reading in 0.01 °C units.
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    // sentinel = the magic bytes that mark the start of this packet type
-    sentinel = b"\x47\x48",
-    // key codec: 1-byte unsigned key
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    // len codec: 1-byte unsigned length
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    sentinel = b"HEARTBEAT",
+    key(dec = decb::u8,          enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Minimal sensor heartbeat: a sequence counter and a temperature reading
 struct HeartbeatPacket {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
-    /// Tag 0x01 carries the sequence counter (u8)
+    #[klv(
+        key = 0x01,
+        dec = decb::u8,
+        enc = *encb::u8,
+    )]
+    /// Monotonic frame counter
     sequence: u8,
 
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
-    /// Tag 0x02 carries temperature as big-endian u16
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
+    /// Temperature in 0.01 C units (big-endian u16)
     temperature_centideg: u16,
 }
 
 fn main() {
+    // build
     let original = HeartbeatPacket {
-        sequence: 42,
-        temperature_centideg: 2350, // 23.50 °C
+        sequence:             42,
+        temperature_centideg: 2350, // 23.50 C
     };
 
-    // encode_frame prepends the sentinel 0x47 0x48 and a 1-byte length,
-    // then emits key-length-value triples for each field.
+    // encode - prepends the sentinel + 1-byte length, then KLV triples
     let frame = original.encode_frame();
-    println!("Encoded frame ({} bytes): {:02X?}", frame.len(), frame);
 
-    // decode_frame seeks the sentinel in the buffer, reads the length,
-    // subslices, and then runs decode_value on the inner bytes.
-    let decoded = HeartbeatPacket::decode_frame(&mut frame.as_slice()).unwrap();
-    println!(
-        "Decoded: sequence={}, temperature={}(x0.01°C)",
-        decoded.sequence, decoded.temperature_centideg
-    );
+    // decode - seeks the sentinel, reads the length, decodes the value region
+    let decoded = HeartbeatPacket::decode_frame(
+        &mut frame.as_slice(),
+    ).unwrap();
 
+    // assert - full round-trip identity
     assert_eq!(decoded, original);
-    println!("SUCCESS");
 }

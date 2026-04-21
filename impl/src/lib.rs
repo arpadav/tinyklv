@@ -298,6 +298,12 @@ Currently only one key per field is supported.",
     DuplicateVariableLengthInField,
 
     #[error("\
+        Duplicate `{s}` field.",
+        s = symbol::LATEBIND,
+    )]
+    DuplicateLatebindInField,
+
+    #[error("\
         Missing required `{s}` field.",
         s = symbol::KEY,
     )]

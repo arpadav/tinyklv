@@ -47,6 +47,8 @@ pub(crate) const SENTINEL: Symbol = Symbol("sentinel");
 pub(crate) const INITIAL_VALUE: Symbol = Symbol("init");
 /// The `var` sub-attribute identifier for variable-length fields
 pub(crate) const VARIABLE_LENGTH: Symbol = Symbol("varlen");
+/// The `latebind` sub-attribute identifier for post-decode conversion/mutation
+pub(crate) const LATEBIND: Symbol = Symbol("latebind");
 /// The `deny_unknown_keys` sub-attribute identifier
 pub(crate) const DENY_UNKNOWN_KEYS: Symbol = Symbol("deny_unknown_keys");
 /// The `allow_unimplemented_decode` sub-attribute identifier
@@ -80,7 +82,8 @@ pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols =
 pub(crate) static CONT_NV_SYMBOLS: Symbols = Symbols(&[STREAM, SENTINEL]);
 
 /// All valid field-level symbols accepted by the `#[klv(..)]` attribute
-pub(crate) static FIELD_SYMBOLS: Symbols = Symbols(&[KEY, ENCODER, DECODER, VARIABLE_LENGTH]);
+pub(crate) static FIELD_SYMBOLS: Symbols =
+    Symbols(&[KEY, ENCODER, DECODER, VARIABLE_LENGTH, LATEBIND]);
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 /// A symbol for KLV attributes
@@ -114,6 +117,7 @@ const KNOWN: &[Symbol] = &[
     SENTINEL,
     INITIAL_VALUE,
     VARIABLE_LENGTH,
+    LATEBIND,
     DENY_UNKNOWN_KEYS,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,

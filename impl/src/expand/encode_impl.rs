@@ -29,8 +29,8 @@ use quote::{quote, quote_spanned};
 /// * `len_encoder` - Token expression used to encode the packet length
 pub(crate) fn gen_encode_impl(
     input: &MainContainer,
-    key_encoder: &types::XcoderType,
-    len_encoder: &types::XcoderType,
+    key_encoder: &types::SiguledXcoder,
+    len_encoder: &types::SiguledXcoder,
 ) -> proc_macro2::TokenStream {
     // --------------------------------------------------
     // extract the container name and sentinel, if any
@@ -53,7 +53,7 @@ pub(crate) fn gen_encode_impl(
                 fn encode_frame(&self) -> Vec<u8> {
                     self.encode_value().into_klv(
                         #sentinel,
-                        #len_encoder ,
+                        #len_encoder,
                     )
                 }
             }
@@ -93,8 +93,8 @@ pub(crate) fn gen_encode_impl(
 /// every field attribute carries a non-`None` encoder
 fn gen_items_encoded(
     input: &MainContainer,
-    key_encoder: &types::XcoderType,
-    len_encoder: &types::XcoderType,
+    key_encoder: &types::SiguledXcoder,
+    len_encoder: &types::SiguledXcoder,
 ) -> proc_macro2::TokenStream {
     // --------------------------------------------------
     // map each attributed field to its encoding expression
@@ -120,11 +120,12 @@ fn gen_items_encoded(
             // --------------------------------------------------
             // per-sigil argument shaping:
             //
-            // * `None` → `func(&self.field)` - fn takes `&T`
-            //   (deref coercion handles `&String → &str`, `&Vec<u8> → &[u8]`, etc.)
-            // * `Ref`  → `func(EncodeAs::encode_as(&self.field))` - trait dispatches:
-            //   primitives by value (Copy), `String → &str`, `Vec<T> → &[T]`,
-            //   `Box<T>/Rc<T>/Arc<T> → &T`. No clone, no heap allocation.
+            // * `None` -> `func(&self.field)` - fn takes `&T`
+            //   (deref coercion handles `&String -> &str`, `&Vec<u8> -> &[u8]`, etc.)
+            // * `Ref` -> `func(EncodeAs::encode_as(&self.field))` - trait dispatches:
+            //   primitives by value (Copy), `String -> &str`, `Vec<T> -> &[T]`,
+            //   `Box<T>/Rc<T>/Arc<T> -> &T`. No clone, no heap allocation.
+            // * `Deref` -> copy by value
             //
             // Optional (`Option<T>`) mirrors these by operating on `__val: &T`
             // --------------------------------------------------
@@ -136,6 +137,10 @@ fn gen_items_encoded(
                 XcoderSigil::Ref => (
                     quote_spanned! { span => ::tinyklv::traits::EncodeAs::encode_as(&self.#name) },
                     quote_spanned! { span => ::tinyklv::traits::EncodeAs::encode_as(__val) },
+                ),
+                XcoderSigil::Deref => (
+                    quote_spanned! { span => self.#name },
+                    quote_spanned! { span => *__val },
                 ),
             };
             // --------------------------------------------------

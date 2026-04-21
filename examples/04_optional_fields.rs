@@ -1,102 +1,112 @@
+#![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Struct with Option<T> fields: one test with all fields present, one with
-//! some omitted. Optional fields in KLV are modelled as `Option<T>` - when
-//! `None`, no key-length-value triple is emitted on the wire, so the encoded
-//! form is shorter. On decode, absent keys leave the field as `None`. This
-//! example uses a drone telemetry struct with a mandatory GPS fix and optional
-//! altitude and battery readings, asserting both the full and partial cases.
+//! Example 04 - optional fields.
+//!
+//! `Option<T>` on a struct field makes the corresponding KLV triple optional
+//! on the wire. On encode, `None` emits nothing; on decode, missing keys
+//! leave the field as `None` without raising an error. This lets a single
+//! struct describe heterogeneous telemetry from units with different sensor
+//! sets.
+//!
+//! Showcases:
+//! * `Option<T>` field wrapping around the same codecs as `T`
+//! * Frame shrinkage when optional fields are absent
+//! * Decode tolerating missing keys
+//!
+//! See also: book Tutorial 04.
+use tinyklv::prelude::*;            // Klv proc-macro + traits
+use tinyklv::dec::binary as decb;   // binary decoders
+use tinyklv::enc::binary as encb;   // binary encoders
 
-use tinyklv::prelude::*;
-use tinyklv::Klv;
-
-/// Drone telemetry frame. Latitude and longitude are always present;
-/// altitude and battery level are optional (may not be fitted on all units).
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    sentinel = b"\xD7\xE1",
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    sentinel = b"DRONETELEM",
+    key(dec = decb::u8,          enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Drone telemetry frame. Lat/lon are always present; altitude, battery, and
+/// heading are optional (they may not be fitted on every airframe)
 struct DroneTelemetry {
-    // Mandatory: latitude in micro-degrees (i32)
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_i32, enc = &tinyklv::enc::binary::be_i32)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_i32,
+        enc = *encb::be_i32,
+    )]
+    /// Mandatory latitude in micro-degrees (i32)
     lat_udeg: i32,
 
-    // Mandatory: longitude in micro-degrees (i32)
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_i32, enc = &tinyklv::enc::binary::be_i32)]
+    #[klv(
+        key = 0x02,
+        dec = decb::be_i32,
+        enc = *encb::be_i32,
+    )]
+    /// Mandatory longitude in micro-degrees (i32)
     lon_udeg: i32,
 
-    // Optional: altitude above sea level in centimetres
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_i32, enc = &tinyklv::enc::binary::be_i32)]
+    #[klv(
+        key = 0x03,
+        dec = decb::be_i32,
+        enc = *encb::be_i32,
+    )]
+    /// Optional altitude above sea level in centimetres
     altitude_cm: Option<i32>,
 
-    // Optional: battery percentage 0-100
-    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
+    #[klv(
+        key = 0x04,
+        dec = decb::u8,
+        enc = *encb::u8,
+    )]
+    /// Optional battery percentage, 0..=100
     battery_pct: Option<u8>,
 
-    // Optional: heading in 0.01° units (u16)
-    #[klv(key = 0x05, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x05,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
+    /// Optional heading in 0.01 degree units (u16)
     heading_centideg: Option<u16>,
 }
 
 fn main() {
-    // --- Case 1: all fields present ----------------------------------------
+    // build - a fully-instrumented airframe with every optional present
     let full = DroneTelemetry {
-        lat_udeg: 51_477_200,      // ~51.477° N (London)
-        lon_udeg: -126_772,        // ~0.127° W
-        altitude_cm: Some(10_200), // 102 m
-        battery_pct: Some(87),
-        heading_centideg: Some(27_000), // 270.00°
+        lat_udeg:         51_477_200,     // ~51.477 N (London)
+        lon_udeg:         -126_772,       // ~0.127 W
+        altitude_cm:      Some(10_200),   // 102 m
+        battery_pct:      Some(87),
+        heading_centideg: Some(27_000),   // 270.00 deg
     };
 
+    // encode + decode - every optional appears in the frame
     let enc_full = full.encode_frame();
-    println!("Full frame  ({} bytes): {:02X?}", enc_full.len(), enc_full);
-
-    let dec_full = DroneTelemetry::decode_frame(&mut enc_full.as_slice()).unwrap();
-    println!(
-        "Full decoded: lat={}, lon={}, alt={:?}, bat={:?}, hdg={:?}",
-        dec_full.lat_udeg,
-        dec_full.lon_udeg,
-        dec_full.altitude_cm,
-        dec_full.battery_pct,
-        dec_full.heading_centideg
-    );
-
-    // Every field must survive the roundtrip
+    let dec_full = DroneTelemetry::decode_frame(
+        &mut enc_full.as_slice(),
+    ).unwrap();
     assert_eq!(dec_full, full);
 
-    // --- Case 2: optional fields omitted ------------------------------------
+    // build - a stripped-down airframe with some sensors absent
     let partial = DroneTelemetry {
-        lat_udeg: 37_774_900, // ~37.775° N (San Francisco)
-        lon_udeg: -122_419_400,
-        altitude_cm: None, // sensor not fitted
-        battery_pct: Some(42),
-        heading_centideg: None,
+        lat_udeg:         37_774_900,     // ~37.775 N (San Francisco)
+        lon_udeg:         -122_419_400,
+        altitude_cm:      None,           // altimeter not fitted
+        battery_pct:      Some(42),
+        heading_centideg: None,           // compass not fitted
     };
 
+    // encode - absent fields emit zero bytes, so the partial frame is shorter
     let enc_partial = partial.encode_frame();
-    println!(
-        "Partial frame ({} bytes): {:02X?}",
-        enc_partial.len(),
-        enc_partial
-    );
-
-    // Partial frame must be shorter than the full frame
     assert!(
         enc_partial.len() < enc_full.len(),
-        "absent fields should shrink the frame"
+        "absent fields must shrink the frame",
     );
 
-    let dec_partial = DroneTelemetry::decode_frame(&mut enc_partial.as_slice()).unwrap();
-    println!(
-        "Partial decoded: lat={}, lon={}, alt={:?}, bat={:?}",
-        dec_partial.lat_udeg,
-        dec_partial.lon_udeg,
-        dec_partial.altitude_cm,
-        dec_partial.battery_pct
-    );
+    // decode - missing keys stay as None without error
+    let dec_partial = DroneTelemetry::decode_frame(
+        &mut enc_partial.as_slice(),
+    ).unwrap();
 
+    // assert - partial frame round-trips
     assert_eq!(dec_partial, partial);
-    println!("SUCCESS");
 }

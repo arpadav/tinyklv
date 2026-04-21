@@ -1,4 +1,4 @@
-//! Field-value coercion for `#[klv(enc = &func)]` dispatch.
+//! Field-value coercion for `#[klv(enc = *func)]` dispatch.
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 /// Coerce a field value into the shape its encoder expects.
 ///
-/// Used by `#[klv(enc = &func)]` to route field values through a zero-cost
+/// Used by `#[klv(enc = *func)]` to route field values through a zero-cost
 /// borrowed form - `Copy` scalars pass by value, `String` becomes `&str`,
 /// `Vec<T>` becomes `&[T]`, and smart-pointer wrappers resolve to inner refs.
 /// No clones, no heap allocations.
@@ -155,6 +155,7 @@ mod tests {
     use super::*;
 
     #[test]
+    /// Tests that `EncodeAs` on primitive types returns the value itself (copied, not borrowed).
     fn primitives_are_copied_by_value() {
         let x: u32 = 42;
         let y: u32 = EncodeAs::encode_as(&x);
@@ -165,6 +166,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests that `EncodeAs` on `String` borrows as `&str` pointing at the original buffer.
     fn string_borrows_as_str() {
         let s = String::from("hello");
         let b: &str = EncodeAs::encode_as(&s);
@@ -173,6 +175,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests that `EncodeAs` on `Vec<T>` borrows as `&[T]` pointing at the original buffer.
     fn vec_borrows_as_slice() {
         let v = vec![1u8, 2, 3];
         let b: &[u8] = EncodeAs::encode_as(&v);
@@ -181,6 +184,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests that `EncodeAs` on `Cow<str>` borrows the contained string as `&str`.
     fn cow_str_borrows_as_str() {
         let c: Cow<'_, str> = Cow::Borrowed("hi");
         let b: &str = EncodeAs::encode_as(&c);
@@ -188,6 +192,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests that `EncodeAs` on `Cow<[T]>` borrows the contained slice as `&[T]`.
     fn cow_slice_borrows_as_slice() {
         let c: Cow<'_, [u8]> = Cow::Owned(vec![0u8, 1, 2]);
         let b: &[u8] = EncodeAs::encode_as(&c);
@@ -195,6 +200,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests that `EncodeAs` on `Box<T>` borrows the inner value as `&T`.
     fn box_borrows_inner() {
         let b: Box<u32> = Box::new(7);
         let r: &u32 = EncodeAs::encode_as(&b);
@@ -202,6 +208,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests that `EncodeAs` on `Box<str>` borrows as `&str`.
     fn box_str_borrows_str() {
         let b: Box<str> = Box::from("boxed");
         let r: &str = EncodeAs::encode_as(&b);
@@ -209,6 +216,7 @@ mod tests {
     }
 
     #[test]
+    /// Tests that `EncodeAs` on `Rc<T>` and `Arc<T>` borrows the inner value as `&T`.
     fn rc_and_arc_borrow_inner() {
         let r: Rc<u32> = Rc::new(3);
         let a: Arc<u32> = Arc::new(9);

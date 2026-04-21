@@ -1,40 +1,41 @@
 # Summary
 
 [Introduction](./intro.md)
-[Getting Started](./getting-started.md)
 [What is KLV?](./what-is-klv.md)
+[Getting Started](./getting-started.md)
 
-# Tutorials
+# Tutorial - fundamentals
 
-- [Beginner](./tutorials/beginner.md)
-  - [Hello World](./tutorials/01-hello-world.md)
-  - [Custom Key Types](./tutorials/02-custom-key-types.md)
-  - [Strings and Primitives](./tutorials/03-strings-and-types.md)
-  - [Optional Fields](./tutorials/04-optional-fields.md)
-  - [Basic Roundtrip](./tutorials/05-basic-roundtrip.md)
-- [Intermediate](./tutorials/intermediate.md)
-  - [Custom Encoder/Decoder](./tutorials/06-custom-encoder-decoder.md)
-  - [Sentinel Seeking](./tutorials/07-sentinel-seeking.md)
-  - [Nested Packets](./tutorials/08-nested-packets.md)
-  - [BER-Keyed Containers](./tutorials/09-ber-keyed.md)
-  - [Defaults and Init](./tutorials/10-defaults-and-init.md)
-- [Advanced](./tutorials/advanced.md)
-  - [Repeated Extraction](./tutorials/11-repeated-extraction.md)
-  - [Enum Dispatch](./tutorials/12-enum-dispatch.md)
-  - [Variable-Length Fields](./tutorials/13-variable-length.md)
-  - [Custom Break Conditions](./tutorials/14-break-condition.md)
-  - [Tokio End-to-End Stream](./tutorials/15-tokio-stream-e2e.md)
+- [First packet](./tutorial/01-first-packet.md)
+- [Out-of-order & prelude](./tutorial/02-out-of-order.md)
+- [Frames & sentinels](./tutorial/03-frames-and-sentinels.md)
+- [Default codecs](./tutorial/04-default-codec.md)
+- [Custom decoder functions](./tutorial/05-custom-decoder.md)
+- [Implementing DecodeValue](./tutorial/06-decode-value-impl.md)
+- [Value lengths](./tutorial/07-val-lengths.md)
+- [Latebind transforms](./tutorial/08-latebind.md)
+- [Encoding & the `&` sigil](./tutorial/09-encode-sigil.md)
+- [Optional fields & init](./tutorial/10-init-fallback.md)
+
+# Tutorial - complex behaviour
+
+- [Nested packets](./tutorial/11-nested-packets.md)
+- [Repeated extraction](./tutorial/12-repeated-extraction.md)
+- [Break conditions](./tutorial/13-break-condition.md)
+- [Sentinel seeking in pipelines](./tutorial/14-sentinel-seeking.md)
+- [Async / Tokio streams](./tutorial/15-tokio-streams.md)
 
 # Reference
 
-- [Derive Attributes](./reference/attributes.md)
+- [Container attributes](./reference/container-attributes.md)
+- [Field attributes](./reference/field-attributes.md)
+- [Sigil coercion & EncodeAs](./reference/sigil-coercion.md)
 - [Traits](./reference/traits.md)
 - [Codecs](./reference/codecs.md)
 
 # Architecture
 
 - [Overview](./architecture/overview.md)
-- [Encoder Dispatch Sigils](./architecture/encowned.md)
 
 # Appendix
 

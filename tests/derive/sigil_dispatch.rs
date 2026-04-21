@@ -2,7 +2,7 @@
 //!
 //! Covers both call-shapes in the Encode codegen template:
 //! * `enc = func`  → `func(&self.field)`                          (`Fn(&T) -> O`)
-//! * `enc = &func` → `func(EncodeAs::encode_as(&self.field))`     dispatches via
+//! * `enc = *func` → `func(EncodeAs::encode_as(&self.field))`     dispatches via
 //!   the [`EncodeAs`] trait: primitives by value (Copy), `String → &str`,
 //!   `Vec<T> → &[T]`, `Box<T>/Rc<T>/Arc<T> → &T`. No clone, no heap alloc.
 //!
@@ -74,7 +74,7 @@ struct AllSigils {
     #[klv(key = 0x02, dec = Color::decode_value, enc = Color::encode_value)]
     color: Color,
     // & sigil: primitive by value through EncodeAs
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u16, enc = &enc_u16_owned)]
+    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u16, enc = *enc_u16_owned)]
     id: u16,
     // & sigil: String → &str through EncodeAs
     #[klv(key = 0x04, dec = dec_u8_len_string, enc = &enc_str_ref)]
@@ -115,7 +115,7 @@ struct AllSigilsOptional {
     count: Option<u8>,
     #[klv(key = 0x02, dec = Color::decode_value, enc = Color::encode_value)]
     color: Option<Color>,
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u16, enc = &enc_u16_owned)]
+    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u16, enc = *enc_u16_owned)]
     id: Option<u16>,
     #[klv(key = 0x04, dec = dec_u8_len_string, enc = &enc_str_ref)]
     label: Option<String>,
@@ -243,7 +243,7 @@ fn smart_pointer_sigils_roundtrip() {
 struct SigilMixture {
     #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = enc_u8_ref)]
     a: u8,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u8, enc = *tinyklv::enc::binary::u8)]
     b: u8,
     #[klv(key = 0x03, dec = Priority::decode_value, enc = Priority::encode_value)]
     pri: Priority,

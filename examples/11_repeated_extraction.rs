@@ -1,107 +1,97 @@
-//! Buffer containing 5 concatenated Waypoint frames; loop decode_frame to
-//! extract all; asserts vec length and content. In autonomous-vehicle and
-//! robotics pipelines, waypoint packets are often packed back-to-back in a
-//! single UDP datagram or file record. Because each frame is wrapped with a
-//! sentinel and a length prefix, `decode_frame` can recover each waypoint
-//! independently from the concatenated stream. This example encodes 5 distinct
-//! waypoints, concatenates them, then loops until the stream is exhausted,
-//! collecting the results into a `Vec<Waypoint>` and verifying every field.
+#![cfg_attr(rustfmt, rustfmt_skip)]
+#![allow(clippy::unwrap_used)]
+//! Example 11 - draining a concatenated stream of KLV frames.
+//!
+//! Autonomous-vehicle and robotics pipelines frequently pack many framed
+//! records back-to-back into one UDP datagram or log file. Because each
+//! frame carries its own sentinel and outer length, `decode_frame` can be
+//! called repeatedly against a single slice to recover every record.
+//!
+//! The `RepeatedDecode::repeated` trait exists for the value-region form
+//! (repeats `decode_value` until EOF), but for sentinel-framed streams the
+//! idiomatic pattern is a small `while let Ok(...) = T::decode_frame(...)`
+//! loop - shown here.
+//!
+//! Showcases:
+//! * Concatenating N `encode_frame` outputs into one byte stream
+//! * Draining that stream with a `while let Ok` loop on `decode_frame`
+//! * Asserting count and per-field correctness against the source data
+use tinyklv::prelude::*;            // Klv proc-macro + traits
+use tinyklv::dec::binary as decb;   // binary decoders
+use tinyklv::enc::binary as encb;   // binary encoders
 
-use tinyklv::prelude::*;
-use tinyklv::Klv;
-
-/// Autonomous-navigation waypoint packet.
-#[derive(Klv, Debug, PartialEq)]
+#[derive(Klv, Debug, PartialEq, Clone, Copy)]
 #[klv(
-    stream = &[u8],
-    // Sentinel "WP" - unique to this packet type
-    sentinel = b"\x57\x50",
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    stream = &[u8],                                              // default, shown for clarity
+    sentinel = b"WAYPOINT",
+    key(dec = decb::u8,          enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Autonomous-navigation waypoint record
 struct Waypoint {
-    // Sequential waypoint index
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
+    /// Monotonic waypoint index
     index: u32,
 
-    // Latitude in decimal degrees (f64)
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_f64, enc = &tinyklv::enc::binary::be_f64)]
+    #[klv(
+        key = 0x02,
+        dec = decb::be_f64,
+        enc = *encb::be_f64,
+    )]
+    /// Latitude in decimal degrees (f64)
     lat_deg: f64,
 
-    // Longitude in decimal degrees (f64)
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_f64, enc = &tinyklv::enc::binary::be_f64)]
+    #[klv(
+        key = 0x03,
+        dec = decb::be_f64,
+        enc = *encb::be_f64,
+    )]
+    /// Longitude in decimal degrees (f64)
     lon_deg: f64,
 
-    // Speed limit at this waypoint in 0.1 m/s units
-    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
+    #[klv(
+        key = 0x04,
+        dec = decb::u8,
+        enc = *encb::u8,
+    )]
+    /// Speed limit at this waypoint, in 0.1 m/s units
     speed_limit_dms: u8,
 }
 
 fn main() {
-    // Define 5 mission waypoints along a survey route
+    // build - five distinct survey waypoints
     let waypoints = [
-        Waypoint {
-            index: 0,
-            lat_deg: 37.7749,
-            lon_deg: -122.4194,
-            speed_limit_dms: 30,
-        },
-        Waypoint {
-            index: 1,
-            lat_deg: 37.7750,
-            lon_deg: -122.4200,
-            speed_limit_dms: 20,
-        },
-        Waypoint {
-            index: 2,
-            lat_deg: 37.7751,
-            lon_deg: -122.4210,
-            speed_limit_dms: 15,
-        },
-        Waypoint {
-            index: 3,
-            lat_deg: 37.7748,
-            lon_deg: -122.4215,
-            speed_limit_dms: 25,
-        },
-        Waypoint {
-            index: 4,
-            lat_deg: 37.7745,
-            lon_deg: -122.4220,
-            speed_limit_dms: 30,
-        },
+        Waypoint { index: 0, lat_deg: 37.7749, lon_deg: -122.4194, speed_limit_dms: 30 },
+        Waypoint { index: 1, lat_deg: 37.7750, lon_deg: -122.4200, speed_limit_dms: 20 },
+        Waypoint { index: 2, lat_deg: 37.7751, lon_deg: -122.4210, speed_limit_dms: 15 },
+        Waypoint { index: 3, lat_deg: 37.7748, lon_deg: -122.4215, speed_limit_dms: 25 },
+        Waypoint { index: 4, lat_deg: 37.7745, lon_deg: -122.4220, speed_limit_dms: 30 },
     ];
 
-    // Concatenate all 5 framed waypoints into a single byte stream
-    // encode_frame prepends the sentinel + length for each packet
-    let stream: Vec<u8> = waypoints.iter().flat_map(|w| w.encode_frame()).collect();
-    println!(
-        "Stream total: {} bytes covering {} waypoints",
-        stream.len(),
-        waypoints.len()
-    );
+    // encode - every waypoint becomes its own sentinel-prefixed frame,
+    // and the results are concatenated into one byte stream
+    let stream: Vec<u8> = waypoints
+        .iter()
+        .flat_map(|w| w.encode_frame())
+        .collect();
 
-    // Loop decode_frame until the stream is exhausted
+    // decode - drain the stream one frame at a time until EOF
     let mut slice = stream.as_slice();
     let mut decoded: Vec<Waypoint> = Vec::new();
     while let Ok(wp) = Waypoint::decode_frame(&mut slice) {
         decoded.push(wp);
     }
 
-    // Must recover exactly 5 waypoints
-    assert_eq!(decoded.len(), 5, "expected 5 waypoints");
-
-    // Verify field-level correctness for every waypoint
-    for (i, (got, want)) in decoded.iter().zip(waypoints.iter()).enumerate() {
-        println!(
-            "  wp[{}]: index={}, lat={:.4}°, lon={:.4}°, speed_limit={}(x0.1m/s)",
-            i, got.index, got.lat_deg, got.lon_deg, got.speed_limit_dms
-        );
-        assert_eq!(got.index, want.index);
+    // assert - count and field-level equality for every waypoint
+    assert_eq!(decoded.len(), waypoints.len());
+    for (got, want) in decoded.iter().zip(waypoints.iter()) {
+        assert_eq!(got.index,           want.index);
         assert!((got.lat_deg - want.lat_deg).abs() < 1e-9);
         assert!((got.lon_deg - want.lon_deg).abs() < 1e-9);
         assert_eq!(got.speed_limit_dms, want.speed_limit_dms);
     }
-
-    println!("SUCCESS");
 }

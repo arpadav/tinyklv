@@ -1,86 +1,90 @@
+#![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Noisy buffer with leading garbage; SeekSentinel resyncs to sentinel bytes.
+//! Example 07 - `SeekSentinel` scanning past leading junk.
 //!
-//! In real network streams, framing bytes often appear after preamble data,
-//! padding, or earlier partial packets. `decode_frame` uses `SeekSentinel`
-//! internally to scan forward through arbitrary garbage until it finds the
-//! magic sentinel pattern `b"\xBE\xEF"`, then reads the length-prefixed
-//! body. This example builds a buffer with random junk bytes prepended to
-//! a valid frame, confirms that decoding still succeeds, then shows that a
-//! second call immediately fails (no more frames in the buffer).
+//! Real network streams arrive wrapped in UDP/IP headers, partial payloads
+//! from earlier frames, and general noise. `decode_frame` handles this by
+//! calling `SeekSentinel::seek_sentinel` internally, scanning forward until
+//! it finds the magic bytes, then reading the length and value region. This
+//! example plants obvious garbage before a valid frame and asserts that the
+//! decoder still recovers the struct unchanged.
+//!
+//! Showcases:
+//! * `decode_frame` skipping arbitrary prefix bytes
+//! * Constructing a noisy buffer to exercise the seeker
+//! * Post-decode slice position (what the stream looks like after a frame)
+use tinyklv::prelude::*;            // Klv proc-macro + traits
+use tinyklv::dec::binary as decb;   // binary decoders
+use tinyklv::enc::binary as encb;   // binary encoders
 
-use tinyklv::prelude::*;
-use tinyklv::Klv;
-
-/// Video-metadata tag set embedded inside a UDP payload.
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    // Any bytes before this sentinel are treated as framing garbage
-    sentinel = b"\xBE\xEF",
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    sentinel = b"VIDEOMETA",
+    key(dec = decb::u8,          enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Video-metadata tag set embedded inside a larger UDP payload
 struct VideoMeta {
-    // Frame sequence number
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
+    /// Monotonic frame sequence number
     frame_seq: u32,
 
-    // Codec bitrate in kbit/s
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = &tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
+    /// Codec bitrate in kbit/s
     bitrate_kbps: u16,
 }
 
 fn main() {
+    // build - a known-good video-metadata record
     let original = VideoMeta {
-        frame_seq: 12_345,
-        bitrate_kbps: 4_096,
+        frame_seq:    12_345,
+        bitrate_kbps:  4_096,
     };
 
-    // Build the clean frame bytes first
+    // encode - the clean KLV frame, sentinel-prefixed
     let clean_frame = original.encode_frame();
-    println!(
-        "Clean frame ({} bytes): {:02X?}",
-        clean_frame.len(),
-        clean_frame
-    );
 
-    // Prepend realistic UDP preamble garbage: version byte, source port,
-    // checksum, and some filler - none of it is b"\xBE\xEF"
-    let mut noisy_buffer: Vec<u8> = vec![
-        0x00, 0x45, // IP-like header junk
-        0x13, 0x88, // source port 5000
-        0xFF, 0xFE, // partial checksum - *not* the sentinel
-        0x00, 0x00, 0x00, 0x00, // padding
-    ];
+    // prepend noise + zeros the seeker must skip
+    let mut noisy_buffer: Vec<u8> = Vec::new();
+
+    // UDP-like preamble junk (not the sentinel)
+    noisy_buffer.extend_from_slice(&[
+        // IP-version-ish junk:
+            0x00, 0x45,
+        // bogus source port (5000 BE):
+            0x13, 0x88,
+        // fake partial checksum:
+            0xFF, 0xFE,
+    ]);
+
+    // zero padding to exercise the "skip leading zeros" path
+    noisy_buffer.extend_from_slice(&[
+        // padding zeros:
+            0x00, 0x00, 0x00, 0x00,
+    ]);
+
+    // the real sentinel-prefixed frame follows the junk
     noisy_buffer.extend_from_slice(&clean_frame);
-    println!(
-        "Noisy buffer ({} bytes): {:02X?}",
-        noisy_buffer.len(),
-        noisy_buffer
-    );
 
+    // decode - seek_sentinel steps past the 10 prefix bytes and lands on VIDEOMETA
     let mut slice = noisy_buffer.as_slice();
-
-    // decode_frame transparently skips the 10 garbage bytes and finds the frame
     let decoded = VideoMeta::decode_frame(&mut slice).unwrap();
-    println!(
-        "Decoded after seeking: frame_seq={}, bitrate={}kbps",
-        decoded.frame_seq, decoded.bitrate_kbps
-    );
 
+    // assert - the seeker skipped the junk and reconstructed the payload
     assert_eq!(decoded, original);
 
-    // After consuming the one valid frame the remaining slice is empty
+    // assert - the entire frame was consumed; only unconsumed tail remains
     assert!(
         slice.is_empty(),
-        "all frame bytes should have been consumed"
+        "clean frame bytes should all have been consumed",
     );
-
-    // A second decode attempt must fail - no more sentinels
-    let result = VideoMeta::decode_frame(&mut noisy_buffer.as_slice().split_at(0).0);
-    // (just proving the API - we don't re-run from the already-consumed slice)
-    drop(result);
-
-    println!("SUCCESS");
 }

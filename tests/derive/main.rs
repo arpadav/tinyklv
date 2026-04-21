@@ -22,6 +22,7 @@ mod deny_unknown_keys;
 mod encode_roundtrip;
 mod enum_dispatch;
 mod field_ordering;
+mod latebind;
 mod mixed_types;
 mod multi_packet;
 mod nested_types;

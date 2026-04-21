@@ -14,7 +14,7 @@ use xcoder::FieldXcoder;
 // local
 // --------------------------------------------------
 use crate::ast::attr::container::default::DefaultXcoder;
-use crate::ast::types::{SiguledXcoder, XcoderSigil, XcoderType};
+use crate::ast::types::{LatebindXcoder, SiguledXcoder, XcoderType};
 use crate::symbol;
 use crate::Ctxt;
 
@@ -142,13 +142,29 @@ impl Field {
         // --------------------------------------------------
         let vars = all_field_xcoders
             .iter()
-            .filter_map(|f| f.var.clone())
+            .filter_map(|f| f.varlen.clone())
             .collect::<Vec<_>>();
-        field_xcoder.var = match vars.len() {
+        field_xcoder.varlen = match vars.len() {
             0 => None,
             1 => Some(vars[0].clone()),
             _ => {
                 cx.error_spanned_by(field, err!(DuplicateVariableLengthInField));
+                None
+            }
+        };
+
+        // --------------------------------------------------
+        // get all klv attr latebind
+        // --------------------------------------------------
+        let latebinds = all_field_xcoders
+            .iter()
+            .filter_map(|f| f.latebind.clone())
+            .collect::<Vec<_>>();
+        field_xcoder.latebind = match latebinds.len() {
+            0 => None,
+            1 => Some(latebinds[0].clone()),
+            _ => {
+                cx.error_spanned_by(field, err!(DuplicateLatebindInField));
                 None
             }
         };
@@ -176,14 +192,11 @@ impl Field {
             crate::expand::helpers::unwrap_option_type(&field.ty).unwrap_or(&field.ty);
         if let Some(default) = container_defaults.get(typ_maybe_unwrapped) {
             if let (Some(default_enc), false) = (&default.enc, keep_enc_none) {
-                field_xcoder.enc = Some(SiguledXcoder {
-                    sigil: XcoderSigil::None,
-                    inner: default_enc.clone(),
-                });
+                field_xcoder.enc = Some(default_enc.clone());
             }
             if let (Some(default_dec), false) = (&default.dec, keep_dec_none) {
                 field_xcoder.dec = Some(default_dec.clone());
-                field_xcoder.var = default.var.clone();
+                field_xcoder.varlen = default.var.clone();
             }
         }
 
@@ -222,8 +235,8 @@ pub(crate) struct FieldParsed {
     pub enc: Option<SiguledXcoder>,
     pub dec: Option<XcoderType>,
     pub var: Option<syn::LitBool>,
-
-    pub _init: Option<syn::Expr>,
+    pub latebind: Option<LatebindXcoder>,
+    pub init: Option<syn::Expr>,
 }
 /// [`FieldParsed`] implementation
 impl FieldParsed {
@@ -246,9 +259,9 @@ impl FieldParsed {
             key: key.clone(),
             enc: f.contents.enc.clone(),
             dec: f.contents.dec.clone(),
-            var: f.contents.var.clone(),
-
-            _init: f.contents.init.clone(),
+            var: f.contents.varlen.clone(),
+            latebind: f.contents.latebind.clone(),
+            init: f.contents.init.clone(),
         })
     }
 }

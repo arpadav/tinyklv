@@ -21,53 +21,6 @@ pub(crate) enum XcoderLike {
     Macro(syn::Macro),
 }
 
-/// Dispatch-intent sigil for field encoders
-///
-/// Written before the path/macro in `#[klv(enc = <sigil><fn>)]`:
-///
-/// * `None` (`enc = func`)  → emit `func(&self.field)` - fn takes `&T`
-///   (deref coercion handles `&String → &str`, `&Vec<u8> → &[u8]`, etc.)
-/// * `Ref`  (`enc = &func`) → emit `func(EncodeAs::encode_as(&self.field))` -
-///   dispatches via the [`EncodeAs`](tinyklv::traits::EncodeAs) trait:
-///   primitives pass by value (Copy), `String → &str`, `Vec<T> → &[T]`,
-///   `Box<T>/Rc<T>/Arc<T> → &T`. No clone, no heap allocation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum XcoderSigil {
-    None,
-    Ref,
-}
-
-/// Wraps an [`XcoderLike`] with an optional leading dispatch sigil
-///
-/// Only used for field-level encoders. Container-level `key.enc` / `len.enc` /
-/// `default.enc` keep raw [`XcoderLike`] because their call shape has no
-/// owned/borrowed ambiguity.
-#[derive(Debug, Clone)]
-pub(crate) struct SiguledXcoder {
-    pub(crate) sigil: XcoderSigil,
-    pub(crate) inner: XcoderLike,
-}
-/// [`SiguledXcoder`] implementation of [`syn::parse::Parse`]
-///
-/// Consumes an optional leading `&` or `*` before delegating to
-/// [`XcoderLike::parse`]. No change to [`XcoderLike::parse`] itself.
-impl syn::parse::Parse for SiguledXcoder {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let sigil = if input.peek(syn::Token![&]) {
-            let _: syn::Token![&] = input.parse()?;
-            XcoderSigil::Ref
-        } else if input.peek(syn::Token![*]) {
-            return Err(input.error(
-                "`*` sigil removed: use `&func` - EncodeAs dispatch already covers \
-                 String→&str, Vec→&[T], Box/Rc/Arc→&T, primitives-by-value",
-            ));
-        } else {
-            XcoderSigil::None
-        };
-        let inner: XcoderLike = input.parse()?;
-        Ok(SiguledXcoder { sigil, inner })
-    }
-}
 /// [`XcoderLike`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for XcoderLike {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
@@ -113,5 +66,103 @@ impl ToTokens for XcoderLike {
             XcoderLike::Macro(mcro) => mcro.to_tokens(tokens),
             XcoderLike::Expr(expr) => expr.to_tokens(tokens),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Dispatch-intent sigil for field encoders
+///
+/// Written before the path/macro in `#[klv(enc = <sigil><fn>)]`:
+///
+/// * `None` (`enc = func`)  → emit `func(&self.field)` - fn takes `&T`
+///   (deref coercion handles `&String → &str`, `&Vec<u8> → &[u8]`, etc.)
+/// * `Ref`  (`enc = *func`) → emit `func(EncodeAs::encode_as(&self.field))` -
+///   dispatches via the [`EncodeAs`](tinyklv::traits::EncodeAs) trait:
+///   primitives pass by value (Copy), `String → &str`, `Vec<T> → &[T]`,
+///   `Box<T>/Rc<T>/Arc<T> → &T`. No clone, no heap allocation
+pub(crate) enum XcoderSigil {
+    None,
+    Ref,
+    Deref,
+}
+
+#[derive(Debug, Clone)]
+/// Wraps an [`XcoderLike`] with an optional leading dispatch sigil
+///
+/// Only used for field-level encoders. Container-level `key.enc` / `len.enc` /
+/// `default.enc` keep raw [`XcoderLike`] because their call shape has no
+/// owned/borrowed ambiguity
+pub(crate) struct SiguledXcoder {
+    pub(crate) sigil: XcoderSigil,
+    pub(crate) inner: XcoderLike,
+}
+/// [`SiguledXcoder`] implementation of [`syn::parse::Parse`]
+///
+/// Consumes an optional leading `&` or `*` before delegating to
+/// [`XcoderLike::parse`]. No change to [`XcoderLike::parse`] itself.
+impl syn::parse::Parse for SiguledXcoder {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let sigil = if input.peek(syn::Token![&]) {
+            let _: syn::Token![&] = input.parse()?;
+            XcoderSigil::Ref
+        } else if input.peek(syn::Token![*]) {
+            let _: syn::Token![*] = input.parse()?;
+            XcoderSigil::Deref
+        } else {
+            XcoderSigil::None
+        };
+        let inner: XcoderLike = input.parse()?;
+        Ok(SiguledXcoder { sigil, inner })
+    }
+}
+/// [`SiguledXcoder`] implementation of [`ToTokens`]
+///
+/// This does not need the sigil, since that describes the fn signature
+/// but does not affect how the emitted code is structured
+impl ToTokens for SiguledXcoder {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match &self.inner {
+            XcoderLike::Path(path) => path.to_tokens(tokens),
+            XcoderLike::Macro(mcro) => mcro.to_tokens(tokens),
+            XcoderLike::Expr(expr) => expr.to_tokens(tokens),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+/// Post-decode conversion/mutation function for the `latebind` field attribute
+///
+/// Written after `latebind =` in `#[klv(latebind = <mut?><fn>)]`:
+///
+/// * `latebind = path`       (`is_mut == false`) → emit
+///   `.map(path)` after the decoder's `.ok()`; `path` has signature
+///   `Fn(T) -> U` where `T` is the decoder output and `U` is the field type
+/// * `latebind = &mut path`  (`is_mut == true`)  → emit
+///   `.map(|mut __v| { path(&mut __v); __v })`; `path` has signature
+///   `Fn(&mut T)` with `T == U`
+///
+/// The plain `&` (without `mut`) form is rejected at parse time - the
+/// consuming form has no `&` variant.
+pub(crate) struct LatebindXcoder {
+    pub(crate) is_mut: bool,
+    pub(crate) inner: XcoderLike,
+}
+/// [`LatebindXcoder`] implementation of [`syn::parse::Parse`]
+impl syn::parse::Parse for LatebindXcoder {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let is_mut = if input.peek(syn::Token![&]) && input.peek2(syn::Token![mut]) {
+            let _: syn::Token![&] = input.parse()?;
+            let _: syn::Token![mut] = input.parse()?;
+            true
+        } else if input.peek(syn::Token![&]) {
+            return Err(input.error(
+                "`&` without `mut` on `latebind` is invalid: use `latebind = path` \
+                 (consuming, Fn(T) -> U) or `latebind = &mut path` (mutating, Fn(&mut T))",
+            ));
+        } else {
+            false
+        };
+        let inner: XcoderLike = input.parse()?;
+        Ok(LatebindXcoder { is_mut, inner })
     }
 }

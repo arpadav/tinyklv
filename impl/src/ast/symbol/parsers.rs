@@ -48,37 +48,31 @@ fn nv_parse_maybestr<T: syn::parse::Parse>(input: &syn::MetaNameValue) -> syn::R
 // --------------------------------------------------
 // encoder / decoder
 // --------------------------------------------------
+// A siguled xcoder, for different encoding fn signatures
+// using &
 create_parser!(
-    ENCODER: XcoderType;
+    ENCODER: SiguledXcoder;
     pnm_parse_maybestr => syn::meta::ParseNestedMeta
 );
 create_parser!(
-    DECODER: XcoderType;
-    pnm_parse_maybestr => syn::meta::ParseNestedMeta
+    ENCODER: SiguledXcoder;
+    nv_parse_maybestr => syn::MetaNameValue
 );
+// A non siguled xcoder, for different encoding fn signatures
 create_parser!(
     ENCODER: XcoderType;
-    nv_parse_maybestr => syn::MetaNameValue
-);
-create_parser!(
-    DECODER: XcoderType;
-    nv_parse_maybestr => syn::MetaNameValue
+    pnm_parse_maybestr_encoder_no_sigil, pnm_parse_maybestr => syn::meta::ParseNestedMeta
 );
 
-/// Field-encoder parser that also captures an optional leading `&` or `*`
-/// dispatch sigil
-///
-/// Matches the `enc` keyword like [`pnm_parse_maybestr_encoder`], but returns
-/// a [`SiguledXcoder`] so the codegen can adapt the call-site for owned-taking
-/// or deref-taking encoder functions
-pub(crate) fn pnm_parse_maybestr_field_encoder(
-    input: &syn::meta::ParseNestedMeta,
-) -> Option<syn::Result<SiguledXcoder>> {
-    if input.path != ENCODER {
-        return None;
-    }
-    Some(pnm_parse_maybestr(input))
-}
+// A non siguled xcoder, for different decoding fn signatures
+create_parser!(
+    DECODER: XcoderType;
+    pnm_parse_maybestr => syn::meta::ParseNestedMeta
+);
+create_parser!(
+    DECODER: XcoderType;
+    nv_parse_maybestr => syn::MetaNameValue
+);
 
 // --------------------------------------------------
 // type / stream
@@ -103,4 +97,19 @@ create_parser!(SENTINEL: syn::Lit; nv);
 // --------------------------------------------------
 create_parser!(VARIABLE_LENGTH: syn::LitBool; pnm);
 
+// --------------------------------------------------
+// init
+// --------------------------------------------------
 create_parser!(INITIAL_VALUE: syn::Expr; pnm);
+
+// --------------------------------------------------
+// latebind
+// --------------------------------------------------
+create_parser!(
+    LATEBIND: LatebindXcoder;
+    pnm_parse_maybestr => syn::meta::ParseNestedMeta
+);
+create_parser!(
+    LATEBIND: LatebindXcoder;
+    nv_parse_maybestr => syn::MetaNameValue
+);

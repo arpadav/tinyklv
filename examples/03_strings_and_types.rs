@@ -1,67 +1,78 @@
+#![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Struct mixing UTF-8 string, u32, and UTF-8 string fields in a single packet.
+//! Example 03 - UTF-8 strings + variable-length fields.
 //!
-//! Real sensor metadata often contains both numeric readings and human-readable
-//! labels. This example models a weather-station registration packet with a
-//! station identifier (UTF-8), a geographic region name (UTF-8), and a u32
-//! serial number. It shows how variable-length string fields use `var = true`
-//! combined with the length-taking codec signature, while fixed-width fields
-//! use the simple `fn(&mut &[u8]) -> Result<T>` form. A full encode → decode
-//! roundtrip is verified with `assert_eq!`.
+//! Fixed-width fields use a plain `fn(&mut Stream) -> Result<T>` decoder.
+//! Variable-length fields (like strings) need the length to read a payload
+//! bounded by the preceding `len` bytes - tinyklv surfaces this with the
+//! `varlen = true` field attribute, which expects a length-parameterised
+//! decoder of the form `fn(usize) -> impl FnMut(&mut Stream) -> Result<T>`.
+//!
+//! Showcases:
+//! * `varlen = true` for string payloads
+//! * Mixing fixed-width `be_u32` and variable-length UTF-8 on one struct
+//! * The split between `dec::binary` / `enc::binary` and `enc::string`
+//!
+//! See also: book Tutorial 03.
+use tinyklv::prelude::*;            // Klv proc-macro + traits
+use tinyklv::dec::binary as decb;   // binary decoders
+use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::enc::string as encs;   // string encoders
 
-use tinyklv::prelude::*;
-use tinyklv::Klv;
-
-/// Weather-station registration metadata transmitted over a telemetry bus.
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    sentinel = b"\x57\x53",  // "WS" - marks a station-registration frame
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    sentinel = b"STATIONREG",
+    key(dec = decb::u8,          enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Weather-station registration transmitted over a telemetry bus
 struct StationRegistration {
-    // Key 0x01: 4-byte big-endian serial number (fixed-width decoder)
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
+    /// Fixed-width serial number (big-endian u32)
     serial: u32,
 
-    // Key 0x02: variable-length UTF-8 region name.
-    // `varlen = true` tells the macro the decoder is length-parameterised:
-    //   fn(len: usize) -> impl Fn(&mut &[u8]) -> Result<String>
-    #[klv(key = 0x02, varlen = true,
-          dec = tinyklv::dec::binary::to_string_utf8,
-          enc = &tinyklv::enc::string::from_string_utf8)]
+    #[klv(
+        key = 0x02,
+        varlen = true,
+        dec = decb::to_string_utf8,
+        enc = &encs::from_string_utf8,
+    )]
+    /// Variable-length UTF-8 region name; `varlen = true` selects the
+    /// length-parameterised decoder signature
     region_name: String,
 
-    // Key 0x03: variable-length UTF-8 station identifier
-    #[klv(key = 0x03, varlen = true,
-          dec = tinyklv::dec::binary::to_string_utf8,
-          enc = &tinyklv::enc::string::from_string_utf8)]
+    #[klv(
+        key = 0x03,
+        varlen = true,
+        dec = decb::to_string_utf8,
+        enc = &encs::from_string_utf8,
+    )]
+    /// Variable-length UTF-8 station identifier
     station_id: String,
 }
 
 fn main() {
+    // build
     let original = StationRegistration {
-        serial: 0x00_AB_CD_12,
+        serial:      0x00_AB_CD_12,
         region_name: String::from("North-Atlantic"),
-        station_id: String::from("WX-042"),
+        station_id:  String::from("WX-042"),
     };
 
-    println!(
-        "Original: serial={:#010X}, region={:?}, id={:?}",
-        original.serial, original.region_name, original.station_id
-    );
-
-    // encode_value emits the three key-length-value triples (no outer sentinel)
+    // encode - emits three KLV triples, the last two with a length prefix
+    // computed from the UTF-8 byte length of the string
     let encoded = original.encode_value();
-    println!("Encoded ({} bytes): {:02X?}", encoded.len(), encoded);
 
-    let decoded = StationRegistration::decode_value(&mut encoded.as_slice()).unwrap();
-    println!(
-        "Decoded: serial={:#010X}, region={:?}, id={:?}",
-        decoded.serial, decoded.region_name, decoded.station_id
-    );
+    // decode - rebuilds the struct from the KLV triples
+    let decoded = StationRegistration::decode_value(
+        &mut encoded.as_slice(),
+    ).unwrap();
 
+    // assert - UTF-8 strings survive the round-trip unchanged
     assert_eq!(decoded, original);
-    println!("SUCCESS");
 }

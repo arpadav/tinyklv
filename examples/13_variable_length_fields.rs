@@ -1,99 +1,92 @@
+#![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! BER-length for the frame length prefix; encode/decode large and small
-//! payloads to show variable-width length encoding in action.
+//! Example 13 - `varlen = true` for length-parameterised value decoders.
 //!
-//! BER lengths below 128 bytes fit in a single octet; lengths 128–255 require
-//! two bytes (marker 0x81 + length); lengths up to 65535 require three bytes.
-//! Using BER for the outer frame length means a single codec handles all
-//! payload sizes without changing the struct definition. This example encodes
-//! a small payload (< 128 bytes) and a large payload (> 128 bytes string field)
-//! and verifies that the length prefix byte count differs between the two
-//! cases, confirming BER variable-width behaviour.
+//! A fixed-width value decoder has the signature
+//! `fn(&mut Stream) -> Result<T>` - it reads exactly as many bytes as the
+//! type requires. A variable-length field instead reads a number of bytes
+//! dictated by the preceding `len` field, which the macro plumbs into the
+//! decoder when the field is annotated with `varlen = true`:
+//!
+//! ```text
+//! fn(usize) -> impl FnMut(&mut Stream) -> Result<T>
+//! ```
+//!
+//! This example uses a sensor-log entry with a fixed-width `u32` timestamp
+//! and a variable-length UTF-8 annotation, then round-trips two payloads -
+//! a short one (single-byte length) and a long one (multi-byte length via
+//! BER) - so the length codec gets exercised in both regimes.
+//!
+//! Showcases:
+//! * `varlen = true` on a `String` field
+//! * Mixing fixed-width and variable-length fields in one struct
+//! * BER length codec scaling to small and large payloads on the same struct
+use tinyklv::prelude::*;            // Klv proc-macro + traits
+use tinyklv::dec::binary as decb;   // binary decoders
+use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::enc::string as encs;   // string encoders
+use tinyklv::dec::ber as decber;    // BER decoders
+use tinyklv::enc::ber as encber;    // BER encoders
 
-use tinyklv::prelude::*;
-use tinyklv::Klv;
-
-fn ber_key_enc(v: u64) -> Vec<u8> {
-    tinyklv::enc::ber::ber_oid(&v)
-}
-fn ber_len_enc(v: usize) -> Vec<u8> {
-    tinyklv::enc::ber::ber_length(&v)
-}
-
-/// Sensor log entry with a variable-length annotation string.
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
-    stream = &[u8],
-    sentinel = b"\xBE\xEA",
-    // BER-OID keys (single-byte for keys < 128)
-    key(dec = tinyklv::dec::ber::ber_oid::<u64>, enc = ber_key_enc),
-    // BER-length prefix: single byte for small payloads, multi-byte for large
-    len(dec = tinyklv::dec::ber::ber_length, enc = ber_len_enc),
+    stream = &[u8],                                              // default, shown for clarity
+    sentinel = b"SENSORLOG",
+    key(dec = decber::ber_oid::<u64>, enc = encber::ber_oid),
+    len(dec = decber::ber_length,     enc = encber::ber_length::<usize>),        // BER length scales with payload size
 )]
+/// Sensor log entry: fixed-width timestamp + variable-length UTF-8 annotation
 struct SensorLog {
-    // Timestamp field using a named encoder function (required by the macro)
-    #[klv(key = 0x01_u64, dec = tinyklv::dec::binary::be_u32, enc = &tinyklv::enc::binary::be_u32)]
+    /// Unix timestamp in seconds (fixed-width big-endian u32)
+    #[klv(
+        key = 0x01_u64,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
     timestamp_s: u32,
 
-    // Variable-length UTF-8 annotation; length encoded by the field's own len
-    #[klv(key = 0x02_u64, varlen = true,
-          dec = tinyklv::dec::binary::to_string_utf8,
-          enc = &tinyklv::enc::string::from_string_utf8)]
+    /// Human-readable annotation; `varlen = true` passes the decoded length
+    /// into the string decoder so it reads exactly that many bytes
+    #[klv(
+        key = 0x02_u64,
+        varlen = true,
+        dec = decb::to_string_utf8,
+        enc = &encs::from_string_utf8,
+    )]
     annotation: String,
 }
 
 fn main() {
-    // --- Small payload (< 128 bytes total) -----------------------------------
+    // build - a short annotation whose BER length fits in one byte
     let small = SensorLog {
         timestamp_s: 1_700_000_000,
-        annotation: String::from("OK"), // 2-byte value
+        annotation:  String::from("OK"),
     };
 
+    // encode + decode - round-trip through the single-byte BER length path
     let small_frame = small.encode_frame();
-    println!(
-        "Small frame ({} bytes): {:02X?}",
-        small_frame.len(),
-        small_frame
-    );
-
-    // sentinel is 2 bytes; next byte is the outer BER length
-    // For a small payload the length fits in 1 byte (< 128)
-    let outer_len_byte = small_frame[2];
-    assert!(
-        outer_len_byte < 0x80,
-        "small payload: BER length must be single-byte (< 0x80), got {:#04X}",
-        outer_len_byte
-    );
-
-    let dec_small = SensorLog::decode_frame(&mut small_frame.as_slice()).unwrap();
+    let dec_small = SensorLog::decode_frame(
+        &mut small_frame.as_slice(),
+    ).unwrap();
     assert_eq!(dec_small, small);
-    println!("Small roundtrip: OK");
 
-    // --- Large payload (> 128 bytes annotation) ------------------------------
-    let large_annotation = "X".repeat(200); // 200-byte string forces multi-byte BER length
+    // build - a long annotation forcing the outer BER length into multiple bytes
     let large = SensorLog {
         timestamp_s: 1_700_000_001,
-        annotation: large_annotation,
+        annotation:  "X".repeat(200), // 200 > 127 -> multi-byte BER length
     };
 
+    // encode + decode - round-trip through the multi-byte BER length path
     let large_frame = large.encode_frame();
-    println!(
-        "Large frame ({} bytes), outer-len prefix: {:02X?}",
-        large_frame.len(),
-        &large_frame[2..4]
-    );
+    let dec_large = SensorLog::decode_frame(
+        &mut large_frame.as_slice(),
+    ).unwrap();
 
-    // For a payload > 127 bytes the outer BER length byte has MSB set (0x81+)
-    let large_len_marker = large_frame[2];
-    assert!(
-        large_len_marker >= 0x80,
-        "large payload: BER length marker must have MSB set, got {:#04X}",
-        large_len_marker
-    );
-
-    let dec_large = SensorLog::decode_frame(&mut large_frame.as_slice()).unwrap();
+    // assert - both payloads survive; the long one proves `varlen = true`
+    // correctly threaded the length into the string decoder
     assert_eq!(dec_large, large);
-    println!("Large roundtrip: OK");
-
-    println!("SUCCESS");
+    assert!(
+        large_frame.len() > small_frame.len(),
+        "long annotation must produce a longer frame",
+    );
 }

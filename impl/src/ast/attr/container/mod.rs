@@ -7,14 +7,6 @@ pub(crate) mod sentinel;
 pub(crate) mod stream;
 
 // --------------------------------------------------
-// external
-// --------------------------------------------------
-use quote::ToTokens;
-use std::collections::HashMap;
-use syn::punctuated::Punctuated;
-use syn::Token;
-
-// --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::symbol;
@@ -23,6 +15,14 @@ use default::DefaultXcoder;
 use keylen::Xcoder;
 use sentinel::Sentinel;
 use stream::Stream;
+
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use quote::ToTokens;
+use std::collections::HashMap;
+use syn::punctuated::Punctuated;
+use syn::Token;
 
 #[derive(Debug)]
 /// Represents struct attribute information

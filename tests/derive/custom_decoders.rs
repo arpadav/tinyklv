@@ -21,7 +21,7 @@ fn encode_u16_sub_one(input: &u16) -> Vec<u8> {
 struct CustomDecoders {
     #[klv(key = 0x01, dec = decode_u16_add_one, enc = encode_u16_sub_one)]
     adjusted: u16,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u8, enc = &tinyklv::enc::binary::u8)]
+    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u8, enc = *tinyklv::enc::binary::u8)]
     plain: u8,
 }
 

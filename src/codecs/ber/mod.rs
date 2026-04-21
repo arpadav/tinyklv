@@ -89,21 +89,21 @@ impl<T: OfBerLength> BerLength<T> {
     /// # Panics
     ///
     /// This should never panic, due to trait bounds
-    pub fn new(len: &T) -> Self {
-        match Self::can_be_short(len) {
+    pub fn new(len: T) -> Self {
+        match Self::can_be_short(&len) {
             #[allow(
                 clippy::expect_used,
                 reason = "this should never panic, due to trait bounds"
             )]
             true => BerLength::Short(len.to_u8().expect("if unsigned int is less than 128, then it can always fit into u8, why did this panic?")),
-            false => BerLength::Long(*len),
+            false => BerLength::Long(len),
         }
     }
 
     /// Encodes a length of [`BerLength`] into a [`Vec<u8>`]
     ///
     /// See [`BerLength`] implementation [`EncodeValue`]
-    pub fn encode_value(len: &T) -> Vec<u8> {
+    pub fn encode_value(len: T) -> Vec<u8> {
         Self::new(len).encode_value()
     }
 
@@ -288,12 +288,12 @@ pub struct BerOid<T: OfBerOid> {
 /// [`BerOid`] implementation
 impl<T: OfBerOid> BerOid<T> {
     /// Creates a new [`BerOid`] from an unsigned integer
-    pub fn new(value: &T) -> Self {
-        Self { value: *value }
+    pub fn new(value: T) -> Self {
+        Self { value }
     }
 
     /// Encodes a value of [`BerOid`] into a [`Vec<u8>`]
-    pub fn encode_value(value: &T) -> Vec<u8> {
+    pub fn encode_value(value: T) -> Vec<u8> {
         Self::new(value).encode_value()
     }
 }
@@ -409,7 +409,7 @@ impl<T: OfBerOid> crate::DecodeValue<&[u8]> for BerOid<T> {
                     ));
             }
         };
-        Ok(BerOid::new(&output))
+        Ok(BerOid::new(output))
     }
 }
 
