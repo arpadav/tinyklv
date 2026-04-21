@@ -1,0 +1,168 @@
+// --------------------------------------------------
+// local
+// --------------------------------------------------
+use tinyklv::enc::ber as encber;
+use tinyklv::prelude::*;
+use tinyklv::Klv;
+
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = tinyklv::dec::ber::ber_oid::<u64>, enc = encber::ber_oid),
+    len(dec = tinyklv::dec::ber::ber_length, enc = encber::ber_length),
+)]
+struct BerPacket {
+    // Key 0x01 (single-byte BER OID, value < 128)
+    #[klv(key = 0x01_u64, dec = tinyklv::dec::binary::be_u8, enc = *tinyklv::enc::binary::u8)]
+    small_key_field: u8,
+    // Key 0x02 (single-byte BER OID)
+    #[klv(key = 0x02_u64, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    word_field: u16,
+    // Key 0x03 (single-byte BER OID)
+    #[klv(key = 0x03_u64, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
+    dword_field: u32,
+}
+
+// BER OID encoding for values < 128 is a single byte equal to the value.
+// BER length < 128 is a single byte equal to the length.
+fn ber_packet_bytes(small: u8, word: u16, dword: u32) -> Vec<u8> {
+    // key=0x01, len=1, val
+    let mut v1 = vec![0x01, 0x01, small];
+    // key=0x02, len=2, val
+    let mut v2 = vec![0x02, 0x02];
+    v2.extend_from_slice(&word.to_be_bytes());
+    // key=0x03, len=4, val
+    let mut v3 = vec![0x03, 0x04];
+    v3.extend_from_slice(&dword.to_be_bytes());
+    // acc
+    v1.extend_from_slice(&v2);
+    v1.extend_from_slice(&v3);
+    v1
+}
+
+#[test]
+/// Tests decoding a BER-keyed/BER-length struct where every key and length fit in a single byte.
+fn decode_ber_single_byte_keys() {
+    let data = ber_packet_bytes(0xAB, 0x1234, 0xDEAD_BEEF);
+    let result = BerPacket::decode_value(&mut data.as_slice()).unwrap();
+    assert_eq!(result.small_key_field, 0xAB);
+    assert_eq!(result.word_field, 0x1234);
+    assert_eq!(result.dword_field, 0xDEAD_BEEF);
+}
+
+#[test]
+/// Verifies BER-keyed decoding when every value is zero.
+fn decode_ber_zero_values() {
+    let data = ber_packet_bytes(0x00, 0x0000, 0x0000_0000);
+    let result = BerPacket::decode_value(&mut data.as_slice()).unwrap();
+    assert_eq!(result.small_key_field, 0);
+    assert_eq!(result.word_field, 0);
+    assert_eq!(result.dword_field, 0);
+}
+
+#[test]
+/// Verifies BER-keyed decoding when every value is at its type maximum.
+fn decode_ber_max_values() {
+    let data = ber_packet_bytes(u8::MAX, u16::MAX, u32::MAX);
+    let result = BerPacket::decode_value(&mut data.as_slice()).unwrap();
+    assert_eq!(result.small_key_field, u8::MAX);
+    assert_eq!(result.word_field, u16::MAX);
+    assert_eq!(result.dword_field, u32::MAX);
+}
+
+#[test]
+/// Tests encode/decode roundtrip for a BER-keyed struct with arbitrary non-trivial values.
+fn encode_ber_roundtrip() {
+    let original = BerPacket {
+        small_key_field: 0x7F,
+        word_field: 0x0100,
+        dword_field: 0x0001_0203,
+    };
+    let encoded = original.encode_value();
+    let decoded = BerPacket::decode_value(&mut encoded.as_slice()).unwrap();
+    assert_eq!(decoded, original);
+}
+
+#[test]
+/// Tests encode/decode roundtrip for a BER-keyed struct with all-zero values.
+fn encode_ber_roundtrip_all_zeros() {
+    let original = BerPacket {
+        small_key_field: 0,
+        word_field: 0,
+        dword_field: 0,
+    };
+    let encoded = original.encode_value();
+    let decoded = BerPacket::decode_value(&mut encoded.as_slice()).unwrap();
+    assert_eq!(decoded, original);
+}
+
+// --------------------------------------------------
+// BER multi-byte length (>= 128 bytes of payload)
+// --------------------------------------------------
+// For BER lengths >= 128, the first byte is 0x80 | num_len_bytes,
+// followed by the actual length bytes
+
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = tinyklv::dec::ber::ber_oid::<u64>, enc = encber::ber_oid),
+    len(dec = tinyklv::dec::ber::ber_length, enc = encber::ber_length),
+)]
+struct BerLargePayload {
+    #[klv(
+        key = 0x01_u64,
+        varlen = true,
+        dec = tinyklv::dec::binary::to_string_utf8,
+        enc = tinyklv::enc::string::from_string_utf8,
+    )]
+    payload: String,
+}
+
+#[test]
+/// Tests BER long-form length encoding for a payload of 200 bytes, forcing the `0x81 0xC8` two-byte length header.
+fn encode_ber_large_length_roundtrip() {
+    let s: String = "A".repeat(200);
+    let original = BerLargePayload { payload: s };
+    let encoded = original.encode_value();
+    // BER length for 200: 0x81 0xC8 (long form: 1 extra byte, value 200)
+    // Verify the length encoding byte is the long-form marker
+    assert_eq!(
+        encoded[1], 0x81,
+        "expected BER long-form length marker 0x81"
+    );
+    assert_eq!(encoded[2], 200, "expected BER length byte 200");
+    let decoded = BerLargePayload::decode_value(&mut encoded.as_slice()).unwrap();
+    assert_eq!(decoded, original);
+}
+
+#[test]
+/// Tests that a BER-keyed struct errors when its required key is absent from the stream.
+fn decode_ber_missing_required_fails() {
+    let data: &[u8] = &[
+        0x02, 0x02, 0x00, 0x01, // wrong key - 0x01 absent
+    ];
+    let result = BerLargePayload::decode_value(&mut &data[..]);
+    assert!(result.is_err());
+}
+
+#[test]
+/// Verifies that BER-keyed fields arriving in reverse order still match correctly by key.
+fn decode_ber_fields_reversed_order() {
+    let data = {
+        let mut v = vec![];
+        v.push(0x03_u8);
+        v.push(0x04);
+        v.extend_from_slice(&0xDEAD_BEEF_u32.to_be_bytes());
+        v.push(0x02);
+        v.push(0x02);
+        v.extend_from_slice(&0x1234_u16.to_be_bytes());
+        v.push(0x01);
+        v.push(0x01);
+        v.push(0xAB);
+        v
+    };
+    let result = BerPacket::decode_value(&mut data.as_slice()).unwrap();
+    assert_eq!(result.small_key_field, 0xAB);
+    assert_eq!(result.word_field, 0x1234);
+    assert_eq!(result.dword_field, 0xDEAD_BEEF);
+}

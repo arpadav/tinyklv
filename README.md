@@ -1,114 +1,193 @@
-# tinyklv: A [Key-Length-Value (KLV)](https://en.wikipedia.org/wiki/KLV) framework in Rust using [`winnow`](https://crates.io/crates/winnow)
+# tinyklv - KLV framework in Rust
 
-[![LICENSE](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Crates.io Version](https://img.shields.io/crates/v/tinyklv.svg)](https://crates.io/crates/tinyklv)
-<!-- [![Latest Release](https://img.shields.io/github/v/release/arpadav/tinyklv)](https://github.com/arpadav/tinyklv) -->
-<!-- [![Coverage Status](https://coveralls.io/repos/github/arpadav/tinyklv/badge.svg?branch=main)](https://coveralls.io/github/arpadav/tinyklv?branch=main) -->
+[![Crates.io](https://img.shields.io/crates/v/tinyklv.svg)](https://crates.io/crates/tinyklv)
+[![Documentation](https://img.shields.io/docsrs/tinyklv)](https://docs.rs/tinyklv)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![MSRV](https://img.shields.io/badge/rustc-1.95%2B-orange.svg)](https://www.rust-lang.org)
+[![CI](https://img.shields.io/github/actions/workflow/status/arpadav/tinyklv/ci.yml?branch=main)](https://github.com/arpadav/tinyklv/actions)
 
-## ***THIS CRATE IS CURRENTLY UNDER ACTIVE DEVELOPMENT. THIS IS ONLY MEANT FOR CRATE RESERVATION. DO NOT USE WHILE VERSION IS x.x.x-alpha***
+A derive-macro framework for encoding and decoding [Key-Length-Value (KLV)](https://en.wikipedia.org/wiki/KLV)
+binary streams, built on [`winnow`](https://crates.io/crates/winnow) parser combinators.
 
-***If you are looking for parsing [TLV data (Type-Length-Value)](https://en.wikipedia.org/wiki/Type%E2%80%93length%E2%80%93value), `winnow`, `nom`, as well as other parsing crates already provide this support. KLV is built ontop of TLV.***
+## What is KLV?
 
-`tinyklv` is a Rust implementation of a KLV framework to reduce the amount of boilerplate code required for parsing and encoding KLV data in an agnostic, human-defined manner.
+KLV is a generic Tag-Length-Value (TLV) framing pattern: every field in a byte
+stream is prefixed by a key identifying it and a length giving its size. It is
+the backbone of telemetry packets, video metadata streams, IoT sensor framing,
+and most custom binary protocols that need to evolve without breaking older
+parsers.
 
-This crate is predominately used for parsing or generating streams of network packets to/from Rust structs.
+`tinyklv` is protocol-agnostic. It ships no baked-in standards - you declare
+your keys, your length encoding, your sentinel, and the codec for each field
+via attributes on a struct. The derive macro generates the wire format
+accessors; you control the schema.
+
+## Quick Start
+
+```sh
+cargo add tinyklv
+```
 
 ```rust
 use tinyklv::Klv;
 use tinyklv::prelude::*;
+use tinyklv::dec::binary as dec;
+use tinyklv::enc::binary as enc;
 
-#[derive(Klv)]
+#[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    sentinel = b"\x00\x00\x00",
-    allow_unimplemented_encode,
-    key(dec = tinyklv::dec::binary::u8),
-    len(dec = tinyklv::dec::binary::u8_as_usize),
+    sentinel = b"\x47\x48",
+    key(dec = dec::be_u8, enc = enc::u8),
+    len(dec = dec::be_u8_as_usize,
+        enc = enc::u8_from_usize),
 )]
-struct Foo {
-    #[klv(key = 0x01, var = true, dec = tinyklv::dec::binary::to_string_utf8)]
-    // value length is dynamically determined, always as input from stream
-    // 
-    // therefore, it is used as an input arg in decoder: `tinyklv::dec::binary::to_string_utf8`
-    // (function signature = `fn(&mut S, usize) -> winnow::PResult<String>`)
-    name: String,
-
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16)]
-    // value length is always 2 bytes
-    // 
-    // therefore, it is not used as an input arg in decoder: `tinyklv::dec::binary::be_u16`
-    // (function signature = `fn(&mut S) -> winnow::PResult<u16>`)
-    number: u16,
+struct HeartbeatPacket {
+    #[klv(key = 0x01, dec = dec::be_u8,  enc = &enc::u8)]
+    sequence: u8,
+    #[klv(key = 0x02, dec = dec::be_u16, enc = &enc::be_u16)]
+    temperature_centideg: u16,
 }
 
-let mut stream1: &[u8] = &[
-    0x00, 0x00, 0x00,       // sentinel
-    0x09,                   // packet length = 9 bytes
-    0x01, 0x03,             // key: 0x01, len: 3 bytes
-    0x4B, 0x4C, 0x56,       // value: "KLV"
-    0x02, 0x02,             // key: 0x02, len: 2 bytes
-    0x01, 0x02,             // value: 258
-];
-let stream1_ = stream1.clone();
-// decode by seeking sentinel, then decoding data
-match Foo::extract(&mut stream1) {
-    Ok(foo) => {
-        assert_eq!(foo.name, "KLV");
-        assert_eq!(foo.number, 258);
-    },
-    Err(e) => panic!("{}", e),
-}
-// decode data directly (without seeking sentinel)
-match Foo::decode(&mut &stream1_[4..]) {
-    Ok(foo) => {
-        assert_eq!(foo.name, "KLV");
-        assert_eq!(foo.number, 258);
-    },
-    Err(e) => panic!("{}", e),
-}
+fn main() {
+    let original = HeartbeatPacket { sequence: 42, temperature_centideg: 2350 };
 
-let mut stream2: &[u8] = &[
-    0x00, 0x00, 0x00,       // sentinel
-    0x12,                   // packet length = 18 bytes
-    0x01, 0x0C,             // key: 0x01, len: 12 bytes
-                            // value: "Hello World!"
-    0x48, 0x65, 0x6C, 0x6C, 0x6F, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21,
-    0x02, 0x02,             // key: 0x02, len: 2 bytes
-    0x00, 0x2A,             // value: 42
-];
-match Foo::extract(&mut stream2) {
-    Ok(foo) => {
-        assert_eq!(foo.name, "Hello World!");
-        assert_eq!(foo.number, 42);
-    },
-    Err(e) => panic!("{}", e),
+    let frame = original.encode_frame();
+    let decoded = HeartbeatPacket::decode_frame(&mut frame.as_slice()).unwrap();
+
+    assert_eq!(decoded, original);
 }
 ```
 
-## Assumptions
+Full annotated version: [`examples/01_hello_world.rs`](examples/01_hello_world.rs).
 
-* This crate assumes you are familiar with Rust.
-* This crate assumes you are familiar with combinator parsers like `winnow` and `nom`. *This crate explicitly uses `winnow` as a backend, so all encoder and decoder functions must be `winnow` compatible*.
+## Feature Highlights
 
-## Usage
+- `#[derive(Klv)]` proc-macro generates encode and decode in one pass
+- Built-in codecs: binary (BE/LE for `u8..u64`, `i8..i64`, `f32/f64`), BER length, BER-OID keys, UTF-8 / UTF-16 / ASCII strings
+- Sentinel seeking - resync on noisy byte streams via `seek_sentinel`
+- Repeated decode with user-defined break conditions
+- Nested `Klv` structs - compose packets from sub-packets
+- Generic structs and lifetimes supported (see below)
+- `Option<T>` fields, per-field and per-container defaults, `deny_unknown_keys`
+- Stream type is user-selected (`&[u8]` is the default but not required) - any `winnow::Stream` works
 
-Please see [tinyklv_common](../tinyklv_common/) for usage examples.
+## Examples
 
-## Why `winnow`? And `winnow` Resources
+Fifteen runnable examples live under [`examples/`](examples/). Run any with
+`cargo run --example <name>`.
 
-If not familiar with `winnow`, please refer to the links below.
+### Beginner
 
-* [`winnow` Documentation](https://docs.rs/winnow/latest/winnow/)
-* [`winnow` Tutorials](https://docs.rs/winnow/latest/winnow/_tutorial/index.html)
-* [Why `winnow`](https://docs.rs/winnow/latest/winnow/_topic/why/index.html)
+| # | File | What it shows |
+|---|------|---------------|
+| 01 | [`01_hello_world.rs`](examples/01_hello_world.rs) | Minimal two-field struct, full roundtrip |
+| 02 | [`02_custom_key_types.rs`](examples/02_custom_key_types.rs) | Swap the key codec: `u8` vs BE-`u16` vs LE-`u16` |
+| 03 | [`03_strings_and_types.rs`](examples/03_strings_and_types.rs) | UTF-8 strings alongside fixed-width integers |
+| 04 | [`04_optional_fields.rs`](examples/04_optional_fields.rs) | `Option<T>` fields and missing-key handling |
+| 05 | [`05_basic_roundtrip.rs`](examples/05_basic_roundtrip.rs) | BER-keyed, `encode_value` vs `encode_frame` |
 
-If familiar with `nom` but not `winnow`, please refer to the links below.
+### Intermediate
 
-* [Migration from `nom` to `winnow`](https://docs.rs/winnow/latest/winnow/_topic/nom/index.html)
-* [Rust Parser Benchmarks](https://github.com/rosetta-rs/parse-rosetta-rs/tree/main/examples)
+| # | File | What it shows |
+|---|------|---------------|
+| 06 | [`06_custom_encoder_decoder.rs`](examples/06_custom_encoder_decoder.rs) | User-written scaled-`f64` codec |
+| 07 | [`07_sentinel_seeking.rs`](examples/07_sentinel_seeking.rs) | Recover from prefix noise using `seek_sentinel` |
+| 08 | [`08_nested_packets.rs`](examples/08_nested_packets.rs) | Nested `Klv` structs as fields |
+| 09 | [`09_ber_keyed.rs`](examples/09_ber_keyed.rs) | Multi-byte BER-OID keys |
+| 10 | [`10_defaults_and_init.rs`](examples/10_defaults_and_init.rs) | Container-level and field-level defaults |
 
-`winnow` uses a slightly different syntax for combinator parsers than `nom`, but it is pretty easy to learn one from the other, since `winnow` is a fork of `nom`. I personally can not speak on the design changes, but after reading some [articles from the `winnow` author (active `nom` contributor)](https://epage.github.io/blog/2023/07/winnow-0-5-the-fastest-rust-parser-combinator-library/) it seems that `winnow` has tried to refactor design decisions from `nom` to optimize for speed and developer experience.
+### Advanced
+
+| # | File | What it shows |
+|---|------|---------------|
+| 11 | [`11_repeated_extraction.rs`](examples/11_repeated_extraction.rs) | Loop `decode_frame` over N concatenated frames |
+| 12 | [`12_enum_dispatch_stream.rs`](examples/12_enum_dispatch_stream.rs) | Peek-dispatch heterogeneous packets into an enum |
+| 13 | [`13_variable_length_fields.rs`](examples/13_variable_length_fields.rs) | Variable-width BER lengths |
+| 14 | [`14_break_condition_custom.rs`](examples/14_break_condition_custom.rs) | Manual `DecodeValue` with skip/break logic |
+| 15 | [`15_tokio_stream_e2e.rs`](examples/15_tokio_stream_e2e.rs) | End-to-end async pipeline with `tokio::mpsc` |
+
+## Traits at a Glance
+
+Everything ships through `tinyklv::prelude::*` (re-exports are anonymized via
+`as _`, so the import does not pollute your namespace).
+
+| Trait | Purpose | Typical call-site |
+|-------|---------|-------------------|
+| `EncodeValue<O>` | Encode only the value body (KLV triples, no frame header) | `val.encode_value()` |
+| `EncodeFrame<O>` | Encode sentinel + length + value body | `val.encode_frame()` |
+| `DecodeValue<S>` | Decode value body from an unframed slice | `T::decode_value(&mut s)` |
+| `DecodeFrame<S>` | Seek sentinel, read length, subslice, then decode | `T::decode_frame(&mut s)` |
+| `SeekSentinel<S>` | Advance the stream to the next sentinel occurrence | `T::seek_sentinel(&mut s)` |
+| `RepeatedDecode<S>` | Decode a loop of N frames into a `Vec<T>` | internal to `repeated` fields |
+| `BreakCondition<S>` | User-supplied stop predicate for repeated decode | advanced use |
+| `IntoKlv<O>` | Marker for types emitted into the KLV output alphabet | codec authors |
+
+## Attributes Cheat Sheet
+
+### Container-level `#[klv(...)]`
+
+| Attribute | Purpose |
+|-----------|---------|
+| `stream = &[u8]` | Input stream type (any `winnow::Stream`) |
+| `sentinel = b"\xNN..."` | Magic bytes marking frame start - enables `decode_frame` / `SeekSentinel` |
+| `key(dec = path, enc = path)` | Codec pair for the key field |
+| `len(dec = path, enc = path)` | Codec pair for the length field (must produce `usize` on decode) |
+| `default(typ = T, dec = path, enc = path)` | Default codec pair for every field of type `T` |
+| `debug` | Emit the generated impl blocks at compile time |
+| `deny_unknown_keys` | Error on unrecognized keys instead of skipping |
+| `allow_unimplemented_encode` | Skip generating `EncodeValue`/`EncodeFrame` |
+| `allow_unimplemented_decode` | Skip generating `DecodeValue`/`DecodeFrame` |
+
+### Field-level `#[klv(...)]`
+
+| Attribute | Purpose |
+|-----------|---------|
+| `key = 0xNN` | Key value for this field |
+| `dec = path` | Decoder function `fn(&mut S) -> winnow::Result<T>` |
+| `enc = path` | Encoder taking `&T` → emits `enc(&self.field)` (deref coercion covers `&String → &str`, `&Vec<u8> → &[u8]`) |
+| `enc = &path` | `EncodeAs`-dispatched: primitives pass by value (Copy), `String → &str`, `Vec<T> → &[T]`, `Box/Rc/Arc<T> → &T`. No clone, no alloc. |
+| `varlen` | Field has variable-width value (length prefix is authoritative) |
+| `default = expr` | Value used if the key is absent on decode |
+| `sentinel = b"..."` | Per-field sentinel for nested framed fields |
+| `stream = &[u8]` | Per-field stream override |
+| `latebind` | Post-decode conversion or mutation. `latebind = path` consumes (`Fn(T) -> U`); `latebind = &mut path` mutates in place (`Fn(&mut T)`). |
+
+## Generic Structs
+
+`#[derive(Klv)]` preserves generics and lifetimes verbatim via
+`split_for_impl()`, so you can do:
+
+```rust,ignore
+#[derive(Klv)]
+#[klv(/* ... */)]
+struct Packet<'a, T: MyBound> {
+    #[klv(key = 0x01, dec = ..., enc = ...)]
+    payload: T,
+    _marker: std::marker::PhantomData<&'a T>,
+}
+```
+
+Bounded type parameters, lifetimes, and `PhantomData` all compose cleanly with
+the generated `EncodeValue` / `DecodeFrame` / friends. See
+[`tests/derive/advanced_generics.rs`](tests/derive/advanced_generics.rs) for
+the canonical reference.
+
+## mdBook Documentation
+
+Long-form conceptual docs (how the macro expands, codec authoring, performance
+notes) are being scaffolded. Placeholder: <https://arpadav.github.io/tinyklv/>.
+
+## Contributing
+
+Issues and pull requests are welcome at
+<https://github.com/arpadav/tinyklv>. Run `cargo test --all` and
+`cargo clippy --all-targets -- -D warnings` before opening a PR.
+
+## Changelog
+
+See [releases](https://github.com/arpadav/tinyklv/releases).
 
 ## License
 
-`tinyklv` is licensed under the [MIT License](./LICENSE). [http://opensource.org/licenses/MIT](http://opensource.org/licenses/MIT).
+Licensed under the MIT License. See [LICENSE](LICENSE) for details.

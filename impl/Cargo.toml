@@ -6,6 +6,7 @@ license = "MIT"
 description = "Implementation detail of the `tinyklv` crate"
 repository = "https://github.com/arpadav/tinyklv"
 edition = "2021"
+rust-version = "1.95"
 publish = true
 
 [lib]

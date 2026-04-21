@@ -8,7 +8,7 @@ use tk_syn_macros::handle_unique_nested_meta_values;
 // local
 // --------------------------------------------------
 use crate::ast::symbol;
-use crate::ast::types::{TypeType, XcoderType};
+use crate::ast::types::{SiguledXcoder, TypeType, XcoderType};
 
 #[derive(Debug)]
 /// A default encoder / decoder for a specific type
@@ -24,7 +24,7 @@ pub(crate) struct DefaultXcoder {
     /// The type associated with the encoder / decoder
     pub typ: Option<TypeType>,
     /// The encoder
-    pub enc: Option<XcoderType>,
+    pub enc: Option<SiguledXcoder>,
     /// The decoder
     pub dec: Option<XcoderType>,
     /// Whether the decoder requires a variable length input
@@ -39,7 +39,7 @@ impl From<&syn::MetaList> for DefaultXcoder {
         // init
         // --------------------------------------------------
         let mut typ: Option<TypeType> = None;
-        let mut enc: Option<XcoderType> = None;
+        let mut enc: Option<SiguledXcoder> = None;
         let mut dec: Option<XcoderType> = None;
         let mut var: Option<syn::LitBool> = None;
         // --------------------------------------------------

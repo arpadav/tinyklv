@@ -7,7 +7,7 @@ use quote::ToTokens;
 // local
 // --------------------------------------------------
 use crate::ast::symbol;
-use crate::ast::types::XcoderType;
+use crate::ast::types::{SiguledXcoder, XcoderType};
 
 #[derive(Debug, Clone)]
 /// A key or length encoder/decoder
@@ -16,7 +16,7 @@ use crate::ast::types::XcoderType;
 /// encoder and decoder are optional.
 pub struct Xcoder {
     /// The encoder. Is optional, since unimplemented encoding could be allowed
-    pub enc: Option<XcoderType>,
+    pub enc: Option<SiguledXcoder>,
     /// The decoder. Is optiona, since unimplemented decoding could be allowed
     pub dec: Option<XcoderType>,
 }
@@ -27,7 +27,7 @@ impl TryFrom<&syn::MetaList> for Xcoder {
         // --------------------------------------------------
         // init
         // --------------------------------------------------
-        let mut enc: Option<XcoderType> = None;
+        let mut enc: Option<SiguledXcoder> = None;
         let mut dec: Option<XcoderType> = None;
         // --------------------------------------------------
         // parse nested meta

@@ -1,21 +1,20 @@
 #![doc = include_str!("../README.md")]
+//! Author: aav
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
-pub mod _tutorial;
 pub mod codecs;
 pub mod traits;
-
 // --------------------------------------------------
-// local
+// re-exports
 // --------------------------------------------------
 pub use codecs::*;
 pub use tinyklv_impl::*;
 pub use traits::*;
 
-// --------------------------------------------------
-// internal re-exports: used during macro expansion
-// --------------------------------------------------
+#[doc(hidden)]
+/// Internal re-exports used during proc-macro expansion.
+/// Not part of the public API - may change without notice.
 pub mod __export {
     #[cfg(feature = "chrono")]
     pub use chrono;
@@ -23,29 +22,26 @@ pub mod __export {
     pub use winnow;
 }
 
+/// Convenience re-export of all traits and parser primitives needed to
+/// work with KLV streams
+///
+/// Import this module with `use tinyklv::prelude::*` to bring all decode
+/// and encode traits, the winnow parser primitives, and break-condition
+/// types into scope
 pub mod prelude {
-    // --------------------------------------------------
-    // external
-    // --------------------------------------------------
-    pub use winnow::error::AddContext as _;
-    pub use winnow::prelude::*;
-    pub use winnow::stream::Stream as _;
-    pub use winnow::Parser as _;
     // --------------------------------------------------
     // local
     // --------------------------------------------------
-    pub use crate::traits::Decode as _;
-    pub use crate::traits::Extract as _;
-    pub use crate::traits::RepeatedDecode as _;
-    pub use crate::traits::Seek as _;
-
-    pub use crate::traits::Encode;
-    pub use crate::traits::EncodeValue;
-    pub use crate::traits::IntoKlv as _;
-
-    pub use crate::traits::BreakCondition as _;
-    pub use crate::traits::BreakConditionType;
-    pub use crate::traits::EncodedOutput;
+    pub use crate::traits::{
+        BreakCondition as _, BreakConditionType, DecodeFrame as _, DecodeValue, EncodeAs,
+        EncodeFrame as _, EncodeValue, EncodedOutput as _, IntoKlv as _, RepeatedDecode as _,
+        SeekSentinel as _,
+    };
+    pub use tinyklv_impl::Klv;
+    // --------------------------------------------------
+    // external
+    // --------------------------------------------------
+    pub use winnow::{error::AddContext as _, prelude::*, stream::Stream as _, Parser as _};
 }
 
 pub type Result<T> = winnow::Result<T>;
@@ -57,10 +53,15 @@ pub type Result<T> = winnow::Result<T>;
 ///
 /// # Usage
 ///
-/// ```rust ignore
-/// tinyklv::scale!(tinyklv::codecs::binary::dec::be_u16, f64, KLV_2_PLATFORM_HEADING)(input)
-/// // OR
-/// #[klv(dec = tinyklv::scale!(tinyklv::codecs::binary::dec::be_u16, f64, KLV_2_PLATFORM_HEADING))]
+/// ```rust
+/// use tinyklv::prelude::*;
+///
+/// const TELEMETRY_DATA: f64 = 360.0 / 65535.0;
+/// let mut input: &[u8] = &[0x00, 0x01];
+/// let input = &mut input;
+/// let _ = tinyklv::scale!(tinyklv::codecs::binary::dec::be_u16, f64, TELEMETRY_DATA)(input);
+/// // Within a derive macro:
+/// // #[klv(dec = tinyklv::scale!(tinyklv::codecs::binary::dec::be_u16, f64, TELEMETRY_DATA))]
 /// ```
 ///
 /// # Example
@@ -88,10 +89,14 @@ macro_rules! scale {
 ///
 /// # Usage
 ///
-/// ```rust ignore
-/// tinyklv::cast!(tinyklv::codecs::binary::dec::be_u16, f64)(input)
-/// // OR
-/// #[klv(dec = tinyklv::cast!(tinyklv::codecs::binary::dec::be_u16, f64))]
+/// ```rust
+/// use tinyklv::prelude::*;
+///
+/// let mut input: &[u8] = &[0x00, 0x01];
+/// let input = &mut input;
+/// let _ = tinyklv::cast!(tinyklv::codecs::binary::dec::be_u16, f64)(input);
+/// // Within a derive macro:
+/// // #[klv(dec = tinyklv::cast!(tinyklv::codecs::binary::dec::be_u16, f64))]
 /// ```
 ///
 /// # Example
@@ -161,7 +166,7 @@ macro_rules! cast_enc {
 #[macro_export]
 /// Encode counterpart of [`scale!`] with offset. Subtracts offset, divides by scale, casts to wire type, then encodes.
 ///
-/// Useful for MISB 0601 fields that map a real-value range to a wire-value range
+/// Useful fields that map a real-value range to a wire-value range
 /// via `wire_value = (real_value - offset) / scale`.
 ///
 /// # Usage

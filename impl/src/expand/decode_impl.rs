@@ -1,33 +1,35 @@
+use crate::{
+    ast::{
+        attr::{MainContainer, MainField},
+        types,
+    },
+    expand::helpers,
+    symbol,
+};
+
 use quote::quote;
 use quote::ToTokens;
 
-use crate::ast::attr::MainContainer;
-use crate::ast::attr::MainField;
-use crate::ast::types;
-use crate::expand::helpers;
-use crate::symbol;
-
 const PACKET_LIFETIME_CHAR: char = 'z';
-
-// #[cfg(feature = "tracing")]
-// const LOGGER: &'static str = "::tracing::debug!";
-// #[cfg(not(feature = "tracing"))]
-// const LOGGER: &'static str = "::std::println!";
 
 fn logger() -> proc_macro2::TokenStream {
     #[cfg(feature = "tracing")]
-    quote! { ::tracing::debug! }
+    {
+        quote! { ::tracing::debug! }
+    }
     #[cfg(not(feature = "tracing"))]
-    quote! { ::std::println! }
+    {
+        quote! { ::std::println! }
+    }
 }
-
-/// Generates the tokens for the entire [`tinyklv::prelude::Decode`](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.Decode.html) implementation
+/// Generates the tokens for the entire [`tinyklv::prelude::DecodeValue`] implementation
 pub(crate) fn gen_decode_impl(
     input: &MainContainer,
     key_decoder: &types::XcoderType,
     len_decoder: &types::XcoderType,
 ) -> proc_macro2::TokenStream {
     let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     // --------------------------------------------------
     // default stream -> &[u8]
     // --------------------------------------------------
@@ -52,25 +54,25 @@ pub(crate) fn gen_decode_impl(
             quote! {
                 #[automatically_derived]
                 #[doc(hidden)]
-                #[doc = concat!(" Static sentinel length for [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::Seek`]")]
+                #[doc = concat!(" Static sentinel length for [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::SeekSentinel`]")]
                 pub(crate) const #sentinel_len_static_name: usize = #sentinel.len();
 
                 #[automatically_derived]
                 #[doc(hidden)]
-                #[doc = concat!(" Static seeker for [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::Seek`]")]
+                #[doc = concat!(" Static seeker for [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::SeekSentinel`]")]
                 pub(crate) static #sentinel_seeker_static_name: ::std::sync::LazyLock<::tinyklv::__export::memchr::memmem::Finder> =
                     ::std::sync::LazyLock::new(|| ::tinyklv::__export::memchr::memmem::Finder::new(#sentinel));
 
                 #[automatically_derived]
                 #[doc(hidden)]
-                #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::Seek`] for [`", stringify!(#stream), "`]")]
-                impl ::tinyklv::traits::Seek<#stream> for #name {
-                    // ---- vvv ---- remember this is PACKET_LIFETIME_CHAR
-                    fn seek<'z>(input: &mut #stream_lifetimed) -> ::tinyklv::__export::winnow::Result<#stream_lifetimed> {
-                    // ---- ^^^ ---- remember this is PACKET_LIFETIME_CHAR
+                #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::SeekSentinel`] for [`", stringify!(#stream), "`]")]
+                impl #impl_generics ::tinyklv::traits::SeekSentinel<#stream> for #name #ty_generics #where_clause {
+                    // ------------- vvv ---- remember this is PACKET_LIFETIME_CHAR
+                    fn seek_sentinel<'z>(input: &mut #stream_lifetimed) -> ::tinyklv::__export::winnow::Result<#stream_lifetimed> {
+                    // ------------- ^^^ ---- remember this is PACKET_LIFETIME_CHAR
                         let checkpoint = input.checkpoint();
-                        let input = match #sentinel_seeker_static_name.find(&input) {
-                            Some(position) => &mut &input[position + #sentinel_len_static_name..],
+                        match #sentinel_seeker_static_name.find(&input) {
+                            Some(position) => *input = &input[position + #sentinel_len_static_name..],
                             None => return Err(
                                 ::tinyklv::__export::winnow::error::ContextError::new().add_context(
                                     input,
@@ -126,14 +128,14 @@ pub(crate) fn gen_decode_impl(
                     .add_context(
                         input,
                         &checkpoint,
-                        ::tinyklv::__export::winnow::error::StrContext::Label("key"),
+                        ::tinyklv::__export::winnow::error::StrContext::Label("invalid key"),
                     )
                     .add_context(
                         input,
                         &checkpoint,
                         ::tinyklv::__export::winnow::error::StrContext::Expected(
                             ::tinyklv::__export::winnow::error::StrContextValue::Description(
-                                concat!("one of the keys defined on `", stringify!(#name), "`. To turn this off, remove `deny_unknown_keys`")
+                                concat!("expected one of the keys defined on `", stringify!(#name), "`. To turn this off, remove `deny_unknown_keys`")
                             )
                         ),
                     )
@@ -149,24 +151,18 @@ pub(crate) fn gen_decode_impl(
 
         #[doc(hidden)]
         #[automatically_derived]
-        #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::Decode`] for [`", stringify!(#stream), "`]")]
-        impl ::tinyklv::traits::Decode<#stream> for #name {
-            fn decode(input: &mut #stream) -> ::tinyklv::__export::winnow::Result<Self> {
+        #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::DecodeValue`] for [`", stringify!(#stream), "`]")]
+        impl #impl_generics ::tinyklv::traits::DecodeValue<#stream> for #name #ty_generics #where_clause {
+            fn decode_value(input: &mut #stream) -> ::tinyklv::__export::winnow::Result<Self> {
                 #items_init
-
                 let checkpoint = input.checkpoint();
-
                 loop {
-
                     let checkpoint_inner = input.checkpoint();
-
                     match (
                         #key_decoder,
                         #len_decoder,
                     ).parse_next(input) {
-
                         Ok((key, len)) => {
-
                             match Self::break_condition(key, len) {
                                 ::tinyklv::BreakConditionType::Proceed => (),
                                 ::tinyklv::BreakConditionType::Skip => {
@@ -182,31 +178,41 @@ pub(crate) fn gen_decode_impl(
                                 ::tinyklv::BreakConditionType::Done => break,
                                 ::tinyklv::BreakConditionType::Abort(e) => return Err(e),
                             }
-
                             #debug_key_val
-
-                            let Ok(mut subinput) = ::tinyklv::__export::winnow::token::take::<
+                            let mut subinput = match ::tinyklv::__export::winnow::token::take::<
                                 usize,
                                 #stream,
                                 ::tinyklv::__export::winnow::error::ContextError,
-                            >(len).parse_next(input) else {
-                                // no more input
-                                break
+                            >(len).parse_next(input) {
+                                Ok(s) => s,
+                                // Short-read after a valid key/len: the declared length
+                                // overruns the remaining bytes, which means the packet is
+                                // truncated mid-value. Bail loudly so the caller sees where
+                                // the stream ended unexpectedly.
+                                Err(e) => {
+                                    return Err(e.add_context(
+                                        input,
+                                        &checkpoint_inner,
+                                        ::tinyklv::__export::winnow::error::StrContext::Label(
+                                            concat!(
+                                                "`",
+                                                stringify!(#name),
+                                                "` packet truncated: declared length exceeds remaining input",
+                                            ),
+                                        ),
+                                    ));
+                                }
                             };
-
                             match key {
                                 #items_match
                                 #remaining_match
                             }
-
                         },
-
                         // likely no more input, return what we have
                         // error is thrown away here, could debug print it?
                         Err(_) => break,
                     }
                 }
-
                 #items_set
             }
         }
@@ -220,7 +226,7 @@ pub(crate) fn gen_decode_impl(
 fn gen_items_init(fatts: &Vec<MainField>) -> proc_macro2::TokenStream {
     let field_initializations = fatts.iter().map(|field| {
         let MainField { name, ty, .. } = field;
-        let init = field.attrs.as_ref().and_then(|f| f._init.clone());
+        let init = field.attrs.as_ref().and_then(|f| f.init.clone());
         let ty = helpers::unwrap_option_type(ty).unwrap_or(ty);
         match init {
             Some(init) => quote! {
@@ -265,6 +271,23 @@ fn gen_items_match(fields: &Vec<MainField>, debug: bool) -> proc_macro2::TokenSt
                 quote! {}
             };
             // --------------------------------------------------
+            // post-decode latebind
+            // --------------------------------------------------
+            // consuming (`is_mut == false`): `.map(inner)` - `Fn(T) -> U`
+            // mutating  (`is_mut == true`):  `.map(|mut __v| { inner(&mut __v); __v })` - `Fn(&mut T)`
+            // --------------------------------------------------
+            let latebind_map = match attrs.latebind.as_ref() {
+                Some(lb) => {
+                    let inner = &lb.inner;
+                    if lb.is_mut {
+                        quote! { .map(|mut __v| { #inner(&mut __v); __v }) }
+                    } else {
+                        quote! { .map(#inner) }
+                    }
+                }
+                None => quote! {},
+            };
+            // --------------------------------------------------
             // return
             // --------------------------------------------------
             match debug {
@@ -274,12 +297,12 @@ fn gen_items_match(fields: &Vec<MainField>, debug: bool) -> proc_macro2::TokenSt
                         #key => {
                             let val = #dec #optional_len_arg (&mut subinput);
                             #logger ("\t{}: {:?}", stringify!(#name), val);
-                            #name = val.ok().or(#name);
+                            #name = val.ok() #latebind_map .or(#name);
                         },
                     }
                 }
                 false => quote! {
-                    #key => #name = #dec #optional_len_arg (&mut subinput).ok().or(#name),
+                    #key => #name = #dec #optional_len_arg (&mut subinput).ok() #latebind_map .or(#name),
                 },
             }
         });
@@ -342,7 +365,7 @@ fn gen_item_set(struct_name: &syn::Ident, fields: &Vec<MainField>) -> proc_macro
                 .iter()
                 .map(|(_, ty)| helpers::type2fish(ty))
                 .collect();
-            let individual_defaults = quote! { #(#names: #types::default())*, };
+            let individual_defaults = quote! { #(#names: #types::default(),)* };
             quote! {
                 Ok(#struct_name {
                     #(#field_set_on_return)*

@@ -4,6 +4,7 @@
 // --------------------------------------------------
 use crate::prelude::*;
 
+#[inline(always)]
 /// Decodes a BER-encoded length, returning `usize` (type-erased).
 ///
 /// The decode side erases to `usize` because lengths feed directly into
@@ -13,14 +14,15 @@ use crate::prelude::*;
 ///
 /// See [`crate::codecs::ber::BerLength::decode`]
 pub fn ber_length(input: &mut &[u8]) -> winnow::Result<usize> {
-    super::BerLength::<u128>::decode
+    super::BerLength::<u128>::decode_value
         .map(|value| value.as_u128() as usize)
         .parse_next(input)
 }
 
+#[inline(always)]
 /// See [`crate::codecs::ber::BerOid::decode`]
 pub fn ber_oid<T: super::OfBerOid>(input: &mut &[u8]) -> winnow::Result<T> {
-    super::BerOid::<T>::decode
+    super::BerOid::<T>::decode_value
         .map(|value| value.value)
         .parse_next(input)
 }
