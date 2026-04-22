@@ -20,7 +20,7 @@ struct Foo {
     // value length is variable, always read from stream
     //
     // therefore, it is used as an input arg in decoder: `tinyklv::dec::string::to_string_utf8`
-    // (function signature = `fn(&mut S, usize) -> winnow::Result<String>`)
+    // (function signature = `fn(&mut S, usize) -> tinyklv::Result<String>`)
     name: String,
 
     #[klv(
@@ -30,7 +30,7 @@ struct Foo {
     // value length is always 2 bytes
     //
     // therefore, it is not used as an input arg in decoder: `tinyklv::dec::binary::be_u16`
-    // (function signature = `fn(&mut S) -> winnow::Result<u16>`)
+    // (function signature = `fn(&mut S) -> tinyklv::Result<u16>`)
     number: u16,
 }
 

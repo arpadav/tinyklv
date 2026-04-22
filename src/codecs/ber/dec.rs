@@ -13,7 +13,7 @@ use crate::prelude::*;
 /// directly for type-preserving roundtrip.
 ///
 /// See [`crate::codecs::ber::BerLength::decode`]
-pub fn ber_length(input: &mut &[u8]) -> winnow::Result<usize> {
+pub fn ber_length(input: &mut &[u8]) -> crate::Result<usize> {
     super::BerLength::<u128>::decode_value
         .map(|value| value.as_u128() as usize)
         .parse_next(input)
@@ -21,7 +21,7 @@ pub fn ber_length(input: &mut &[u8]) -> winnow::Result<usize> {
 
 #[inline(always)]
 /// See [`crate::codecs::ber::BerOid::decode`]
-pub fn ber_oid<T: super::OfBerOid>(input: &mut &[u8]) -> winnow::Result<T> {
+pub fn ber_oid<T: super::OfBerOid>(input: &mut &[u8]) -> crate::Result<T> {
     super::BerOid::<T>::decode_value
         .map(|value| value.value)
         .parse_next(input)

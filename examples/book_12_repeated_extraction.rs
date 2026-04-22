@@ -8,11 +8,11 @@ use tinyklv::enc::binary as encb;   // binary encoders
 #[derive(Klv, Debug, PartialEq, Clone, Copy)]
 #[klv(
     stream = &[u8],
+    sentinel = b"SENS",
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
-/// A single sensor reading. No sentinel - these appear in a
-/// pre-framed buffer, concatenated
+/// A single sensor reading, sentinel-framed for batch extraction
 struct SensorReading {
     #[klv(
         key = 0x01,
@@ -49,15 +49,15 @@ fn main() {
         SensorReading { sensor_id: 2, value_centiunit:  2_398, age_ms:  500 },
     ];
 
-    // concatenate the encoded values into one buffer
+    // concatenate the encoded frames into one buffer
     let batch: Vec<u8> = original
         .iter()
-        .flat_map(|r| r.encode_value())
+        .flat_map(|r| r.encode_frame())
         .collect();
 
-    // peel them all off in one call - RepeatedDecode::repeated comes
-    // from the prelude via the blanket impl for any T: DecodeValue<S>
-    let decoded = SensorReading::repeated(
+    // peel them all off in one call - DrainFrames::drain_frames comes
+    // from the prelude via the blanket impl for any T: DecodeFrame<S>
+    let decoded = SensorReading::drain_frames(
         &mut batch.as_slice(),
     ).unwrap();
 

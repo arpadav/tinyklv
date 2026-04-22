@@ -1,10 +1,6 @@
-// --------------------------------------------------
-// local
-// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -26,8 +22,6 @@ struct BreakPacket {
     )]
     b: Option<u32>,
 }
-
-// The default BreakCondition returns Proceed - all keys are processed.
 
 #[test]
 /// Tests that the default `BreakCondition::Proceed` processes every key in the stream.

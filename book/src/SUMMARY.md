@@ -24,6 +24,7 @@
     - [Repeated extraction](./tutorial/advanced/12-repeated-extraction.md)
     - [Break conditions](./tutorial/advanced/13-break-condition.md)
     - [Async / Tokio streams](./tutorial/advanced/14-tokio-streams.md)
+    - [Streaming decode with `Decoder<T>`](./tutorial/advanced/15-streaming-decode.md)
 
 # Reference
 

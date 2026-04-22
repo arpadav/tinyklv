@@ -15,19 +15,13 @@ use tinyklv::prelude::*;
     sentinel = b"\xBE\xEF",
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    fallback_impls,
 )]
 struct NavPacket {
-    #[klv(
-        key = 0x01,
-        dec = Coordinate::decode_value,
-        enc = Coordinate::encode_value,
-    )]
+    #[klv(key = 0x01)]
     position: Coordinate,
-    #[klv(
-        key = 0x02,
-        dec = Velocity::decode_value,
-        enc = Velocity::encode_value,
-    )]
+
+    #[klv(key = 0x02)]
     velocity: Velocity,
 }
 impl Default for NavPacket {
@@ -52,19 +46,13 @@ impl Default for NavPacket {
     sentinel = b"\xCA\xFE",
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    fallback_impls,
 )]
 struct WeatherPacket {
-    #[klv(
-        key = 0x01,
-        dec = Priority::decode_value,
-        enc = Priority::encode_value,
-    )]
+    #[klv(key = 0x01)]
     priority: Priority,
-    #[klv(
-        key = 0x02,
-        dec = Color::decode_value,
-        enc = Color::encode_value,
-    )]
+
+    #[klv(key = 0x02)]
     sky_color: Color,
 }
 impl Default for WeatherPacket {
@@ -196,7 +184,7 @@ fn dispatch_all_unknown_returns_empty() {
             packets.push(p);
         }
     }
-    assert!(packets.is_empty(), "no recognised sentinels → no packets");
+    assert!(packets.is_empty(), "no recognised sentinels -> no packets");
 }
 
 #[test]

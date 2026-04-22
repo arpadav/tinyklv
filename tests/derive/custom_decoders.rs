@@ -1,10 +1,6 @@
-// --------------------------------------------------
-// local
-// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
 
 fn decode_u16_add_one(input: &mut &[u8]) -> tinyklv::Result<u16> {
     decb::be_u16(input).map(|v| v + 1)

@@ -1,10 +1,10 @@
 //! Matrix tests for the `enc` dispatch sigils: none / `&`
 //!
 //! Covers both call-shapes in the Encode codegen template:
-//! * `enc = func`  → `func(&self.field)`                          (`Fn(&T) -> O`)
-//! * `enc = *func` → `func(EncodeAs::encode_as(&self.field))`     dispatches via
-//!   the [`EncodeAs`] trait: primitives by value (Copy), `String → &str`,
-//!   `Vec<T> → &[T]`, `Box<T>/Rc<T>/Arc<T> → &T`. No clone, no heap alloc.
+//! * `enc = func`  -> `func(&self.field)`                          (`Fn(&T) -> O`)
+//! * `enc = *func` -> `func(EncodeAs::encode_as(&self.field))`     dispatches via
+//!   the [`EncodeAs`] trait: primitives by value (Copy), `String -> &str`,
+//!   `Vec<T> -> &[T]`, `Box<T>/Rc<T>/Arc<T> -> &T`. No clone, no heap alloc.
 //!
 //! Each sigil is exercised on both a required field and an `Option<T>` field
 //! so the optional branch of the codegen is also verified. Roundtrip via
@@ -28,14 +28,14 @@ fn enc_u16_owned(v: u16) -> Vec<u8> {
     encb::be_u16(v)
 }
 
-/// `&` sigil target for `String` via `EncodeAs` → `&str`
+/// `&` sigil target for `String` via `EncodeAs` -> `&str`
 fn enc_str_ref(s: &str) -> Vec<u8> {
     let mut out = encb::u8_from_usize(s.len());
     out.extend_from_slice(s.as_bytes());
     out
 }
 
-/// `&` sigil target for `Vec<u8>` via `EncodeAs` → `&[u8]`
+/// `&` sigil target for `Vec<u8>` via `EncodeAs` -> `&[u8]`
 fn enc_bytes_ref(b: &[u8]) -> Vec<u8> {
     let mut out = encb::u8_from_usize(b.len());
     out.extend_from_slice(b);
@@ -58,9 +58,6 @@ fn dec_u8_len_bytes(input: &mut &[u8]) -> tinyklv::Result<Vec<u8>> {
     Ok(head.to_vec())
 }
 
-// --------------------------------------------------
-// Both sigils on required fields
-// --------------------------------------------------
 #[derive(Klv, Debug, Clone, PartialEq)]
 #[klv(
     sentinel = b"\x00\x00\x00\x01",
@@ -69,44 +66,44 @@ fn dec_u8_len_bytes(input: &mut &[u8]) -> tinyklv::Result<Vec<u8>> {
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct AllSigils {
-    // None sigil: encoder takes &u8
     #[klv(
         key = 0x01,
         dec = decb::u8,
         enc = enc_u8_ref,
     )]
+    /// None sigil: encoder takes &u8
     count: u8,
 
-    // None sigil: encoder takes &Color (method form)
     #[klv(
         key = 0x02,
         dec = Color::decode_value,
         enc = Color::encode_value,
     )]
+    /// None sigil: encoder takes &Color (method form)
     color: Color,
 
-    // & sigil: primitive by value through EncodeAs
     #[klv(
         key = 0x03,
         dec = decb::be_u16,
         enc = *enc_u16_owned,
     )]
+    /// & sigil: primitive by value through EncodeAs
     id: u16,
 
-    // & sigil: String → &str through EncodeAs
     #[klv(
         key = 0x04,
         dec = dec_u8_len_string,
         enc = &enc_str_ref,
     )]
+    /// & sigil: String -> &str through EncodeAs
     label: String,
 
-    // & sigil: Vec<u8> → &[u8] through EncodeAs
     #[klv(
         key = 0x05,
         dec = dec_u8_len_bytes,
         enc = &enc_bytes_ref,
     )]
+    /// & sigil: Vec<u8> -> &[u8] through EncodeAs
     blob: Vec<u8>,
 }
 
@@ -126,9 +123,6 @@ fn all_sigils_roundtrip() {
     assert_eq!(original, decoded);
 }
 
-// --------------------------------------------------
-// Both sigils on Option<T> fields
-// --------------------------------------------------
 #[derive(Klv, Debug, Clone, PartialEq)]
 #[klv(
     sentinel = b"\x00\x00\x00\x02",

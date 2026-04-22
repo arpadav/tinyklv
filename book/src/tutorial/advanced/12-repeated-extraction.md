@@ -1,30 +1,31 @@
 # Tutorial 12 - Repeated extraction
 
 Sensor pipelines frequently batch readings back-to-back inside a single UDP
-datagram, file record, or log line. Each reading is self-describing - key,
-length, value - so they can be peeled off one at a time until the buffer is
-exhausted.
+datagram, file record, or log line. When each reading is sentinel-framed,
+`drain_frames` peels them off one at a time until the buffer is exhausted.
 
-`tinyklv` exposes this as the `RepeatedDecode` trait, auto-implemented for any
-`T: DecodeValue<S>`:
+`tinyklv` exposes this as the `DrainFrames` trait, auto-implemented for any
+`T: DecodeFrame<S>` (which requires a sentinel):
 
 ```rust,ignore
-let readings: Vec<SensorReading> = SensorReading::repeated(&mut input)?;
+let readings: Vec<SensorReading> = SensorReading::drain_frames(&mut input)?;
 ```
 
-Semantics are careful: `repeated` calls `decode_value` until the stream
-either cleanly ends (returns whatever was collected so far) or hits a real
-parse error (propagates the error with context). Callers are never left
-guessing whether an empty `Vec` means "no items" or "parse failed on item
-N".
+Semantics: `drain_frames` calls `decode_frame` until the stream either
+cleanly ends (returns whatever was collected so far) or hits a real parse
+error (propagates the error with context). Callers are never left guessing
+whether an empty `Vec` means "no items" or "parse failed on item N".
 
-Note that `repeated` is defined on `DecodeValue`, **not** `DecodeFrame` -
-the sub-type therefore has no sentinel. Use this pattern for streams of
-sentinel-less KLV blobs. If each item is sentinel-framed, loop
-`decode_frame` directly instead.
+For sentinel-less streams, use the `Vec<T>` blanket impl of `DecodeValue`
+instead:
 
-The example builds five `SensorReading` values, concatenates their encoded
-value bytes into one buffer, and peels the whole batch off in a single call.
+```rust,ignore
+let readings: Vec<SensorReading> = Vec::<SensorReading>::decode_value(&mut input)?;
+```
+
+The example builds five `SensorReading` values, encodes each as a full
+frame, concatenates them into one buffer, and drains the whole batch in a
+single call.
 
 Run this example: `cargo run --example book_12_repeated_extraction`
 
@@ -32,8 +33,8 @@ Run this example: `cargo run --example book_12_repeated_extraction`
 {{#include ../../../../examples/book_12_repeated_extraction.rs}}
 ```
 
-- `RepeatedDecode::repeated` returns `Vec<Self>` from a sentinel-less stream.
+- `DrainFrames::drain_frames` returns `Vec<Self>` from a sentinel-framed stream.
+- `Vec<T>::decode_value` returns `Vec<T>` from an unframed stream.
 - Clean EOF = success; parse error = propagated error, not silent truncation.
-- Available on any type that implements `DecodeValue`, via a blanket impl.
 
 **Next:** [13 - Break conditions](./13-break-condition.md)

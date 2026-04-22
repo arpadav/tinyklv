@@ -2,8 +2,8 @@
 //!
 //! Covers both call-shapes of post-decode `latebind`:
 //!
-//! * consuming - `latebind = path`       → `Fn(T) -> U` - emits `.map(path)`
-//! * mutating  - `latebind = &mut path`  → `Fn(&mut T)` - emits
+//! * consuming - `latebind = path`       -> `Fn(T) -> U` - emits `.map(path)`
+//! * mutating  - `latebind = &mut path`  -> `Fn(&mut T)` - emits
 //!   `.map(|mut __v| { path(&mut __v); __v })` (T == U)
 //!
 //! Exercised on required fields, `Option<U>` fields (present/absent), and

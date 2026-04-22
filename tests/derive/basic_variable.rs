@@ -1,12 +1,8 @@
-// --------------------------------------------------
-// local
-// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
 use tinyklv::enc::binary as encb;
 use tinyklv::enc::string as encs;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -21,6 +17,7 @@ struct WithString {
         enc = *encb::be_u16,
     )]
     id: u16,
+
     #[klv(
         key = 0x02,
         varlen = true,

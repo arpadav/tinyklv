@@ -4,11 +4,13 @@
 // mods
 // --------------------------------------------------
 pub mod codecs;
+pub mod decoder;
 pub mod traits;
 // --------------------------------------------------
 // re-exports
 // --------------------------------------------------
 pub use codecs::*;
+pub use decoder::{DecodeError, Decoder};
 pub use tinyklv_impl::*;
 pub use traits::*;
 
@@ -28,10 +30,11 @@ pub mod prelude {
     // --------------------------------------------------
     // local
     // --------------------------------------------------
+    pub use crate::decoder::{DecodeError, Decoder};
     pub use crate::traits::{
-        BreakCondition as _, BreakConditionType, DecodeFrame as _, DecodeValue, EncodeAs,
-        EncodeFrame as _, EncodeValue, EncodedOutput as _, IntoKlv as _, RepeatedDecode as _,
-        SeekSentinel as _,
+        BreakCondition as _, BreakConditionType, DecodeFrame as _, DecodePartial, DecodeValue,
+        DrainFrames as _, EncodeAs, EncodeFrame as _, EncodeValue, EncodedOutput as _,
+        IntoKlv as _, Progress, SeekSentinel as _,
     };
     pub use tinyklv_impl::Klv;
     // --------------------------------------------------

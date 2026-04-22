@@ -42,7 +42,8 @@ pub(crate) fn gen_decode_impl(
 
     let items_default = gen_items_default(&input.data);
     let items_match = gen_items_match(&input.data, &stream, debug);
-    let items_set = gen_item_set(name, &input.data);
+    let items_set_progress = gen_item_set_progress(name, &input.data);
+    let known_keys_pattern = gen_known_keys_pattern(&input.data);
 
     let seek_if_sentinel = match sentinel {
         Some(sentinel) => {
@@ -118,32 +119,38 @@ pub(crate) fn gen_decode_impl(
     };
 
     // --------------------------------------------------
-    // ignore unknown keys, or return error if "deny unknown keys"
-    // is set by the user
+    // pre-match unknown-key gate. runs BEFORE `take(len)` so a truncated
+    // packet with an unknown key reports "unknown key" instead of
+    // "truncated"
     // --------------------------------------------------
-    let remaining_match = match deny_unknown_keys {
-        true => quote! {
-            _unknown_key => return Err(
-                ::tinyklv::__export::winnow::error::ContextError::new()
-                    .add_context(
-                        input,
-                        &checkpoint,
-                        ::tinyklv::__export::winnow::error::StrContext::Label("invalid key"),
-                    )
-                    .add_context(
-                        input,
-                        &checkpoint,
-                        ::tinyklv::__export::winnow::error::StrContext::Expected(
-                            ::tinyklv::__export::winnow::error::StrContextValue::Description(
-                                concat!("expected one of the keys defined on `", stringify!(#name), "`. To turn this off, remove `deny_unknown_keys`")
-                            )
-                        ),
-                    )
-            ),
-        },
-        false => quote! {
-            _ => (),
-        },
+    let pre_check_gate = if deny_unknown_keys {
+        quote! {
+            if !matches!(key, #known_keys_pattern) {
+                return ::tinyklv::traits::Progress::Malformed(
+                    ::tinyklv::__export::winnow::error::ContextError::new()
+                        .add_context(
+                            input,
+                            &checkpoint_inner,
+                            ::tinyklv::__export::winnow::error::StrContext::Label("invalid key"),
+                        )
+                        .add_context(
+                            input,
+                            &checkpoint_inner,
+                            ::tinyklv::__export::winnow::error::StrContext::Expected(
+                                ::tinyklv::__export::winnow::error::StrContextValue::Description(
+                                    concat!(
+                                        "expected one of the keys defined on `",
+                                        stringify!(#name),
+                                        "`. To turn this off, remove `deny_unknown_keys`",
+                                    )
+                                )
+                            ),
+                        )
+                );
+            }
+        }
+    } else {
+        quote! {}
     };
 
     let result = quote! {
@@ -151,69 +158,187 @@ pub(crate) fn gen_decode_impl(
 
         #[doc(hidden)]
         #[automatically_derived]
-        #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::DecodeValue`] for [`", stringify!(#stream), "`]")]
-        impl #impl_generics ::tinyklv::traits::DecodeValue<#stream> for #name #ty_generics #where_clause {
-            fn decode_value(input: &mut #stream) -> ::tinyklv::__export::winnow::Result<Self> {
+        #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::DecodePartial`] for [`", stringify!(#stream), "`]. Source of truth for the decode loop; [`tinyklv::prelude::DecodeValue`] delegates to this.")]
+        impl #impl_generics ::tinyklv::traits::DecodePartial<#stream> for #name #ty_generics #where_clause {
+            // --------------------------------------------------
+            // the generated `matches!(key, K1 | K2 | ...)` gate for
+            // `deny_unknown_keys` trips the `manual_range_patterns`
+            // lint when the user's keys happen to be consecutive
+            // (e.g. 0x01 | 0x02 | 0x03). suppress here so user code
+            // does not need a `#[allow]` on every derive target.
+            // --------------------------------------------------
+            #[allow(clippy::manual_range_patterns)]
+            fn decode_partial(
+                input: &mut #stream,
+            ) -> ::tinyklv::traits::Progress<Self> {
                 #items_default
+                // --------------------------------------------------
+                // `checkpoint` anchors the start of this call for
+                // error-context attribution in `items_set_progress`.
+                // `checkpoint_inner` is captured per iteration so we
+                // can rewind before returning `NeedMore` without
+                // re-computing the pre-key/len position.
+                // --------------------------------------------------
                 let checkpoint = input.checkpoint();
                 loop {
+                    // --------------------------------------------------
+                    // clean EOF check: no bytes left at all.
+                    //
+                    // this is the normal end-of-packet signal - we
+                    // break out of the loop and let `items_set_progress`
+                    // assemble whatever has accumulated. required
+                    // fields that never arrived become `Malformed`
+                    // there.
+                    // --------------------------------------------------
+                    if input.eof_offset() == 0 {
+                        break;
+                    }
                     let checkpoint_inner = input.checkpoint();
-                    match (
+                    // --------------------------------------------------
+                    // parse the next (key, len) pair using the user's
+                    // supplied decoders. these decoders are written
+                    // against `#stream` directly (typically `&[u8]`),
+                    // so they return `winnow::Result<_>` which is
+                    // `Result<_, ContextError>` - no `ErrMode` in the
+                    // picture.
+                    //
+                    // a failure here means some bytes existed but did
+                    // not form a valid key/len. that's malformed, not
+                    // truncated: we rewind to the iteration start so
+                    // the caller sees the bad prefix intact and can
+                    // choose how to advance past it (e.g. `Decoder`
+                    // drops one byte and retries).
+                    // --------------------------------------------------
+                    let (key, len) = match (
                         #key_decoder,
                         #len_decoder,
                     ).parse_next(input) {
-                        Ok((key, len)) => {
-                            match Self::break_condition(key, len) {
-                                ::tinyklv::BreakConditionType::Proceed => (),
-                                ::tinyklv::BreakConditionType::Skip => {
-                                    let Ok(_) = ::tinyklv::__export::winnow::token::take::<
-                                        usize,
-                                        #stream,
-                                        ::tinyklv::__export::winnow::error::ContextError,
-                                    >(len).parse_next(input) else {
-                                        break
-                                    };
-                                    continue;
-                                },
-                                ::tinyklv::BreakConditionType::Done => break,
-                                ::tinyklv::BreakConditionType::Abort(e) => return Err(e),
+                        Ok(kl) => kl,
+                        Err(e) => {
+                            input.reset(&checkpoint_inner);
+                            return ::tinyklv::traits::Progress::Malformed(
+                                e.add_context(
+                                    input,
+                                    &checkpoint_inner,
+                                    ::tinyklv::__export::winnow::error::StrContext::Label(
+                                        concat!(
+                                            "`",
+                                            stringify!(#name),
+                                            "` key/len parse failed",
+                                        ),
+                                    ),
+                                )
+                            );
+                        }
+                    };
+                    // --------------------------------------------------
+                    // break-condition dispatch. `Skip` needs its own
+                    // `NeedMore` pre-check for the same reason `take(len)`
+                    // below does: we want to rewind cleanly on a short
+                    // read, not error out mid-skip.
+                    // --------------------------------------------------
+                    match Self::break_condition(key, len) {
+                        ::tinyklv::BreakConditionType::Proceed => (),
+                        ::tinyklv::BreakConditionType::Skip => {
+                            if input.eof_offset() < len {
+                                let short = len - input.eof_offset();
+                                input.reset(&checkpoint_inner);
+                                return ::tinyklv::traits::Progress::NeedMore(
+                                    ::tinyklv::__export::winnow::stream::Needed::new(short)
+                                );
                             }
-                            #debug_key_val
-                            let mut subinput = match ::tinyklv::__export::winnow::token::take::<
+                            // pre-checked above; `take` cannot fail here
+                            let _ = ::tinyklv::__export::winnow::token::take::<
                                 usize,
                                 #stream,
                                 ::tinyklv::__export::winnow::error::ContextError,
-                            >(len).parse_next(input) {
-                                Ok(s) => s,
-                                // Short-read after a valid key/len: the declared length
-                                // overruns the remaining bytes, which means the packet is
-                                // truncated mid-value. Bail loudly so the caller sees where
-                                // the stream ended unexpectedly.
-                                Err(e) => {
-                                    return Err(e.add_context(
-                                        input,
-                                        &checkpoint_inner,
-                                        ::tinyklv::__export::winnow::error::StrContext::Label(
-                                            concat!(
-                                                "`",
-                                                stringify!(#name),
-                                                "` packet truncated: declared length exceeds remaining input",
-                                            ),
-                                        ),
-                                    ));
-                                }
-                            };
-                            match key {
-                                #items_match
-                                #remaining_match
-                            }
-                        },
-                        // likely no more input, return what we have
-                        // error is thrown away here, could debug print it?
-                        Err(_) => break,
+                            >(len).parse_next(input);
+                            continue;
+                        }
+                        ::tinyklv::BreakConditionType::Done => break,
+                        ::tinyklv::BreakConditionType::Abort(e) => {
+                            return ::tinyklv::traits::Progress::Malformed(e);
+                        }
+                    }
+                    #debug_key_val
+                    // --------------------------------------------------
+                    // unknown-key gate BEFORE `take(len)`. emitted only
+                    // when `deny_unknown_keys` is set on the container
+                    // --------------------------------------------------
+                    #pre_check_gate
+                    // --------------------------------------------------
+                    // `NeedMore` pre-check for the value take. if the
+                    // declared length overruns remaining input, rewind
+                    // the cursor to the start of this iteration so the
+                    // caller can retry after feeding more bytes, and
+                    // hand back a precise `Needed::Size(delta)`.
+                    // --------------------------------------------------
+                    if input.eof_offset() < len {
+                        let short = len - input.eof_offset();
+                        input.reset(&checkpoint_inner);
+                        return ::tinyklv::traits::Progress::NeedMore(
+                            ::tinyklv::__export::winnow::stream::Needed::new(short)
+                        );
+                    }
+                    // --------------------------------------------------
+                    // extract the value subinput. pre-checked above, so
+                    // the take cannot fail in practice; on the unlikely
+                    // parser-internal error we still surface it cleanly
+                    // as `Malformed` rather than panicking.
+                    // --------------------------------------------------
+                    let mut subinput: <#stream as ::tinyklv::__export::winnow::stream::Stream>::Slice = match ::tinyklv::__export::winnow::token::take::<
+                        usize,
+                        #stream,
+                        ::tinyklv::__export::winnow::error::ContextError,
+                    >(len).parse_next(input) {
+                        Ok(s) => s,
+                        Err(e) => return ::tinyklv::traits::Progress::Malformed(e),
+                    };
+                    // --------------------------------------------------
+                    // field dispatch. unknown keys (when allowed) hit
+                    // the `_ => ()` arm and are silently ignored after
+                    // their bytes have already been consumed by the
+                    // take above.
+                    // --------------------------------------------------
+                    match key {
+                        #items_match
+                        _ => (),
                     }
                 }
-                #items_set
+                #items_set_progress
+            }
+        }
+
+        #[doc(hidden)]
+        #[automatically_derived]
+        #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::DecodeValue`] for [`", stringify!(#stream), "`]. Thin delegating wrapper around [`tinyklv::prelude::DecodePartial`]: the streaming loop is the single source of truth, and the one-shot contract is expressed by mapping [`tinyklv::prelude::Progress`] to [`tinyklv::__export::winnow::Result`]. `NeedMore` becomes a truncation error here because the `decode_value` caller has already committed all its bytes.")]
+        impl #impl_generics ::tinyklv::traits::DecodeValue<#stream> for #name #ty_generics #where_clause {
+            fn decode_value(input: &mut #stream) -> ::tinyklv::__export::winnow::Result<Self> {
+                // --------------------------------------------------
+                // take the outer checkpoint for the truncation error
+                // context. both impls run on the SAME `#stream` type,
+                // so the checkpoint type matches everywhere and no
+                // cross-stream coercion is needed.
+                // --------------------------------------------------
+                let checkpoint = input.checkpoint();
+                match <Self as ::tinyklv::traits::DecodePartial<#stream>>::decode_partial(input) {
+                    ::tinyklv::traits::Progress::Ready(v) => Ok(v),
+                    ::tinyklv::traits::Progress::Malformed(e) => Err(e),
+                    ::tinyklv::traits::Progress::NeedMore(_) => Err(
+                        ::tinyklv::__export::winnow::error::ContextError::new()
+                            .add_context(
+                                input,
+                                &checkpoint,
+                                ::tinyklv::__export::winnow::error::StrContext::Label(
+                                    concat!(
+                                        "`",
+                                        stringify!(#name),
+                                        "` packet truncated: one-shot `decode_value` ran out of input",
+                                    ),
+                                ),
+                            )
+                    ),
+                }
             }
         }
     };
@@ -224,9 +349,9 @@ pub(crate) fn gen_decode_impl(
 ///
 /// Emission depends on the field's `default` attribute:
 ///
-/// * no attribute       → `let mut #name: Option<#ty> = None;`
-/// * bare `default`     → `let mut #name: Option<#ty> = Some(<#ty as ::core::default::Default>::default());`
-/// * `default = <expr>` → `let mut #name: Option<#ty> = Some(#expr);`
+/// * no attribute       -> `let mut #name: Option<#ty> = None;`
+/// * bare `default`     -> `let mut #name: Option<#ty> = Some(<#ty as ::core::default::Default>::default());`
+/// * `default = <expr>` -> `let mut #name: Option<#ty> = Some(#expr);`
 fn gen_items_default(fatts: &Vec<MainField>) -> proc_macro2::TokenStream {
     let field_initializations = fatts.iter().map(|field| {
         let MainField { name, ty, .. } = field;
@@ -334,11 +459,59 @@ fn gen_items_match(
     quote! { #(#arms)* }
 }
 
-/// Generates the tokens for setting the field variables upon returning of the output struct
+/// Generates the final-return tokens for the [`tinyklv::prelude::DecodePartial`]
+/// impl's `decode_partial` body.
 ///
-/// `Ok(#struct_name { #(#field_set_on_return)* })`
-fn gen_item_set(struct_name: &syn::Ident, fields: &Vec<MainField>) -> proc_macro2::TokenStream {
+/// For each field that has a `#[klv(..)]` attribute, one of two things happens:
+///
+/// * `Option<T>` field  -> moved into the struct literal unchanged
+/// * required `T` field -> a short-circuit guard is emitted above the struct
+///   literal which unwraps `Some(v)` into a plain `v` of type `T`, or returns
+///   [`tinyklv::prelude::Progress::Malformed`] with a rich context error if
+///   that field was never populated during the decode loop
+///
+/// Fields that do NOT carry a `#[klv(..)]` attribute are filled via
+/// [`Default::default`] inside the struct literal. If any such field's type
+/// does not implement [`Default`], the generated code will fail to compile -
+/// this is intentional, matching the behavior of the prior result-based
+/// `gen_item_set`.
+///
+/// Emission shape (sketch):
+///
+/// ```rust no_run ignore
+/// // one of these per required (non-Option) klv field:
+/// let #required_name = match #required_name {
+///     Some(v) => v,
+///     None => return ::tinyklv::traits::Progress::Malformed(/* rich ctx */),
+/// };
+/// // ...
+/// ::tinyklv::traits::Progress::Ready(#struct_name {
+///     // every klv field (required + optional) by name:
+///     #klv_field_name,
+///     // every non-klv field, defaulted:
+///     #non_klv_field: <#ty>::default(),
+/// })
+/// ```
+///
+/// Counterpart of the historical `gen_item_set` which emitted the Result
+/// flavor. [`tinyklv::prelude::DecodeValue`] now delegates to
+/// [`tinyklv::prelude::DecodePartial`] and maps `Progress -> Result` at the
+/// boundary, so only the `Progress` emission lives here.
+fn gen_item_set_progress(
+    struct_name: &syn::Ident,
+    fields: &Vec<MainField>,
+) -> proc_macro2::TokenStream {
+    // --------------------------------------------------
+    // symbol used to refer to the `default` keyword in error messages
+    // --------------------------------------------------
     let default_symbol = symbol::DEFAULT_VALUE.to_token_stream();
+    // --------------------------------------------------
+    // collect fields WITHOUT a `#[klv(..)]` attribute. they will be
+    // filled via `<#ty>::default()` in the struct literal below. if any
+    // such field's type lacks a `Default` impl, the generated code will
+    // fail to compile - intentional, forces the user to either annotate
+    // the field or implement `Default`
+    // --------------------------------------------------
     let elem_name_type_without_klv = fields
         .iter()
         .filter_map(|f| match &f.attrs {
@@ -346,54 +519,129 @@ fn gen_item_set(struct_name: &syn::Ident, fields: &Vec<MainField>) -> proc_macro
             None => Some((f.name.clone(), f.ty)),
         })
         .collect::<Vec<_>>();
-    let field_set_on_return = fields.iter().filter_map(|f| f.attrs.as_ref().map(|_| f)).map(|field| {
-        let MainField { name, ty, .. } = field;
-        match helpers::is_option(ty) {
-            false => quote! {
-                #name: #name.ok_or(::tinyklv::__export::winnow::error::ContextError::new().add_context(
-                        input,
-                        &checkpoint,
-                        ::tinyklv::__export::winnow::error::StrContext::Label(
-                            concat!(
-                                "`",
-                                stringify!(#struct_name),
-                                "::",
-                                stringify!(#name),
-                                "` is a required value missing from the packet. To prevent this, this field can be set as optional or an `",
-                                stringify!(#default_symbol),
-                                "`.",
+    // --------------------------------------------------
+    // for every required (non-Option) klv field, emit a guard statement
+    // that unwraps its accumulator:
+    //
+    //   let #name = match #name {
+    //       Some(v) => v,
+    //       None => return Progress::Malformed(/* rich error */),
+    //   };
+    //
+    // this relies on the accumulator being a `let mut #name: Option<T>`
+    // as emitted by `gen_items_default`. after this guard, `#name` is
+    // shadowed as a plain `T` so the struct literal can move it in
+    // --------------------------------------------------
+    let required_guards = fields
+        .iter()
+        .filter(|f| f.attrs.is_some())
+        .filter(|f| !helpers::is_option(f.ty))
+        .map(|field| {
+            let MainField { name, .. } = field;
+            quote! {
+                let #name = match #name {
+                    Some(v) => v,
+                    None => return ::tinyklv::traits::Progress::Malformed(
+                        ::tinyklv::__export::winnow::error::ContextError::new().add_context(
+                            input,
+                            &checkpoint,
+                            ::tinyklv::__export::winnow::error::StrContext::Label(
+                                concat!(
+                                    "`",
+                                    stringify!(#struct_name),
+                                    "::",
+                                    stringify!(#name),
+                                    "` is a required value missing from the packet. To prevent this, this field can be set as optional or an `",
+                                    stringify!(#default_symbol),
+                                    "`.",
+                                )
                             )
                         )
-                    )
-                )?,
-            },
-            true => quote! { #name, },
-        }
-    });
-    // --------------------------------------------------
-    // elements without the  `#[klv(..)]` attribute must
-    // implement [`default::Default`]
-    // --------------------------------------------------
-    // if the default does not exist, then this will not compile
-    // --------------------------------------------------
-    match !elem_name_type_without_klv.is_empty() {
-        false => quote! { Ok(#struct_name { #(#field_set_on_return)* }) },
-        true => {
-            let names: Vec<_> = elem_name_type_without_klv
-                .iter()
-                .map(|(name, _)| name.clone())
-                .collect();
-            let types: Vec<_> = elem_name_type_without_klv
-                .iter()
-                .map(|(_, ty)| helpers::type2fish(ty))
-                .collect();
-            let individual_defaults = quote! { #(#names: #types::default(),)* };
-            quote! {
-                Ok(#struct_name {
-                    #(#field_set_on_return)*
-                    #individual_defaults
-                })
+                    ),
+                };
             }
-        }
+        });
+    // --------------------------------------------------
+    // every klv-annotated field contributes its bare name to the struct
+    // literal. for required fields, the guard above shadowed the
+    // `Option<T>` with a plain `T` of the same ident, so a bare
+    // `#name,` shorthand works for both cases
+    // --------------------------------------------------
+    let klv_field_names = fields
+        .iter()
+        .filter(|f| f.attrs.is_some())
+        .map(|f| f.name.clone());
+    // --------------------------------------------------
+    // trailing `#name: <#ty>::default(),` block for non-klv fields.
+    // empty when there are none, so the struct literal stays tidy
+    // --------------------------------------------------
+    let default_fields = if elem_name_type_without_klv.is_empty() {
+        quote! {}
+    } else {
+        let names = elem_name_type_without_klv.iter().map(|(n, _)| n.clone());
+        let types = elem_name_type_without_klv
+            .iter()
+            .map(|(_, ty)| helpers::type2fish(ty));
+        quote! { #(#names: #types::default(),)* }
+    };
+    // --------------------------------------------------
+    // splice: guards first, then the ready-wrapped struct literal
+    // --------------------------------------------------
+    quote! {
+        #(#required_guards)*
+        ::tinyklv::traits::Progress::Ready(#struct_name {
+            #(#klv_field_names,)*
+            #default_fields
+        })
     }
+}
+
+/// Generates a `|`-joined pattern of every field's `#[klv(key = ..)]` literal,
+/// suitable for the RHS of a `matches!(key, #pattern)` expression.
+///
+/// Used by the pre-match unknown-key gate inside `decode_partial`: before
+/// `take(len)` consumes the value bytes, we check whether `key` is one the
+/// struct declared. If not, and the container carries `deny_unknown_keys`, we
+/// bail with [`tinyklv::prelude::Progress::Malformed`] immediately - no bytes
+/// wasted, and the error says "unknown key" rather than the downstream
+/// "packet truncated" the old ordering would have produced when the declared
+/// length overran remaining input.
+///
+/// # Degenerate case
+///
+/// A struct with zero klv-annotated fields has no known keys at all. We emit
+/// `_ if false` which is a never-match pattern, so `matches!(key, _ if false)`
+/// is always `false` and every key is treated as unknown. Under
+/// `deny_unknown_keys` this rejects everything, which is the only sensible
+/// behavior for a struct that declared no keys.
+///
+/// # Emission shape
+///
+/// ```text
+/// 0x01 | 0x02 | 0x03
+/// ```
+///
+/// or for enum-like keys:
+///
+/// ```text
+/// Key::Foo | Key::Bar
+/// ```
+fn gen_known_keys_pattern(fields: &Vec<MainField>) -> proc_macro2::TokenStream {
+    // --------------------------------------------------
+    // collect each klv field's declared key expression
+    // --------------------------------------------------
+    let keys: Vec<_> = fields
+        .iter()
+        .filter_map(|f| f.attrs.as_ref().map(|a| a.key.clone()))
+        .collect();
+    // --------------------------------------------------
+    // degenerate: no klv fields -> never-match pattern
+    // --------------------------------------------------
+    if keys.is_empty() {
+        return quote! { _ if false };
+    }
+    // --------------------------------------------------
+    // splice keys with `|` separators to form a pattern alternation
+    // --------------------------------------------------
+    quote! { #(#keys)|* }
 }

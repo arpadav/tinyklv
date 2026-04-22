@@ -83,8 +83,8 @@ Variable-width encodings from ITU-T X.690.
 | `ber_oid` | `ber_oid` | BER-OID (container `key(...)`) |
 
 Edge cases:
-- Empty input → decoder returns `Err`.
-- Single MSB-set byte with no terminator → decoder returns `Err`.
+- Empty input -> decoder returns `Err`.
+- Single MSB-set byte with no terminator -> decoder returns `Err`.
 - `[0x00]` decodes as `0`; `[0x81, 0x00]` decodes as `128`.
 
 ## Strings (`tinyklv::dec::string` / `tinyklv::enc::string`)

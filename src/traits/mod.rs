@@ -10,7 +10,7 @@
 //! | `SeekSentinel<S>`  | *(sentinel bytes)* | KLV framing    |
 //! | `DecodeFrame<S>`   | `EncodeFrame<O>`   | Full pipeline  |
 //! | `BreakCondition`   | *(none)*           | Loop control   |
-//! | `RepeatedDecode`   | *(none)*           | Batching       |
+//! | `DrainFrames`   | *(none)*           | Batching       |
 //!
 //! **Why decode has more traits**: Decode must seek through a byte stream,
 //! handle unknown/malformed keys, and recover from partial parses. Encode

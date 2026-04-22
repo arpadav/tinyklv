@@ -3,49 +3,30 @@
 //! Tests variable-length decoders - those with signature
 //! `fn(len: usize) -> impl Fn(&mut &[u8]) -> Result<T>` - across fixed/var
 //! mixing, Option wrapping, zero-length edge cases, and Vec<SensorReading>.
-//!
-//! Author: aav
-
-// --------------------------------------------------
-// local
-// --------------------------------------------------
 use super::types::*;
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
 use tinyklv::enc::binary as encb;
 use tinyklv::enc::string as encs;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
-
-// --------------------------------------------------
-// structs
-// --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    fallback_impls,
 )]
 struct MixedVarFixed {
-    #[klv(
-        key = 0x01,
-        dec = Coordinate::decode_value,
-        enc = Coordinate::encode_value,
-    )]
+    #[klv(key = 0x01)]
     coord: Coordinate,
-    #[klv(
-        key = 0x02,
-        dec = Color::decode_value,
-        enc = Color::encode_value,
-    )]
+
+    #[klv(key = 0x02)]
     color: Color,
-    #[klv(
-        key = 0x03,
-        dec = Timestamp::decode_value,
-        enc = Timestamp::encode_value,
-    )]
+
+    #[klv(key = 0x03)]
     timestamp: Timestamp,
+
     #[klv(
         key = 0x04,
         varlen = true,
@@ -54,8 +35,6 @@ struct MixedVarFixed {
     )]
     label: String,
 }
-
-// --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -79,8 +58,6 @@ struct OptVarString {
     label: Option<String>,
 }
 
-// --------------------------------------------------
-
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -102,10 +79,6 @@ struct VarSensorArray {
     )]
     readings: Vec<SensorReading>,
 }
-
-// --------------------------------------------------
-// tests
-// --------------------------------------------------
 
 #[test]
 /// Tests encode/decode roundtrip of a struct mixing fixed-length fields with a `varlen = true` UTF-8 label.
@@ -153,7 +126,7 @@ fn option_var_absent() {
 #[test]
 /// Tests that a `varlen` optional with length zero decodes to `Some("")` rather than `None`.
 fn option_var_zero_len() {
-    // key present but len=0 → Some("")
+    // key present but len=0 -> Some("")
     let data: &[u8] = &[
         0x01, 0x01, 0x01, // priority=Medium
         0x02, 0x00, // label key, zero length

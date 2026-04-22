@@ -418,7 +418,7 @@ fn default_bare_and_expr_mixed_absent() {
     assert_eq!(
         result.flavor,
         Flavor::Vanilla,
-        "bare `default` field → Default::default()"
+        "bare `default` field -> Default::default()"
     );
     assert_eq!(
         result.cal,
@@ -426,7 +426,7 @@ fn default_bare_and_expr_mixed_absent() {
             gain: 2.5,
             offset: -7
         },
-        "`default = <expr>` field → inlined expression"
+        "`default = <expr>` field -> inlined expression"
     );
 }
 

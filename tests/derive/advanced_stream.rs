@@ -3,77 +3,43 @@
 //! Covers unknown key skipping, corrupt length truncation, corrupt value
 //! recovery via `.ok()`, and multi-packet encode/extract loops using
 //! sentinel structs built from domain types in `types.rs`.
-//!
-//! Author: aav
-
-// --------------------------------------------------
-// local
-// --------------------------------------------------
 use super::types::*;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
-
-// --------------------------------------------------
-// SimplePosition - no sentinel, for corruption tests
-// --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    fallback_impls,
 )]
 struct SimplePosition {
-    #[klv(
-        key = 0x01,
-        dec = Coordinate::decode_value,
-        enc = Coordinate::encode_value,
-    )]
+    #[klv(key = 0x01)]
     coordinate: Coordinate,
-    #[klv(
-        key = 0x02,
-        dec = Color::decode_value,
-        enc = Color::encode_value,
-    )]
+
+    #[klv(key = 0x02)]
     color: Color,
 }
 
-// --------------------------------------------------
-// PartialReading - optional fields for corruption tests
-// --------------------------------------------------
-
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    fallback_impls,
 )]
 struct PartialReading {
-    #[klv(
-        key = 0x01,
-        dec = Color::decode_value,
-        enc = Color::encode_value,
-    )]
+    #[klv(key = 0x01)]
     color: Option<Color>,
-    #[klv(
-        key = 0x02,
-        dec = Velocity::decode_value,
-        enc = Velocity::encode_value,
-    )]
+
+    #[klv(key = 0x02)]
     velocity: Option<Velocity>,
-    #[klv(
-        key = 0x03,
-        dec = Timestamp::decode_value,
-        enc = Timestamp::encode_value,
-    )]
+
+    #[klv(key = 0x03)]
     timestamp: Option<Timestamp>,
 }
-
-// --------------------------------------------------
-// Waypoint - sentinel 0x5741, for auto-generate tests
-// --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -81,31 +47,18 @@ struct PartialReading {
     sentinel = b"\x57\x41",
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    fallback_impls,
 )]
 struct Waypoint {
-    #[klv(
-        key = 0x01,
-        dec = Coordinate::decode_value,
-        enc = Coordinate::encode_value,
-    )]
+    #[klv(key = 0x01)]
     coordinate: Coordinate,
-    #[klv(
-        key = 0x02,
-        dec = Timestamp::decode_value,
-        enc = Timestamp::encode_value,
-    )]
+
+    #[klv(key = 0x02)]
     timestamp: Timestamp,
-    #[klv(
-        key = 0x03,
-        dec = Priority::decode_value,
-        enc = Priority::encode_value,
-    )]
+
+    #[klv(key = 0x03)]
     priority: Priority,
 }
-
-// --------------------------------------------------
-// Alert - sentinel 0x414C, for auto-generate tests
-// --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -113,25 +66,15 @@ struct Waypoint {
     sentinel = b"\x41\x4C",
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    fallback_impls,
 )]
 struct Alert {
-    #[klv(
-        key = 0x01,
-        dec = Color::decode_value,
-        enc = Color::encode_value,
-    )]
+    #[klv(key = 0x01)]
     color: Color,
-    #[klv(
-        key = 0x02,
-        dec = StatusFlags::decode_value,
-        enc = StatusFlags::encode_value,
-    )]
+
+    #[klv(key = 0x02)]
     flags: StatusFlags,
 }
-
-// --------------------------------------------------
-// helpers
-// --------------------------------------------------
 
 /// Encode a `SimplePosition` manually so we can inject arbitrary bytes between
 /// its fields.  Layout: key(1) + len(1) + value for each TLV triple.
@@ -155,10 +98,6 @@ fn encode_timestamp_tlv(key: u8, ts: &Timestamp) -> Vec<u8> {
     out.extend(val);
     out
 }
-
-// --------------------------------------------------
-// tests
-// --------------------------------------------------
 
 #[test]
 /// Tests that unknown TLV triples inserted between valid keys are skipped without disrupting decode of known fields.
@@ -214,7 +153,7 @@ fn corrupt_length_fails_loudly() {
 /// Tests that a field-decoder failure on an optional (e.g. short velocity) leaves the field `None` and decoding continues for subsequent keys.
 fn corrupt_value_recoverable() {
     // Stream: valid color(0x01), key 0x02 len=6 but garbage bytes (Velocity
-    // decode fails → .ok()→None, loop continues), then valid timestamp(0x03).
+    // decode fails -> .ok()->None, loop continues), then valid timestamp(0x03).
     let color = Color::Alpha;
     let ts = Timestamp {
         seconds: 1_000_000,
@@ -224,7 +163,7 @@ fn corrupt_value_recoverable() {
     let mut stream: Vec<u8> = Vec::new();
     stream.extend(encode_color_tlv(0x01, &color));
     // key 0x02, len=5 (Velocity needs 6 bytes for 3×i16) - decode_velocity
-    // fails on the short subslice, .ok()→None, loop continues
+    // fails on the short subslice, .ok()->None, loop continues
     stream.extend_from_slice(&[0x02, 0x05, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
     stream.extend(encode_timestamp_tlv(0x03, &ts));
 
@@ -232,7 +171,7 @@ fn corrupt_value_recoverable() {
     assert_eq!(result.color, Some(color), "color should have decoded");
     assert_eq!(
         result.velocity, None,
-        "velocity decode failed → None kept via .ok()"
+        "velocity decode failed -> None kept via .ok()"
     );
     assert_eq!(
         result.timestamp,

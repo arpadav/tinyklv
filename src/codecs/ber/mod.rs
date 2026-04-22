@@ -198,7 +198,7 @@ impl<T: OfBerLength> crate::DecodeValue<&[u8]> for BerLength<T> {
     /// assert_eq!(BerLength::decode_value(&mut &value1[..]).unwrap(), BerLength::new(201_u64));
     /// assert_eq!(BerLength::decode_value(&mut &value2[..]).unwrap(), BerLength::new(123891829038102_u64));
     /// ```
-    fn decode_value(input: &mut &[u8]) -> winnow::Result<Self> {
+    fn decode_value(input: &mut &[u8]) -> crate::Result<Self> {
         let checkpoint = input.checkpoint();
         // --------------------------------------------------
         // err if no bytes
@@ -356,7 +356,7 @@ impl<T: OfBerOid> crate::DecodeValue<&[u8]> for BerOid<T> {
     /// Please use [`crate::codecs::ber::dec::ber_oid`] instead for
     /// all parsing needs. This struct is meant to be used as a development
     /// tool for parsing BER encoded values.
-    fn decode_value(input: &mut &[u8]) -> winnow::Result<Self> {
+    fn decode_value(input: &mut &[u8]) -> crate::Result<Self> {
         let checkpoint = input.checkpoint();
         // --------------------------------------------------
         // BER-OID grammar: `(msb-set)* (msb-unset)`
@@ -414,7 +414,7 @@ impl<T: OfBerOid> crate::DecodeValue<&[u8]> for BerOid<T> {
 
 #[inline(always)]
 /// Parses out a single byte, returning it as a 1-element slice
-fn take_one<'s>(input: &mut &'s [u8]) -> winnow::Result<&'s [u8]> {
+fn take_one<'s>(input: &mut &'s [u8]) -> crate::Result<&'s [u8]> {
     take(1usize).parse_next(input)
 }
 
@@ -426,7 +426,7 @@ fn msb_is_set(b: u8) -> bool {
 
 #[inline(always)]
 /// Parses out a specified number of bytes and combines them into a [`u128`] value
-fn parse_length_u128(input: &mut &[u8], num_bytes: usize) -> winnow::Result<u128> {
+fn parse_length_u128(input: &mut &[u8], num_bytes: usize) -> crate::Result<u128> {
     take(num_bytes)
         .map(|bytes: &[u8]| {
             bytes
