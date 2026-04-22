@@ -23,6 +23,7 @@
 //! * BER length codec scaling to small and large payloads on the same struct
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
+use tinyklv::dec::string as decs;   // string decoders
 use tinyklv::enc::binary as encb;   // binary encoders
 use tinyklv::enc::string as encs;   // string encoders
 use tinyklv::dec::ber as decber;    // BER decoders
@@ -30,7 +31,7 @@ use tinyklv::enc::ber as encber;    // BER encoders
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
-    stream = &[u8],                                              // default, shown for clarity
+    stream = &[u8],
     sentinel = b"SENSORLOG",
     key(dec = decber::ber_oid::<u64>, enc = encber::ber_oid),
     len(dec = decber::ber_length,     enc = encber::ber_length::<usize>),        // BER length scales with payload size
@@ -50,7 +51,7 @@ struct SensorLog {
     #[klv(
         key = 0x02_u64,
         varlen = true,
-        dec = decb::to_string_utf8,
+        dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8,
     )]
     annotation: String,

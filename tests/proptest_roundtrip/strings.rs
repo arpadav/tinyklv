@@ -6,7 +6,7 @@ proptest! {
 /// must always succeed and produce the original string
     fn utf8_strict_roundtrip(s in "\\PC{0,100}") {
         let encoded = tinyklv::codecs::string::enc::from_string_utf8(&s);
-        let decoded = tinyklv::dec::binary::to_string_utf8_strict(encoded.len())(&mut encoded.as_slice()).unwrap();
+        let decoded = tinyklv::dec::string::to_string_utf8_strict(encoded.len())(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(s, decoded);
     }
 
@@ -15,7 +15,7 @@ proptest! {
 /// original string (since the input is already valid UTF-8)
     fn utf8_lossy_roundtrip(s in "\\PC{0,100}") {
         let encoded = tinyklv::codecs::string::enc::from_string_utf8(&s);
-        let decoded = tinyklv::dec::binary::to_string_utf8(encoded.len())(&mut encoded.as_slice()).unwrap();
+        let decoded = tinyklv::dec::string::to_string_utf8(encoded.len())(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(s, decoded);
     }
 
@@ -32,7 +32,7 @@ proptest! {
         let s = "";
         let encoded = tinyklv::codecs::string::enc::from_string_utf8(s);
         prop_assert!(encoded.is_empty());
-        let decoded = tinyklv::dec::binary::to_string_utf8_strict(0)(&mut encoded.as_slice()).unwrap();
+        let decoded = tinyklv::dec::string::to_string_utf8_strict(0)(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(s, decoded.as_str());
     }
 }
@@ -45,7 +45,7 @@ proptest! {
         let encoded = tinyklv::codecs::string::enc::from_string_utf16_le(&s);
         // encoded.len() is always even for valid UTF-16
         prop_assert_eq!(encoded.len() % 2, 0);
-        let decoded = tinyklv::dec::binary::to_string_utf16_le(encoded.len())(&mut encoded.as_slice()).unwrap();
+        let decoded = tinyklv::dec::string::to_string_utf16_le(encoded.len())(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(s, decoded);
     }
 
@@ -63,7 +63,7 @@ proptest! {
         "must be odd length",
         |v| v.len() % 2 != 0,
     )) {
-        let result = tinyklv::dec::binary::to_string_utf16_le(data.len())(&mut data.as_slice());
+        let result = tinyklv::dec::string::to_string_utf16_le(data.len())(&mut data.as_slice());
         prop_assert!(result.is_err(), "odd-length input must be rejected by utf16_le decoder");
     }
 }
@@ -74,7 +74,7 @@ proptest! {
     fn utf16_be_ascii_roundtrip(s in "[\\x20-\\x7e]{0,50}") {
         let encoded = tinyklv::codecs::string::enc::from_string_utf16_be(&s);
         prop_assert_eq!(encoded.len() % 2, 0);
-        let decoded = tinyklv::dec::binary::to_string_utf16_be(encoded.len())(&mut encoded.as_slice()).unwrap();
+        let decoded = tinyklv::dec::string::to_string_utf16_be(encoded.len())(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(s, decoded);
     }
 
@@ -92,7 +92,7 @@ proptest! {
         "must be odd length",
         |v| v.len() % 2 != 0,
     )) {
-        let result = tinyklv::dec::binary::to_string_utf16_be(data.len())(&mut data.as_slice());
+        let result = tinyklv::dec::string::to_string_utf16_be(data.len())(&mut data.as_slice());
         prop_assert!(result.is_err(), "odd-length input must be rejected by utf16_be decoder");
     }
 }

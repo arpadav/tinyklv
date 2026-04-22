@@ -35,25 +35,18 @@ around winnow parser combinators.
 
 ## Runtime responsibilities
 
-- **Trait definitions** for `EncodeValue`, `EncodeFrame`, `DecodeValue`,
-  `DecodeFrame`, `SeekSentinel`, `RepeatedDecode`, `BreakCondition`,
-  `IntoKlv`.
-- **Built-in codecs** - binary, BER, string (`codecs/binary.rs`,
-  `codecs/ber/`, `codecs/string.rs`).
-- **Prelude** - anonymous re-exports so method-style calls resolve.
+- **Trait definitions** - see [Traits](../reference/traits.md).
+- **Built-in codecs** - binary, BER, string. See [Codecs](../reference/codecs.md).
+- **Prelude** - public re-exports so method-style calls resolve.
 
 ## Proc-macro responsibilities
 
 - **Attribute parsing** (`impl/src/ast/`).
 - **Field analysis** - match each field to a key, a pair of codec paths,
-  and any modifiers (`default`, `var`, `repeated`, `break`).
+  and any modifiers (`varlen`, `default`, `latebind`).
 - **Code generation** (`impl/src/expand/`) - emit the four trait impls
   inside an anonymous `const _: () = { ... }` block to keep generated
   statics out of the user's module scope.
-- **Generic preservation** - `syn::Generics::split_for_impl()` threads
-  the user's type parameters and where-clauses through every generated
-  impl verbatim.
-
 ## Stream abstraction
 
 The generated code is parameterised on the container's `stream = ...`

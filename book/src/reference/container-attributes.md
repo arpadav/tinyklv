@@ -10,9 +10,10 @@ and a minimal snippet showing the attribute in context.
 #[klv(stream = &[u8])]
 ```
 
-Names the input type that every codec in this container consumes. Defaults to
-`&[u8]` and is usually written only for clarity or when the stream type is
-something else (for example, `&str` for text-based KLV dialects).
+Names the input type that every codec in this container consumes. Any
+`winnow::Stream` type works. Defaults to `&[u8]` and is usually written
+only for clarity, or when the stream is something else (for example,
+`&str` for text-based KLV dialects, or a custom buffered-reader type).
 
 ## `sentinel = <elements of stream>`
 
@@ -37,8 +38,6 @@ Wires the codec pair used for the **key** byte(s) of every KLV triple in
 this container. Supply `dec` for decoding support and `enc` for encoding
 support; either half can be omitted to stay unimplemented.
 
-Encoder sigils on keys are **omitted** - not yet implemented, no current need.
-
 ## `len(dec = ..., enc = ...)`
 
 ```rust,ignore
@@ -48,22 +47,28 @@ Encoder sigils on keys are **omitted** - not yet implemented, no current need.
 The length value will *always* be `usize`. Therefore, `dec` must output a `usize`
 and `enc` must accept a `usize`. Use the `_as_usize` / `_from_usize` variants from `decb` / `encb`.
 
-Encoder sigils len are **omitted** - not yet implemented, no current need.
-
 ## `default(typ = T, dec = ..., enc = ..., varlen = <bool>)`
 
 ```rust,ignore
 #[klv(
-    default(typ = u8,  dec = decb::u8,     enc = encb::u8),
-    default(typ = u16, dec = decb::be_u16, enc = encb::be_u16),
-    default(typ = MyStruct, dec = MyStruct::decode_value, MyStruct::encode_value),
+    default(typ = u8,  dec = decb::u8,     enc = *encb::u8),
+    default(typ = u16, dec = decb::be_u16, enc = *encb::be_u16),
+    // `dec` and `enc` are independently optional: attach an encoder
+    // only, and decoders for `MyStruct` can still be wired per-field.
+    default(typ = MyStruct, enc = MyStruct::encode_value),
 )]
 ```
 
 Attaches a codec to a concrete field type. Every field of type `T` in the
 struct resolves its codec from this default unless it overrides locally.
-`varlen` is optional and selects the variable-length decoder shape; see
-[`varlen`](./field-attributes.md).
+Only `typ` is required; `dec`, `enc`, and `varlen` are independently
+optional, so a default can supply just a decoder, just an encoder, or
+both. `varlen` selects the variable-length decoder shape; see
+[`varlen`](./field-attributes.md#varlen--true).
+
+The `enc` path inside `default(...)` accepts the same `&` and `*` sigils
+as field-level `enc`. See
+[Sigil coercion & `EncodeAs`](./sigil-coercion.md).
 
 ## `debug`
 
@@ -102,16 +107,28 @@ are not emitted. Useful for decode-only consumers of a third-party spec.
 Symmetric counterpart: opts out of `DecodeValue` / `DecodeFrame`. Use when
 the struct is an emitter-only producer.
 
+## `fallback_impls`
+
+```rust,ignore
+#[klv(fallback_impls)]
+```
+
+Opt-in flag. Fields lacking explicit `enc`/`dec` and not matched by a
+container `default(..)` fall back to the `EncodeValue`/`DecodeValue`
+trait impls on the field type. Field-level codecs and container
+`default(..)` both take precedence over the fallback.
+
 ## Cross-reference
 
 | Attribute | First introduced in |
 |-----------|--------------------|
-| `stream` | [Frames & sentinels](../tutorial/03-frames-and-sentinels.md) |
-| `sentinel` | [Frames & sentinels](../tutorial/03-frames-and-sentinels.md) |
-| `key(dec, enc)` | [First packet](../tutorial/01-first-packet.md) |
-| `len(dec, enc)` | [First packet](../tutorial/01-first-packet.md) |
-| `default(typ, dec, enc, varlen)` | [Default codecs](../tutorial/04-default-codec.md) |
+| `stream` | [03 - Frames & sentinels](../tutorial/fundamentals/03-frames-and-sentinels.md) |
+| `sentinel` | [03 - Frames & sentinels](../tutorial/fundamentals/03-frames-and-sentinels.md) |
+| `key(dec, enc)` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
+| `len(dec, enc)` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
+| `default(typ, dec, enc, varlen)` | [04 - Default codecs](../tutorial/fundamentals/04-default-codec.md) |
 | `debug` | Reference only |
 | `deny_unknown_keys` | Reference only |
-| `allow_unimplemented_encode` | [First packet](../tutorial/01-first-packet.md) |
+| `allow_unimplemented_encode` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
 | `allow_unimplemented_decode` | Reference only |
+| `fallback_impls` | [10 - Optional fields & default](../tutorial/fundamentals/10-default-fallback.md) |

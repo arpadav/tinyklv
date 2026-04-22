@@ -15,11 +15,11 @@ use crate::ast::types::{SiguledXcoder, TypeType, XcoderType};
 ///
 /// # Syntax
 ///
-/// `default(typ = <type>, enc = <path>, dec = <path>, var = <bool>)`
+/// `default(typ = <type>, enc = <path>, dec = <path>, varlen = <bool>)`
 ///
 /// Both `enc` and `dec` are optional, however at least one must be provided.
 ///
-/// `var` defaults to `false`.
+/// `varlen` defaults to `false`.
 pub(crate) struct DefaultXcoder {
     /// The type associated with the encoder / decoder
     pub typ: Option<TypeType>,

@@ -275,7 +275,7 @@ Expected {s}.",
     #[error("\
         Duplicate `{s}` field.
 Currently only one key per field is supported.",
-        s = symbol::ENCODER,
+        s = symbol::KEY,
     )]
     DuplicateKeyInField,
 
@@ -304,6 +304,12 @@ Currently only one key per field is supported.",
     DuplicateLatebindInField,
 
     #[error("\
+        Duplicate `{s}` field.",
+        s = symbol::DEFAULT_VALUE,
+    )]
+    DuplicateDefaultInField,
+
+    #[error("\
         Missing required `{s}` field.",
         s = symbol::KEY,
     )]
@@ -316,12 +322,14 @@ If encoding is not required, use `#[{k}({aue})]` on the struct.
 
 Otherwise, you can:
     a. add a default encoder for all `{1}` types using `#[{k}({df}({t} = {1}, {e} = <..>)))]` on the struct
-    b. or add an encoder to `{0}` using `#[{k}({e} = <..>)]`.",
+    b. add an encoder to `{0}` using `#[{k}({e} = <..>)]`
+    c. set `#[{k}({fi})]` on the struct to fall back to try and use `tinyklv::EncodeValue` trait implementation",
         k = symbol::KLV_ATTR,
         df = symbol::DEFAULT,
         t = symbol::TYPE,
         e = symbol::ENCODER,
         aue = symbol::ALLOW_UNIMPLEMENTED_ENCODE,
+        fi = symbol::FALLBACK_IMPLS,
     )]
     UnimplementedEncode(String, String),
 
@@ -332,14 +340,25 @@ If decoding is not required, use `#[{k}({aud})]` on the struct.
 
 Otherwise, you can:
     a. add a default decoder for all `{1}` types using `#[{k}({df}({t} = {1}, {d} = <..>)))]` on the struct
-    b. or add a decoder to `{0}` using `#[{k}({d} = <..>)]`",
+    b. add a decoder to `{0}` using `#[{k}({d} = <..>)]`
+    c. set `#[{k}({fi})]` on the struct to fall back to try and use `tinyklv::DecodeValue` trait implementation",
         k = symbol::KLV_ATTR,
         df = symbol::DEFAULT,
         t = symbol::TYPE,
         d = symbol::DECODER,
         aud = symbol::ALLOW_UNIMPLEMENTED_DECODE,
+        fi = symbol::FALLBACK_IMPLS,
     )]
     UnimplementedDecode(String, String),
+
+    #[error("\
+Field `{0}: {1}` has `{v} = true` but no `{d} = ..` was set.
+The trait fallback (`<{1} as ::tinyklv::DecodeValue<..>>::decode_value`) has no length argument - \
+supply an explicit `{d}` or remove `{v}`.",
+        v = symbol::VARIABLE_LENGTH,
+        d = symbol::DECODER,
+    )]
+    VarlenFallbackRequiresExplicitDec(String, String),
 }
 /// [`Error`] implementation
 impl Error {

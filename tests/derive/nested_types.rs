@@ -1,8 +1,6 @@
-// --------------------------------------------------
-// local
-// --------------------------------------------------
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
 
 #[derive(Debug, PartialEq, Clone)]
 struct Point {
@@ -11,15 +9,15 @@ struct Point {
 }
 impl tinyklv::DecodeValue<&[u8]> for Point {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
-        let x = tinyklv::dec::binary::be_i16(input)?;
-        let y = tinyklv::dec::binary::be_i16(input)?;
+        let x = decb::be_i16(input)?;
+        let y = decb::be_i16(input)?;
         Ok(Point { x, y })
     }
 }
 impl tinyklv::EncodeValue<Vec<u8>> for Point {
     fn encode_value(&self) -> Vec<u8> {
-        let mut v = tinyklv::enc::binary::be_i16(self.x);
-        v.extend(tinyklv::enc::binary::be_i16(self.y));
+        let mut v = encb::be_i16(self.x);
+        v.extend(encb::be_i16(self.y));
         v
     }
 }
@@ -27,13 +25,19 @@ impl tinyklv::EncodeValue<Vec<u8>> for Point {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    fallback_impls,
 )]
 struct WithNestedType {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     id: u16,
-    #[klv(key = 0x02, dec = Point::decode_value, enc = Point::encode_value)]
+
+    #[klv(key = 0x02)]
     location: Point,
 }
 

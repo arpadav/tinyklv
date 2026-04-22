@@ -60,7 +60,7 @@ fn enc_status(s: &Status) -> Vec<u8> {
 
 #[derive(Klv, Debug, PartialEq, Eq)]
 #[klv(
-    stream = &[u8],                                              // default, shown for clarity
+    stream = &[u8],
     sentinel = b"DEVICE",
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
@@ -110,7 +110,7 @@ fn apply_global_z(c: &mut Coordinate) {
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
-    stream = &[u8],                                              // default, shown for clarity
+    stream = &[u8],
     sentinel = b"TELEMETRY",
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),

@@ -4,55 +4,77 @@
 //! the recommended pattern: define each packet type with `#[derive(Klv)]` and
 //! a unique sentinel, then write a thin enum wrapper that peeks the sentinel
 //! bytes and routes to the appropriate `::extract()` call.
-//!
-//! Author: aav
-
-// --------------------------------------------------
-// local
-// --------------------------------------------------
 use super::types::*;
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
-
-// --------------------------------------------------
-// NavPacket - sentinel 0xBEEF
-// --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
     sentinel = b"\xBE\xEF",
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct NavPacket {
-    #[klv(key = 0x01, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Coordinate::decode_value,
+        enc = Coordinate::encode_value,
+    )]
     position: Coordinate,
-    #[klv(key = 0x02, dec = Velocity::decode_value,   enc = Velocity::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Velocity::decode_value,
+        enc = Velocity::encode_value,
+    )]
     velocity: Velocity,
 }
-
-// --------------------------------------------------
-// WeatherPacket - sentinel 0xCAFE
-// --------------------------------------------------
+impl Default for NavPacket {
+    fn default() -> NavPacket {
+        NavPacket {
+            position: Coordinate {
+                lat: 37.7749,
+                lon: -122.4194,
+            },
+            velocity: Velocity {
+                dx: 10,
+                dy: -5,
+                dz: 0,
+            },
+        }
+    }
+}
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
     sentinel = b"\xCA\xFE",
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct WeatherPacket {
-    #[klv(key = 0x01, dec = Priority::decode_value, enc = Priority::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Priority::decode_value,
+        enc = Priority::encode_value,
+    )]
     priority: Priority,
-    #[klv(key = 0x02, dec = Color::decode_value,    enc = Color::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     sky_color: Color,
 }
-
-// --------------------------------------------------
-// Enum wrapper + manual dispatch
-// --------------------------------------------------
+impl Default for WeatherPacket {
+    fn default() -> WeatherPacket {
+        WeatherPacket {
+            priority: Priority::High,
+            sky_color: Color::Blue,
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 enum Packet {
@@ -63,7 +85,7 @@ enum Packet {
 /// Try to dispatch one packet from the stream.
 ///
 /// Peeks the first two bytes to identify the sentinel, then calls the
-/// appropriate `::extract()`. Returns `None` if the sentinel is unrecognised
+/// appropriate `::decode_frame()`. Returns `None` if the sentinel is unrecognised
 /// or if the stream is empty. On an unrecognised sentinel the byte is
 /// advanced past so that callers can keep scanning.
 fn dispatch_one(input: &mut &[u8]) -> Option<Packet> {
@@ -83,40 +105,11 @@ fn dispatch_one(input: &mut &[u8]) -> Option<Packet> {
     }
 }
 
-// --------------------------------------------------
-// helpers
-// --------------------------------------------------
-
-fn make_nav() -> NavPacket {
-    NavPacket {
-        position: Coordinate {
-            lat: 37.7749,
-            lon: -122.4194,
-        },
-        velocity: Velocity {
-            dx: 10,
-            dy: -5,
-            dz: 0,
-        },
-    }
-}
-
-fn make_weather() -> WeatherPacket {
-    WeatherPacket {
-        priority: Priority::High,
-        sky_color: Color::Blue,
-    }
-}
-
-// --------------------------------------------------
-// tests
-// --------------------------------------------------
-
 #[test]
 /// Tests that a concatenated Nav+Weather stream routes each frame to its matching `Packet` variant via sentinel peeking.
 fn dispatch_by_sentinel() {
-    let nav = make_nav();
-    let weather = make_weather();
+    let nav = NavPacket::default();
+    let weather = WeatherPacket::default();
 
     let mut stream: Vec<u8> = nav.encode_frame();
     stream.extend(weather.encode_frame());
@@ -139,8 +132,8 @@ fn dispatch_by_sentinel() {
 #[test]
 /// Tests that interleaved packet types (Nav, Weather, Nav) are dispatched in order with variants preserved.
 fn dispatch_nav_then_weather_then_nav() {
-    let n1 = make_nav();
-    let w1 = make_weather();
+    let n1 = NavPacket::default();
+    let w1 = WeatherPacket::default();
     let n2 = NavPacket {
         position: Coordinate {
             lat: 51.5074,
@@ -175,7 +168,7 @@ fn dispatch_nav_then_weather_then_nav() {
 /// Tests that garbage leading bytes are skipped one at a time until a recognised sentinel is found and decoded.
 fn dispatch_unknown_sentinel_skips_byte() {
     // Stream: 2 garbage bytes, then a valid NavPacket
-    let nav = make_nav();
+    let nav = NavPacket::default();
     let mut stream: Vec<u8> = vec![0xDE, 0xAD];
     stream.extend(nav.encode_frame());
 

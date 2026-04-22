@@ -31,30 +31,42 @@ cargo add tinyklv
 ```rust
 use tinyklv::Klv;
 use tinyklv::prelude::*;
-use tinyklv::dec::binary as dec;
-use tinyklv::enc::binary as enc;
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
     sentinel = b"\x47\x48",
-    key(dec = dec::be_u8, enc = enc::u8),
-    len(dec = dec::be_u8_as_usize,
-        enc = enc::u8_from_usize),
+    key(dec = decb::be_u8, enc = encb::u8),
+    len(dec = decb::be_u8_as_usize,
+        enc = encb::u8_from_usize),
 )]
 struct HeartbeatPacket {
-    #[klv(key = 0x01, dec = dec::be_u8,  enc = &enc::u8)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u8,
+        enc = *encb::u8,
+    )]
     sequence: u8,
-    #[klv(key = 0x02, dec = dec::be_u16, enc = &enc::be_u16)]
+    
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     temperature_centideg: u16,
 }
 
 fn main() {
-    let original = HeartbeatPacket { sequence: 42, temperature_centideg: 2350 };
-
+    let original = HeartbeatPacket {
+        sequence: 42,
+        temperature_centideg: 2350,
+    };
     let frame = original.encode_frame();
-    let decoded = HeartbeatPacket::decode_frame(&mut frame.as_slice()).unwrap();
-
+    let decoded = HeartbeatPacket::decode_frame(
+        &mut frame.as_slice()
+    ).unwrap();
     assert_eq!(decoded, original);
 }
 ```
@@ -72,45 +84,9 @@ Full annotated version: [`examples/01_hello_world.rs`](examples/01_hello_world.r
 - `Option<T>` fields, per-field and per-container defaults, `deny_unknown_keys`
 - Stream type is user-selected (`&[u8]` is the default but not required) - any `winnow::Stream` works
 
-## Examples
-
-Fifteen runnable examples live under [`examples/`](examples/). Run any with
-`cargo run --example <name>`.
-
-### Beginner
-
-| # | File | What it shows |
-|---|------|---------------|
-| 01 | [`01_hello_world.rs`](examples/01_hello_world.rs) | Minimal two-field struct, full roundtrip |
-| 02 | [`02_custom_key_types.rs`](examples/02_custom_key_types.rs) | Swap the key codec: `u8` vs BE-`u16` vs LE-`u16` |
-| 03 | [`03_strings_and_types.rs`](examples/03_strings_and_types.rs) | UTF-8 strings alongside fixed-width integers |
-| 04 | [`04_optional_fields.rs`](examples/04_optional_fields.rs) | `Option<T>` fields and missing-key handling |
-| 05 | [`05_basic_roundtrip.rs`](examples/05_basic_roundtrip.rs) | BER-keyed, `encode_value` vs `encode_frame` |
-
-### Intermediate
-
-| # | File | What it shows |
-|---|------|---------------|
-| 06 | [`06_custom_encoder_decoder.rs`](examples/06_custom_encoder_decoder.rs) | User-written scaled-`f64` codec |
-| 07 | [`07_sentinel_seeking.rs`](examples/07_sentinel_seeking.rs) | Recover from prefix noise using `seek_sentinel` |
-| 08 | [`08_nested_packets.rs`](examples/08_nested_packets.rs) | Nested `Klv` structs as fields |
-| 09 | [`09_ber_keyed.rs`](examples/09_ber_keyed.rs) | Multi-byte BER-OID keys |
-| 10 | [`10_defaults_and_init.rs`](examples/10_defaults_and_init.rs) | Container-level and field-level defaults |
-
-### Advanced
-
-| # | File | What it shows |
-|---|------|---------------|
-| 11 | [`11_repeated_extraction.rs`](examples/11_repeated_extraction.rs) | Loop `decode_frame` over N concatenated frames |
-| 12 | [`12_enum_dispatch_stream.rs`](examples/12_enum_dispatch_stream.rs) | Peek-dispatch heterogeneous packets into an enum |
-| 13 | [`13_variable_length_fields.rs`](examples/13_variable_length_fields.rs) | Variable-width BER lengths |
-| 14 | [`14_break_condition_custom.rs`](examples/14_break_condition_custom.rs) | Manual `DecodeValue` with skip/break logic |
-| 15 | [`15_tokio_stream_e2e.rs`](examples/15_tokio_stream_e2e.rs) | End-to-end async pipeline with `tokio::mpsc` |
-
 ## Traits at a Glance
 
-Everything ships through `tinyklv::prelude::*` (re-exports are anonymized via
-`as _`, so the import does not pollute your namespace).
+Everything ships through `tinyklv::prelude::*`.
 
 | Trait | Purpose | Typical call-site |
 |-------|---------|-------------------|
@@ -118,9 +94,9 @@ Everything ships through `tinyklv::prelude::*` (re-exports are anonymized via
 | `EncodeFrame<O>` | Encode sentinel + length + value body | `val.encode_frame()` |
 | `DecodeValue<S>` | Decode value body from an unframed slice | `T::decode_value(&mut s)` |
 | `DecodeFrame<S>` | Seek sentinel, read length, subslice, then decode | `T::decode_frame(&mut s)` |
-| `SeekSentinel<S>` | Advance the stream to the next sentinel occurrence | `T::seek_sentinel(&mut s)` |
-| `RepeatedDecode<S>` | Decode a loop of N frames into a `Vec<T>` | internal to `repeated` fields |
-| `BreakCondition<S>` | User-supplied stop predicate for repeated decode | advanced use |
+| `SeekSentinel<S>` | Seek past next sentinel+length, return the body sub-slice | `T::seek_sentinel(&mut s)` |
+| `RepeatedDecode<S>` | Decode a repeating stream of `T` into a `Vec<T>` via `T::repeated(&mut s)` | blanket impl on `DecodeValue` |
+| `BreakCondition<S>` | User-supplied per-`(key, len)` stop predicate consulted inside derive-generated `decode_value` loops | advanced use |
 | `IntoKlv<O>` | Marker for types emitted into the KLV output alphabet | codec authors |
 
 ## Attributes Cheat Sheet
@@ -133,7 +109,7 @@ Everything ships through `tinyklv::prelude::*` (re-exports are anonymized via
 | `sentinel = b"\xNN..."` | Magic bytes marking frame start - enables `decode_frame` / `SeekSentinel` |
 | `key(dec = path, enc = path)` | Codec pair for the key field |
 | `len(dec = path, enc = path)` | Codec pair for the length field (must produce `usize` on decode) |
-| `default(typ = T, dec = path, enc = path)` | Default codec pair for every field of type `T` |
+| `default(typ = T, dec = path, enc = path, varlen = <bool>)` | Default codec pair for every field of type `T` (`dec`, `enc`, `varlen` all optional) |
 | `debug` | Emit the generated impl blocks at compile time |
 | `deny_unknown_keys` | Error on unrecognized keys instead of skipping |
 | `allow_unimplemented_encode` | Skip generating `EncodeValue`/`EncodeFrame` |
@@ -147,10 +123,10 @@ Everything ships through `tinyklv::prelude::*` (re-exports are anonymized via
 | `dec = path` | Decoder function `fn(&mut S) -> winnow::Result<T>` |
 | `enc = path` | Encoder taking `&T` → emits `enc(&self.field)` (deref coercion covers `&String → &str`, `&Vec<u8> → &[u8]`) |
 | `enc = &path` | `EncodeAs`-dispatched: primitives pass by value (Copy), `String → &str`, `Vec<T> → &[T]`, `Box/Rc/Arc<T> → &T`. No clone, no alloc. |
-| `varlen` | Field has variable-width value (length prefix is authoritative) |
-| `default = expr` | Value used if the key is absent on decode |
-| `sentinel = b"..."` | Per-field sentinel for nested framed fields |
-| `stream = &[u8]` | Per-field stream override |
+| `enc = *path` | Encoder taking `T` by value → emits `enc(self.field)` (for `Copy` primitives) |
+| `varlen = <bool>` | Field has variable-width value (length prefix is authoritative) |
+| `default` | Fallback via `Default::default()` when the key is absent on decode |
+| `default = <expr>` | Fallback expression when the key is absent on decode |
 | `latebind` | Post-decode conversion or mutation. `latebind = path` consumes (`Fn(T) -> U`); `latebind = &mut path` mutates in place (`Fn(&mut T)`). |
 
 ## Generic Structs

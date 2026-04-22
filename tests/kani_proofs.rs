@@ -123,23 +123,23 @@ mod proofs {
         assert!(!encoded.is_empty());
     }
 
-    /// Proof: `u8` encode/`be_u8` decode roundtrip holds for every u8.
+    /// Proof: `u8` encode/`u8` decode roundtrip holds for every u8.
     #[kani::proof]
     #[kani::unwind(4)]
-    fn be_u8_roundtrip() {
+    fn u8_roundtrip() {
         let val: u8 = kani::any();
         let encoded = tinyklv::enc::binary::u8(val);
-        let decoded = tinyklv::dec::binary::be_u8(&mut encoded.as_slice()).unwrap();
+        let decoded = tinyklv::dec::binary::u8(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded);
     }
 
-    /// Proof: `i8` encode/`be_i8` decode roundtrip holds for every i8.
+    /// Proof: `i8` encode/`i8` decode roundtrip holds for every i8.
     #[kani::proof]
     #[kani::unwind(4)]
-    fn be_i8_roundtrip() {
+    fn i8_roundtrip() {
         let val: i8 = kani::any();
         let encoded = tinyklv::enc::binary::i8(val);
-        let decoded = tinyklv::dec::binary::be_i8(&mut encoded.as_slice()).unwrap();
+        let decoded = tinyklv::dec::binary::i8(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded);
     }
 

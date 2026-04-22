@@ -11,38 +11,40 @@
 //! `decode_frame` / `encode_frame` confirms the generated closure shapes
 //! type-check and produce identical bytes
 use super::types::{Color, Priority};
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
+use tinyklv::prelude::*;
+
 use std::rc::Rc;
 use std::sync::Arc;
-use tinyklv::prelude::*;
-use tinyklv::Klv;
 
 /// `None` sigil target: takes `&T`
 fn enc_u8_ref(v: &u8) -> Vec<u8> {
-    tinyklv::enc::binary::u8(*v)
+    encb::u8(*v)
 }
 
 /// `&` sigil target for a primitive: takes owned `u16` (Copy, zero-cost)
 fn enc_u16_owned(v: u16) -> Vec<u8> {
-    tinyklv::enc::binary::be_u16(v)
+    encb::be_u16(v)
 }
 
 /// `&` sigil target for `String` via `EncodeAs` → `&str`
 fn enc_str_ref(s: &str) -> Vec<u8> {
-    let mut out = tinyklv::enc::binary::u8_from_usize(s.len());
+    let mut out = encb::u8_from_usize(s.len());
     out.extend_from_slice(s.as_bytes());
     out
 }
 
 /// `&` sigil target for `Vec<u8>` via `EncodeAs` → `&[u8]`
 fn enc_bytes_ref(b: &[u8]) -> Vec<u8> {
-    let mut out = tinyklv::enc::binary::u8_from_usize(b.len());
+    let mut out = encb::u8_from_usize(b.len());
     out.extend_from_slice(b);
     out
 }
 
 /// `None` sigil decode counterpart for length-prefixed strings
 fn dec_u8_len_string(input: &mut &[u8]) -> tinyklv::Result<String> {
-    let len = tinyklv::dec::binary::be_u8(input)? as usize;
+    let len = decb::u8(input)? as usize;
     let (head, rest) = input.split_at(len);
     *input = rest;
     Ok(String::from_utf8_lossy(head).into_owned())
@@ -50,7 +52,7 @@ fn dec_u8_len_string(input: &mut &[u8]) -> tinyklv::Result<String> {
 
 /// `None` sigil decode counterpart for length-prefixed bytes
 fn dec_u8_len_bytes(input: &mut &[u8]) -> tinyklv::Result<Vec<u8>> {
-    let len = tinyklv::dec::binary::be_u8(input)? as usize;
+    let len = decb::u8(input)? as usize;
     let (head, rest) = input.split_at(len);
     *input = rest;
     Ok(head.to_vec())
@@ -63,24 +65,48 @@ fn dec_u8_len_bytes(input: &mut &[u8]) -> tinyklv::Result<Vec<u8>> {
 #[klv(
     sentinel = b"\x00\x00\x00\x01",
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct AllSigils {
     // None sigil: encoder takes &u8
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = enc_u8_ref)]
+    #[klv(
+        key = 0x01,
+        dec = decb::u8,
+        enc = enc_u8_ref,
+    )]
     count: u8,
+
     // None sigil: encoder takes &Color (method form)
-    #[klv(key = 0x02, dec = Color::decode_value, enc = Color::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Color,
+
     // & sigil: primitive by value through EncodeAs
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u16, enc = *enc_u16_owned)]
+    #[klv(
+        key = 0x03,
+        dec = decb::be_u16,
+        enc = *enc_u16_owned,
+    )]
     id: u16,
+
     // & sigil: String → &str through EncodeAs
-    #[klv(key = 0x04, dec = dec_u8_len_string, enc = &enc_str_ref)]
+    #[klv(
+        key = 0x04,
+        dec = dec_u8_len_string,
+        enc = &enc_str_ref,
+    )]
     label: String,
+
     // & sigil: Vec<u8> → &[u8] through EncodeAs
-    #[klv(key = 0x05, dec = dec_u8_len_bytes, enc = &enc_bytes_ref)]
+    #[klv(
+        key = 0x05,
+        dec = dec_u8_len_bytes,
+        enc = &enc_bytes_ref,
+    )]
     blob: Vec<u8>,
 }
 
@@ -107,19 +133,43 @@ fn all_sigils_roundtrip() {
 #[klv(
     sentinel = b"\x00\x00\x00\x02",
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct AllSigilsOptional {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = enc_u8_ref)]
+    #[klv(
+        key = 0x01,
+        dec = decb::u8,
+        enc = enc_u8_ref,
+    )]
     count: Option<u8>,
-    #[klv(key = 0x02, dec = Color::decode_value, enc = Color::encode_value)]
+
+    #[klv(
+        key = 0x02,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Option<Color>,
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u16, enc = *enc_u16_owned)]
+
+    #[klv(
+        key = 0x03,
+        dec = decb::be_u16,
+        enc = *enc_u16_owned,
+    )]
     id: Option<u16>,
-    #[klv(key = 0x04, dec = dec_u8_len_string, enc = &enc_str_ref)]
+
+    #[klv(
+        key = 0x04,
+        dec = dec_u8_len_string,
+        enc = &enc_str_ref,
+    )]
     label: Option<String>,
-    #[klv(key = 0x05, dec = dec_u8_len_bytes, enc = &enc_bytes_ref)]
+
+    #[klv(
+        key = 0x05,
+        dec = dec_u8_len_bytes,
+        enc = &enc_bytes_ref,
+    )]
     blob: Option<Vec<u8>>,
 }
 
@@ -175,25 +225,25 @@ fn all_sigils_optional_partial() {
 // `&` sigil on smart-pointer wrappers - EncodeAs dispatches to `&T`
 // --------------------------------------------------
 fn enc_inner_u32_ref(v: &u32) -> Vec<u8> {
-    tinyklv::enc::binary::be_u32(*v)
+    encb::be_u32(*v)
 }
 
 fn enc_inner_str_ref(s: &str) -> Vec<u8> {
-    let mut out = tinyklv::enc::binary::u8_from_usize(s.len());
+    let mut out = encb::u8_from_usize(s.len());
     out.extend_from_slice(s.as_bytes());
     out
 }
 
 fn dec_box_u32(input: &mut &[u8]) -> tinyklv::Result<Box<u32>> {
-    tinyklv::dec::binary::be_u32(input).map(Box::new)
+    decb::be_u32(input).map(Box::new)
 }
 
 fn dec_rc_u32(input: &mut &[u8]) -> tinyklv::Result<Rc<u32>> {
-    tinyklv::dec::binary::be_u32(input).map(Rc::new)
+    decb::be_u32(input).map(Rc::new)
 }
 
 fn dec_arc_str(input: &mut &[u8]) -> tinyklv::Result<Arc<str>> {
-    let len = tinyklv::dec::binary::be_u8(input)? as usize;
+    let len = decb::u8(input)? as usize;
     let (head, rest) = input.split_at(len);
     *input = rest;
     Ok(Arc::from(String::from_utf8_lossy(head).as_ref()))
@@ -203,15 +253,27 @@ fn dec_arc_str(input: &mut &[u8]) -> tinyklv::Result<Arc<str>> {
 #[klv(
     sentinel = b"\x00\x00\x00\x03",
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct SmartPointerSigils {
-    #[klv(key = 0x01, dec = dec_box_u32, enc = &enc_inner_u32_ref)]
+    #[klv(
+        key = 0x01,
+        dec = dec_box_u32,
+        enc = &enc_inner_u32_ref,
+    )]
     boxed: Box<u32>,
-    #[klv(key = 0x02, dec = dec_rc_u32, enc = &enc_inner_u32_ref)]
+    #[klv(
+        key = 0x02,
+        dec = dec_rc_u32,
+        enc = &enc_inner_u32_ref,
+    )]
     counted: Rc<u32>,
-    #[klv(key = 0x03, dec = dec_arc_str, enc = &enc_inner_str_ref)]
+    #[klv(
+        key = 0x03,
+        dec = dec_arc_str,
+        enc = &enc_inner_str_ref,
+    )]
     shared: Arc<str>,
 }
 
@@ -237,19 +299,43 @@ fn smart_pointer_sigils_roundtrip() {
 #[klv(
     sentinel = b"\x00\x00\x00\x04",
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct SigilMixture {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = enc_u8_ref)]
+    #[klv(
+        key = 0x01,
+        dec = decb::u8,
+        enc = enc_u8_ref,
+    )]
     a: u8,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u8, enc = *tinyklv::enc::binary::u8)]
+
+    #[klv(
+        key = 0x02,
+        dec = decb::u8,
+        enc = *encb::u8,
+    )]
     b: u8,
-    #[klv(key = 0x03, dec = Priority::decode_value, enc = Priority::encode_value)]
+
+    #[klv(
+        key = 0x03,
+        dec = Priority::decode_value,
+        enc = Priority::encode_value,
+    )]
     pri: Priority,
-    #[klv(key = 0x04, dec = Color::decode_value, enc = Color::encode_value)]
+
+    #[klv(
+        key = 0x04,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     col: Color,
-    #[klv(key = 0x05, dec = dec_u8_len_string, enc = &enc_str_ref)]
+
+    #[klv(
+        key = 0x05,
+        dec = dec_u8_len_string,
+        enc = &enc_str_ref,
+    )]
     label: String,
 }
 

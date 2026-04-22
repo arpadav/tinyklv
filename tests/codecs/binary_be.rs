@@ -1,36 +1,36 @@
 #[test]
-/// Tests decoding a known single-byte `be_u8` value (`0x42`).
-fn be_u8_known_value() {
+/// Tests decoding a known single-byte `u8` value (`0x42`).
+fn u8_known_value() {
     let mut input: &[u8] = &[0x42];
-    assert_eq!(tinyklv::dec::binary::be_u8(&mut input), Ok(0x42_u8));
+    assert_eq!(tinyklv::dec::binary::u8(&mut input), Ok(0x42_u8));
 }
 
 #[test]
-/// Tests decoding `be_u8` on input `0x00` returns `0`.
-fn be_u8_zero() {
+/// Tests decoding `u8` on input `0x00` returns `0`.
+fn u8_zero() {
     let mut input: &[u8] = &[0x00];
-    assert_eq!(tinyklv::dec::binary::be_u8(&mut input), Ok(0_u8));
+    assert_eq!(tinyklv::dec::binary::u8(&mut input), Ok(0_u8));
 }
 
 #[test]
-/// Tests decoding `be_u8` on input `0xFF` returns `u8::MAX`.
-fn be_u8_max() {
+/// Tests decoding `u8` on input `0xFF` returns `u8::MAX`.
+fn u8_max() {
     let mut input: &[u8] = &[0xFF];
-    assert_eq!(tinyklv::dec::binary::be_u8(&mut input), Ok(u8::MAX));
+    assert_eq!(tinyklv::dec::binary::u8(&mut input), Ok(u8::MAX));
 }
 
 #[test]
 /// Tests `u8` encoder emits a single byte matching the input value.
-fn be_u8_encode() {
+fn u8_encode() {
     assert_eq!(tinyklv::enc::binary::u8(0x42_u8), vec![0x42]);
 }
 
 #[test]
 /// Tests `u8` encode/decode roundtrip across boundary values.
-fn be_u8_roundtrip() {
+fn u8_roundtrip() {
     for val in [0_u8, 1, 127, 128, 255] {
         let encoded = tinyklv::enc::binary::u8(val);
-        let decoded = tinyklv::dec::binary::be_u8(&mut encoded.as_slice()).unwrap();
+        let decoded = tinyklv::dec::binary::u8(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded, "roundtrip failed for u8 value {val}");
     }
 }
@@ -150,18 +150,18 @@ fn be_u128_roundtrip() {
 }
 
 #[test]
-/// Tests `be_i8` decodes `0xFF` as `-1` (two's complement).
-fn be_i8_known_value() {
+/// Tests `i8` decodes `0xFF` as `-1` (two's complement).
+fn i8_known_value() {
     let mut input: &[u8] = &[0xFF];
-    assert_eq!(tinyklv::dec::binary::be_i8(&mut input), Ok(-1_i8));
+    assert_eq!(tinyklv::dec::binary::i8(&mut input), Ok(-1_i8));
 }
 
 #[test]
-/// Tests `be_i8` encode/decode roundtrip across signed boundary values.
-fn be_i8_roundtrip() {
+/// Tests `i8` encode/decode roundtrip across signed boundary values.
+fn i8_roundtrip() {
     for val in [i8::MIN, -1_i8, 0, 1, i8::MAX] {
         let encoded = tinyklv::enc::binary::i8(val);
-        let decoded = tinyklv::dec::binary::be_i8(&mut encoded.as_slice()).unwrap();
+        let decoded = tinyklv::dec::binary::i8(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded);
     }
 }

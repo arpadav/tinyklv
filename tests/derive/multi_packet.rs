@@ -1,20 +1,20 @@
-// --------------------------------------------------
-// local
-// --------------------------------------------------
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
-
-// Two different struct types extracted from one contiguous byte stream.
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
     sentinel = b"\x01\x01",
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct PacketA {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     value: u16,
 }
 
@@ -22,11 +22,15 @@ struct PacketA {
 #[klv(
     stream = &[u8],
     sentinel = b"\x02\x02",
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct PacketB {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
     value: u32,
 }
 

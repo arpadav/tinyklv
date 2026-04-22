@@ -1,13 +1,13 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 10 - container `default(typ=...)` + field-level `init`.
+//! Example 10 - container `default(typ=...)` + field-level `default`.
 //!
 //! Two ergonomics features compose cleanly on one struct:
 //!
 //! * **Container `default(typ=..., dec=..., enc=...)`** installs codecs for
 //!   every field of a given type, so fields of that type only need a
 //!   `key = ...` attribute.
-//! * **Field-level `init = expr`** supplies a fallback value used when the
+//! * **Field-level `default = expr`** supplies a fallback value used when the
 //!   decode loop finishes without ever seeing that key - essential for
 //!   forward-compatible protocols where newer fields may be absent in older
 //!   stream recordings.
@@ -15,7 +15,7 @@
 //! Showcases:
 //! * Hand-written `DecodeValue` / `EncodeValue` impls on two custom enums
 //! * `default(typ = ...)` removing boilerplate from field attributes
-//! * `init = 1_u16` giving a decode-time fallback for an absent key
+//! * `default = 1_u16` giving a decode-time fallback for an absent key
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -86,7 +86,7 @@ impl EncodeValue<Vec<u8>> for NetworkMode {
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
-    stream = &[u8],                                              // default, shown for clarity
+    stream = &[u8],
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
     default(
@@ -101,7 +101,7 @@ impl EncodeValue<Vec<u8>> for NetworkMode {
     ),
 )]
 /// Radio telemetry config. Enum fields use container defaults; `channel`
-/// uses an explicit codec plus `init = 1` for when the key is absent
+/// uses an explicit codec plus `default = 1` for when the key is absent
 struct RadioConfig {
     #[klv(key = 0x01)]
     /// Uplink signal quality (resolved via container default)
@@ -119,7 +119,7 @@ struct RadioConfig {
         key = 0x04,
         dec = decb::be_u16,
         enc = *encb::be_u16,
-        init = 1_u16,
+        default = 1_u16,
     )]
     /// Radio channel number; defaults to 1 when the key is absent
     channel: u16,
@@ -142,7 +142,7 @@ fn main() {
     assert_eq!(decoded, original);
 
     // build a partial stream by hand, deliberately omitting key 0x04 so
-    // that the `init = 1_u16` fallback is exercised on decode
+    // that the `default = 1_u16` fallback is exercised on decode
     let partial = [
         // key 0x01, len=1, SignalStrength::Weak:
             0x01, 0x01, 0x01,
@@ -150,10 +150,10 @@ fn main() {
             0x02, 0x01, 0x02,
         // key 0x03, len=1, NetworkMode::WiFi:
             0x03, 0x01, 0x01,
-        // key 0x04 deliberately absent - decoder must fall back to init
+        // key 0x04 deliberately absent - decoder must fall back to default
     ];
 
-    // decode - the decoder applies the init value for the missing channel key
+    // decode - the decoder applies the default value for the missing channel key
     let dec_partial = RadioConfig::decode_value(
         &mut partial.as_slice(),
     ).unwrap();
@@ -162,5 +162,5 @@ fn main() {
     assert_eq!(dec_partial.uplink_signal,   SignalStrength::Weak);
     assert_eq!(dec_partial.downlink_signal, SignalStrength::Good);
     assert_eq!(dec_partial.mode,            NetworkMode::WiFi);
-    assert_eq!(dec_partial.channel, 1, "absent key yields init value");
+    assert_eq!(dec_partial.channel, 1, "absent key yields default value");
 }

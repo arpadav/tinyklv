@@ -1,22 +1,20 @@
-// --------------------------------------------------
-// local
-// --------------------------------------------------
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
-
-// --------------------------------------------------
-// with deny_unknown_keys: unknown key in stream → Err
-// --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
     deny_unknown_keys,
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct Strict {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     known: u16,
 }
 
@@ -50,18 +48,18 @@ fn strict_only_unknown_key_fails() {
     assert!(result.is_err());
 }
 
-// --------------------------------------------------
-// without deny_unknown_keys: unknown key is silently skipped
-// --------------------------------------------------
-
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct Permissive {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     known: u16,
 }
 

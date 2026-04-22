@@ -1,80 +1,83 @@
-// --------------------------------------------------
-// local
-// --------------------------------------------------
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
-
-// --------------------------------------------------
-// `init` attribute: field has a compile-time default
-// --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
-struct WithInit {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16, init = 42)]
-    with_init: u16,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
-    without_init: u32,
+struct WithDefault {
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+        default = 42,
+    )]
+    with_default: u16,
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
+    without_default: u32,
 }
 
 #[test]
-/// Tests that when a field with `init = 42` has its key present in the stream, the decoded value wins over the init default.
-fn decode_with_init_key_present() {
+/// Tests that when a field with `default = 42` has its key present in the stream, the decoded value wins over the default fallback.
+fn decode_with_default_key_present() {
     let data: &[u8] = &[0x01, 0x02, 0x01, 0x00, 0x02, 0x04, 0x00, 0x00, 0x00, 0xFF];
-    let result = WithInit::decode_value(&mut &data[..]).unwrap();
-    assert_eq!(result.with_init, 256);
-    assert_eq!(result.without_init, 255);
+    let result = WithDefault::decode_value(&mut &data[..]).unwrap();
+    assert_eq!(result.with_default, 256);
+    assert_eq!(result.without_default, 255);
 }
 
 #[test]
-/// Verifies that a missing key for an `init`-annotated field falls back to the compile-time default value.
-fn decode_with_init_key_absent_uses_default() {
+/// Verifies that a missing key for a `default`-annotated field falls back to the inline expression.
+fn decode_with_default_key_absent_uses_default() {
     let data: &[u8] = &[0x02, 0x04, 0x00, 0x00, 0x00, 0xFF];
-    let result = WithInit::decode_value(&mut &data[..]).unwrap();
+    let result = WithDefault::decode_value(&mut &data[..]).unwrap();
     assert_eq!(
-        result.with_init, 42,
-        "init default should be used when key is absent"
+        result.with_default, 42,
+        "`default = 42` should be used when key is absent"
     );
-    assert_eq!(result.without_init, 255);
+    assert_eq!(result.without_default, 255);
 }
 
 #[test]
-/// Ensures a field without an `init` attribute remains required and errors if its key is absent.
-fn decode_without_init_still_required() {
+/// Ensures a field without a `default` attribute remains required and errors if its key is absent.
+fn decode_without_default_still_required() {
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x10];
-    let result = WithInit::decode_value(&mut &data[..]);
-    assert!(result.is_err(), "field without init is required");
+    let result = WithDefault::decode_value(&mut &data[..]);
+    assert!(result.is_err(), "field without `default` is required");
 }
 
 #[test]
-/// Tests encode/decode roundtrip preserving values for a struct that has an `init`-annotated field.
-fn roundtrip_with_init() {
-    let original = WithInit {
-        with_init: 999,
-        without_init: 0xDEAD_BEEF,
+/// Tests encode/decode roundtrip preserving values for a struct that has a `default`-annotated field.
+fn roundtrip_with_default() {
+    let original = WithDefault {
+        with_default: 999,
+        without_default: 0xDEAD_BEEF,
     };
     let encoded = original.encode_value();
-    let decoded = WithInit::decode_value(&mut &encoded[..]).unwrap();
+    let decoded = WithDefault::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, original);
 }
 
-// --------------------------------------------------
-// non-KLV fields use Default::default()
-// --------------------------------------------------
-
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
     allow_unimplemented_encode,
 )]
 struct WithExtraField {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = *tinyklv::enc::binary::u8)]
+    #[klv(
+        key = 0x01,
+        dec = decb::u8,
+        enc = *encb::u8,
+    )]
     klv_field: u8,
     // No #[klv] - uses Default::default()
     extra: String,

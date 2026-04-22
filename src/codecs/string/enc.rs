@@ -1,9 +1,9 @@
 /// Encodes a string as UTF-8 bytes.
 ///
-/// **Roundtrip warning**: If the original data was decoded with [`to_string_utf8`](crate::codecs::binary::dec::to_string_utf8)
+/// **Roundtrip warning**: If the original data was decoded with [`to_string_utf8`](crate::codecs::string::dec::to_string_utf8)
 /// (which uses `from_utf8_lossy`), invalid UTF-8 bytes are replaced with U+FFFD
 /// during decode. Re-encoding produces different (longer) bytes. Use
-/// [`to_string_utf8_strict`](crate::codecs::binary::dec::to_string_utf8_strict) on the decode side for lossless roundtrip.
+/// [`to_string_utf8_strict`](crate::codecs::string::dec::to_string_utf8_strict) on the decode side for lossless roundtrip.
 ///
 /// Note: encoding from `&str` is inherently strict (Rust `&str` is always valid
 /// UTF-8), so no separate `from_string_utf8_strict` encoder is needed.

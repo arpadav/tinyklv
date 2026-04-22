@@ -29,7 +29,7 @@ where
 
 /// Seeks to the beginning of the prescribed type from a stream using the sentinel
 ///
-/// Encode counterpart: sentinel bytes are prepended by [`Encode`](crate::traits::Encode)
+/// Encode counterpart: sentinel bytes are prepended by [`EncodeFrame`](crate::traits::EncodeFrame)
 ///
 /// This is automatically implemented when `sentinel` is set in the [`crate::Klv`](crate::Klv) attribute
 pub trait SeekSentinel<S>: Sized
@@ -41,7 +41,7 @@ where
 
 /// Full KLV decode pipeline: [`SeekSentinel`] + [`DecodeValue`]
 ///
-/// Encode counterpart: [`Encode`](crate::traits::Encode)
+/// Encode counterpart: [`EncodeFrame`](crate::traits::EncodeFrame)
 pub trait DecodeFrame<S>: Sized
 where
     S: winnow::stream::Stream,
@@ -123,7 +123,7 @@ pub enum BreakConditionType {
     /// ```
     Proceed,
 
-    /// Skips the current value in [`crate::prelude::Decode::decode`]
+    /// Skips the current value in [`crate::prelude::DecodeValue::decode_value`]
     ///
     /// This is useful for skipping fields that aren't implemented yet,
     /// by skipping over them and continuing the decoding loop.
@@ -148,7 +148,7 @@ pub enum BreakConditionType {
     /// Returns the decoded value, if all required fields are present.
     ///
     /// This does not guarantee to return [`Ok`] from
-    /// [`crate::prelude::Decode::decode`], since required fields might not
+    /// [`crate::prelude::DecodeValue::decode_value`], since required fields might not
     /// be present.
     ///
     /// This is useful if some un-recoverable issue has occurred but we
@@ -172,11 +172,11 @@ pub enum BreakConditionType {
     /// ```
     Done,
 
-    /// Returns an error from [`crate::prelude::Decode::decode`]
+    /// Returns an error from [`crate::prelude::DecodeValue::decode_value`]
     /// without returning any potential decoded values.
     ///
     /// This is should only be used in cases of a fatal error, since an
-    /// [`Err`] is **guaranteed** to return from [`crate::prelude::Decode::decode`].
+    /// [`Err`] is **guaranteed** to return from [`crate::prelude::DecodeValue::decode_value`].
     ///
     /// This is equivalent to:
     ///
@@ -201,7 +201,7 @@ pub trait BreakCondition<S> {
         BreakConditionType::Proceed
     }
 }
-/// [`BreakCondition`] implementation of [`Decode`] for all types `T` that implement [`Decode`]
+/// [`BreakCondition`] blanket implementation for all types `T` that implement [`DecodeValue`]
 impl<T, S> BreakCondition<S> for T
 where
     T: crate::traits::dec::DecodeValue<S>,

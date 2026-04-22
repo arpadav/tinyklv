@@ -21,6 +21,7 @@ mod default_values;
 mod deny_unknown_keys;
 mod encode_roundtrip;
 mod enum_dispatch;
+mod fallback_trait_impl;
 mod field_ordering;
 mod latebind;
 mod mixed_types;

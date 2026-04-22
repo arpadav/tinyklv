@@ -1,12 +1,7 @@
-// --------------------------------------------------
-// local
-// --------------------------------------------------
-use tinyklv::codecs::binary::dec::{
+use tinyklv::codecs::string::dec::{
     to_string_utf16_be, to_string_utf16_le, to_string_utf8, to_string_utf8_strict,
 };
-// --------------------------------------------------
-// strict UTF-8 decoder rejects invalid bytes
-// --------------------------------------------------
+
 #[test]
 /// Tests that `to_string_utf8_strict` rejects the invalid byte pair `0xFF 0xFE`.
 fn strict_utf8_0xff_0xfe_fails() {
@@ -44,9 +39,7 @@ fn strict_utf8_overlong_fails() {
     let result = to_string_utf8_strict(2)(&mut input);
     assert!(result.is_err());
 }
-// --------------------------------------------------
-// lossy UTF-8 decoder replaces invalid bytes with U+FFFD
-// --------------------------------------------------
+
 #[test]
 /// Tests that lossy `to_string_utf8` accepts invalid `0xFF 0xFE` by emitting U+FFFD replacement characters.
 fn lossy_utf8_0xff_0xfe_ok() {
@@ -73,9 +66,7 @@ fn lossy_utf8_all_invalid_ok() {
     let s = result.unwrap();
     assert!(s.contains('\u{FFFD}'));
 }
-// --------------------------------------------------
-// UTF-16 odd-length errors
-// --------------------------------------------------
+
 #[test]
 /// Tests that `to_string_utf16_be(3)` errors because UTF-16 requires an even byte count.
 fn utf16_be_odd_length_3_fails() {

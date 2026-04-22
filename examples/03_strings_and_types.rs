@@ -16,6 +16,7 @@
 //! See also: book Tutorial 03.
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
+use tinyklv::dec::string as decs;   // string decoders
 use tinyklv::enc::binary as encb;   // binary encoders
 use tinyklv::enc::string as encs;   // string encoders
 
@@ -39,7 +40,7 @@ struct StationRegistration {
     #[klv(
         key = 0x02,
         varlen = true,
-        dec = decb::to_string_utf8,
+        dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8,
     )]
     /// Variable-length UTF-8 region name; `varlen = true` selects the
@@ -49,7 +50,7 @@ struct StationRegistration {
     #[klv(
         key = 0x03,
         varlen = true,
-        dec = decb::to_string_utf8,
+        dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8,
     )]
     /// Variable-length UTF-8 station identifier

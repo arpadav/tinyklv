@@ -43,8 +43,12 @@ pub(crate) const STREAM: Symbol = Symbol("stream");
 pub(crate) const DEFAULT: Symbol = Symbol("default");
 /// The `sentinel` sub-attribute identifier
 pub(crate) const SENTINEL: Symbol = Symbol("sentinel");
-/// The `init` sub-attribute identifier
-pub(crate) const INITIAL_VALUE: Symbol = Symbol("init");
+/// The field-level `default` sub-attribute identifier
+///
+/// Note: the container-level `default(..)` uses the same keyword [`DEFAULT`]
+/// above; they are parsed in different `MetaList` scopes so there is no
+/// collision
+pub(crate) const DEFAULT_VALUE: Symbol = Symbol("default");
 /// The `var` sub-attribute identifier for variable-length fields
 pub(crate) const VARIABLE_LENGTH: Symbol = Symbol("varlen");
 /// The `latebind` sub-attribute identifier for post-decode conversion/mutation
@@ -55,6 +59,14 @@ pub(crate) const DENY_UNKNOWN_KEYS: Symbol = Symbol("deny_unknown_keys");
 pub(crate) const ALLOW_UNIMPLEMENTED_DECODE: Symbol = Symbol("allow_unimplemented_decode");
 /// The `allow_unimplemented_encode` sub-attribute identifier
 pub(crate) const ALLOW_UNIMPLEMENTED_ENCODE: Symbol = Symbol("allow_unimplemented_encode");
+/// The `fallback_impls` sub-attribute identifier
+///
+/// Opt-in container flag. When set, any field lacking an explicit `enc`/`dec`
+/// and not matched by a container `default(..)` falls back to the
+/// [`tinyklv::EncodeValue`] / [`tinyklv::DecodeValue`] trait implementations
+/// for the field's type. If the trait is not implemented for the field's type,
+/// the compiler reports a trait-bound error at the call site
+pub(crate) const FALLBACK_IMPLS: Symbol = Symbol("fallback_impls");
 
 // --------------------------------------------------
 // statics
@@ -69,21 +81,28 @@ pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
     DENY_UNKNOWN_KEYS,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,
+    FALLBACK_IMPLS,
 ]);
 
-/// Container-level symbols that accept list syntax (e.g. `key = [...]`)
+/// Container-level symbols that accept list syntax (e.g. `key(..)`)
 pub(crate) static CONT_LIST_SYMBOLS: Symbols = Symbols(&[KEY, LENGTH, DEFAULT]);
 
 /// Container-level default list symbols (type, encoder, decoder, var-length)
 pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols =
     Symbols(&[TYPE, ENCODER, DECODER, VARIABLE_LENGTH]);
 
-/// Container-level name-value symbols
+/// Container-level name-value symbols (e.g. `stream = ..`)
 pub(crate) static CONT_NV_SYMBOLS: Symbols = Symbols(&[STREAM, SENTINEL]);
 
 /// All valid field-level symbols accepted by the `#[klv(..)]` attribute
-pub(crate) static FIELD_SYMBOLS: Symbols =
-    Symbols(&[KEY, ENCODER, DECODER, VARIABLE_LENGTH, LATEBIND]);
+pub(crate) static FIELD_SYMBOLS: Symbols = Symbols(&[
+    KEY,
+    ENCODER,
+    DECODER,
+    VARIABLE_LENGTH,
+    LATEBIND,
+    DEFAULT_VALUE,
+]);
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 /// A symbol for KLV attributes
@@ -115,12 +134,13 @@ const KNOWN: &[Symbol] = &[
     STREAM,
     DEFAULT,
     SENTINEL,
-    INITIAL_VALUE,
+    DEFAULT_VALUE,
     VARIABLE_LENGTH,
     LATEBIND,
     DENY_UNKNOWN_KEYS,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,
+    FALLBACK_IMPLS,
 ];
 
 /// [`Symbol`] implementation of [`From`] for [`syn::Path`]

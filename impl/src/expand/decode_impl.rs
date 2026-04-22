@@ -38,10 +38,10 @@ pub(crate) fn gen_decode_impl(
     let sentinel = input.attrs.sentinel.as_ref();
 
     let debug = input.attrs.debug.is_some();
-    let deny_unknown_keys = input.attrs._deny_unknown_keys.is_some();
+    let deny_unknown_keys = input.attrs.deny_unknown_keys.is_some();
 
-    let items_init = gen_items_init(&input.data);
-    let items_match = gen_items_match(&input.data, debug);
+    let items_default = gen_items_default(&input.data);
+    let items_match = gen_items_match(&input.data, &stream, debug);
     let items_set = gen_item_set(name, &input.data);
 
     let seek_if_sentinel = match sentinel {
@@ -154,7 +154,7 @@ pub(crate) fn gen_decode_impl(
         #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::DecodeValue`] for [`", stringify!(#stream), "`]")]
         impl #impl_generics ::tinyklv::traits::DecodeValue<#stream> for #name #ty_generics #where_clause {
             fn decode_value(input: &mut #stream) -> ::tinyklv::__export::winnow::Result<Self> {
-                #items_init
+                #items_default
                 let checkpoint = input.checkpoint();
                 loop {
                     let checkpoint_inner = input.checkpoint();
@@ -222,15 +222,23 @@ pub(crate) fn gen_decode_impl(
 
 /// Generates the tokens for initializing the field variables as optional
 ///
-/// `let mut #name: Option<#ty> = None;`
-fn gen_items_init(fatts: &Vec<MainField>) -> proc_macro2::TokenStream {
+/// Emission depends on the field's `default` attribute:
+///
+/// * no attribute       → `let mut #name: Option<#ty> = None;`
+/// * bare `default`     → `let mut #name: Option<#ty> = Some(<#ty as ::core::default::Default>::default());`
+/// * `default = <expr>` → `let mut #name: Option<#ty> = Some(#expr);`
+fn gen_items_default(fatts: &Vec<MainField>) -> proc_macro2::TokenStream {
     let field_initializations = fatts.iter().map(|field| {
         let MainField { name, ty, .. } = field;
-        let init = field.attrs.as_ref().and_then(|f| f.init.clone());
+        let default = field.attrs.as_ref().and_then(|f| f.default.clone());
         let ty = helpers::unwrap_option_type(ty).unwrap_or(ty);
-        match init {
-            Some(init) => quote! {
-                let mut #name: Option<#ty> = Some(#init);
+        match default {
+            Some(types::DefaultValue::Expr(expr)) => quote! {
+                let mut #name: Option<#ty> = Some(#expr);
+            },
+            Some(types::DefaultValue::Call) => quote! {
+                let mut #name: Option<#ty> =
+                    Some(<#ty as ::core::default::Default>::default());
             },
             None => quote! {
                 let mut #name: Option<#ty> = None;
@@ -246,11 +254,15 @@ fn gen_items_init(fatts: &Vec<MainField>) -> proc_macro2::TokenStream {
 ///
 /// Where `subinput` is a sub-slice of `input` of the values length, designated
 /// by the stream after its key.
-fn gen_items_match(fields: &Vec<MainField>, debug: bool) -> proc_macro2::TokenStream {
+fn gen_items_match(
+    fields: &Vec<MainField>,
+    stream: &syn::Type,
+    debug: bool,
+) -> proc_macro2::TokenStream {
     let arms = fields
         .iter()
-        .filter_map(|f| f.attrs.as_ref().map(|attr| (&f.name, attr)))
-        .map(|(name, attrs)| {
+        .filter_map(|f| f.attrs.as_ref().map(|attr| (&f.name, f.ty, attr)))
+        .map(|(name, ty, attrs)| {
             // --------------------------------------------------
             // the name of the field assigned above.
             // this is a variable which is assigned Option<T>
@@ -260,10 +272,20 @@ fn gen_items_match(fields: &Vec<MainField>, debug: bool) -> proc_macro2::TokenSt
             let key = &attrs.key;
             // --------------------------------------------------
             // the value decoder
+            //
+            // when `fallback_dec` is set, re-synthesize a fully-qualified
+            // `<T as ::tinyklv::traits::DecodeValue<#stream>>::decode_value`
+            // path so rustc emits a clean trait-bound error if the trait is
+            // not implemented for the field's type
             // --------------------------------------------------
-            #[allow(clippy::unwrap_used)]
-            // `gen_decode_impl` call ensures that `attrs.dec` is `Some`
-            let dec = attrs.dec.as_ref().unwrap();
+            let dec_tokens: proc_macro2::TokenStream = if attrs.fallback_dec {
+                let t = helpers::unwrap_option_type(ty).unwrap_or(ty);
+                quote! { <#t as ::tinyklv::traits::DecodeValue<#stream>>::decode_value }
+            } else {
+                #[allow(clippy::unwrap_used, reason = "`gen_decode_impl` call ensures that `attrs.dec` is `Some`")]
+                let dec = attrs.dec.as_ref().unwrap();
+                quote! { #dec }
+            };
             let varlen = attrs.var.as_ref().map(|v| v.value).unwrap_or(false); // <-- defaults to false
             let optional_len_arg = if varlen {
                 quote! { (len) }
@@ -295,14 +317,14 @@ fn gen_items_match(fields: &Vec<MainField>, debug: bool) -> proc_macro2::TokenSt
                     let logger = logger();
                     quote! {
                         #key => {
-                            let val = #dec #optional_len_arg (&mut subinput);
+                            let val = #dec_tokens #optional_len_arg (&mut subinput);
                             #logger ("\t{}: {:?}", stringify!(#name), val);
                             #name = val.ok() #latebind_map .or(#name);
                         },
                     }
                 }
                 false => quote! {
-                    #key => #name = #dec #optional_len_arg (&mut subinput).ok() #latebind_map .or(#name),
+                    #key => #name = #dec_tokens #optional_len_arg (&mut subinput).ok() #latebind_map .or(#name),
                 },
             }
         });
@@ -316,7 +338,7 @@ fn gen_items_match(fields: &Vec<MainField>, debug: bool) -> proc_macro2::TokenSt
 ///
 /// `Ok(#struct_name { #(#field_set_on_return)* })`
 fn gen_item_set(struct_name: &syn::Ident, fields: &Vec<MainField>) -> proc_macro2::TokenStream {
-    let init_symbol = symbol::INITIAL_VALUE.to_token_stream();
+    let default_symbol = symbol::DEFAULT_VALUE.to_token_stream();
     let elem_name_type_without_klv = fields
         .iter()
         .filter_map(|f| match &f.attrs {
@@ -338,7 +360,7 @@ fn gen_item_set(struct_name: &syn::Ident, fields: &Vec<MainField>) -> proc_macro
                                 "::",
                                 stringify!(#name),
                                 "` is a required value missing from the packet. To prevent this, this field can be set as optional or an `",
-                                stringify!(#init_symbol),
+                                stringify!(#default_symbol),
                                 "`.",
                             )
                         )

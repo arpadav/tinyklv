@@ -1,23 +1,41 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct BasicFixed {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = *tinyklv::enc::binary::u8)]
+    #[klv(
+        key = 0x01,
+        dec = decb::u8,
+        enc = *encb::u8,
+    )]
     byte_val: u8,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     short_val: u16,
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
+    #[klv(
+        key = 0x03,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
     int_val: u32,
-    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_u64, enc = *tinyklv::enc::binary::be_u64)]
+    #[klv(
+        key = 0x04,
+        dec = decb::be_u64,
+        enc = *encb::be_u64,
+    )]
     long_val: u64,
 }
 

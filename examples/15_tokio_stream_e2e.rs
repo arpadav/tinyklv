@@ -27,7 +27,7 @@ use tinyklv::enc::binary as encb;   // binary encoders
 
 #[derive(Klv, Debug, PartialEq, Clone)]
 #[klv(
-    stream = &[u8],                                              // default, shown for clarity
+    stream = &[u8],
     sentinel = b"ENVREAD",
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),

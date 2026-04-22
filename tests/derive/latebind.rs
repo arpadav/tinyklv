@@ -7,10 +7,10 @@
 //!   `.map(|mut __v| { path(&mut __v); __v })` (T == U)
 //!
 //! Exercised on required fields, `Option<U>` fields (present/absent), and
-//! alongside `init` to confirm the default-populated path is NOT re-run
+//! alongside `default` to confirm the default-populated path is NOT re-run
 //! through latebind
-use tinyklv::dec::binary as dec;
-use tinyklv::enc::binary as enc;
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
@@ -45,20 +45,30 @@ impl Status {
 }
 
 fn enc_status(s: &Status) -> Vec<u8> {
-    enc::u8(s.as_u8())
+    encb::u8(s.as_u8())
 }
 
 #[derive(Klv, Debug, Clone, PartialEq, Eq)]
 #[klv(
     sentinel = b"\x00\x00\x00\x10",
     stream = &[u8],
-    key(dec = dec::be_u8, enc = enc::u8),
-    len(dec = dec::be_u8_as_usize, enc = enc::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct ConsumingPacket {
-    #[klv(key = 0x01, dec = dec::be_u8, latebind = Status::from_u8, enc = enc_status)]
+    #[klv(
+        key = 0x01,
+        dec = decb::u8,
+        latebind = Status::from_u8,
+        enc = enc_status,
+    )]
     status: Status,
-    #[klv(key = 0x02, dec = dec::be_u8, latebind = Status::from_u8, enc = enc_status)]
+    #[klv(
+        key = 0x02,
+        dec = decb::u8,
+        latebind = Status::from_u8,
+        enc = enc_status,
+    )]
     backup: Option<Status>,
 }
 
@@ -101,14 +111,14 @@ struct Coordinate {
 }
 
 fn dec_xy_z0(input: &mut &[u8]) -> tinyklv::Result<Coordinate> {
-    let x = dec::be_f32(input)?;
-    let y = dec::be_f32(input)?;
+    let x = decb::be_f32(input)?;
+    let y = decb::be_f32(input)?;
     Ok(Coordinate { x, y, z: 0.0 })
 }
 
 fn enc_xyz(c: &Coordinate) -> Vec<u8> {
-    let mut out = enc::be_f32(c.x);
-    out.extend(enc::be_f32(c.y));
+    let mut out = encb::be_f32(c.x);
+    out.extend(encb::be_f32(c.y));
     out
 }
 
@@ -120,13 +130,23 @@ fn apply_global_z(c: &mut Coordinate) {
 #[klv(
     sentinel = b"\x00\x00\x00\x11",
     stream = &[u8],
-    key(dec = dec::be_u8, enc = enc::u8),
-    len(dec = dec::be_u8_as_usize, enc = enc::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct MutatingPacket {
-    #[klv(key = 0x01, dec = dec_xy_z0, latebind = &mut apply_global_z, enc = enc_xyz)]
+    #[klv(
+        key = 0x01,
+        dec = dec_xy_z0,
+        latebind = &mut apply_global_z,
+        enc = enc_xyz,
+    )]
     pos: Coordinate,
-    #[klv(key = 0x02, dec = dec_xy_z0, latebind = &mut apply_global_z, enc = enc_xyz)]
+    #[klv(
+        key = 0x02,
+        dec = dec_xy_z0,
+        latebind = &mut apply_global_z,
+        enc = enc_xyz,
+    )]
     maybe_pos: Option<Coordinate>,
 }
 

@@ -5,7 +5,7 @@ datagram, file record, or log line. Each reading is self-describing - key,
 length, value - so they can be peeled off one at a time until the buffer is
 exhausted.
 
-Tinyklv exposes this as the `RepeatedDecode` trait, auto-implemented for any
+`tinyklv` exposes this as the `RepeatedDecode` trait, auto-implemented for any
 `T: DecodeValue<S>`:
 
 ```rust,ignore
@@ -26,8 +26,10 @@ sentinel-less KLV blobs. If each item is sentinel-framed, loop
 The example builds five `SensorReading` values, concatenates their encoded
 value bytes into one buffer, and peels the whole batch off in a single call.
 
+Run this example: `cargo run --example book_12_repeated_extraction`
+
 ```rust,no_run
-{{#include ../../../examples/book_12_repeated_extraction.rs}}
+{{#include ../../../../examples/book_12_repeated_extraction.rs}}
 ```
 
 - `RepeatedDecode::repeated` returns `Vec<Self>` from a sentinel-less stream.

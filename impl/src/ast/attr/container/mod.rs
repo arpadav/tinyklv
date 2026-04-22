@@ -36,6 +36,7 @@ pub(crate) struct Container {
     pub deny_unknown_keys: Option<syn::Path>,
     pub allow_unimplemented_decode: Option<syn::Path>,
     pub allow_unimplemented_encode: Option<syn::Path>,
+    pub fallback_impls: Option<syn::Path>,
 }
 /// [`Container`] implementation
 impl Container {
@@ -55,6 +56,7 @@ impl Container {
         let mut deny_unknown_keys = None;
         let mut allow_unimplemented_decode = None;
         let mut allow_unimplemented_encode = None;
+        let mut fallback_impls = None;
 
         // --------------------------------------------------
         // loop through attrs
@@ -171,6 +173,10 @@ impl Container {
                             &list.path,
                             err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_ENCODE)),
                         ),
+                        symbol::FALLBACK_IMPLS => cx.error_spanned_by(
+                            &list.path,
+                            err!(ExpectedAsPath(symbol::FALLBACK_IMPLS)),
+                        ),
                         _ => cx.error_spanned_by(
                             &list.path,
                             err!(UnknownContainerListAttribute(list.path)),
@@ -223,6 +229,10 @@ impl Container {
                             &nv.path,
                             err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_ENCODE)),
                         ),
+                        symbol::FALLBACK_IMPLS => cx.error_spanned_by(
+                            &nv.path,
+                            err!(ExpectedAsPath(symbol::FALLBACK_IMPLS)),
+                        ),
                         _ => cx.error_spanned_by(
                             &nv.path,
                             err!(UnknownContainerNameValueAttribute(nv.path)),
@@ -242,6 +252,7 @@ impl Container {
                         symbol::ALLOW_UNIMPLEMENTED_ENCODE => {
                             allow_unimplemented_encode = Some(path)
                         }
+                        symbol::FALLBACK_IMPLS => fallback_impls = Some(path),
                         // --------------------------------------------------
                         // non paths
                         // --------------------------------------------------
@@ -303,6 +314,7 @@ impl Container {
             deny_unknown_keys,
             allow_unimplemented_decode,
             allow_unimplemented_encode,
+            fallback_impls,
         }
     }
 }
@@ -311,6 +323,7 @@ impl Container {
 ///
 /// * `_allow_unimplemented_decode`
 /// * `_allow_unimplemented_encode`
+/// * `_fallback_impls`
 ///
 /// are currently not used at this stage, but the paths are kept for potential
 /// future docs/debugging during expansion.
@@ -320,9 +333,10 @@ pub(crate) struct ContainerParsed {
     pub key: Xcoder,
     pub len: Xcoder,
     pub debug: Option<syn::Path>,
-    pub _deny_unknown_keys: Option<syn::Path>,
+    pub deny_unknown_keys: Option<syn::Path>,
     pub _allow_unimplemented_decode: Option<syn::Path>,
     pub _allow_unimplemented_encode: Option<syn::Path>,
+    pub _fallback_impls: Option<syn::Path>,
 }
 /// [`ContainerParsed`] implementation
 impl ContainerParsed {
@@ -355,9 +369,10 @@ impl ContainerParsed {
             key,
             len,
             debug: cont.debug,
-            _deny_unknown_keys: cont.deny_unknown_keys,
+            deny_unknown_keys: cont.deny_unknown_keys,
             _allow_unimplemented_decode: cont.allow_unimplemented_decode,
             _allow_unimplemented_encode: cont.allow_unimplemented_encode,
+            _fallback_impls: cont.fallback_impls,
         })
     }
 }

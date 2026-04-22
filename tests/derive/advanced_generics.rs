@@ -5,6 +5,8 @@
 //! * type-generic structs carrying `PhantomData<T>` (zero-size, skipped by derive)
 //! * user-authored `where` clauses preserved verbatim via `split_for_impl`
 use std::marker::PhantomData;
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
@@ -12,13 +14,21 @@ use tinyklv::Klv;
 #[klv(
     stream = &[u8],
     sentinel = b"\xAA",
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct Tagged<T> {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     id: u16,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
     counter: u32,
     _phantom: PhantomData<T>,
 }
@@ -31,14 +41,18 @@ struct MarkerB;
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct Bounded<T>
 where
     T: Send + Sync + 'static,
 {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     value: u16,
     _phantom: PhantomData<T>,
 }
@@ -46,13 +60,21 @@ where
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct TwoParams<T, U> {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     first: u16,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
     second: u32,
     _t: PhantomData<T>,
     _u: PhantomData<U>,

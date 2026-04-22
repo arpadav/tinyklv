@@ -1,54 +1,69 @@
-//! Tests for `default(typ=...)` container attribute and `init=` field attribute
+//! Tests for `default(typ=...)` container attribute and `default` / `default = <expr>` field attributes
 //!
 //! Covers container-level type defaults (eliminating per-field dec/enc),
-//! field-level `init` values used when a key is absent, init override when
-//! the key is present, and non-KLV fields falling back to `Default::default()`.
+//! field-level `default = <expr>` values used when a key is absent,
+//! field-level bare `default` which calls `Default::default()` on the field
+//! type, override when the key is present, and non-KLV fields falling back
+//! to `Default::default()`.
 use super::types::*;
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
     default(typ = Color,    dec = Color::decode_value,    enc = Color::encode_value),
     default(typ = Priority, dec = Priority::decode_value, enc = Priority::encode_value),
 )]
 struct DefaultTyped {
-    // No per-field dec/enc - resolved from container defaults
     #[klv(key = 0x01)]
+    /// No per-field dec/enc - resolved from container defaults
     color: Color,
+
     #[klv(key = 0x02)]
+    /// No per-field dec/enc - resolved from container defaults
     priority: Priority,
-    // Explicit dec/enc still works alongside container defaults
-    #[klv(key = 0x03, dec = Velocity::decode_value, enc = Velocity::encode_value)]
+
+    #[klv(
+        key = 0x03,
+        dec = Velocity::decode_value,
+        enc = Velocity::encode_value,
+    )]
+    /// Explicit dec/enc still works alongside container defaults
     velocity: Velocity,
 }
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
-struct InitColor {
-    #[klv(key = 0x01, dec = Color::decode_value, enc = Color::encode_value, init = Color::Red)]
+struct DefaultExprColor {
+    #[klv(
+        key = 0x01,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+        default = Color::Red,
+    )]
     color: Color,
 }
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
-struct InitTimestamp {
+struct DefaultExprTimestamp {
     #[klv(
         key = 0x01,
         dec = Timestamp::decode_value,
         enc = Timestamp::encode_value,
-        init = Timestamp { seconds: 0, nanos: 0 }
+        default = Timestamp { seconds: 0, nanos: 0 }
     )]
     timestamp: Timestamp,
 }
@@ -56,15 +71,168 @@ struct InitTimestamp {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
     allow_unimplemented_encode,
 )]
 struct WithNonKlvField {
-    #[klv(key = 0x01, dec = Color::decode_value, enc = Color::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Color,
     // No #[klv] - should resolve to Default::default() = 0
     counter: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+enum Flavor {
+    #[default]
+    Vanilla,
+    Chocolate,
+    Strawberry,
+    Mint,
+}
+impl tinyklv::DecodeValue<&[u8]> for Flavor {
+    fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
+        let v = decb::u8(input)?;
+        match v {
+            0 => Ok(Flavor::Vanilla),
+            1 => Ok(Flavor::Chocolate),
+            2 => Ok(Flavor::Strawberry),
+            3 => Ok(Flavor::Mint),
+            _ => Err(winnow::error::ParserError::from_input(input)),
+        }
+    }
+}
+impl tinyklv::EncodeValue<Vec<u8>> for Flavor {
+    fn encode_value(&self) -> Vec<u8> {
+        let v = match self {
+            Flavor::Vanilla => 0_u8,
+            Flavor::Chocolate => 1,
+            Flavor::Strawberry => 2,
+            Flavor::Mint => 3,
+        };
+        encb::u8(v)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+/// Custom struct with a non-trivial `Default` impl - distinguishes bare
+/// `default` from an inline `default = <expr>` with the same literal values
+pub struct Calibration {
+    pub gain: f32,
+    pub offset: i16,
+}
+impl Default for Calibration {
+    fn default() -> Self {
+        Calibration {
+            gain: 1.0,
+            offset: 0,
+        }
+    }
+}
+impl tinyklv::DecodeValue<&[u8]> for Calibration {
+    fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
+        let gain = decb::be_f32(input)?;
+        let offset = decb::be_i16(input)?;
+        Ok(Calibration { gain, offset })
+    }
+}
+impl tinyklv::EncodeValue<Vec<u8>> for Calibration {
+    fn encode_value(&self) -> Vec<u8> {
+        let mut v = encb::be_f32(self.gain);
+        v.extend(encb::be_i16(self.offset));
+        v
+    }
+}
+
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+)]
+struct DefaultBareU32 {
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+        default,
+    )]
+    counter: u32,
+}
+
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+)]
+struct DefaultBareStruct {
+    #[klv(
+        key = 0x01,
+        dec = Calibration::decode_value,
+        enc = Calibration::encode_value,
+        default
+    )]
+    cal: Calibration,
+}
+
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+)]
+struct DefaultBareEnum {
+    #[klv(
+        key = 0x01,
+        dec = Flavor::decode_value,
+        enc = Flavor::encode_value,
+        default
+    )]
+    flavor: Flavor,
+}
+
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+)]
+struct DefaultBareAndExpr {
+    #[klv(
+        key = 0x01,
+        dec = Flavor::decode_value,
+        enc = Flavor::encode_value,
+        default
+    )]
+    flavor: Flavor,
+    #[klv(
+        key = 0x02,
+        dec = Calibration::decode_value,
+        enc = Calibration::encode_value,
+        default = Calibration { gain: 2.5, offset: -7 }
+    )]
+    cal: Calibration,
+}
+
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+)]
+struct DefaultBareOptionWrapped {
+    #[klv(
+        key = 0x01,
+        dec = Flavor::decode_value,
+        enc = Flavor::encode_value,
+        default
+    )]
+    flavor: Option<Flavor>,
 }
 
 fn tlv(key: u8, value: Vec<u8>) -> Vec<u8> {
@@ -112,23 +280,23 @@ fn default_type_roundtrip() {
 }
 
 #[test]
-/// Tests that `init = Color::Red` supplies the default when the field's key is absent from the stream.
-fn init_color_enum_absent() {
-    // Stream has no key 0x01 - init value Color::Red should be used
-    let result = InitColor::decode_value(&mut [].as_slice()).unwrap();
+/// Tests that `default = Color::Red` supplies the fallback when the field's key is absent from the stream.
+fn default_expr_color_enum_absent() {
+    // Stream has no key 0x01 - `default = Color::Red` should be used
+    let result = DefaultExprColor::decode_value(&mut [].as_slice()).unwrap();
     assert_eq!(
         result.color,
         Color::Red,
-        "absent key should yield init value"
+        "absent key should yield `default = <expr>` value"
     );
 }
 
 #[test]
-/// Tests that a present key overrides the `init = Color::Red` default at decode time.
-fn init_color_enum_present() {
-    // Stream has key 0x01 = Color::Blue - decoded value overrides init
+/// Tests that a present key overrides the `default = Color::Red` fallback at decode time.
+fn default_expr_color_enum_present() {
+    // Stream has key 0x01 = Color::Blue - decoded value overrides default expression
     let stream = tlv(0x01, Color::Blue.encode_value());
-    let result = InitColor::decode_value(&mut stream.as_slice()).unwrap();
+    let result = DefaultExprColor::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(
         result.color,
         Color::Blue,
@@ -137,28 +305,28 @@ fn init_color_enum_present() {
 }
 
 #[test]
-/// Tests that a struct-valued `init = Timestamp { ... }` default is applied when the key is absent.
-fn init_timestamp_struct_absent() {
+/// Tests that a struct-valued `default = Timestamp { ... }` fallback is applied when the key is absent.
+fn default_expr_timestamp_struct_absent() {
     let zero = Timestamp {
         seconds: 0,
         nanos: 0,
     };
-    let result = InitTimestamp::decode_value(&mut [].as_slice()).unwrap();
+    let result = DefaultExprTimestamp::decode_value(&mut [].as_slice()).unwrap();
     assert_eq!(
         result.timestamp, zero,
-        "absent key should yield init Timestamp"
+        "absent key should yield `default = <expr>` Timestamp"
     );
 }
 
 #[test]
-/// Tests that decoding a present `Timestamp` key overrides the struct-valued `init` default.
-fn init_timestamp_struct_present() {
+/// Tests that decoding a present `Timestamp` key overrides the struct-valued `default = <expr>` fallback.
+fn default_expr_timestamp_struct_present() {
     let ts = Timestamp {
         seconds: 1_700_000_000,
         nanos: 12_345,
     };
     let stream = tlv(0x01, ts.encode_value());
-    let result = InitTimestamp::decode_value(&mut stream.as_slice()).unwrap();
+    let result = DefaultExprTimestamp::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(
         result.timestamp, ts,
         "present key should yield decoded Timestamp"
@@ -166,19 +334,111 @@ fn init_timestamp_struct_present() {
 }
 
 #[test]
-/// Verifies explicitly that the decoded value (`Color::Blue`) wins over the init default (`Color::Red`) when both are available.
-fn init_overridden_when_present() {
+/// Verifies explicitly that the decoded value (`Color::Blue`) wins over the `default = Color::Red` fallback when both are available.
+fn default_expr_overridden_when_present() {
     let stream = tlv(0x01, Color::Blue.encode_value());
-    let result = InitColor::decode_value(&mut stream.as_slice()).unwrap();
+    let result = DefaultExprColor::decode_value(&mut stream.as_slice()).unwrap();
     assert_ne!(
         result.color,
         Color::Red,
-        "init should be overridden by decoded value"
+        "`default = <expr>` should be overridden by decoded value"
     );
     assert_eq!(
         result.color,
         Color::Blue,
-        "decoded Color::Blue must win over Color::Red init"
+        "decoded Color::Blue must win over Color::Red default"
+    );
+}
+
+#[test]
+/// Tests bare `default` on a primitive field - absent key yields `u32::default() == 0`.
+fn default_bare_primitive_u32_absent() {
+    let result = DefaultBareU32::decode_value(&mut [].as_slice()).unwrap();
+    assert_eq!(
+        result.counter, 0,
+        "bare `default` on u32 must yield u32::default() == 0"
+    );
+}
+
+#[test]
+/// Tests bare `default` on a primitive field - present key overrides the `Default::default()` fallback.
+fn default_bare_primitive_u32_present() {
+    let stream = tlv(0x01, encb::be_u32(42));
+    let result = DefaultBareU32::decode_value(&mut stream.as_slice()).unwrap();
+    assert_eq!(
+        result.counter, 42,
+        "present key should override bare `default`"
+    );
+}
+
+#[test]
+/// Tests bare `default` on a custom struct - confirms it actually calls the type's `Default` impl.
+///
+/// `Calibration::default()` is `{ gain: 1.0, offset: 0 }`, distinct from the
+/// struct's zero-initialized form, proving the codegen dispatches through the
+/// `Default` trait rather than bit-zero memory.
+fn default_bare_custom_struct_absent() {
+    let result = DefaultBareStruct::decode_value(&mut [].as_slice()).unwrap();
+    assert_eq!(
+        result.cal,
+        Calibration::default(),
+        "bare `default` must call `<Calibration as Default>::default()`"
+    );
+    assert_eq!(result.cal.gain, 1.0);
+    assert_eq!(result.cal.offset, 0);
+}
+
+#[test]
+/// Tests bare `default` on a custom struct when the key is present - decoded value wins.
+fn default_bare_custom_struct_present() {
+    let cal = Calibration {
+        gain: 3.15,
+        offset: -42,
+    };
+    let stream = tlv(0x01, cal.encode_value());
+    let result = DefaultBareStruct::decode_value(&mut stream.as_slice()).unwrap();
+    assert_eq!(result.cal, cal, "present key overrides bare `default`");
+}
+
+#[test]
+/// Tests bare `default` on an enum with `#[derive(Default)]` and `#[default]` variant.
+fn default_bare_enum_with_derive_default_absent() {
+    let result = DefaultBareEnum::decode_value(&mut [].as_slice()).unwrap();
+    assert_eq!(
+        result.flavor,
+        Flavor::Vanilla,
+        "bare `default` must yield the `#[default]` variant"
+    );
+}
+
+#[test]
+/// Tests a single struct that mixes bare `default` and `default = <expr>` on different fields.
+fn default_bare_and_expr_mixed_absent() {
+    let result = DefaultBareAndExpr::decode_value(&mut [].as_slice()).unwrap();
+    assert_eq!(
+        result.flavor,
+        Flavor::Vanilla,
+        "bare `default` field → Default::default()"
+    );
+    assert_eq!(
+        result.cal,
+        Calibration {
+            gain: 2.5,
+            offset: -7
+        },
+        "`default = <expr>` field → inlined expression"
+    );
+}
+
+#[test]
+/// Tests that bare `default` on an `Option<T>` field unwraps through
+/// `unwrap_option_type` and calls `<T>::default()` (not `<Option<T>>::default()`).
+fn default_bare_option_wrapped_absent() {
+    let result = DefaultBareOptionWrapped::decode_value(&mut [].as_slice()).unwrap();
+    assert_eq!(
+        result.flavor,
+        Some(Flavor::Vanilla),
+        "Option<Flavor> with bare `default` should be `Some(Flavor::default())`"
     );
 }
 

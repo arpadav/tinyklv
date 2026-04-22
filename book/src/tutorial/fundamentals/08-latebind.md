@@ -19,8 +19,10 @@ The field stays type `T`; the function patches it in place. The example decodes 
 
 ## Example
 
+Run this example: `cargo run --example book_08_latebind`
+
 ```rust,no_run
-{{#include ../../../examples/book_08_latebind.rs}}
+{{#include ../../../../examples/book_08_latebind.rs}}
 ```
 
 ## Overview

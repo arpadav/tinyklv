@@ -3,6 +3,8 @@
 //! Realistic types that implement Decode + tinyklv::EncodeValue manually,
 //! used as field types in `#[derive(Klv)]` test structs throughout
 //! the `advanced_*` test modules
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -16,7 +18,7 @@ pub enum Color {
 }
 impl tinyklv::DecodeValue<&[u8]> for Color {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
-        let v = tinyklv::dec::binary::be_u16(input)?;
+        let v = decb::be_u16(input)?;
         Ok(match v {
             0x0001 => Color::Red,
             0x0002 => Color::Green,
@@ -35,7 +37,7 @@ impl tinyklv::EncodeValue<Vec<u8>> for Color {
             Color::Alpha => 0x0004,
             Color::Unknown(v) => *v,
         };
-        tinyklv::enc::binary::be_u16(v)
+        encb::be_u16(v)
     }
 }
 /// User-side escape hatch for the `&` sigil: a `Copy` enum is cheapest to
@@ -58,7 +60,7 @@ pub enum Priority {
 }
 impl tinyklv::DecodeValue<&[u8]> for Priority {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
-        let v = tinyklv::dec::binary::be_u8(input)?;
+        let v = decb::u8(input)?;
         match v {
             0 => Ok(Priority::Low),
             1 => Ok(Priority::Medium),
@@ -76,7 +78,7 @@ impl tinyklv::EncodeValue<Vec<u8>> for Priority {
             Priority::High => 2,
             Priority::Critical => 3,
         };
-        tinyklv::enc::binary::u8(v)
+        encb::u8(v)
     }
 }
 /// User-side escape hatch for the `&` sigil: a `Copy` enum is cheapest to
@@ -99,7 +101,7 @@ pub enum Material {
 }
 impl tinyklv::DecodeValue<&[u8]> for Material {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
-        let v = tinyklv::dec::binary::be_u16(input)?;
+        let v = decb::be_u16(input)?;
         match v {
             0x0001 => Ok(Material::Steel),
             0x0002 => Ok(Material::Aluminum),
@@ -117,7 +119,7 @@ impl tinyklv::EncodeValue<Vec<u8>> for Material {
             Material::Composite => 0x0003,
             Material::Ceramic => 0x0004,
         };
-        tinyklv::enc::binary::be_u16(v)
+        encb::be_u16(v)
     }
 }
 
@@ -131,7 +133,7 @@ pub enum OpMode {
 }
 impl tinyklv::DecodeValue<&[u8]> for OpMode {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
-        let v = tinyklv::dec::binary::be_u8(input)?;
+        let v = decb::u8(input)?;
         match v {
             0 => Ok(OpMode::Standby),
             1 => Ok(OpMode::Active),
@@ -149,7 +151,7 @@ impl tinyklv::EncodeValue<Vec<u8>> for OpMode {
             OpMode::Degraded => 2,
             OpMode::Emergency => 3,
         };
-        tinyklv::enc::binary::u8(v)
+        encb::u8(v)
     }
 }
 
@@ -163,7 +165,7 @@ pub enum SensorKind {
 }
 impl tinyklv::DecodeValue<&[u8]> for SensorKind {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
-        let v = tinyklv::dec::binary::be_u8(input)?;
+        let v = decb::u8(input)?;
         match v {
             0 => Ok(SensorKind::Temperature),
             1 => Ok(SensorKind::Pressure),
@@ -181,7 +183,7 @@ impl tinyklv::EncodeValue<Vec<u8>> for SensorKind {
             SensorKind::Humidity => 2,
             SensorKind::Vibration => 3,
         };
-        tinyklv::enc::binary::u8(v)
+        encb::u8(v)
     }
 }
 
@@ -193,15 +195,15 @@ pub struct Coordinate {
 }
 impl tinyklv::DecodeValue<&[u8]> for Coordinate {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
-        let lat = tinyklv::dec::binary::be_f64(input)?;
-        let lon = tinyklv::dec::binary::be_f64(input)?;
+        let lat = decb::be_f64(input)?;
+        let lon = decb::be_f64(input)?;
         Ok(Coordinate { lat, lon })
     }
 }
 impl tinyklv::EncodeValue<Vec<u8>> for Coordinate {
     fn encode_value(&self) -> Vec<u8> {
-        let mut v = tinyklv::enc::binary::be_f64(self.lat);
-        v.extend(tinyklv::enc::binary::be_f64(self.lon));
+        let mut v = encb::be_f64(self.lat);
+        v.extend(encb::be_f64(self.lon));
         v
     }
 }
@@ -215,17 +217,17 @@ pub struct Velocity {
 }
 impl tinyklv::DecodeValue<&[u8]> for Velocity {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
-        let dx = tinyklv::dec::binary::be_i16(input)?;
-        let dy = tinyklv::dec::binary::be_i16(input)?;
-        let dz = tinyklv::dec::binary::be_i16(input)?;
+        let dx = decb::be_i16(input)?;
+        let dy = decb::be_i16(input)?;
+        let dz = decb::be_i16(input)?;
         Ok(Velocity { dx, dy, dz })
     }
 }
 impl tinyklv::EncodeValue<Vec<u8>> for Velocity {
     fn encode_value(&self) -> Vec<u8> {
-        let mut v = tinyklv::enc::binary::be_i16(self.dx);
-        v.extend(tinyklv::enc::binary::be_i16(self.dy));
-        v.extend(tinyklv::enc::binary::be_i16(self.dz));
+        let mut v = encb::be_i16(self.dx);
+        v.extend(encb::be_i16(self.dy));
+        v.extend(encb::be_i16(self.dz));
         v
     }
 }
@@ -239,17 +241,17 @@ pub struct Attitude {
 }
 impl tinyklv::DecodeValue<&[u8]> for Attitude {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
-        let roll = tinyklv::dec::binary::be_f32(input)?;
-        let pitch = tinyklv::dec::binary::be_f32(input)?;
-        let yaw = tinyklv::dec::binary::be_f32(input)?;
+        let roll = decb::be_f32(input)?;
+        let pitch = decb::be_f32(input)?;
+        let yaw = decb::be_f32(input)?;
         Ok(Attitude { roll, pitch, yaw })
     }
 }
 impl tinyklv::EncodeValue<Vec<u8>> for Attitude {
     fn encode_value(&self) -> Vec<u8> {
-        let mut v = tinyklv::enc::binary::be_f32(self.roll);
-        v.extend(tinyklv::enc::binary::be_f32(self.pitch));
-        v.extend(tinyklv::enc::binary::be_f32(self.yaw));
+        let mut v = encb::be_f32(self.roll);
+        v.extend(encb::be_f32(self.pitch));
+        v.extend(encb::be_f32(self.yaw));
         v
     }
 }
@@ -262,15 +264,15 @@ pub struct Timestamp {
 }
 impl tinyklv::DecodeValue<&[u8]> for Timestamp {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
-        let seconds = tinyklv::dec::binary::be_u32(input)?;
-        let nanos = tinyklv::dec::binary::be_u16(input)?;
+        let seconds = decb::be_u32(input)?;
+        let nanos = decb::be_u16(input)?;
         Ok(Timestamp { seconds, nanos })
     }
 }
 impl tinyklv::EncodeValue<Vec<u8>> for Timestamp {
     fn encode_value(&self) -> Vec<u8> {
-        let mut v = tinyklv::enc::binary::be_u32(self.seconds);
-        v.extend(tinyklv::enc::binary::be_u16(self.nanos));
+        let mut v = encb::be_u32(self.seconds);
+        v.extend(encb::be_u16(self.nanos));
         v
     }
 }
@@ -287,7 +289,7 @@ pub struct StatusFlags {
 }
 impl tinyklv::DecodeValue<&[u8]> for StatusFlags {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
-        let raw = tinyklv::dec::binary::be_u16(input)?;
+        let raw = decb::be_u16(input)?;
         Ok(StatusFlags {
             active: (raw >> 15) & 1 == 1,
             armed: (raw >> 14) & 1 == 1,
@@ -309,7 +311,7 @@ impl tinyklv::EncodeValue<Vec<u8>> for StatusFlags {
             raw |= 1 << 13;
         }
         raw |= ((self.mode as u16) & 0x1F) << 8;
-        tinyklv::enc::binary::be_u16(raw)
+        encb::be_u16(raw)
     }
 }
 
@@ -322,14 +324,14 @@ pub struct SensorReading {
 impl tinyklv::DecodeValue<&[u8]> for SensorReading {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
         let kind = SensorKind::decode_value(input)?;
-        let value = tinyklv::dec::binary::be_f32(input)?;
+        let value = decb::be_f32(input)?;
         Ok(SensorReading { kind, value })
     }
 }
 impl tinyklv::EncodeValue<Vec<u8>> for SensorReading {
     fn encode_value(&self) -> Vec<u8> {
         let mut v = self.kind.encode_value();
-        v.extend(tinyklv::enc::binary::be_f32(self.value));
+        v.extend(encb::be_f32(self.value));
         v
     }
 }

@@ -3,6 +3,7 @@
 //! See: `book/tutorial/07-val-lengths.md` for full example
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
+use tinyklv::dec::string as decs;   // string decoders
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -25,7 +26,7 @@ struct HeartbeatPacket {
 
     #[klv(
         key = 0x07,
-        dec = decb::to_string_utf8,
+        dec = decs::to_string_utf8,
         varlen = true,
     )]
     station_id: String,

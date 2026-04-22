@@ -13,14 +13,14 @@ Decoding is driven by `DecodeValue::decode_value`, which takes `&mut &[u8]` and 
 
 In addition, you might see `allow_unimplemented_encode` here. This is a flag, where by
 default, `tinyklv::Klv` requires both encoding and decoding to be implemented. 
-[More on this here](../reference/container-attributes.md#allow_unimplemented_encode)
+[More on this here](../../reference/container-attributes.md#allow_unimplemented_encode)
 
 ## Example
 
 Run this example: `cargo run --example book_01_getting_started`
 
 ```rust,no_run
-{{#include ../../../examples/book_01_getting_started.rs}}
+{{#include ../../../../examples/book_01_getting_started.rs}}
 ```
 
 ## Overview

@@ -1,31 +1,51 @@
-// --------------------------------------------------
-// local
-// --------------------------------------------------
+use tinyklv::dec::binary as decb;
+use tinyklv::dec::string as decs;
+use tinyklv::enc::binary as encb;
+use tinyklv::enc::string as encs;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
-
-// --------------------------------------------------
-// all numeric field types
-// --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct AllNumerics {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u8, enc = *tinyklv::enc::binary::u8)]
+    #[klv(
+        key = 0x01,
+        dec = decb::u8,
+        enc = *encb::u8,
+    )]
     u8_field: u8,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     u16_field: u16,
-    #[klv(key = 0x03, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
+    #[klv(
+        key = 0x03,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
     u32_field: u32,
-    #[klv(key = 0x04, dec = tinyklv::dec::binary::be_u64, enc = *tinyklv::enc::binary::be_u64)]
+    #[klv(
+        key = 0x04,
+        dec = decb::be_u64,
+        enc = *encb::be_u64,
+    )]
     u64_field: u64,
-    #[klv(key = 0x05, dec = tinyklv::dec::binary::be_i16, enc = *tinyklv::enc::binary::be_i16)]
+    #[klv(
+        key = 0x05,
+        dec = decb::be_i16,
+        enc = *encb::be_i16,
+    )]
     i16_field: i16,
-    #[klv(key = 0x06, dec = tinyklv::dec::binary::be_i32, enc = *tinyklv::enc::binary::be_i32)]
+    #[klv(
+        key = 0x06,
+        dec = decb::be_i32,
+        enc = *encb::be_i32,
+    )]
     i32_field: i32,
 }
 
@@ -100,13 +120,21 @@ fn all_numerics_roundtrip_min_signed() {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct WithOptionalRoundtrip {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
     required: u32,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
     optional: Option<u32>,
 }
 
@@ -134,24 +162,24 @@ fn optional_none_roundtrip() {
     assert_eq!(decoded, original);
 }
 
-// --------------------------------------------------
-// struct with string field roundtrip
-// --------------------------------------------------
-
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct WithStringRoundtrip {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     id: u16,
     #[klv(
         key = 0x02,
         varlen = true,
-        dec = tinyklv::dec::binary::to_string_utf8,
-        enc = &tinyklv::enc::string::from_string_utf8
+        dec = decs::to_string_utf8,
+        enc = &encs::from_string_utf8
     )]
     name: String,
 }

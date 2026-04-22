@@ -1,7 +1,7 @@
-# Tutorial 15 - Async / Tokio streams
+# Tutorial 14 - Async / Tokio streams
 
-Tinyklv has no async surface. `decode_frame` is synchronous and takes
-`&mut &[u8]`. That is deliberate: packet framing is a CPU-bound string
+`tinyklv` has no async surface. `decode_frame` is synchronous and takes
+`&mut &[u8]`. That is deliberate: packet framing is a CPU-bound stream
 operation, and wrapping it in a bespoke async trait would force every user
 to pick a runtime at the library level.
 
@@ -28,10 +28,12 @@ proving the receiver can reassemble a frame split across two awaits. The
 consumer runs the checkpoint-and-restore loop and collects the reassembled
 packets; the final `assert_eq!` verifies all three frames round-trip.
 
+Run this example: `cargo run --example book_14_tokio_streams`
+
 ```rust,no_run
-{{#include ../../../examples/book_15_tokio_streams.rs}}
+{{#include ../../../../examples/book_14_tokio_streams.rs}}
 ```
 
-- Tinyklv stays sync; async is the caller's concern, one buffer-accumulator away.
+- `tinyklv` stays sync; async is the caller's concern, one buffer-accumulator away.
 - Save the cursor before each `decode_frame` call and restore it on error.
 - `tokio` appears only as a transport dependency - no library-level async feature flag.

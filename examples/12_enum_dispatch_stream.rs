@@ -25,7 +25,7 @@ const WX_SENTINEL:  &[u8] = b"WXFRAME";
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
-    stream = &[u8],                                              // default, shown for clarity
+    stream = &[u8],
     sentinel = b"NAVFRAME",
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
@@ -59,7 +59,7 @@ struct NavFrame {
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
-    stream = &[u8],                                              // default, shown for clarity
+    stream = &[u8],
     sentinel = b"WXFRAME",
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),

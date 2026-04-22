@@ -1,30 +1,36 @@
-// --------------------------------------------------
-// local
-// --------------------------------------------------
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
 
-/// Required u16 field - decode must fail when value bytes are absent/insufficient
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Required u16 field - decode must fail when value bytes are absent/insufficient
 struct RequiredU16 {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     value: u16,
 }
 
-/// Optional u32 - decode must succeed with None when value bytes are absent
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Optional u32 - decode must succeed with None when value bytes are absent
 struct OptionalU32 {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
     value: Option<u32>,
 }
 
@@ -32,13 +38,21 @@ struct OptionalU32 {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct MixedFields {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     required: u16,
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
     optional: Option<u32>,
 }
 
@@ -121,28 +135,28 @@ fn both_fields_valid_succeeds() {
 /// Tests that `be_u16_lengthed(100)` errors when only 4 bytes are available.
 fn be_u16_lengthed_oversized_request_fails() {
     let mut input: &[u8] = &[0x01, 0x02, 0x03, 0x04];
-    assert!(tinyklv::dec::binary::be_u16_lengthed(100)(&mut input).is_err());
+    assert!(decb::be_u16_lengthed(100)(&mut input).is_err());
 }
 
 #[test]
 /// Tests that `be_u32_lengthed(10)` errors when only 4 bytes are available.
 fn be_u32_lengthed_oversized_request_fails() {
     let mut input: &[u8] = &[0x00, 0x00, 0x00, 0x01];
-    assert!(tinyklv::dec::binary::be_u32_lengthed(10)(&mut input).is_err());
+    assert!(decb::be_u32_lengthed(10)(&mut input).is_err());
 }
 
 #[test]
 /// Tests that `be_u64_lengthed(20)` errors when only 8 bytes are available.
 fn be_u64_lengthed_oversized_request_fails() {
     let mut input: &[u8] = &[0u8; 8];
-    assert!(tinyklv::dec::binary::be_u64_lengthed(20)(&mut input).is_err());
+    assert!(decb::be_u64_lengthed(20)(&mut input).is_err());
 }
 
 #[test]
 /// Tests that `be_u16_lengthed(2)` decodes cleanly when exactly 2 bytes are available.
 fn be_u16_lengthed_exact_length_succeeds() {
     let mut input: &[u8] = &[0x00, 0x01];
-    let result = tinyklv::dec::binary::be_u16_lengthed(2)(&mut input).unwrap();
+    let result = decb::be_u16_lengthed(2)(&mut input).unwrap();
     assert_eq!(result, 1_u16);
 }
 
@@ -151,6 +165,6 @@ fn be_u16_lengthed_exact_length_succeeds() {
 fn be_u16_lengthed_one_byte_zero_padded_succeeds() {
     // len=1 for u16: single byte is zero-padded on the left.
     let mut input: &[u8] = &[0xAB];
-    let result = tinyklv::dec::binary::be_u16_lengthed(1)(&mut input).unwrap();
+    let result = decb::be_u16_lengthed(1)(&mut input).unwrap();
     assert_eq!(result, 0x00AB_u16);
 }

@@ -14,9 +14,26 @@ use tinyklv::enc::binary as encb;   // binary encoders
 /// Encoder-side mirror of the heartbeat body. Used only to produce bytes
 /// that the hand-written decoder below will consume
 struct HeartbeatEncoder {
-    #[klv(key = 0x01, dec = decb::u8,     enc = *encb::u8)]     sequence:             u8,
-    #[klv(key = 0x02, dec = decb::be_u16, enc = *encb::be_u16)] temperature_centideg: u16,
-    #[klv(key = 0x03, dec = decb::be_u32, enc = *encb::be_u32)] uptime_s:             u32,
+    #[klv(
+        key = 0x01,
+        dec = decb::u8,
+        enc = *encb::u8
+    )]
+    sequence: u8,
+
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u16,
+        enc = *encb::be_u16
+    )]
+   temperature_centideg: u16,
+
+    #[klv(
+        key = 0x03,
+        dec = decb::be_u32,
+        enc = *encb::be_u32
+    )]
+    uptime_s: u32,
 }
 
 #[derive(Debug, PartialEq)]

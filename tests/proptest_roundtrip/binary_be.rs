@@ -29,14 +29,14 @@ macro_rules! roundtrip_float {
 }
 
 // u8 has no be_/le_ encoder variant - single byte, endianness irrelevant.
-// The native-endian encoder is tinyklv::enc::binary::u8; the decoder is be_u8
-// (which is just winnow::binary::be_u8 with implied generics).
+// The native-endian encoder is tinyklv::enc::binary::u8; the decoder is u8
+// (which is just winnow::binary::u8 with implied generics).
 roundtrip_test!(
-    /// Property: `u8` encode/`be_u8` decode roundtrip holds for all u8 values.
-    be_u8_roundtrip,
+    /// Property: `u8` encode/`u8` decode roundtrip holds for all u8 values.
+    u8_roundtrip,
     u8,
     tinyklv::enc::binary::u8,
-    tinyklv::dec::binary::be_u8
+    tinyklv::dec::binary::u8
 );
 roundtrip_test!(
     /// Property: `be_u16` encode/decode roundtrip holds for all u16 values.
@@ -68,11 +68,11 @@ roundtrip_test!(
 );
 // i8 has no be_/le_ encoder variant - single byte, endianness irrelevant.
 roundtrip_test!(
-    /// Property: `i8` encode/`be_i8` decode roundtrip holds for all i8 values.
-    be_i8_roundtrip,
+    /// Property: `i8` encode/`i8` decode roundtrip holds for all i8 values.
+    i8_roundtrip,
     i8,
     tinyklv::enc::binary::i8,
-    tinyklv::dec::binary::be_i8
+    tinyklv::dec::binary::i8
 );
 roundtrip_test!(
     /// Property: `be_i16` encode/decode roundtrip holds for all i16 values.

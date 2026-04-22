@@ -1,9 +1,6 @@
 # TODO's
 
-* `sentinel` to be list attribute
-  * `val = <lit>`
-  * `enc = <xcoder>`
-  * no need for decoder, since the recognition sentinel is expected to be a literal.
-  * currently, it was assumed that the encoder for the sentinel is the same as the key-encoder.
-
-* `latebind`
+* fix the example with repeated fn call
+* rename repeated to something else, like batch_decode_frames or something? 
+* one more pass on README vs book
+* add support info

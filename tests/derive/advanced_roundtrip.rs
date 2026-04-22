@@ -10,6 +10,8 @@
 // local
 // --------------------------------------------------
 use super::types::*;
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
@@ -20,21 +22,45 @@ use tinyklv::Klv;
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct SixField {
-    #[klv(key = 0x01, dec = Color::decode_value,     enc = Color::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Color,
-    #[klv(key = 0x02, dec = Priority::decode_value,  enc = Priority::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Priority::decode_value,
+        enc = Priority::encode_value,
+    )]
     priority: Priority,
-    #[klv(key = 0x03, dec = Velocity::decode_value,  enc = Velocity::encode_value)]
+    #[klv(
+        key = 0x03,
+        dec = Velocity::decode_value,
+        enc = Velocity::encode_value,
+    )]
     velocity: Velocity,
-    #[klv(key = 0x04, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
+    #[klv(
+        key = 0x04,
+        dec = Coordinate::decode_value,
+        enc = Coordinate::encode_value,
+    )]
     coordinate: Coordinate,
-    #[klv(key = 0x05, dec = Attitude::decode_value,  enc = Attitude::encode_value)]
+    #[klv(
+        key = 0x05,
+        dec = Attitude::decode_value,
+        enc = Attitude::encode_value,
+    )]
     attitude: Attitude,
-    #[klv(key = 0x06, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
+    #[klv(
+        key = 0x06,
+        dec = Timestamp::decode_value,
+        enc = Timestamp::encode_value,
+    )]
     timestamp: Timestamp,
 }
 
@@ -43,15 +69,27 @@ struct SixField {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct ThreeOptFields {
-    #[klv(key = 0x01, dec = Color::decode_value,    enc = Color::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Option<Color>,
-    #[klv(key = 0x02, dec = Velocity::decode_value, enc = Velocity::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Velocity::decode_value,
+        enc = Velocity::encode_value,
+    )]
     velocity: Option<Velocity>,
-    #[klv(key = 0x03, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
+    #[klv(
+        key = 0x03,
+        dec = Coordinate::decode_value,
+        enc = Coordinate::encode_value,
+    )]
     coordinate: Option<Coordinate>,
 }
 
@@ -62,13 +100,21 @@ struct ThreeOptFields {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct AllRequired {
-    #[klv(key = 0x01, dec = Color::decode_value,     enc = Color::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Color,
-    #[klv(key = 0x02, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Timestamp::decode_value,
+        enc = Timestamp::encode_value,
+    )]
     timestamp: Timestamp,
 }
 
@@ -79,13 +125,21 @@ struct AllRequired {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct AllOptional {
-    #[klv(key = 0x01, dec = Color::decode_value,    enc = Color::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Option<Color>,
-    #[klv(key = 0x02, dec = Velocity::decode_value, enc = Velocity::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Velocity::decode_value,
+        enc = Velocity::encode_value,
+    )]
     velocity: Option<Velocity>,
 }
 
@@ -96,13 +150,21 @@ struct AllOptional {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct MixedShape {
-    #[klv(key = 0x01, dec = Priority::decode_value, enc = Priority::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Priority::decode_value,
+        enc = Priority::encode_value,
+    )]
     priority: Priority,
-    #[klv(key = 0x02, dec = Attitude::decode_value, enc = Attitude::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Attitude::decode_value,
+        enc = Attitude::encode_value,
+    )]
     attitude: Option<Attitude>,
 }
 
@@ -123,13 +185,21 @@ fn encode_color_owned(v: Color) -> Vec<u8> {
 #[derive(Klv, Debug, PartialEq, Clone)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct OwnedEncoderStruct {
-    #[klv(key = 0x01, dec = Priority::decode_value, enc = *encode_priority_owned)]
+    #[klv(
+        key = 0x01,
+        dec = Priority::decode_value,
+        enc = *encode_priority_owned,
+    )]
     priority: Priority,
-    #[klv(key = 0x02, dec = Color::decode_value,    enc = *encode_color_owned)]
+    #[klv(
+        key = 0x02,
+        dec = Color::decode_value,
+        enc = *encode_color_owned,
+    )]
     color: Color,
 }
 

@@ -11,7 +11,6 @@
 //! | `DecodeFrame<S>`   | `EncodeFrame<O>`   | Full pipeline  |
 //! | `BreakCondition`   | *(none)*           | Loop control   |
 //! | `RepeatedDecode`   | *(none)*           | Batching       |
-//! | `ThenDecodeValue`  | *(none)*           | Internal       |
 //!
 //! **Why decode has more traits**: Decode must seek through a byte stream,
 //! handle unknown/malformed keys, and recover from partial parses. Encode
@@ -26,7 +25,7 @@
 //! `Vec<u8>`. The `EncodedOutput` trait exists for non-`Vec<u8>` targets via
 //! hand-written impls.
 //!
-//! **`var` attribute**: Decode-only. Controls whether `(len)` is passed to the
+//! **`varlen` attribute**: Decode-only. Controls whether `(len)` is passed to the
 //! decoder function. Encoding does not use it.
 // --------------------------------------------------
 // mods

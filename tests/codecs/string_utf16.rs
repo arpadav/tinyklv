@@ -1,9 +1,5 @@
-use tinyklv::codecs::binary::dec::{to_string_utf16_be, to_string_utf16_le};
+use tinyklv::codecs::string::dec::{to_string_utf16_be, to_string_utf16_le};
 use tinyklv::codecs::string::enc::{from_string_utf16_be, from_string_utf16_le};
-
-// --------------------------------------------------
-// UTF-16 LE
-// --------------------------------------------------
 
 #[test]
 /// Tests `to_string_utf16_le(4)` decodes `[0x41, 0x00, 0x42, 0x00]` to `"AB"`.
@@ -69,10 +65,6 @@ fn utf16_le_unicode_roundtrip() {
     assert_eq!(text, decoded);
 }
 
-// --------------------------------------------------
-// UTF-16 BE
-// --------------------------------------------------
-
 #[test]
 /// Tests `to_string_utf16_be(4)` decodes `[0x00, 0x41, 0x00, 0x42]` to `"AB"`.
 fn utf16_be_known_ab() {
@@ -124,10 +116,6 @@ fn utf16_be_unicode_roundtrip() {
     let decoded = to_string_utf16_be(encoded.len())(&mut encoded.as_slice()).unwrap();
     assert_eq!(text, decoded);
 }
-
-// --------------------------------------------------
-// LE vs BE produce different bytes
-// --------------------------------------------------
 
 #[test]
 /// Tests that UTF-16 LE and BE encoders produce byte-reversed outputs for the same input.

@@ -15,7 +15,7 @@ order the triples happened to arrive.
 Run this example: `cargo run --example book_02_out_of_order`
 
 ```rust,no_run
-{{#include ../../../examples/book_02_out_of_order.rs}}
+{{#include ../../../../examples/book_02_out_of_order.rs}}
 ```
 
 ## Overview

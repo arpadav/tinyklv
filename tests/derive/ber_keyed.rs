@@ -1,25 +1,42 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use tinyklv::dec::ber as decber;
+use tinyklv::dec::binary as decb;
+use tinyklv::dec::string as decs;
 use tinyklv::enc::ber as encber;
+use tinyklv::enc::binary as encb;
+use tinyklv::enc::string as encs;
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::ber::ber_oid::<u64>, enc = encber::ber_oid),
-    len(dec = tinyklv::dec::ber::ber_length, enc = encber::ber_length),
+    key(dec = decber::ber_oid::<u64>, enc = encber::ber_oid),
+    len(dec = decber::ber_length, enc = encber::ber_length),
 )]
 struct BerPacket {
     // Key 0x01 (single-byte BER OID, value < 128)
-    #[klv(key = 0x01_u64, dec = tinyklv::dec::binary::be_u8, enc = *tinyklv::enc::binary::u8)]
+    #[klv(
+        key = 0x01_u64,
+        dec = decb::u8,
+        enc = *encb::u8,
+    )]
     small_key_field: u8,
     // Key 0x02 (single-byte BER OID)
-    #[klv(key = 0x02_u64, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x02_u64,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     word_field: u16,
     // Key 0x03 (single-byte BER OID)
-    #[klv(key = 0x03_u64, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
+    #[klv(
+        key = 0x03_u64,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
     dword_field: u32,
 }
 
@@ -105,15 +122,15 @@ fn encode_ber_roundtrip_all_zeros() {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::ber::ber_oid::<u64>, enc = encber::ber_oid),
-    len(dec = tinyklv::dec::ber::ber_length, enc = encber::ber_length),
+    key(dec = decber::ber_oid::<u64>, enc = encber::ber_oid),
+    len(dec = decber::ber_length, enc = encber::ber_length),
 )]
 struct BerLargePayload {
     #[klv(
         key = 0x01_u64,
         varlen = true,
-        dec = tinyklv::dec::binary::to_string_utf8,
-        enc = tinyklv::enc::string::from_string_utf8,
+        dec = decs::to_string_utf8,
+        enc = encs::from_string_utf8,
     )]
     payload: String,
 }

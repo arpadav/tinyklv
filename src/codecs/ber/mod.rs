@@ -57,11 +57,10 @@ impl<T> OfBerOid for T where T: OfBerCommon {}
 /// use tinyklv::prelude::*;
 /// use tinyklv::codecs::ber::BerLength;
 ///
-/// assert_eq!(vec![128 + 3, 129, 182, 2], BerLength::new(&8_500_738_u32).encode_value());
-/// assert_eq!(BerLength::new(&8_500_738_u32), BerLength::decode_value(&mut &vec![128 + 3, 129, 182, 2][..]).unwrap());
+/// assert_eq!(vec![128 + 3, 129, 182, 2], BerLength::new(8_500_738_u32).encode_value());
+/// assert_eq!(BerLength::new(8_500_738_u32), BerLength::decode_value(&mut &vec![128 + 3, 129, 182, 2][..]).unwrap());
 /// ```
 pub enum BerLength<T: OfBerLength> {
-    /// A
     Short(u8),
     Long(T),
 }
@@ -125,17 +124,17 @@ impl<T: OfBerLength> crate::EncodeValue<Vec<u8>> for BerLength<T> {
     /// use tinyklv::prelude::*;
     /// use tinyklv::codecs::ber::BerLength;
     ///
-    /// let value0 = BerLength::new(&47_u64);
-    /// let value1 = BerLength::new(&201_u64);
-    /// let value2 = BerLength::new(&123891829038102_u64);
+    /// let value0 = BerLength::new(47_u64);
+    /// let value1 = BerLength::new(201_u64);
+    /// let value2 = BerLength::new(123891829038102_u64);
     ///
     /// assert_eq!(value0.encode_value(), vec![47]);
     /// assert_eq!(value1.encode_value(), vec![128 + 1, 201]);
     /// assert_eq!(value2.encode_value(), vec![128 + 6, 112, 173, 208, 117, 220, 22]);
     ///
     /// // Can also directly encode:
-    /// let value0_encoded = BerLength::encode_value(&47_u64);
-    /// let value1_encoded = BerLength::encode_value(&201_u64);
+    /// let value0_encoded = BerLength::encode_value(47_u64);
+    /// let value1_encoded = BerLength::encode_value(201_u64);
     ///
     /// assert_eq!(value0_encoded, vec![47]);
     /// assert_eq!(value1_encoded, vec![128 + 1, 201]);
@@ -181,7 +180,7 @@ impl<T: OfBerLength> crate::EncodeValue<Vec<u8>> for BerLength<T> {
         }
     }
 }
-/// [`BerLength`] implementation of [`Decode`]
+/// [`BerLength`] implementation of [`crate::traits::DecodeValue`]
 impl<T: OfBerLength> crate::DecodeValue<&[u8]> for BerLength<T> {
     /// Decode a [`BerLength`] from a [`&[u8]`]
     ///
@@ -195,9 +194,9 @@ impl<T: OfBerLength> crate::DecodeValue<&[u8]> for BerLength<T> {
     /// let value1 = vec![128 + 1, 201];
     /// let value2 = vec![128 + 6, 112, 173, 208, 117, 220, 22];
     ///
-    /// assert_eq!(BerLength::decode_value(&mut &value0[..]).unwrap(), BerLength::new(&47_u64));
-    /// assert_eq!(BerLength::decode_value(&mut &value1[..]).unwrap(), BerLength::new(&201_u64));
-    /// assert_eq!(BerLength::decode_value(&mut &value2[..]).unwrap(), BerLength::new(&123891829038102_u64));
+    /// assert_eq!(BerLength::decode_value(&mut &value0[..]).unwrap(), BerLength::new(47_u64));
+    /// assert_eq!(BerLength::decode_value(&mut &value1[..]).unwrap(), BerLength::new(201_u64));
+    /// assert_eq!(BerLength::decode_value(&mut &value2[..]).unwrap(), BerLength::new(123891829038102_u64));
     /// ```
     fn decode_value(input: &mut &[u8]) -> winnow::Result<Self> {
         let checkpoint = input.checkpoint();
@@ -279,7 +278,7 @@ impl<T: OfBerLength> crate::DecodeValue<&[u8]> for BerLength<T> {
 /// use tinyklv::prelude::*;
 /// use tinyklv::codecs::ber::BerOid;
 ///
-/// assert_eq!(vec![129, 182, 2], BerOid::encode_value(&23298_u64));
+/// assert_eq!(vec![129, 182, 2], BerOid::encode_value(23298_u64));
 /// assert_eq!(23298_u64, BerOid::decode_value(&mut &vec![129, 182, 2][..]).unwrap().value);
 /// ```
 pub struct BerOid<T: OfBerOid> {
@@ -297,7 +296,7 @@ impl<T: OfBerOid> BerOid<T> {
         Self::new(value).encode_value()
     }
 }
-/// [`BerOid`] implementation of [`Encode`]
+/// [`BerOid`] implementation of [`crate::traits::EncodeValue`]
 impl<T: OfBerOid> crate::EncodeValue<Vec<u8>> for BerOid<T> {
     /// Encode a [`BerOid`] into a [`Vec<u8>`]
     ///
@@ -307,7 +306,7 @@ impl<T: OfBerOid> crate::EncodeValue<Vec<u8>> for BerOid<T> {
     /// use tinyklv::prelude::*;
     /// use tinyklv::codecs::ber::BerOid;
     ///
-    /// assert_eq!(vec![129, 182, 2], BerOid::encode_value(&23298_u64));
+    /// assert_eq!(vec![129, 182, 2], BerOid::encode_value(23298_u64));
     /// ```
     ///
     /// Please use [`crate::codecs::ber::enc::ber_oid`] instead for
@@ -341,7 +340,7 @@ impl<T: OfBerOid> crate::EncodeValue<Vec<u8>> for BerOid<T> {
         output
     }
 }
-/// [`BerOid`] implementation of [`Decode`]
+/// [`BerOid`] implementation of [`crate::traits::DecodeValue`]
 impl<T: OfBerOid> crate::DecodeValue<&[u8]> for BerOid<T> {
     /// Decode a [`BerOid`] from a [`&[u8]`]
     ///

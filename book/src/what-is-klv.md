@@ -23,8 +23,7 @@ header and you have a full KLV packet:
 
 ## Why this pattern?
 
-This not only enables nesting, but the sentinel is aptly named as a identifier
-to seek. For example:
+This not only enables nesting, but the sentinel is a fixed byte pattern the decoder scans for to find the next frame boundary. For example:
 
 ```text
 ┌───────────────────────────────────────────────────────┐
@@ -75,10 +74,10 @@ The KLV *shape* is fixed, but the concrete encoding of each part is not:
 | Value | Anything |
 
 `tinyklv` provides codec functions for each of these (see
-[Codecs reference](../reference/codecs.md)) and lets you mix them on a
+[Codecs reference](./reference/codecs.md)) and lets you mix them on a
 per-container and per-field basis.
 
-Move on to [Tutorial 01 - First packet](./tutorial/01-first-packet.md) to see
+Move on to [Tutorial 01 - First packet](./tutorial/fundamentals/01-first-packet.md) to see
 how these pieces compose.
 
 ## Where you see KLV in the wild

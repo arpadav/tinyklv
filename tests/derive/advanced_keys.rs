@@ -1,56 +1,106 @@
 //! Derive macro tests - non-sequential and boundary key values with complex domain types
 use super::types::*;
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct WideKeySpacing {
-    #[klv(key = 0x01, dec = Color::decode_value, enc = Color::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Color,
-    #[klv(key = 0x40, dec = Priority::decode_value, enc = Priority::encode_value)]
+    #[klv(
+        key = 0x40,
+        dec = Priority::decode_value,
+        enc = Priority::encode_value,
+    )]
     priority: Priority,
-    #[klv(key = 0x80, dec = Velocity::decode_value, enc = Velocity::encode_value)]
+    #[klv(
+        key = 0x80,
+        dec = Velocity::decode_value,
+        enc = Velocity::encode_value,
+    )]
     velocity: Velocity,
-    #[klv(key = 0xFE, dec = StatusFlags::decode_value, enc = StatusFlags::encode_value)]
+    #[klv(
+        key = 0xFE,
+        dec = StatusFlags::decode_value,
+        enc = StatusFlags::encode_value,
+    )]
     flags: StatusFlags,
 }
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct BoundaryKeys {
-    #[klv(key = 0x00, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
+    #[klv(
+        key = 0x00,
+        dec = Timestamp::decode_value,
+        enc = Timestamp::encode_value,
+    )]
     timestamp: Timestamp,
-    #[klv(key = 0x7F, dec = Color::decode_value, enc = Color::encode_value)]
+    #[klv(
+        key = 0x7F,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Color,
-    #[klv(key = 0x80, dec = Attitude::decode_value, enc = Attitude::encode_value)]
+    #[klv(
+        key = 0x80,
+        dec = Attitude::decode_value,
+        enc = Attitude::encode_value,
+    )]
     attitude: Attitude,
-    #[klv(key = 0xFF, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
+    #[klv(
+        key = 0xFF,
+        dec = Coordinate::decode_value,
+        enc = Coordinate::encode_value,
+    )]
     coord: Coordinate,
 }
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct WideKeySpacingOptional {
-    #[klv(key = 0x01, dec = Color::decode_value, enc = Color::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Option<Color>,
-    #[klv(key = 0x40, dec = Priority::decode_value, enc = Priority::encode_value)]
+    #[klv(
+        key = 0x40,
+        dec = Priority::decode_value,
+        enc = Priority::encode_value,
+    )]
     priority: Option<Priority>,
-    #[klv(key = 0x80, dec = Velocity::decode_value, enc = Velocity::encode_value)]
+    #[klv(
+        key = 0x80,
+        dec = Velocity::decode_value,
+        enc = Velocity::encode_value,
+    )]
     velocity: Option<Velocity>,
-    #[klv(key = 0xFE, dec = StatusFlags::decode_value, enc = StatusFlags::encode_value)]
+    #[klv(
+        key = 0xFE,
+        dec = StatusFlags::decode_value,
+        enc = StatusFlags::encode_value,
+    )]
     flags: Option<StatusFlags>,
 }
 

@@ -9,7 +9,7 @@ standard loop doesn't model:
   was accumulated.
 - **Abort** - stop and propagate an error, e.g. on a tamper-detection key.
 
-Tinyklv models all four outcomes with `BreakConditionType`:
+`tinyklv` models all four outcomes with `BreakConditionType`:
 
 ```rust,ignore
 pub enum BreakConditionType {
@@ -32,12 +32,14 @@ The example wires up a heartbeat where the transmitter emits a reserved key
 key (`0xFF`, stop decoding here). A `classify(key)` helper keeps the outcome
 table separate from the loop body, so the loop itself reads top to bottom.
 
+Run this example: `cargo run --example book_13_break_condition`
+
 ```rust,no_run
-{{#include ../../../examples/book_13_break_condition.rs}}
+{{#include ../../../../examples/book_13_break_condition.rs}}
 ```
 
 - `BreakConditionType` enumerates the four loop outcomes.
 - The blanket impl blocks override on derived types - manual `DecodeValue` is required.
 - Encode side can still derive; a mirror struct keeps the byte layout honest.
 
-**Next:** [14 - Sentinel seeking in pipelines](./14-sentinel-seeking.md)
+**Next:** [14 - Async / Tokio streams](./14-tokio-streams.md)

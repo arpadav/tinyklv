@@ -1,9 +1,5 @@
-use tinyklv::codecs::binary::dec::{to_string_utf8, to_string_utf8_strict};
+use tinyklv::codecs::string::dec::{to_string_utf8, to_string_utf8_strict};
 use tinyklv::codecs::string::enc::from_string_utf8;
-
-// --------------------------------------------------
-// ASCII strings
-// --------------------------------------------------
 
 #[test]
 /// Tests that `to_string_utf8(6)` decodes ASCII bytes to `"AF-101"`.
@@ -37,10 +33,6 @@ fn utf8_ascii_roundtrip() {
     assert_eq!(text, decoded);
 }
 
-// --------------------------------------------------
-// Unicode strings
-// --------------------------------------------------
-
 #[test]
 /// Tests UTF-8 roundtrip preserves Latin-1 extended characters (`"Héllo"`).
 fn utf8_unicode_roundtrip() {
@@ -68,10 +60,6 @@ fn utf8_emoji_roundtrip() {
     assert_eq!(text, decoded);
 }
 
-// --------------------------------------------------
-// empty string
-// --------------------------------------------------
-
 #[test]
 /// Tests that `to_string_utf8(0)` decodes an empty input to an empty string.
 fn utf8_empty_string_decode() {
@@ -86,10 +74,6 @@ fn utf8_empty_string_encode() {
     let encoded = from_string_utf8("");
     assert!(encoded.is_empty());
 }
-
-// --------------------------------------------------
-// lossy decoder: invalid bytes replaced with U+FFFD
-// --------------------------------------------------
 
 #[test]
 /// Tests that lossy `to_string_utf8` returns Ok with U+FFFD for invalid bytes `0xFF 0xFE`.
@@ -119,10 +103,6 @@ fn utf8_lossy_mixed_valid_invalid() {
     assert!(result.contains('\u{FFFD}'));
 }
 
-// --------------------------------------------------
-// strict decoder: invalid bytes return Err
-// --------------------------------------------------
-
 #[test]
 /// Tests that `to_string_utf8_strict(6)` succeeds on valid ASCII bytes.
 fn utf8_strict_valid_bytes_ok() {
@@ -151,11 +131,6 @@ fn utf8_strict_unicode_ok() {
     let result = to_string_utf8_strict(bytes.len())(&mut &bytes[..]).unwrap();
     assert_eq!(result, text);
 }
-
-// --------------------------------------------------
-// partial consumption: decoder only consumes `len`
-// bytes
-// --------------------------------------------------
 
 #[test]
 /// Tests that `to_string_utf8(6)` consumes exactly 6 bytes and leaves the rest in the input stream.

@@ -11,7 +11,7 @@ keywords = ["decode", "encode", "klv", "parsing", "tlv"]
 categories = ["development-tools", "encoding", "parsing"]
 edition = "2021"
 rust-version = "1.95"
-exclude = ["TODO.md", "TODO2.md", "review_*.md", "creplace.sh", "book/book/"]
+exclude = ["TODO.md", "book/book/"]
 
 [workspace]
 members = ["impl"]
@@ -35,119 +35,18 @@ path = "tests/proptest_roundtrip/main.rs"
 [dependencies]
 ascii = { version = "1.1.0", optional = true }
 chrono = { version = "0.4.44", optional = true }
-memchr = "2.7.6"
+memchr = "2.8.0"
 num-traits = "0.2.19"
 paste = "1.0.15"
 tinyklv-impl = { path = "impl", version = "0.0.1-alpha.1" }
 tracing = { version = "0.1.44", optional = true }
-winnow = { version = "1.0.1", features = ["parser", "simd"] }
+winnow = { version = "1.0.2", features = ["parser", "simd"] }
 
 [dev-dependencies]
-proptest = "1.4"
+proptest = "1.11"
 rand = "^0.10"
 rand_distr = "^0.6"
-tokio = { version = "1", features = ["rt-multi-thread", "sync", "macros"] }
-
-# [[example]]
-# name = "01_hello_world"
-# path = "examples/01_hello_world.rs"
-
-# [[example]]
-# name = "02_custom_key_types"
-# path = "examples/02_custom_key_types.rs"
-
-# [[example]]
-# name = "03_strings_and_types"
-# path = "examples/03_strings_and_types.rs"
-
-# [[example]]
-# name = "04_optional_fields"
-# path = "examples/04_optional_fields.rs"
-
-# [[example]]
-# name = "05_basic_roundtrip"
-# path = "examples/05_basic_roundtrip.rs"
-
-# [[example]]
-# name = "06_custom_encoder_decoder"
-# path = "examples/06_custom_encoder_decoder.rs"
-
-# [[example]]
-# name = "07_sentinel_seeking"
-# path = "examples/07_sentinel_seeking.rs"
-
-# [[example]]
-# name = "08_nested_packets"
-# path = "examples/08_nested_packets.rs"
-
-# [[example]]
-# name = "09_ber_keyed"
-# path = "examples/09_ber_keyed.rs"
-
-# [[example]]
-# name = "10_defaults_and_init"
-# path = "examples/10_defaults_and_init.rs"
-
-# [[example]]
-# name = "11_repeated_extraction"
-# path = "examples/11_repeated_extraction.rs"
-
-# [[example]]
-# name = "12_enum_dispatch_stream"
-# path = "examples/12_enum_dispatch_stream.rs"
-
-# [[example]]
-# name = "13_variable_length_fields"
-# path = "examples/13_variable_length_fields.rs"
-
-# [[example]]
-# name = "14_break_condition_custom"
-# path = "examples/14_break_condition_custom.rs"
-
-# [[example]]
-# name = "15_tokio_stream_e2e"
-# path = "examples/15_tokio_stream_e2e.rs"
-# required-features = []
-
-# [[example]]
-# name = "16_latebind"
-# path = "examples/16_latebind.rs"
-
-# [[example]]
-# name = "book_01_getting_started_a"
-# path = "examples/book_01_getting_started_a.rs"
-
-# [[example]]
-# name = "book_01_getting_started_b"
-# path = "examples/book_01_getting_started_b.rs"
-
-# [[example]]
-# name = "book_02_frame_and_sentinel"
-# path = "examples/book_02_frame_and_sentinel.rs"
-
-# [[example]]
-# name = "book_03_default_codec"
-# path = "examples/book_03_default_codec.rs"
-
-# [[example]]
-# name = "book_04_custom_decoder_fn"
-# path = "examples/book_04_custom_decoder_fn.rs"
-
-# [[example]]
-# name = "book_05_decode_value_impl"
-# path = "examples/book_05_decode_value_impl.rs"
-
-# [[example]]
-# name = "book_06_varlen"
-# path = "examples/book_06_varlen.rs"
-
-# [[example]]
-# name = "book_07_latebind"
-# path = "examples/book_07_latebind.rs"
-
-# [[example]]
-# name = "book_08_encode_sigil"
-# path = "examples/book_08_encode_sigil.rs"
+tokio = { version = "^1.52", features = ["rt-multi-thread", "sync", "macros"] }
 
 [features]
 default = []

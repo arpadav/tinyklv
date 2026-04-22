@@ -14,12 +14,29 @@ use tinyklv::enc::binary as encb;   // binary encoders
 /// A single sensor reading. No sentinel - these appear in a
 /// pre-framed buffer, concatenated
 struct SensorReading {
+    #[klv(
+        key = 0x01,
+        dec = decb::u8,
+        enc = *encb::u8
+    )]
     /// Sensor identifier (0..=255)
-    #[klv(key = 0x01, dec = decb::u8,     enc = *encb::u8)]     sensor_id:       u8,
+    sensor_id: u8,
+
+    #[klv(
+        key = 0x02,
+        dec = decb::be_i32,
+        enc = *encb::be_i32
+    )]
     /// Reading value in fixed-point centi-units
-    #[klv(key = 0x02, dec = decb::be_i32, enc = *encb::be_i32)] value_centiunit: i32,
+    value_centiunit: i32,
+
+    #[klv(
+        key = 0x03,
+        dec = decb::be_u32,
+        enc = *encb::be_u32
+    )]
     /// Milliseconds since capture started
-    #[klv(key = 0x03, dec = decb::be_u32, enc = *encb::be_u32)] age_ms:          u32,
+    age_ms: u32,
 }
 
 fn main() {

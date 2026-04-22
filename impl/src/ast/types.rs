@@ -70,16 +70,18 @@ impl ToTokens for XcoderLike {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Dispatch-intent sigil for field encoders
+/// Dispatch-intent sigil for encoders
 ///
 /// Written before the path/macro in `#[klv(enc = <sigil><fn>)]`:
 ///
-/// * `None` (`enc = func`)  → emit `func(&self.field)` - fn takes `&T`
+/// * `None`  (`enc = func`)  → emit `func(&self.field)` - fn takes `&T`
 ///   (deref coercion handles `&String → &str`, `&Vec<u8> → &[u8]`, etc.)
-/// * `Ref`  (`enc = *func`) → emit `func(EncodeAs::encode_as(&self.field))` -
-///   dispatches via the [`EncodeAs`](tinyklv::traits::EncodeAs) trait:
+/// * `Ref`   (`enc = &func`) → emit `func(EncodeAs::encode_as(&self.field))` -
+///   dispatches via the [`EncodeAs`](`tinyklv::traits::EncodeAs`) trait:
 ///   primitives pass by value (Copy), `String → &str`, `Vec<T> → &[T]`,
 ///   `Box<T>/Rc<T>/Arc<T> → &T`. No clone, no heap allocation
+/// * `Deref` (`enc = *func`) → emit `func(self.field)` - fn takes `T` by value
+///   (for `Copy` types and small primitives)
 pub(crate) enum XcoderSigil {
     None,
     Ref,
@@ -88,10 +90,6 @@ pub(crate) enum XcoderSigil {
 
 #[derive(Debug, Clone)]
 /// Wraps an [`XcoderLike`] with an optional leading dispatch sigil
-///
-/// Only used for field-level encoders. Container-level `key.enc` / `len.enc` /
-/// `default.enc` keep raw [`XcoderLike`] because their call shape has no
-/// owned/borrowed ambiguity
 pub(crate) struct SiguledXcoder {
     pub(crate) sigil: XcoderSigil,
     pub(crate) inner: XcoderLike,
@@ -147,6 +145,17 @@ pub(crate) struct LatebindXcoder {
     pub(crate) is_mut: bool,
     pub(crate) inner: XcoderLike,
 }
+#[derive(Debug, Clone)]
+/// Field-level `default` attribute value
+///
+/// * [`DefaultValue::Call`] - bare `default`; emits
+///   `<T as ::core::default::Default>::default()` for the field's type
+/// * [`DefaultValue::Expr`] - `default = <expr>`; emits the inline expression
+pub(crate) enum DefaultValue {
+    Call,
+    Expr(syn::Expr),
+}
+
 /// [`LatebindXcoder`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for LatebindXcoder {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {

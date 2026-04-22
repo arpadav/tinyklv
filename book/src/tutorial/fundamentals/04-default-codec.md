@@ -12,8 +12,10 @@ locally; everything else stays terse and the intent stays obvious.
 
 ## Example
 
+Run this example: `cargo run --example book_04_default_codec`
+
 ```rust,no_run
-{{#include ../../../examples/book_04_default_codec.rs}}
+{{#include ../../../../examples/book_04_default_codec.rs}}
 ```
 
 ## Overview

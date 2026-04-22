@@ -7,34 +7,56 @@
 // local
 // --------------------------------------------------
 use super::types::*;
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct SensorModule {
-    #[klv(key = 0x01, dec = SensorReading::decode_value, enc = SensorReading::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = SensorReading::decode_value,
+        enc = SensorReading::encode_value,
+    )]
     reading: SensorReading,
-    #[klv(key = 0x02, dec = Color::decode_value, enc = Color::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     indicator: Color,
 }
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct Platform {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     id: u16,
-    #[klv(key = 0x02, dec = SensorModule::decode_value, enc = SensorModule::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = SensorModule::decode_value,
+        enc = SensorModule::encode_value,
+    )]
     sensor: SensorModule,
-    #[klv(key = 0x03, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
+    #[klv(
+        key = 0x03,
+        dec = Coordinate::decode_value,
+        enc = Coordinate::encode_value,
+    )]
     position: Coordinate,
 }
 
@@ -108,11 +130,15 @@ fn nested_klv_derived_roundtrip_zero_values() {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct Core {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, enc = *tinyklv::enc::binary::be_u32)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
     value: u32,
 }
 
@@ -123,13 +149,21 @@ fn encode_core(v: &Core) -> Vec<u8> {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct Module {
-    #[klv(key = 0x01, dec = Core::decode_value, enc = encode_core)]
+    #[klv(
+        key = 0x01,
+        dec = Core::decode_value,
+        enc = encode_core,
+    )]
     core: Core,
-    #[klv(key = 0x02, dec = Color::decode_value, enc = Color::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Color,
 }
 
@@ -140,13 +174,21 @@ fn encode_module(v: &Module) -> Vec<u8> {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct System {
-    #[klv(key = 0x01, dec = Module::decode_value, enc = encode_module)]
+    #[klv(
+        key = 0x01,
+        dec = Module::decode_value,
+        enc = encode_module,
+    )]
     module: Module,
-    #[klv(key = 0x02, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Timestamp::decode_value,
+        enc = Timestamp::encode_value,
+    )]
     timestamp: Timestamp,
 }
 
@@ -211,13 +253,21 @@ fn nested_two_deep_max_values() {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct PlatformOptional {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     id: u16,
-    #[klv(key = 0x02, dec = SensorModule::decode_value, enc = SensorModule::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = SensorModule::decode_value,
+        enc = SensorModule::encode_value,
+    )]
     sensor: Option<SensorModule>,
 }
 
@@ -292,13 +342,21 @@ fn nested_optional_roundtrip_toggle() {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct StatusInner {
-    #[klv(key = 0x01, dec = Color::decode_value, enc = Color::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Color,
-    #[klv(key = 0x02, dec = Priority::decode_value, enc = Priority::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Priority::decode_value,
+        enc = Priority::encode_value,
+    )]
     priority: Priority,
 }
 
@@ -309,13 +367,21 @@ fn encode_status_inner(v: &StatusInner) -> Vec<u8> {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct StatusOuter {
-    #[klv(key = 0x01, dec = StatusInner::decode_value, enc = encode_status_inner)]
+    #[klv(
+        key = 0x01,
+        dec = StatusInner::decode_value,
+        enc = encode_status_inner,
+    )]
     status: StatusInner,
-    #[klv(key = 0x02, dec = Velocity::decode_value, enc = Velocity::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Velocity::decode_value,
+        enc = Velocity::encode_value,
+    )]
     velocity: Velocity,
 }
 

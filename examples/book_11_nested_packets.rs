@@ -14,14 +14,28 @@ use tinyklv::enc::binary as encb;   // binary encoders
 /// Nested sub-packet. No sentinel - it never appears as a top-level frame,
 /// only as the value region of a field in `HeartbeatPacket`
 struct GpsFix {
+    #[klv(
+        key = 0x01,
+        dec = decb::be_i32,
+        enc = *encb::be_i32
+    )]
     /// Latitude in micro-degrees (i32)
-    #[klv(key = 0x01, dec = decb::be_i32, enc = *encb::be_i32)]
     lat_udeg: i32,
+
+    #[klv(
+        key = 0x02,
+        dec = decb::be_i32,
+        enc = *encb::be_i32
+    )]
     /// Longitude in micro-degrees (i32)
-    #[klv(key = 0x02, dec = decb::be_i32, enc = *encb::be_i32)]
     lon_udeg: i32,
+
+    #[klv(
+        key = 0x03,
+        dec = decb::u8,
+        enc = *encb::u8
+    )]
     /// Number of satellites used for the fix
-    #[klv(key = 0x03, dec = decb::u8, enc = *encb::u8)]
     satellites: u8,
 }
 
@@ -34,16 +48,33 @@ struct GpsFix {
 )]
 /// Top-level heartbeat frame with a nested `GpsFix`
 struct HeartbeatPacket {
-    #[klv(key = 0x01, dec = decb::u8,     enc = *encb::u8)]     sequence:             u8,
-    #[klv(key = 0x02, dec = decb::be_u16, enc = *encb::be_u16)] temperature_centideg: u16,
-    #[klv(key = 0x03, dec = decb::be_u32, enc = *encb::be_u32)] uptime_s:             u32,
+    #[klv(
+        key = 0x01,
+        dec = decb::u8,
+        enc = *encb::u8,
+    )]
+    sequence: u8,
 
-    /// Nested GpsFix: wire `dec`/`enc` to the derived methods on the inner type
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
+    temperature_centideg: u16,
+
+    #[klv(
+        key = 0x03,
+        dec = decb::be_u32,
+        enc = *encb::be_u32,
+    )]
+    uptime_s: u32,
+
     #[klv(
         key = 0x04,
         dec = GpsFix::decode_value,
         enc = GpsFix::encode_value,
     )]
+    /// Nested GpsFix: wire `dec`/`enc` to the derived methods on the inner type
     gps: GpsFix,
 }
 

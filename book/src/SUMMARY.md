@@ -2,34 +2,34 @@
 
 [Introduction](./intro.md)
 [What is KLV?](./what-is-klv.md)
-[Getting Started](./getting-started.md)
 
-# Tutorial - fundamentals
+# Tutorial
 
-- [First packet](./tutorial/01-first-packet.md)
-- [Out-of-order & prelude](./tutorial/02-out-of-order.md)
-- [Frames & sentinels](./tutorial/03-frames-and-sentinels.md)
-- [Default codecs](./tutorial/04-default-codec.md)
-- [Custom decoder functions](./tutorial/05-custom-decoder.md)
-- [Implementing DecodeValue](./tutorial/06-decode-value-impl.md)
-- [Value lengths](./tutorial/07-val-lengths.md)
-- [Latebind transforms](./tutorial/08-latebind.md)
-- [Encoding & the `&` sigil](./tutorial/09-encode-sigil.md)
-- [Optional fields & init](./tutorial/10-init-fallback.md)
+- [Fundamentals](./tutorial/fundamentals/README.md)
+    - [First packet](./tutorial/fundamentals/01-first-packet.md)
+    - [Out-of-order & prelude](./tutorial/fundamentals/02-out-of-order.md)
+    - [Frames & sentinels](./tutorial/fundamentals/03-frames-and-sentinels.md)
+    - [Default codecs](./tutorial/fundamentals/04-default-codec.md)
+    - [Custom decoder functions](./tutorial/fundamentals/05-custom-decoder.md)
+    - [Implementing `DecodeValue`](./tutorial/fundamentals/06-decode-value-impl.md)
+    - [Value lengths](./tutorial/fundamentals/07-val-lengths.md)
+    - [Latebind transforms](./tutorial/fundamentals/08-latebind.md)
+    - [Encoding & the `&` sigil](./tutorial/fundamentals/09-encode-sigil.md)
+    - [Optional fields & default](./tutorial/fundamentals/10-default-fallback.md)
 
 # Tutorial - complex behaviour
 
-- [Nested packets](./tutorial/11-nested-packets.md)
-- [Repeated extraction](./tutorial/12-repeated-extraction.md)
-- [Break conditions](./tutorial/13-break-condition.md)
-- [Sentinel seeking in pipelines](./tutorial/14-sentinel-seeking.md)
-- [Async / Tokio streams](./tutorial/15-tokio-streams.md)
+- [Advanced](./tutorial/advanced/README.md)
+    - [Nested packets](./tutorial/advanced/11-nested-packets.md)
+    - [Repeated extraction](./tutorial/advanced/12-repeated-extraction.md)
+    - [Break conditions](./tutorial/advanced/13-break-condition.md)
+    - [Async / Tokio streams](./tutorial/advanced/14-tokio-streams.md)
 
 # Reference
 
 - [Container attributes](./reference/container-attributes.md)
 - [Field attributes](./reference/field-attributes.md)
-- [Sigil coercion & EncodeAs](./reference/sigil-coercion.md)
+- [Sigil coercion & `EncodeAs`](./reference/sigil-coercion.md)
 - [Traits](./reference/traits.md)
 - [Codecs](./reference/codecs.md)
 
@@ -39,5 +39,4 @@
 
 # Appendix
 
-- [Changelog](./changelog.md)
 - [Contributing](./contributing.md)

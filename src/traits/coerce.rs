@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 /// Coerce a field value into the shape its encoder expects.
 ///
-/// Used by `#[klv(enc = *func)]` to route field values through a zero-cost
+/// Used by `#[klv(enc = &func)]` to route field values through a zero-cost
 /// borrowed form - `Copy` scalars pass by value, `String` becomes `&str`,
 /// `Vec<T>` becomes `&[T]`, and smart-pointer wrappers resolve to inner refs.
 /// No clones, no heap allocations.
@@ -38,26 +38,25 @@ use std::sync::Arc;
 /// assert_eq!(encode_str(borrowed), b"hi".to_vec());
 /// ```
 pub trait EncodeAs {
-    /// The borrowed form produced for encoder consumption.
+    /// The borrowed form produced for encoder consumption
     type Borrowed<'a>
     where
         Self: 'a;
-
-    /// Produce the borrowed form.
+    /// Produce the borrowed form
     fn encode_as(&self) -> Self::Borrowed<'_>;
 }
 
-/// primitive scalars: by value (Copy, zero cost)
-macro_rules! impl_encode_as_copy {
+/// forward, no smart ref
+macro_rules! impl_encode_as_ref {
     ($($t:ty),* $(,)?) => { $(
         impl EncodeAs for $t {
-            type Borrowed<'a> = $t;
+            type Borrowed<'a> = &'a $t;
             #[inline(always)]
-            fn encode_as(&self) -> $t { *self }
+            fn encode_as(&self) -> &$t { self }
         }
     )* };
 }
-impl_encode_as_copy!(
+impl_encode_as_ref!(
     u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64, bool, char,
 );
 
@@ -158,11 +157,11 @@ mod tests {
     /// Tests that `EncodeAs` on primitive types returns the value itself (copied, not borrowed).
     fn primitives_are_copied_by_value() {
         let x: u32 = 42;
-        let y: u32 = EncodeAs::encode_as(&x);
-        assert_eq!(x, y);
+        let y: &u32 = EncodeAs::encode_as(&x);
+        assert_eq!(x, *y);
         let b: bool = true;
-        let bb: bool = EncodeAs::encode_as(&b);
-        assert!(bb);
+        let bb: &bool = EncodeAs::encode_as(&b);
+        assert!(*bb);
     }
 
     #[test]

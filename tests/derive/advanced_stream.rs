@@ -10,6 +10,8 @@
 // local
 // --------------------------------------------------
 use super::types::*;
+use tinyklv::dec::binary as decb;
+use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
 use tinyklv::Klv;
 
@@ -20,13 +22,21 @@ use tinyklv::Klv;
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct SimplePosition {
-    #[klv(key = 0x01, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Coordinate::decode_value,
+        enc = Coordinate::encode_value,
+    )]
     coordinate: Coordinate,
-    #[klv(key = 0x02, dec = Color::decode_value, enc = Color::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Color,
 }
 
@@ -37,15 +47,27 @@ struct SimplePosition {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct PartialReading {
-    #[klv(key = 0x01, dec = Color::decode_value, enc = Color::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Option<Color>,
-    #[klv(key = 0x02, dec = Velocity::decode_value, enc = Velocity::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Velocity::decode_value,
+        enc = Velocity::encode_value,
+    )]
     velocity: Option<Velocity>,
-    #[klv(key = 0x03, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
+    #[klv(
+        key = 0x03,
+        dec = Timestamp::decode_value,
+        enc = Timestamp::encode_value,
+    )]
     timestamp: Option<Timestamp>,
 }
 
@@ -57,15 +79,27 @@ struct PartialReading {
 #[klv(
     stream = &[u8],
     sentinel = b"\x57\x41",
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct Waypoint {
-    #[klv(key = 0x01, dec = Coordinate::decode_value, enc = Coordinate::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Coordinate::decode_value,
+        enc = Coordinate::encode_value,
+    )]
     coordinate: Coordinate,
-    #[klv(key = 0x02, dec = Timestamp::decode_value, enc = Timestamp::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = Timestamp::decode_value,
+        enc = Timestamp::encode_value,
+    )]
     timestamp: Timestamp,
-    #[klv(key = 0x03, dec = Priority::decode_value, enc = Priority::encode_value)]
+    #[klv(
+        key = 0x03,
+        dec = Priority::decode_value,
+        enc = Priority::encode_value,
+    )]
     priority: Priority,
 }
 
@@ -77,13 +111,21 @@ struct Waypoint {
 #[klv(
     stream = &[u8],
     sentinel = b"\x41\x4C",
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct Alert {
-    #[klv(key = 0x01, dec = Color::decode_value, enc = Color::encode_value)]
+    #[klv(
+        key = 0x01,
+        dec = Color::decode_value,
+        enc = Color::encode_value,
+    )]
     color: Color,
-    #[klv(key = 0x02, dec = StatusFlags::decode_value, enc = StatusFlags::encode_value)]
+    #[klv(
+        key = 0x02,
+        dec = StatusFlags::decode_value,
+        enc = StatusFlags::encode_value,
+    )]
     flags: StatusFlags,
 }
 

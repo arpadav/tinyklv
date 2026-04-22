@@ -1,7 +1,3 @@
-// --------------------------------------------------
-// native-endian _as_usize decoders
-// --------------------------------------------------
-
 #[test]
 /// Tests `u8_as_usize` decodes native-endian `1_u8` bytes to `1_usize`.
 fn u8_as_usize_one() {
@@ -44,18 +40,11 @@ fn u64_as_usize_one() {
     assert_eq!(tinyklv::dec::binary::u64_as_usize(&mut input), Ok(1_usize));
 }
 
-// --------------------------------------------------
-// be_ prefixed _as_usize decoders
-// --------------------------------------------------
-
 #[test]
-/// Tests `be_u8_as_usize` decodes `1_u8` big-endian bytes to `1_usize`.
-fn be_u8_as_usize_one() {
+/// Tests `u8_as_usize` decodes `1_u8` (BE byte order) to `1_usize`.
+fn u8_as_usize_one_be_bytes() {
     let mut input: &[u8] = &(1_u8).to_be_bytes();
-    assert_eq!(
-        tinyklv::dec::binary::be_u8_as_usize(&mut input),
-        Ok(1_usize)
-    );
+    assert_eq!(tinyklv::dec::binary::u8_as_usize(&mut input), Ok(1_usize));
 }
 
 #[test]
@@ -98,18 +87,11 @@ fn be_u64_as_usize_one() {
     );
 }
 
-// --------------------------------------------------
-// le_ prefixed _as_usize decoders
-// --------------------------------------------------
-
 #[test]
-/// Tests `le_u8_as_usize` decodes `1_u8` little-endian bytes to `1_usize`.
-fn le_u8_as_usize_one() {
+/// Tests `u8_as_usize` decodes `1_u8` (LE byte order) to `1_usize`.
+fn u8_as_usize_one_le_bytes() {
     let mut input: &[u8] = &(1_u8).to_le_bytes();
-    assert_eq!(
-        tinyklv::dec::binary::le_u8_as_usize(&mut input),
-        Ok(1_usize)
-    );
+    assert_eq!(tinyklv::dec::binary::u8_as_usize(&mut input), Ok(1_usize));
 }
 
 #[test]
@@ -131,10 +113,6 @@ fn le_u32_as_usize_one() {
         Ok(1_usize)
     );
 }
-
-// --------------------------------------------------
-// _from_usize encoders
-// --------------------------------------------------
 
 #[test]
 /// Tests `u8_from_usize(1)` encodes to `[0x01]`.
@@ -188,11 +166,6 @@ fn be_u32_from_usize_roundtrip() {
         assert_eq!(val, decoded);
     }
 }
-
-// --------------------------------------------------
-// truncation: usize values larger than target type
-// wrap/truncate
-// --------------------------------------------------
 
 #[test]
 /// Tests `u8_from_usize(256)` truncates to `0x00` (wraps modulo 256).

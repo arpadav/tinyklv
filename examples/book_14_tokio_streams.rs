@@ -1,6 +1,6 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/15-tokio-streams.md` for full example
+//! See: `book/tutorial/14-tokio-streams.md` for full example
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -13,9 +13,26 @@ use tinyklv::enc::binary as encb;   // binary encoders
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct HeartbeatPacket {
-    #[klv(key = 0x01, dec = decb::u8,     enc = *encb::u8)]     sequence:             u8,
-    #[klv(key = 0x02, dec = decb::be_u16, enc = *encb::be_u16)] temperature_centideg: u16,
-    #[klv(key = 0x03, dec = decb::be_u32, enc = *encb::be_u32)] uptime_s:             u32,
+    #[klv(
+        key = 0x01,
+        dec = decb::u8,
+        enc = *encb::u8
+    )]
+    sequence: u8,
+
+    #[klv(
+        key = 0x02,
+        dec = decb::be_u16,
+        enc = *encb::be_u16
+    )]
+    temperature_centideg: u16,
+
+    #[klv(
+        key = 0x03,
+        dec = decb::be_u32,
+        enc = *encb::be_u32
+    )]
+    uptime_s: u32,
 }
 
 #[tokio::main]

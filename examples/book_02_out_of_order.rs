@@ -6,14 +6,14 @@ use tinyklv::dec::binary as decb;   // binary decoders
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
-    key(dec = decb::be_u8),
-    len(dec = decb::be_u8_as_usize),
+    key(dec = decb::u8),
+    len(dec = decb::u8_as_usize),
     allow_unimplemented_encode,
 )]
 struct HeartbeatPacket {
     #[klv(
         key = 0x01,
-        dec = decb::be_u8,
+        dec = decb::u8,
     )]
     sequence: u8,
 

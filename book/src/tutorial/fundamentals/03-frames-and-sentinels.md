@@ -17,7 +17,7 @@ and then hands the body to the same `decode_value` you used on Tutorial 01.
 Run this example: `cargo run --example book_03_frame_and_sentinel`
 
 ```rust,no_run
-{{#include ../../../examples/book_03_frame_and_sentinel.rs}}
+{{#include ../../../../examples/book_03_frame_and_sentinel.rs}}
 ```
 
 ## Overview

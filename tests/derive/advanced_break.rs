@@ -9,6 +9,7 @@
 //! logic directly in the manual `Decode` loop using the concrete `u8` key
 //! value, which is exactly what the derive macro expansion does.
 use super::types::*;
+use tinyklv::dec::binary as decb;
 use tinyklv::prelude::*;
 
 #[derive(Debug, PartialEq, Default)]
@@ -21,11 +22,11 @@ impl tinyklv::DecodeValue<&[u8]> for BreakOnDone {
         let mut color: Option<Color> = None;
         let mut priority: Option<Priority> = None;
         loop {
-            let key = match tinyklv::dec::binary::be_u8(input) {
+            let key = match decb::u8(input) {
                 Ok(k) => k,
                 Err(_) => break,
             };
-            let len = match tinyklv::dec::binary::be_u8_as_usize(input) {
+            let len = match decb::u8_as_usize(input) {
                 Ok(l) => l,
                 Err(_) => break,
             };
@@ -59,11 +60,11 @@ impl tinyklv::DecodeValue<&[u8]> for BreakOnAbort {
         let mut color: Option<Color> = None;
         let mut priority: Option<Priority> = None;
         loop {
-            let key = match tinyklv::dec::binary::be_u8(input) {
+            let key = match decb::u8(input) {
                 Ok(k) => k,
                 Err(_) => break,
             };
-            let len = match tinyklv::dec::binary::be_u8_as_usize(input) {
+            let len = match decb::u8_as_usize(input) {
                 Ok(l) => l,
                 Err(_) => break,
             };
@@ -101,11 +102,11 @@ impl tinyklv::DecodeValue<&[u8]> for BreakOnSkip {
         let mut priority: Option<Priority> = None;
 
         loop {
-            let key = match tinyklv::dec::binary::be_u8(input) {
+            let key = match decb::u8(input) {
                 Ok(k) => k,
                 Err(_) => break,
             };
-            let len = match tinyklv::dec::binary::be_u8_as_usize(input) {
+            let len = match decb::u8_as_usize(input) {
                 Ok(l) => l,
                 Err(_) => break,
             };

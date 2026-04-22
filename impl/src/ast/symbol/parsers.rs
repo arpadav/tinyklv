@@ -98,9 +98,36 @@ create_parser!(SENTINEL: syn::Lit; nv);
 create_parser!(VARIABLE_LENGTH: syn::LitBool; pnm);
 
 // --------------------------------------------------
-// init
+// default
 // --------------------------------------------------
-create_parser!(INITIAL_VALUE: syn::Expr; pnm);
+/// Parses a [`DefaultValue`] from a [`syn::meta::ParseNestedMeta`]
+///
+/// Accepts two forms on field attributes:
+///
+/// * bare `default` (no `=` token) → [`DefaultValue::Call`], which codegen
+///   lowers to `<T as ::core::default::Default>::default()`
+/// * `default = <expr>` → [`DefaultValue::Expr`], which codegen splices as-is
+///
+/// Returns:
+///
+/// * [`None`] if the keyword is not [`DEFAULT_VALUE`]
+/// * [`Some(Ok(..))`] on a successful parse (both bare and name-value forms)
+/// * [`Some(Err(..))`] if `default = <expr>` was written but `<expr>` failed
+///   to parse as a [`syn::Expr`]
+///
+/// Not emitted via `create_parser!` because the bare form must yield
+/// `Some(Ok(Call))` on a missing `=`, which the macro's helper can't express
+pub(crate) fn parse_pnm_default_value(
+    input: &syn::meta::ParseNestedMeta,
+) -> Option<syn::Result<DefaultValue>> {
+    if input.path != DEFAULT_VALUE {
+        return None;
+    }
+    Some(match input.value() {
+        Ok(value) => value.parse::<syn::Expr>().map(DefaultValue::Expr),
+        Err(_) => Ok(DefaultValue::Call),
+    })
+}
 
 // --------------------------------------------------
 // latebind

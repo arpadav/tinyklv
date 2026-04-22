@@ -15,15 +15,18 @@ struct Foo {
     #[klv(
         key = 0x01,
         varlen = true,
-        dec = "tinyklv::dec::binary::to_string_utf8"
+        dec = "tinyklv::dec::string::to_string_utf8"
     )]
     // value length is variable, always read from stream
     //
-    // therefore, it is used as an input arg in decoder: `tinyklv::dec::binary::to_string_utf8`
+    // therefore, it is used as an input arg in decoder: `tinyklv::dec::string::to_string_utf8`
     // (function signature = `fn(&mut S, usize) -> winnow::Result<String>`)
     name: String,
 
-    #[klv(key = 0x02, dec = tinyklv::dec::binary::be_u16)]
+    #[klv(
+        key = 0x02,
+        dec = tinyklv::dec::binary::be_u16,
+    )]
     // value length is always 2 bytes
     //
     // therefore, it is not used as an input arg in decoder: `tinyklv::dec::binary::be_u16`

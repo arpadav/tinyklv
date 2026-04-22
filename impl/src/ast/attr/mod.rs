@@ -51,6 +51,7 @@ impl<'a> MainContainer<'a> {
                     &attrs.defaults,
                     attrs.allow_unimplemented_encode.is_some(),
                     attrs.allow_unimplemented_decode.is_some(),
+                    attrs.fallback_impls.is_some(),
                 )),
                 syn::Fields::Unnamed(fields) => {
                     cx.error_spanned_by(fields, err!(UnsupportedUnnamedStructs));
@@ -87,13 +88,14 @@ fn fields_from_ast<'a>(
     container_defaults: &HashMap<syn::Type, DefaultXcoder>,
     aue: bool,
     aud: bool,
+    fi: bool,
 ) -> Vec<MainField<'a>> {
     fields
         .iter()
         .filter_map(|field| field.ident.as_ref().map(|name| (field, name)))
         .map(|(field, name)| MainField {
             name: name.clone(),
-            attrs: match field::Field::from_ast(cx, field, name, container_defaults, aue, aud) {
+            attrs: match field::Field::from_ast(cx, field, name, container_defaults, aue, aud, fi) {
                 Some(x) => field::FieldParsed::from_field(cx, field, &x),
                 None => None,
             },

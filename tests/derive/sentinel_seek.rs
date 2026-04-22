@@ -1,24 +1,28 @@
-// --------------------------------------------------
-// local
-// --------------------------------------------------
+use tinyklv::dec::binary as decb;
+use tinyklv::dec::string as decs;
+use tinyklv::enc::binary as encb;
+use tinyklv::enc::string as encs;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
     sentinel = b"\xAA\xBB",
-    key(dec = tinyklv::dec::binary::be_u8, enc = tinyklv::enc::binary::u8),
-    len(dec = tinyklv::dec::binary::be_u8_as_usize, enc = tinyklv::enc::binary::u8_from_usize),
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 struct SentinelPacket {
-    #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u16, enc = *tinyklv::enc::binary::be_u16)]
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
     id: u16,
     #[klv(
         key = 0x02,
         varlen = true,
-        dec = tinyklv::dec::binary::to_string_utf8,
-        enc = &tinyklv::enc::string::from_string_utf8
+        dec = decs::to_string_utf8,
+        enc = &encs::from_string_utf8
     )]
     name: String,
 }

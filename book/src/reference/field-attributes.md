@@ -39,29 +39,28 @@ the container default covers the field type.
 temperature_centideg: u16,
 
 #[klv(
+    key = 0x01,
+    enc = *encb::u8,
+)]
+sequence: u8,
+
+#[klv(
     key = 0x03,
     enc = MyStruct::encode_value,
 )]
 custom: MyStruct,
 ```
 
-Encoders by default expect `fn(&T) -> Vec<u8>`. For example, above
-`MyStruct::encode_value` will have the signature `fn(&self) -> Vec<u8>`.
-
-However, the `&` sigil indicates that a coersion must be performed to allow
-the encoders of `fn(T) -> Vec<u8>` to accept reference values of `&T`, or others.
-In this example, `tinyklv::binary::enc::*` function signatures all take `fn(T) -> Vec<u8>`,
-so the `&` is used to allow then to accept `&T`.
-
-This is useful via the `tinyklv::EncodeAs` trait. For example, owned values such
-as `String` who use encoders with `&str` function signatures are allowed, since
-`tinyklv::EncodeAs` implements `String` with its "smart ref" as `&str`. This is the same
-for smart-pointers types, slices, and more.
+Encoders by default expect `fn(&T) -> O`. The two sigils (`&` and `*`)
+rewrite how the field is handed to the encoder. See
+[Sigil coercion & `EncodeAs`](./sigil-coercion.md) for the full
+dispatch semantics, built-in `EncodeAs` implementations, and when to
+write your own.
 
 ## `varlen = true`
 
 ```rust,ignore
-#[klv(key = 0x07, varlen = true, dec = decb::to_string_utf8)]
+#[klv(key = 0x07, varlen = true, dec = decs::to_string_utf8)]
 station_id: String,
 ```
 
@@ -70,16 +69,28 @@ the derive calls `dec_fn(len)(input)` where `dec_fn` matches
 `fn(len: usize) -> impl Fn(&mut S) -> Result<T>`. Canonical use: UTF-8
 strings and other length-prefixed payloads.
 
-## `init = <expr>`
+## `default` / `default = <expr>`
 
 ```rust,ignore
-#[klv(key = 0x05, init = 0)]
+#[klv(key = 0x05, default)]
 uptime_s: u32,
+
+#[klv(key = 0x06, default = 100_u8)]
+battery_pct: u8,
 ```
 
 Fallback value used when the key is absent in the decoded stream. Without
-a default, an absent key raises a parse error. `init` is the companion form
-for initialiser expressions that need to run once per decode call.
+either form, an absent key raises a parse error.
+
+| Form | Emitted fallback |
+|------|------------------|
+| `default` (no value) | `<FieldType as ::core::default::Default>::default()` |
+| `default = <expr>` | the inline expression, evaluated once per decode call |
+
+Use bare `default` when the field type already has a sensible zero value
+(primitives, `Option<T>`, `Vec<T>`, `String`, or any user type with
+`#[derive(Default)]`). Use `default = <expr>` when the fallback is a
+specific constant, a sentinel, or a non-`Default` value.
 
 ## `latebind = <optional sigil> <path>`
 
@@ -111,11 +122,13 @@ function patches the decoded value in place.
 
 | Attribute | First introduced in |
 |-----------|--------------------|
-| `key = <lit>` | [01 - First packet](../tutorial/01-first-packet.md) |
-| `dec = <path>` | [01 - First packet](../tutorial/01-first-packet.md) |
-| `enc = <path>` | [09 - Encoding & the `&` sigil](../tutorial/09-encode-sigil.md) |
-| `enc = &<path>` | [09 - Encoding & the `&` sigil](../tutorial/09-encode-sigil.md) |
-| `varlen = true` | [07 - Variable-length fields](../tutorial/07-varlen.md) |
-| `init = <expr>` | [10 - Optional fields & init](../tutorial/10-init-fallback.md) |
-| `latebind = <path>` | [08 - Latebind transforms](../tutorial/08-latebind.md) |
-| `latebind = &mut <path>` | [08 - Latebind transforms](../tutorial/08-latebind.md) |
+| `key = <lit>` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
+| `dec = <path>` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
+| `enc = <path>` | [09 - Encoding & sigils](../tutorial/fundamentals/09-encode-sigil.md) |
+| `enc = &<path>` | [09 - Encoding & sigils](../tutorial/fundamentals/09-encode-sigil.md) |
+| `enc = *<path>` | [09 - Encoding & sigils](../tutorial/fundamentals/09-encode-sigil.md) |
+| `varlen = true` | [07 - Variable-length fields](../tutorial/fundamentals/07-val-lengths.md) |
+| `default` | [10 - Optional fields & default](../tutorial/fundamentals/10-default-fallback.md) |
+| `default = <expr>` | [10 - Optional fields & default](../tutorial/fundamentals/10-default-fallback.md) |
+| `latebind = <path>` | [08 - Latebind transforms](../tutorial/fundamentals/08-latebind.md) |
+| `latebind = &mut <path>` | [08 - Latebind transforms](../tutorial/fundamentals/08-latebind.md) |

@@ -1,6 +1,5 @@
-//! Token generation for the [`tinyklv::prelude::Encode`](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.Encode.html)
-//! and [`tinyklv::prelude::EncodeValue`](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.EncodeValue.html)
-//! derive implementations
+//! Token generation for the `tinyklv::prelude::EncodeFrame`
+//! and `tinyklv::prelude::EncodeValue` derive implementations
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -8,18 +7,18 @@
 // --------------------------------------------------
 use crate::ast::attr::MainContainer;
 use crate::ast::types::{self, XcoderSigil};
+use crate::expand::helpers;
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use quote::{quote, quote_spanned};
 
-/// Generates the tokens for the entire [`tinyklv::prelude::Encode`](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.Encode.html)
-/// and [`tinyklv::prelude::EncodeValue`](https://docs.rs/tinyklv/latest/tinyklv/prelude/trait.EncodeValue.html)
-/// implementations for a container
+/// Generates the tokens for the entire `tinyklv::prelude::EncodeFrame`
+/// and `tinyklv::prelude::EncodeValue` implementations for a container
 ///
 /// Emits an `EncodeValue` impl for every container. If a sentinel is present,
-/// also emits a full `Encode` impl that wraps the value encoding in a KLV
+/// also emits a full `EncodeFrame` impl that wraps the value encoding in a KLV
 /// packet (key + length + value)
 ///
 /// # Arguments
@@ -114,9 +113,21 @@ fn gen_items_encoded(
                 reason = "`gen_encode_impl` call ensures that `attrs.enc` is `Some`"
             )]
             let value_encoder = attrs.enc.as_ref().unwrap();
-            let inner = &value_encoder.inner;
             let key = &attrs.key;
             let span = name.span();
+            // --------------------------------------------------
+            // when `fallback_enc` is set, the inner path stored on the
+            // encoder is an unused placeholder. emit a fully-qualified
+            // `<T as EncodeValue<Vec<u8>>>::encode_value` instead so rustc
+            // surfaces a clean trait-bound error if the trait is not impl'd
+            // --------------------------------------------------
+            let enc_tokens: proc_macro2::TokenStream = if attrs.fallback_enc {
+                let t = helpers::unwrap_option_type(ty).unwrap_or(ty);
+                quote! { <#t as ::tinyklv::traits::EncodeValue<Vec<u8>>>::encode_value }
+            } else {
+                let inner = &value_encoder.inner;
+                quote! { #inner }
+            };
             // --------------------------------------------------
             // per-sigil argument shaping:
             //
@@ -149,12 +160,12 @@ fn gen_items_encoded(
             if crate::expand::helpers::is_option(ty) {
                 quote_spanned! { span =>
                     if let Some(ref __val) = self.#name {
-                        output.extend(#inner(#opt_arg).into_klv(#key_encoder(#key), #len_encoder));
+                        output.extend(#enc_tokens(#opt_arg).into_klv(#key_encoder(#key), #len_encoder));
                     }
                 }
             } else {
                 quote_spanned! { span =>
-                    output.extend(#inner(#nonopt_arg).into_klv(#key_encoder(#key), #len_encoder));
+                    output.extend(#enc_tokens(#nonopt_arg).into_klv(#key_encoder(#key), #len_encoder));
                 }
             }
         });

@@ -31,8 +31,7 @@ mdbook test book
 - [ ] `cargo test --all` passes.
 - [ ] New public items carry doc comments (the crate runs with
       `#![deny(missing_docs)]`).
-- [ ] Any new attribute is documented in
-      [`reference/attributes.md`](./reference/attributes.md).
+- [ ] Any new container attribute is documented in [`reference/container-attributes.md`](./reference/container-attributes.md) and any new field attribute in [`reference/field-attributes.md`](./reference/field-attributes.md).
 - [ ] Any new trait method is documented in
       [`reference/traits.md`](./reference/traits.md).
 
