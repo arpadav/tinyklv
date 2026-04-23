@@ -90,7 +90,10 @@ fn decode_partial_short_len_is_recoverable() {
 
     match Pair::decode_partial(&mut cursor) {
         Ok(Progress::NeedMore(_)) => {}
-        other => panic!("expected NeedMore (recoverable truncation), got {}", kind(&other)),
+        other => panic!(
+            "expected NeedMore (recoverable truncation), got {}",
+            kind(&other)
+        ),
     }
     assert_eq!(
         cursor.len(),

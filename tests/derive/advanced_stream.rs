@@ -149,9 +149,7 @@ fn corrupt_length_surfaces_as_recoverable_needmore() {
     let mut cursor: &[u8] = stream.as_slice();
     let p = match PartialReading::decode_partial(&mut cursor) {
         Ok(tinyklv::Progress::NeedMore(p)) => p,
-        other => panic!(
-            "expected NeedMore (recoverable truncation), got: {other:?}"
-        ),
+        other => panic!("expected NeedMore (recoverable truncation), got: {other:?}"),
     };
     // color landed before the bad-length key; velocity/timestamp did
     // not arrive (the truncation rewound past key 0x02).
