@@ -46,11 +46,11 @@ fn main() {
     // simulate a drip-feed transport: 3-byte chunks, well below one
     // packet's framed size (3 sentinel + 1 length + 9 body = 13 bytes
     // per packet), so every packet is split across multiple feeds
-    let mut dec = tinyklv::Decoder::<Packet>::new();
+    let mut dec = Packet::decoder();
     let mut got: Vec<Packet> = Vec::new();
     for chunk in wire.chunks(3) {
         dec.feed(chunk);
-        while let Some(pkt) = dec.next() {
+        for pkt in dec.by_ref() {
             got.push(pkt.unwrap());
         }
     }

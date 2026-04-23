@@ -30,11 +30,11 @@ pub mod prelude {
     // --------------------------------------------------
     // local
     // --------------------------------------------------
-    pub use crate::decoder::{DecodeError, Decoder};
+    pub use crate::decoder::{DecodeError, Decoder, Progress};
     pub use crate::traits::{
         BreakCondition as _, BreakConditionType, DecodeFrame as _, DecodePartial, DecodeValue,
         DrainFrames as _, EncodeAs, EncodeFrame as _, EncodeValue, EncodedOutput as _,
-        IntoKlv as _, Progress, SeekSentinel as _,
+        IntoKlv as _, Partial, SeekSentinel as _,
     };
     pub use tinyklv_impl::Klv;
     // --------------------------------------------------

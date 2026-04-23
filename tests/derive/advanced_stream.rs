@@ -128,25 +128,36 @@ fn unknown_keys_between_valid() {
 }
 
 #[test]
-/// Tests that a declared length exceeding the remaining input surfaces a truncation error rather than silently returning partial data.
-fn corrupt_length_fails_loudly() {
-    // Stream: valid color(0x01), then key 0x02 with declared len=100 but only
-    // 2 bytes of body before end-of-input. The declared length overruns the
-    // remaining input - this is a truncated/malformed frame, not a clean EOF,
-    // and decode must surface it as an error (not silently return partial data).
+/// Tests that a declared length exceeding the remaining input surfaces
+/// as recoverable truncation under the 2-arm `Progress` design:
+/// `Ok(NeedMore(p))` carrying the bytes that DID land. The previous
+/// "fail-loud-on-overrun" behaviour was a heuristic; the new contract
+/// is "an entity never knows when the stream is complete unless the
+/// user implements a `Done` break condition," so an overlong declared
+/// length on the trailing key is just "more bytes coming."
+///
+/// Callers that want fail-loud-on-overrun explicitly should drive
+/// finalisation via `Decoder::finish` (it surfaces missing-required
+/// labels) or implement a `Done` break condition.
+fn corrupt_length_surfaces_as_recoverable_needmore() {
     let color = Color::Blue;
 
     let mut stream: Vec<u8> = Vec::new();
     stream.extend(encode_color_tlv(0x01, &color));
     stream.extend_from_slice(&[0x02, 100, 0x00, 0x01]);
 
-    let err = PartialReading::decode_value(&mut stream.as_slice())
-        .expect_err("declared length 100 exceeds remaining 2 bytes - must error");
-    let rendered = format!("{err:?}");
-    assert!(
-        rendered.contains("truncated"),
-        "error context should mention truncation; got: {rendered}"
-    );
+    let mut cursor: &[u8] = stream.as_slice();
+    let p = match PartialReading::decode_partial(&mut cursor) {
+        Ok(tinyklv::Progress::NeedMore(p)) => p,
+        other => panic!(
+            "expected NeedMore (recoverable truncation), got: {other:?}"
+        ),
+    };
+    // color landed before the bad-length key; velocity/timestamp did
+    // not arrive (the truncation rewound past key 0x02).
+    assert_eq!(p.color, Some(Color::Blue));
+    assert!(p.velocity.is_none());
+    assert!(p.timestamp.is_none());
 }
 
 #[test]

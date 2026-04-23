@@ -1,6 +1,3 @@
-// --------------------------------------------------
-// mods
-// --------------------------------------------------
 mod advanced_break;
 mod advanced_defaults;
 mod advanced_generics;
@@ -18,6 +15,7 @@ mod ber_keyed;
 mod break_condition;
 mod custom_decoders;
 mod decode_partial_error_kinds;
+mod decode_partial_resume;
 mod default_values;
 mod deny_unknown_keys;
 mod encode_roundtrip;

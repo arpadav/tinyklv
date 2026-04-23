@@ -42,7 +42,7 @@ fn encoded(a: u8, b: u8, c: u8) -> Vec<u8> {
 /// One complete packet fed in one shot must yield exactly one `Ready`
 /// from `next()`, then `None` (buffer empty).
 fn decoder_one_shot_complete_packet() {
-    let mut dec = tinyklv::Decoder::<Sample>::new();
+    let mut dec = Sample::decoder();
     dec.feed(&encoded(1, 2, 3));
 
     let first = dec.next().expect("expected Ready").expect("Ok");
@@ -61,7 +61,7 @@ fn decoder_multiple_packets_one_feed() {
     blob.extend(encoded(4, 5, 6));
     blob.extend(encoded(7, 8, 9));
 
-    let mut dec = tinyklv::Decoder::<Sample>::new();
+    let mut dec = Sample::decoder();
     dec.feed(&blob);
 
     let got: Vec<Sample> = core::iter::from_fn(|| dec.next())
@@ -112,11 +112,11 @@ fn decoder_byte_by_byte_preserves_progress() {
         blob.extend(p.encode_frame());
     }
 
-    let mut dec = tinyklv::Decoder::<Sample>::new();
+    let mut dec = Sample::decoder();
     let mut got = Vec::new();
     for &byte in &blob {
         dec.feed(&[byte]);
-        while let Some(r) = dec.next() {
+        for r in dec.by_ref() {
             got.push(r.expect("Ok"));
         }
     }
@@ -136,7 +136,7 @@ fn decoder_truncated_then_resumed() {
     let full = encoded(42, 43, 44);
     let (head, tail) = full.split_at(5);
 
-    let mut dec = tinyklv::Decoder::<Sample>::new();
+    let mut dec = Sample::decoder();
     dec.feed(head);
     assert!(dec.next().is_none(), "truncated feed must yield NeedMore");
     assert_eq!(dec.buffered().len(), 5, "no bytes lost on NeedMore");
@@ -172,7 +172,7 @@ fn decoder_irregular_chunks() {
 
     let chunk_sizes = [1usize, 4, 2, 3, 9, 5, 7, 11, 2, 8, 1, 6, 3];
 
-    let mut dec = tinyklv::Decoder::<Sample>::new();
+    let mut dec = Sample::decoder();
     let mut got = Vec::new();
     let mut cursor = 0usize;
     let mut chunk_i = 0usize;
@@ -182,7 +182,7 @@ fn decoder_irregular_chunks() {
         dec.feed(&blob[cursor..end]);
         cursor = end;
         chunk_i += 1;
-        while let Some(r) = dec.next() {
+        for r in dec.by_ref() {
             got.push(r.expect("Ok"));
         }
     }

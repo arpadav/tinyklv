@@ -60,25 +60,34 @@ fn strict_accepts_known_keys_only() {
 }
 
 #[test]
-/// `DecodePartial` companion: an unknown key mid-stream becomes
-/// `Progress::Malformed`, not `NeedMore`, even if the trailing bytes
-/// would otherwise suggest truncation.
-fn unknown_key_under_decode_partial_is_malformed() {
+/// `DecodePartial` companion: an unknown key mid-stream surfaces as
+/// the unrecoverable path - `Err(label)` carrying the "invalid key"
+/// label, even if the trailing bytes would otherwise suggest
+/// truncation. Codegen emits the `deny_unknown_keys` gate as a
+/// `Result::Err` directly (no finalise attempt), so the label flows
+/// outward unchanged.
+fn unknown_key_under_decode_partial_is_err_label() {
     let mut stream: Vec<u8> = Vec::new();
     stream.extend_from_slice(&[0x01, 0x01, 0xAA]);
     stream.extend_from_slice(&[0xFF, 0x10]);
 
     let mut cursor: &[u8] = stream.as_slice();
     match Strict::decode_partial(&mut cursor) {
-        Progress::Malformed(_) => {}
-        other => panic!("expected Malformed, got {:?}", other_discriminant(&other)),
+        Err(label) => assert!(
+            label.contains("invalid key"),
+            "label must mention 'invalid key'; got: {label}"
+        ),
+        other => panic!("expected Err(label), got {}", other_discriminant(&other)),
     }
 }
 
-fn other_discriminant<T>(p: &Progress<T>) -> &'static str {
+fn other_discriminant<T, P>(p: &Result<Progress<T, P>, &'static str>) -> &'static str
+where
+    P: tinyklv::Partial<Final = T>,
+{
     match p {
-        Progress::Ready(_) => "Ready",
-        Progress::NeedMore(_) => "NeedMore",
-        Progress::Malformed(_) => "Malformed",
+        Ok(Progress::Ready(_)) => "Ok(Ready)",
+        Ok(Progress::NeedMore(_)) => "Ok(NeedMore)",
+        Err(_) => "Err(label)",
     }
 }

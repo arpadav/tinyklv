@@ -141,11 +141,11 @@ fn decoder_parent_stream_byte_by_byte() {
     blob.extend(b);
     blob.extend(c);
 
-    let mut dec = tinyklv::Decoder::<Parent>::new();
+    let mut dec = Parent::decoder();
     let mut ids = Vec::new();
     for &byte in &blob {
         dec.feed(&[byte]);
-        while let Some(r) = dec.next() {
+        for r in dec.by_ref() {
             ids.push(r.expect("Ok").id);
         }
     }
