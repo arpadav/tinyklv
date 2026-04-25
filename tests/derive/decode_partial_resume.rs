@@ -1,8 +1,8 @@
-//! Resume-flow tests for `DecodePartial` under the 2-arm `Progress`
+//! Resume-flow tests for `DecodePartial` under the 2-arm `Packet`
 //! design.
 //!
-//! `decode_partial` returns `Result<Progress<T, P>, &'static str>`.
-//! Truncation surfaces as `Ok(Progress::NeedMore(p))` carrying every
+//! `decode_partial` returns `Result<Packet<T, P>, &'static str>`.
+//! Truncation surfaces as `Ok(Packet::NeedMore(p))` carrying every
 //! field that landed so far. Resumption is driven by the caller (or
 //! `Decoder::feed`/`Decoder::next` for buffered streaming). There is
 //! no auto-finalise on EOF - if the user wants the partial converted
@@ -45,7 +45,7 @@ struct Triple {
 )]
 struct MissingReq {
     // --------------------------------------------------
-    // `b` and `c` are required; `a` is optional. a wire packet that
+    // `b` and `c` are required; `a` is optional. a packet that
     // only carries the optional field finishes its body cleanly but
     // fails finalisation with a missing-required label.
     // --------------------------------------------------
@@ -100,7 +100,7 @@ fn resume_truncated_inside_value() {
 
     let mut cursor: &[u8] = first_half;
     let p = match Triple::decode_partial(&mut cursor) {
-        Ok(Progress::NeedMore(p)) => p,
+        Ok(Packet::NeedMore(p)) => p,
         other => panic!(
             "expected NeedMore after mid-value truncation, got {}",
             kind(&other)
@@ -119,7 +119,7 @@ fn resume_truncated_inside_value() {
     // codegen directly).
     let mut full_cursor: &[u8] = &body;
     let p2 = match Triple::decode_partial(&mut full_cursor) {
-        Ok(Progress::NeedMore(p)) => p,
+        Ok(Packet::NeedMore(p)) => p,
         other => panic!("expected NeedMore on full body, got {}", kind(&other)),
     };
     let got: Triple = p2.try_into().expect("partial finalises cleanly");
@@ -142,7 +142,7 @@ fn resume_truncated_after_key_byte() {
 
     let mut cursor: &[u8] = first_half;
     let p = match Triple::decode_partial(&mut cursor) {
-        Ok(Progress::NeedMore(p)) => p,
+        Ok(Packet::NeedMore(p)) => p,
         other => panic!(
             "expected NeedMore after key-only truncation, got {}",
             kind(&other)
@@ -174,7 +174,7 @@ fn streaming_byte_at_a_time_sentinel_framed() {
     for chunk in frame.chunks(1) {
         dec.feed(chunk);
         if let Some(r) = dec.next() {
-            got = Some(r.expect("no malformed under sentinel framing"));
+            got = Some(r);
         }
     }
     assert_eq!(got.expect("a complete packet"), want);
@@ -194,7 +194,7 @@ fn try_from_partial_ok() {
     let body = triple_body(&want);
     let mut cursor: &[u8] = &body;
     let p = match Triple::decode_partial(&mut cursor) {
-        Ok(Progress::NeedMore(p)) => p,
+        Ok(Packet::NeedMore(p)) => p,
         other => panic!("expected NeedMore (no Done break), got {}", kind(&other)),
     };
     let got: Triple = p.try_into().expect("finalise");
@@ -213,7 +213,7 @@ fn missing_required_label_via_finalize() {
 
     let mut cursor: &[u8] = &body;
     let p = match MissingReq::decode_partial(&mut cursor) {
-        Ok(Progress::NeedMore(p)) => p,
+        Ok(Packet::NeedMore(p)) => p,
         other => panic!("expected NeedMore (no Done break), got {}", kind(&other)),
     };
     let label: &'static str = <MissingReq as core::convert::TryFrom<_>>::try_from(p)
@@ -224,13 +224,76 @@ fn missing_required_label_via_finalize() {
     );
 }
 
-fn kind<T, P>(p: &Result<Progress<T, P>, &'static str>) -> &'static str
+/// Split a framed Triple mid-body and feed through Decoder. First half yields None, completing the feed yields the correct Triple.
+#[test]
+fn decoder_resume_mid_value() {
+    let want = Triple {
+        a: 0xAA,
+        b: 0xBBCC,
+        c: 0xDDEEFF11,
+        d: None,
+    };
+    let frame = want.encode_frame();
+    let split = frame.len() / 2;
+    let mut dec = Triple::decoder();
+    dec.feed(&frame[..split]);
+    assert!(dec.next().is_none(), "truncated feed yields None");
+    dec.feed(&frame[split..]);
+    let got = dec.next().expect("complete feed yields Some");
+    assert_eq!(got, want);
+    assert!(dec.buffered().is_empty());
+}
+
+/// Truncate after the first KLV triple. Decoder reassembles the packet once the remaining bytes arrive.
+#[test]
+fn decoder_resume_after_key_byte() {
+    let want = Triple {
+        a: 1,
+        b: 2,
+        c: 3,
+        d: None,
+    };
+    let frame = want.encode_frame();
+    let split = 3 + 1 + 3 + 1; // sentinel + len + a_triple + one more byte
+    let mut dec = Triple::decoder();
+    dec.feed(&frame[..split]);
+    assert!(dec.next().is_none(), "truncated feed yields None");
+    dec.feed(&frame[split..]);
+    let got = dec.next().expect("complete feed yields Some");
+    assert_eq!(got, want);
+    assert!(dec.buffered().is_empty());
+}
+
+/// Optional field `d` survives streaming reassembly across 4-byte chunks.
+#[test]
+fn decoder_resume_with_optional() {
+    let want = Triple {
+        a: 9,
+        b: 0x1234,
+        c: 0x56789ABC,
+        d: Some(42),
+    };
+    let frame = want.encode_frame();
+    let mut dec = Triple::decoder();
+    let mut got = Vec::new();
+    for chunk in frame.chunks(4) {
+        dec.feed(chunk);
+        for r in dec.iter() {
+            got.push(r);
+        }
+    }
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0], want);
+    assert_eq!(got[0].d, Some(42));
+}
+
+fn kind<T, P>(p: &Result<Packet<T, P>, &'static str>) -> &'static str
 where
     P: tinyklv::Partial<Final = T>,
 {
     match p {
-        Ok(Progress::Ready(_)) => "Ok(Ready)",
-        Ok(Progress::NeedMore(_)) => "Ok(NeedMore)",
+        Ok(Packet::Ready(_)) => "Ok(Ready)",
+        Ok(Packet::NeedMore(_)) => "Ok(NeedMore)",
         Err(_) => "Err(label)",
     }
 }

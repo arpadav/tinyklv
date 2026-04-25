@@ -32,6 +32,7 @@ mod repeated_decode;
 mod sentinel_seek;
 mod sigil_dispatch;
 mod streaming_decoder;
+mod streaming_mixed_fields;
 mod streaming_unknown_key;
 mod streaming_vec;
 mod types;

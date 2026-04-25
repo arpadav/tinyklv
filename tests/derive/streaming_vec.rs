@@ -36,7 +36,7 @@ struct Reading {
 //
 // - `sentinel = b"PAR"` gives the `Decoder<Parent>` streaming API a way
 //   to locate packet boundaries inside a byte stream.
-// - `fallback_impls` routes the `Vec<Reading>` field through the
+// - `trait_fallback` routes the `Vec<Reading>` field through the
 //   blanket `DecodeValue`/`EncodeValue` impls at `src/traits/dec.rs`
 //   without needing an explicit field-level xcoder.
 // --------------------------------------------------
@@ -46,7 +46,7 @@ struct Reading {
     sentinel = b"PAR",
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-    fallback_impls,
+    trait_fallback,
     allow_unimplemented_encode,
 )]
 struct Parent {
@@ -112,9 +112,9 @@ fn parent_with_repeated_readings_decodes() {
 }
 
 #[test]
-/// Stream three complete parent packets through `Decoder<Parent>` fed one
-/// byte at a time. Every parent must emerge in order with no loss.
-fn decoder_parent_stream_byte_by_byte() {
+/// Junk bytes between sentinel-framed parent packets are skipped.
+/// All three parents decode in order with correct inner readings.
+fn decoder_parent_with_junk_between() {
     let a = parent_bytes(
         1,
         &[Reading {
@@ -137,18 +137,21 @@ fn decoder_parent_stream_byte_by_byte() {
         }],
     );
     let mut blob = Vec::new();
+    // junk before first sentinel
+    blob.extend_from_slice(&[0x00, 0x00, 0xFF, 0xDE, 0xAD]);
     blob.extend(a);
+    // junk between first and second
+    blob.extend_from_slice(&[0xFF, 0x00, 0xBE, 0xEF]);
     blob.extend(b);
+    // junk between second and third
+    blob.extend_from_slice(&[0x00, 0xCA, 0xFE]);
     blob.extend(c);
 
     let mut dec = Parent::decoder();
+    dec.feed(&blob);
     let mut ids = Vec::new();
-    for &byte in &blob {
-        dec.feed(&[byte]);
-        for r in dec.by_ref() {
-            ids.push(r.expect("Ok").id);
-        }
+    for r in dec.iter() {
+        ids.push(r.id);
     }
     assert_eq!(ids, vec![1, 2, 3]);
-    assert!(dec.buffered().is_empty());
 }

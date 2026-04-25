@@ -1,8 +1,8 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{DecodeError, DecodeValue};
-use crate::Progress;
+use super::DecodeValue;
+use crate::decoder::{DecodeIterError, Packet};
 
 /// In-flight parse state that can be finalised into a complete value
 ///
@@ -28,18 +28,18 @@ pub trait Partial: Sized {
 /// An iterator over [`Partial`] values that can be resumed from a checkpoint
 pub trait PartialIterator<P: Partial> {
     /// Resume-mode entry
-    fn next_resume(&mut self) -> Option<Result<P::Final, DecodeError>>;
+    fn next_resume(&mut self) -> Result<P::Final, DecodeIterError>;
 
     /// Fresh-mode entry
     ///
     /// Existing sentinel-framed flow, unchanged in shape: scan sentinel,
     /// take declared body length, run `decode_partial` on the body slice.
-    fn next_fresh(&mut self) -> Option<Result<P::Final, DecodeError>>;
+    fn next_fresh(&mut self) -> Result<P::Final, DecodeIterError>;
 }
 
 /// Streaming-aware counterpart to [`DecodeValue`]
 ///
-/// Returns a [`Progress<Self, Self::Partial>`] instead of a `Result<Self>`,
+/// Returns a [`Packet<Self, Self::Partial>`] instead of a `Result<Self>`,
 /// so callers can distinguish "need more bytes" from "malformed." Drives
 /// [`crate::Decoder`], the user-facing streaming API.
 ///
@@ -61,9 +61,9 @@ where
     /// Outer `Result` carries the `&'static str` label produced when
     /// the codegen hits an unrecoverable parse condition AND the
     /// partial-to-final conversion also fails. Successful conversion-
-    /// on-give-up is just `Ok(Progress::Ready(t))`. Recoverable
-    /// truncation surfaces as `Ok(Progress::NeedMore(p))`
-    fn decode_partial(input: &mut S) -> Result<Progress<Self, Self::Partial>, &'static str>;
+    /// on-give-up is just `Ok(Packet::Ready(t))`. Recoverable
+    /// truncation surfaces as `Ok(Packet::NeedMore(p))`
+    fn decode_partial(input: &mut S) -> Result<Packet<Self, Self::Partial>, &'static str>;
 }
 
 #[doc(hidden)]
@@ -84,14 +84,14 @@ where
     S: winnow::stream::Stream,
 {
     /// Continue a partial decode from `partial`, consuming input. Same
-    /// outer `Result<Progress<...>, &'static str>` return shape as
+    /// outer `Result<Packet<...>, &'static str>` return shape as
     /// [`DecodePartial::decode_partial`] - this is the source-of-truth
     /// entry point; `decode_partial` is just `resume_partial(input,
     /// Default::default())`
     fn resume_partial(
         input: &mut S,
         partial: Self::Partial,
-    ) -> Result<Progress<Self, Self::Partial>, &'static str>;
+    ) -> Result<Packet<Self, Self::Partial>, &'static str>;
 }
 
 /// [`Vec<P>`] implementation of [`Partial`]
@@ -106,8 +106,8 @@ impl<P: Partial> Partial for Vec<P> {
 
 /// [`Vec<T>`] implementation of [`DecodePartial`] for all `T` that implement [`DecodePartial`]
 ///
-/// This parses inner items until one returns [`Progress::NeedMore`]
-/// or [`Progress::Malformed`]. A [`Progress::NeedMore`] from the inner parser is
+/// This parses inner items until one returns [`Packet::NeedMore`]
+/// or [`Packet::Malformed`]. A [`Packet::NeedMore`] from the inner parser is
 /// committed to the Vec as "done for now" (whatever was accumulated is returned as Ready)
 ///
 /// The cursor has been rewound by the inner call, so the next invocation can resume with
@@ -119,7 +119,7 @@ where
 {
     type Partial = Vec<<T as DecodePartial<S>>::Partial>;
 
-    fn decode_partial(input: &mut S) -> Result<Progress<Self, Self::Partial>, &'static str> {
+    fn decode_partial(input: &mut S) -> Result<Packet<Self, Self::Partial>, &'static str> {
         let mut acc = Vec::new();
         loop {
             let before = input.eof_offset();
@@ -128,16 +128,16 @@ where
                 // --------------------------------------------------
                 // push the val and continue looping
                 // --------------------------------------------------
-                Ok(Progress::Ready(val)) => acc.push(val),
+                Ok(Packet::Ready(val)) => acc.push(val),
                 // --------------------------------------------------
                 // return the acc values, but try to coerce the
                 // last partial packet if possible
                 // --------------------------------------------------
-                Ok(Progress::NeedMore(partial)) => {
+                Ok(Packet::NeedMore(partial)) => {
                     if let Ok(last_elem) = partial.finalize() {
                         acc.push(last_elem);
                     }
-                    return Ok(Progress::Ready(acc));
+                    return Ok(Packet::Ready(acc));
                 }
                 // --------------------------------------------------
                 // if no bytes consumed, rewind and return the acc values as Ready
@@ -146,7 +146,7 @@ where
                 Err(label) => {
                     if input.eof_offset() == before {
                         input.reset(&cp);
-                        return Ok(Progress::Ready(acc));
+                        return Ok(Packet::Ready(acc));
                     }
                     return Err(label);
                 }

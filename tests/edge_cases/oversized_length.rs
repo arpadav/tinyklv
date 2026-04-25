@@ -96,8 +96,8 @@ fn oversized_length_with_zero_value_bytes_fails_required() {
 
 #[test]
 /// A truncated frame with only an optional field surfaces as
-/// `Progress::NeedMore` from `decode_partial` (recoverable per the
-/// new 2-arm `Progress` contract). `decode_value` finalises the
+/// `Packet::NeedMore` from `decode_partial` (recoverable per the
+/// new 2-arm `Packet` contract). `decode_value` finalises the
 /// partial; with no required fields, finalisation succeeds and the
 /// optional field stays `None`. Callers wanting fail-loud must
 /// implement a `Done` break condition or drive `Decoder::finish`.

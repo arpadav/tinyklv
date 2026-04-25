@@ -335,7 +335,7 @@ fn large_struct_roundtrip() {
 }
 
 #[test]
-/// Tests that when all eight optional fields have keys present on the wire, they all decode to `Some(_)`.
+/// Tests that when all eight optional fields have keys present, they all decode to `Some(_)`.
 fn all_optional_8_all_present() {
     let color = Color::Red;
     let priority = Priority::Medium;
@@ -557,7 +557,7 @@ fn all_optional_each_alone_material() {
 // --------------------------------------------------
 
 #[test]
-/// Tests that all eight required fields decode correctly when every key is present on the wire.
+/// Tests that all eight required fields decode correctly when every key is present
 fn all_required_8_present() {
     let fixture = required_suite_fixture();
     let data = build_required_bytes(&fixture);

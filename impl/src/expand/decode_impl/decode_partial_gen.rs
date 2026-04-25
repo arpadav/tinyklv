@@ -35,7 +35,7 @@ pub(super) fn gen_decode_partial_impl(
             fn decode_partial(
                 input: &mut #stream,
             ) -> ::core::result::Result<
-                ::tinyklv::traits::Progress<Self, Self::Partial>,
+                ::tinyklv::decoder::Packet<Self, Self::Partial>,
                 &'static str,
             > {
                 <Self as ::tinyklv::traits::ResumePartial<#stream>>::resume_partial(
@@ -108,11 +108,12 @@ pub(super) fn gen_resume_partial_impl(
         impl #impl_generics ::tinyklv::traits::ResumePartial<#stream> for #name #ty_generics #where_clause {
 
             #pre_check_clippy_allow
+
             fn resume_partial(
                 input: &mut #stream,
                 mut __acc: #partial_name #ty_generics,
             ) -> ::core::result::Result<
-                ::tinyklv::traits::Progress<Self, #partial_name #ty_generics>,
+                ::tinyklv::decoder::Packet<Self, #partial_name #ty_generics>,
                 &'static str,
             > {
                 let checkpoint = input.checkpoint();
@@ -130,7 +131,7 @@ pub(super) fn gen_resume_partial_impl(
                     // --------------------------------------------------
                     if input.eof_offset() == 0 {
                         return ::core::result::Result::Ok(
-                            ::tinyklv::traits::Progress::NeedMore(__acc)
+                            ::tinyklv::decoder::Packet::NeedMore(__acc)
                         );
                     }
                     let checkpoint_inner = input.checkpoint();
@@ -165,7 +166,7 @@ pub(super) fn gen_resume_partial_impl(
                                 // recoverable: ran out of input before
                                 // a single key byte was consumed.
                                 return ::core::result::Result::Ok(
-                                    ::tinyklv::traits::Progress::NeedMore(__acc)
+                                    ::tinyklv::decoder::Packet::NeedMore(__acc)
                                 );
                             }
                             // --------------------------------------------------
@@ -175,7 +176,7 @@ pub(super) fn gen_resume_partial_impl(
                             // --------------------------------------------------
                             return match <#partial_name #ty_generics as ::tinyklv::traits::Partial>::finalize(__acc) {
                                 Ok(v) => ::core::result::Result::Ok(
-                                    ::tinyklv::traits::Progress::Ready(v)
+                                    ::tinyklv::decoder::Packet::Ready(v)
                                 ),
                                 Err(label) => ::core::result::Result::Err(label),
                             };
@@ -192,7 +193,7 @@ pub(super) fn gen_resume_partial_impl(
                             // --------------------------------------------------
                             input.reset(&checkpoint_inner);
                             return ::core::result::Result::Ok(
-                                ::tinyklv::traits::Progress::NeedMore(__acc)
+                                ::tinyklv::decoder::Packet::NeedMore(__acc)
                             );
                         }
                     };
@@ -210,7 +211,7 @@ pub(super) fn gen_resume_partial_impl(
                             if input.eof_offset() < len {
                                 input.reset(&checkpoint_inner);
                                 return ::core::result::Result::Ok(
-                                    ::tinyklv::traits::Progress::NeedMore(__acc)
+                                    ::tinyklv::decoder::Packet::NeedMore(__acc)
                                 );
                             }
                             // --------------------------------------------------
@@ -236,7 +237,7 @@ pub(super) fn gen_resume_partial_impl(
                             // --------------------------------------------------
                             return match <#partial_name #ty_generics as ::tinyklv::traits::Partial>::finalize(__acc) {
                                 Ok(v) => ::core::result::Result::Ok(
-                                    ::tinyklv::traits::Progress::Ready(v)
+                                    ::tinyklv::decoder::Packet::Ready(v)
                                 ),
                                 Err(_) => ::core::result::Result::Err(
                                     "break_condition::abort"
@@ -253,7 +254,7 @@ pub(super) fn gen_resume_partial_impl(
                         // --------------------------------------------------
                         input.reset(&checkpoint_inner);
                         return ::core::result::Result::Ok(
-                            ::tinyklv::traits::Progress::NeedMore(__acc)
+                            ::tinyklv::decoder::Packet::NeedMore(__acc)
                         );
                     }
                     // --------------------------------------------------
@@ -270,7 +271,7 @@ pub(super) fn gen_resume_partial_impl(
                         Ok(s) => s,
                         Err(_) => return match <#partial_name #ty_generics as ::tinyklv::traits::Partial>::finalize(__acc) {
                             Ok(v) => ::core::result::Result::Ok(
-                                ::tinyklv::traits::Progress::Ready(v)
+                                ::tinyklv::decoder::Packet::Ready(v)
                             ),
                             Err(label) => ::core::result::Result::Err(label),
                         },
@@ -295,7 +296,7 @@ pub(super) fn gen_resume_partial_impl(
                 // --------------------------------------------------
                 match <#partial_name #ty_generics as ::tinyklv::traits::Partial>::finalize(__acc) {
                     Ok(v) => ::core::result::Result::Ok(
-                        ::tinyklv::traits::Progress::Ready(v)
+                        ::tinyklv::decoder::Packet::Ready(v)
                     ),
                     Err(label) => ::core::result::Result::Err(label),
                 }
