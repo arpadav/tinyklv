@@ -13,4 +13,5 @@ Core features of `tinyklv`, from first decode to full round-trip.
 | 07 | [Value lengths](./07-val-lengths.md) | Subslices and `varlen = true` |
 | 08 | [Latebind transforms](./08-latebind.md) | Post-decode `Fn(T) -> U` and `Fn(&mut T)` |
 | 09 | [Encoding & sigils](./09-encode-sigil.md) | `EncodeValue`, `&` and `*` sigils |
-| 10 | [Optional fields & default](./10-default-fallback.md) | `Option<T>`, `default`, `fallback_impls` |
+| 10 | [Macros](./10-macros.md) | Macros for `enc`/`dec` |
+| 11 | [Optional fields & default](./11-default-fallback.md) | `Option<T>`, `default`, `trait_fallback` |

@@ -31,26 +31,26 @@ const LAT_SCALE: f64 = 90.0 / (i32::MAX as f64);
 
 /// Encode a longitude in degrees as a 4-byte big-endian scaled i32
 fn scale_lon_enc(v: &f64) -> Vec<u8> {
-    let wire = (*v / LON_SCALE) as i32;
-    encb::be_i32(wire)
+    let data = (*v / LON_SCALE) as i32;
+    encb::be_i32(data)
 }
 
 /// Encode a latitude in degrees as a 4-byte big-endian scaled i32
 fn scale_lat_enc(v: &f64) -> Vec<u8> {
-    let wire = (*v / LAT_SCALE) as i32;
-    encb::be_i32(wire)
+    let data = (*v / LAT_SCALE) as i32;
+    encb::be_i32(data)
 }
 
 /// Decode a 4-byte big-endian scaled i32 back to an f64 longitude in degrees
 fn scale_lon_dec(input: &mut &[u8]) -> tinyklv::Result<f64> {
-    let wire = decb::be_i32(input)?;
-    Ok(wire as f64 * LON_SCALE)
+    let data = decb::be_i32(input)?;
+    Ok(data as f64 * LON_SCALE)
 }
 
 /// Decode a 4-byte big-endian scaled i32 back to an f64 latitude in degrees
 fn scale_lat_dec(input: &mut &[u8]) -> tinyklv::Result<f64> {
-    let wire = decb::be_i32(input)?;
-    Ok(wire as f64 * LAT_SCALE)
+    let data = decb::be_i32(input)?;
+    Ok(data as f64 * LAT_SCALE)
 }
 
 #[derive(Klv, Debug, PartialEq)]
@@ -67,7 +67,7 @@ struct GpsFix {
         dec = scale_lat_dec,
         enc = scale_lat_enc,
     )]
-    /// Latitude in degrees (stored as scaled i32 on the wire)
+    /// Latitude in degrees (stored as scaled i32)
     latitude_deg: f64,
 
     #[klv(
@@ -75,7 +75,7 @@ struct GpsFix {
         dec = scale_lon_dec,
         enc = scale_lon_enc,
     )]
-    /// Longitude in degrees (stored as scaled i32 on the wire)
+    /// Longitude in degrees (stored as scaled i32)
     longitude_deg: f64,
 
     #[klv(

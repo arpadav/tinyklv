@@ -34,7 +34,7 @@ if the stream is `&str` then a `&'static str` can be used.
 #[klv(key(dec = decb::u8, enc = encb::u8))]
 ```
 
-Wires the codec pair used for the **key** byte(s) of every KLV triple in
+Associates the codec pair used for the **key** byte(s) of every KLV triple in
 this container. Supply `dec` for decoding support and `enc` for encoding
 support; either half can be omitted to stay unimplemented.
 
@@ -54,7 +54,7 @@ and `enc` must accept a `usize`. Use the `_as_usize` / `_from_usize` variants fr
     default(typ = u8,  dec = decb::u8,     enc = *encb::u8),
     default(typ = u16, dec = decb::be_u16, enc = *encb::be_u16),
     // `dec` and `enc` are independently optional: attach an encoder
-    // only, and decoders for `MyStruct` can still be wired per-field.
+    // only, and decoders for `MyStruct` can still be used per-field
     default(typ = MyStruct, enc = MyStruct::encode_value),
 )]
 ```
@@ -107,10 +107,10 @@ are not emitted. Useful for decode-only consumers of a third-party spec.
 Symmetric counterpart: opts out of `DecodeValue` / `DecodeFrame`. Use when
 the struct is an emitter-only producer.
 
-## `fallback_impls`
+## `trait_fallback`
 
 ```rust,ignore
-#[klv(fallback_impls)]
+#[klv(trait_fallback)]
 ```
 
 Opt-in flag. Fields lacking explicit `enc`/`dec` and not matched by a
@@ -131,4 +131,4 @@ trait impls on the field type. Field-level codecs and container
 | `deny_unknown_keys` | Reference only |
 | `allow_unimplemented_encode` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
 | `allow_unimplemented_decode` | Reference only |
-| `fallback_impls` | [10 - Optional fields & default](../tutorial/fundamentals/10-default-fallback.md) |
+| `trait_fallback` | [10 - Optional fields & default](../tutorial/fundamentals/10-default-fallback.md) |

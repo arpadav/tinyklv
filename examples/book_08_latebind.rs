@@ -5,7 +5,7 @@ use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-/// Operating mode, wire-encoded as a single byte
+/// Operating mode, encoded as a single byte
 enum Mode {
     Idle,
     Active,
@@ -13,7 +13,7 @@ enum Mode {
     Unknown,
 }
 impl Mode {
-    /// Consuming latebind target: u8 wire value to `Mode`
+    /// Consuming latebind target: u8 value to `Mode`
     fn from_u8(v: u8) -> Self {
         match v {
             0 => Mode::Idle,
@@ -28,7 +28,7 @@ impl Mode {
 const GLOBAL_Z: f32 = 15.0;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
-/// 3D position. Only `x` and `y` are on the wire; `z` is site-configured
+/// 3D position. Only `x` and `y` are encoded; `z` is site-configured
 struct Coordinate {
     x: f32,
     y: f32,
@@ -60,7 +60,7 @@ impl DecodeValue<&[u8]> for Coordinate {
     default(typ = u32, dec = decb::be_u32),
     allow_unimplemented_encode,
 )]
-struct HeartbeatPacket {
+struct Heartbeat {
     #[klv(key = 0x01)]  sequence:             u8,
     #[klv(key = 0x02)]  temperature_centideg: u16,
     #[klv(key = 0x03)]  battery_pct:          u8,
@@ -94,14 +94,14 @@ fn main() {
         0x03, 0x01, 0x57,                   // battery_pct          = 87
         0x04, 0x01, 0xB8,                   // rssi_dbm             = 0xB8
         0x05, 0x04, 0x00, 0x00, 0x0E, 0x10, // uptime_s             = 3600
-        0x06, 0x01, 0x01,                   // mode wire u8         = 1 -> Mode::Active
+        0x06, 0x01, 0x01,                   // mode u8              = 1 -> Mode::Active
         0x07, 0x08,                         // position: key, len = 8
         0x3F, 0xC0, 0x00, 0x00,             // x = 1.5
         0x40, 0x20, 0x00, 0x00,             // y = 2.5 (z injected by latebind)
     ];
 
     // manually construct the expected value
-    let expected = HeartbeatPacket {
+    let expected = Heartbeat {
         sequence:             42,
         temperature_centideg: 2350,
         battery_pct:          87,
@@ -112,7 +112,7 @@ fn main() {
     };
 
     // seek sentinel, decode the value
-    let decoded = HeartbeatPacket::decode_frame(
+    let decoded = Heartbeat::decode_frame(
         &mut stream.as_slice(),
     ).unwrap();
 

@@ -1,72 +1,91 @@
 # Tutorial 15 - Streaming decode with `Decoder<T>`
 
-Chapter 14 showed the manual checkpoint-and-restore loop for feeding a
-sync decoder from an async source. `Decoder<T>` is the library version
-of that pattern: an owned byte buffer plus a `feed` / `next` interface
-that hides the rewind bookkeeping.
+When bytes arrive in fragments - short TCP reads, ring buffers, UDP
+reassembly - a single logical packet may straddle multiple reads.
+`Decoder<T>` handles that: it owns a growing byte buffer, scans for the
+sentinel, and yields fully-decoded values as enough bytes accumulate.
 
 `Decoder<T>` only works for sentinel-framed packets. Without a
 sentinel there is no way to tell where one packet ends and the next
-begins inside a continuous stream - so the derive on your `T` must
-carry `sentinel = b"..."`. The decoder scans the buffer for that
-sentinel, reads the declared packet length that follows, and only then
-runs `DecodePartial::decode_partial` on the exact body.
+begins inside a continuous stream - so your `T` must carry
+`sentinel = b"..."`. The decoder scans the buffer for that sentinel,
+reads the declared packet length that follows, and runs
+`DecodePartial::decode_partial` on the exact body.
 
-## The three return values
+## Three usage patterns
+
+### Pattern 1 - feed + iterate
+
+Feed the whole buffer, then drain with a for-loop. `&mut Decoder`
+implements `IntoIterator`, so this works directly:
 
 ```rust,ignore
-dec.next() // -> Option<Result<T, DecodeError>>
+dec.feed(&data);
+let got: Vec<T> = (&mut dec).into_iter().collect();
 ```
 
-| Return | Meaning | What to do |
-|--------|---------|------------|
-| `Some(Ok(t))` | Full packet decoded | Hand `t` to the application |
-| `Some(Err(DecodeError::Malformed(_)))` | Body present but bad | Log; the framed bytes are already dropped so the next packet is not masked |
-| `None` | Need more bytes (or no sentinel found yet) | Call `feed` with more bytes |
+### Pattern 2 - chunked feed + `iter()`
 
-## Example walkthrough
-
-The runnable example
-[`book_15_streaming_decode.rs`](https://github.com/arpadav/tinyklv/blob/main/examples/book_15_streaming_decode.rs)
-builds three framed packets, slices the whole byte stream into very
-small chunks to simulate a drip-feed transport, and shows that
-`Decoder` reassembles every packet without losing progress across
-reads.
-
-The core loop is the same four lines you would write for any blocking
-byte source:
+Simulate a drip-feed transport: feed small chunks, drain after each
+feed. `iter()` returns a borrowing iterator that yields every
+currently-complete packet:
 
 ```rust,ignore
-for chunk in incoming_chunks {
-    dec.feed(&chunk);
-    while let Some(pkt) = dec.next() {
-        handle(pkt?);
+for chunk in data.chunks(3) {
+    dec.feed(chunk);
+    for pkt in dec.iter() {
+        handle(pkt);
     }
 }
 ```
 
-No explicit checkpoint, no explicit rewind, no accumulator `Vec<u8>`
-owned by the caller. All of that moves into `Decoder<T>`.
+### Pattern 3 - `consume()`
+
+Hand a chunk iterator directly to the decoder. Internally it feeds
+each chunk and yields decoded values as they become complete - the
+feed/iter loop in a single expression:
+
+```rust,ignore
+let got: Vec<T> = dec.consume(data.chunks(3)).collect();
+```
+
+`consume()` accepts anything that implements
+`IntoIterator<Item = B>` where `B: AsRef<[u8]>`, so
+`Vec<Vec<u8>>`, `&[&[u8]]`, and `slice::chunks()` all work.
+
+## Full example
+
+Run this example: `cargo run --example book_15_a_streaming_decode`
+
+```rust
+{{#include ../../../../examples/book_15_a_streaming_decode.rs}}
+```
 
 ## When NOT to use `Decoder<T>`
 
-- **One complete packet at a time**: if each transport unit (e.g. a
-  UDP datagram you have already re-assembled) already holds one full
-  packet, call `T::decode_frame` or `T::decode_value` directly. The
-  extra buffer is wasted.
+- **One complete packet at a time**: if each transport unit already
+  holds one full packet, call `T::decode_frame` or `T::decode_value`
+  directly. The extra buffer is wasted.
 - **No sentinel**: structs without `sentinel = ...` cannot be framed.
   Use `decode_value` on a bounded slice you built yourself.
-- **You need backpressure / async**: `Decoder<T>` is sync. Drive it
-  from any runtime by awaiting bytes and feeding them in; the
-  decoding itself is CPU-bound.
 
 ## Error policy
 
-`Decoder<T>::next()` guarantees forward progress: once it returns
-`Some(Err(Malformed))`, the offending framed bytes are drained so the
-next call either emits a subsequent packet or asks for more bytes.
+`Decoder<T>` guarantees forward progress: a malformed framed packet
+is drained so the next call either emits a subsequent packet or asks
+for more bytes. If the sentinel never appears, the internal buffer
+grows without bound - use `dec.clear()` or a buffer-length check in
+your feed loop to cap growth.
 
-If the sentinel genuinely never appears in the stream, the internal
-buffer grows without bound until the caller intervenes. Use
-`dec.clear()` or a buffer-length check in your feed loop to cap growth
-in adversarial scenarios.
+## `finish()` for stream-end
+
+When the upstream signals "no more bytes coming" (TCP FIN, file EOF),
+call `dec.finish()` to force-finalise the in-flight partial. If every
+required field has already been populated, you get `Ok(t)`. If not,
+you get `Err(DecodeIterError::Malformed(_))` naming the first missing
+field. `finish()` consumes the decoder.
+
+> **Next**: Chapter 15 shows how to drive `Decoder<T>` from an async
+> byte source with Tokio.
+
+**Next:** [15 - Streaming decode](./15-streaming-decode.md)

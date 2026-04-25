@@ -15,7 +15,7 @@ use tinyklv::dec::binary as decb;   // binary decoders
     default(typ = u32, dec = decb::be_u32),
     allow_unimplemented_encode,
 )]
-struct HeartbeatPacket {
+struct Heartbeat {
     #[klv(key = 0x01)] sequence:             u8,
     #[klv(key = 0x02)] temperature_centideg: u16,
     #[klv(key = 0x03)] battery_pct:          u8,
@@ -40,7 +40,7 @@ fn main() {
     ];
 
     // manually construct the expected value
-    let expected = HeartbeatPacket {
+    let expected = Heartbeat {
         sequence:             42,
         temperature_centideg: 2350,
         battery_pct:          87,
@@ -50,7 +50,7 @@ fn main() {
     };
 
     // seek sentinel, decode the value
-    let decoded = HeartbeatPacket::decode_frame(
+    let decoded = Heartbeat::decode_frame(
         &mut stream.as_slice(),
     ).unwrap();
 

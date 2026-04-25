@@ -102,24 +102,58 @@ Variable-length string codecs. Use with `varlen = true` on the field.
 ⚑ = gated behind the `ascii` crate feature (`features = ["ascii"]` or `features = ["full"]`).
 
 The UTF-16 codecs assume the value body is a raw UTF-16 code-unit
-stream with no BOM. Choose `_be` or `_le` to match your wire format.
+stream with no BOM. Choose `_be` or `_le` to match your data format.
 
 ## Utility macros
 
-`tinyklv` exports helper macros for common decode-time transformations:
+`tinyklv` exports helper macros that expand to closures matching the
+decoder / encoder contract. They can be used **inline** in `dec = ...`,
+`enc = ...`, and `default(typ = T, dec = ..., enc = ...)` attributes -
+any macro that expands to a function or closure with the right
+signature works.
 
-| Macro | Purpose |
-|-------|---------|
-| `scale!(factor, decoder)` | Decode an integer, multiply by `factor` to produce `f64` |
-| `scale_enc!(factor, encoder)` | Encode counterpart: divide by `factor`, encode as integer |
-| `scale_offset_enc!(factor, offset, encoder)` | Offset + scale encoder |
-| `cast!(decoder)` | Decode one integer type, cast to another via `as` |
-| `cast_enc!(encoder)` | Encode counterpart: cast and encode |
+### Decode macros
 
-Feature-gated (`chrono`):
+| Macro | Expands to | Purpose |
+|-------|-----------|---------|
+| `scale!(parser, precision, factor)` | `\|input\| -> Result<precision>` | Parse via `parser`, cast to `precision`, multiply by `factor` |
+| `cast!(parser, precision)` | `\|input\| -> Result<precision>` | Parse via `parser`, cast to `precision` via `as` |
 
-| Macro | Purpose |
-|-------|---------|
-| `as_date!(format, decoder)` | Decode bytes to `chrono::NaiveDate` |
-| `as_time!(format, decoder)` | Decode bytes to `chrono::NaiveTime` |
-| `as_datetime!(format, decoder)` | Decode bytes to `chrono::NaiveDateTime` |
+### Encode macros
+
+| Macro | Expands to | Purpose |
+|-------|-----------|---------|
+| `scale_enc!(encoder, precision, data, factor)` | `\|val: &precision\| -> Vec<u8>` | Divide by `factor`, cast to `data`, encode |
+| `scale_offset_enc!(encoder, precision, data, factor, offset)` | `\|val: &precision\| -> Vec<u8>` | Subtract `offset`, divide by `factor`, cast to `data`, encode |
+| `cast_enc!(encoder, precision, data)` | `\|val: &precision\| -> Vec<u8>` | Cast `precision` to `data` via `as`, encode |
+
+### Inline usage
+
+```rust,ignore
+const HEADING_SCALE: f64 = 360.0 / 65535.0;
+
+#[klv(
+    key = 0x02,
+    dec = tinyklv::scale!(decb::be_u16, f64, HEADING_SCALE),
+    enc = tinyklv::scale_enc!(
+        encb::be_u16, f64, u16, HEADING_SCALE,
+    ),
+)]
+heading_deg: f64,
+```
+
+The `dec = ...` attribute accepts any expression that resolves to
+`fn(&mut S) -> tinyklv::Result<T>`. Built-in codecs, named functions,
+and macro invocations all satisfy this. Closures do **not** work
+inline (proc-macro attribute parsing limitation) - use a named
+function instead.
+
+See the full example: `cargo run --example book_05b_macro_decoders`
+
+### Feature-gated (`chrono`)
+
+| Macro | Expands to | Purpose |
+|-------|-----------|---------|
+| `as_date!(str_parser, format, len)` | `\|input\| -> Result<NaiveDate>` | Parse `len` bytes as string, then as date |
+| `as_time!(str_parser, format, len)` | `\|input\| -> Result<NaiveTime>` | Parse `len` bytes as string, then as time |
+| `as_datetime!(str_parser, format, len)` | `\|input\| -> Result<NaiveDateTime>` | Parse `len` bytes as string, then as datetime |

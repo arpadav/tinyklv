@@ -7,21 +7,21 @@
 //!
 //! * **Consuming**: `latebind = path` with signature `Fn(T) -> U`. The
 //!   decoder returns `T`, the latebind fn converts it to `U`, and the
-//!   struct field is declared as `U`. Useful for turning wire-representation
-//!   integers into domain enums.
+//!   struct field is declared as `U`.
 //!
 //! * **Mutating**: `latebind = &mut path` with signature `Fn(&mut T)`. The
 //!   decoder returns `T` and the latebind fn mutates it in place. Useful
 //!   for injecting data from external context into a partial decode.
 //!
 //! This example uses the consuming form to build a `Status` enum from a
-//! wire `u8`, and the mutating form to inject a Z coordinate that is not
-//! carried on the wire at all.
+//! `u8`, and the mutating form to inject a Z coordinate is not part of
+//! the standard / in the stream
 //!
 //! Showcases:
 //! * `latebind = path` (consuming) `Fn(u8) -> Status`
 //! * `latebind = &mut path` (mutating) `Fn(&mut Coordinate)`
-//! * Encoding a field whose in-memory type differs from the wire type
+//! * Encoding a field whose in-memory type differs from whats provided
+//!   in the stream
 //!
 //! See also: book Tutorial 16.
 use tinyklv::prelude::*;            // Klv proc-macro + traits
@@ -29,7 +29,7 @@ use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-/// Device status variants carried as a one-byte discriminant on the wire
+/// Device status variants carried as a one-byte discriminant
 enum Status {
     Idle,
     Active,
@@ -37,7 +37,7 @@ enum Status {
     Unknown,
 }
 
-/// Consuming-form latebind: convert a wire `u8` into the in-memory `Status`
+/// Consuming-form latebind: convert a `u8` into the in-memory `Status`
 fn status_from_u8(v: u8) -> Status {
     match v {
         0 => Status::Idle,
@@ -47,7 +47,7 @@ fn status_from_u8(v: u8) -> Status {
     }
 }
 
-/// Encode a `Status` back to its wire `u8` discriminant
+/// Encode a `Status` back to its u8` discriminant
 fn enc_status(s: &Status) -> Vec<u8> {
     let byte = match s {
         Status::Idle    => 0,
@@ -65,7 +65,7 @@ fn enc_status(s: &Status) -> Vec<u8> {
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
-/// Device with a single status field whose wire type differs from the
+/// Device with a single status field whose type differs from the
 /// in-memory type; the gap is bridged by a consuming-form latebind
 struct Device {
     /// Status discriminant: decoder reads `u8`, latebind promotes to `Status`
@@ -78,11 +78,11 @@ struct Device {
     status: Status,
 }
 
-/// Z coordinate that is never placed on the wire; injected post-decode
+/// Z coordinate that is never in the stream; injected post-decode
 const GLOBAL_Z: f32 = 15.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-/// 3D coordinate whose X and Y come from the wire, Z from external context
+/// 3D coordinate whose X and Y come from the stream, Z from external context
 struct Coordinate {
     x: f32,
     y: f32,
@@ -128,7 +128,7 @@ struct Telemetry {
 }
 
 fn main() {
-    // consuming form: round-trip a Status through its u8 wire representation
+    // consuming form: round-trip a Status through its u8 representation
 
     // build
     let device = Device { status: Status::Active };
@@ -141,7 +141,7 @@ fn main() {
     // assert - the latebind promoted the decoded u8 into the Active variant
     assert_eq!(decoded.status, Status::Active);
 
-    // mutating form: Z is dropped on the wire and re-injected on decode
+    // mutating form: Z is never pasrsed or re-injected on decode
 
     // build
     let tele = Telemetry {
