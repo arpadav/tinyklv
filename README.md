@@ -42,7 +42,7 @@ use tinyklv::enc::binary as encb;
     len(dec = decb::u8_as_usize,
         enc = encb::u8_from_usize),
 )]
-struct HeartbeatPacket {
+struct Heartbeat {
     #[klv(
         key = 0x01,
         dec = decb::u8,
@@ -59,12 +59,12 @@ struct HeartbeatPacket {
 }
 
 fn main() {
-    let original = HeartbeatPacket {
+    let original = Heartbeat {
         sequence: 42,
         temperature_centideg: 2350,
     };
     let frame = original.encode_frame();
-    let decoded = HeartbeatPacket::decode_frame(
+    let decoded = Heartbeat::decode_frame(
         &mut frame.as_slice()
     ).unwrap();
     assert_eq!(decoded, original);
@@ -73,15 +73,35 @@ fn main() {
 
 Full annotated version: [`examples/01_hello_world.rs`](examples/01_hello_world.rs).
 
+### Streaming / partial decode
+
+For fragmented transports where a single packet may straddle multiple
+reads, `Decoder<T>` owns an internal buffer and reassembles packets
+automatically. Requires `sentinel = ...` on the struct.
+
+```rust,ignore
+let mut dec = Heartbeat::decoder();
+loop {
+    let n = socket.recv(&mut buf)?;
+    dec.feed(&buf[..n]);
+    for pkt in dec.by_ref() {
+        handle(pkt?);
+    }
+}
+```
+
+Uses iterator patterns - `Decoder` implements `Iterator`, so `for pkt in dec.by_ref()` drains all available packets after each feed.
+
 ## Feature Highlights
 
 - `#[derive(Klv)]` generates encode and decode in one pass
 - Built-in codecs: binary (native/BE/LE for `u8`..`u128`, `i8`..`i128`, `f32`/`f64`), BER length, BER-OID keys, UTF-8 / UTF-16 / ASCII strings
 - Sentinel seeking - resync on noisy byte streams
+- Streaming `Decoder<T>` - feed/next API for fragmented transports (TCP, UDP, ring buffers)
 - Repeated decode with user-defined break conditions
 - Nested `Klv` structs - compose packets from sub-packets
 - Generic structs and lifetimes supported
-- `Option<T>` fields, per-field and per-container defaults, `fallback_impls`, `deny_unknown_keys`
+- `Option<T>` fields, per-field and per-container defaults, `trait_fallback`, `deny_unknown_keys`
 - Stream type is user-selected - any `winnow::Stream` works
 
 ## Traits
@@ -93,6 +113,8 @@ Full annotated version: [`examples/01_hello_world.rs`](examples/01_hello_world.r
 | `EncodeValue<O>` | Encode the value body (KLV triples, no frame header) |
 | `EncodeFrame<O>` | Encode sentinel + length + value body |
 | `DrainFrames<S>` | Decode a sentinel-framed stream into `Vec<T>` |
+| `DecodePartial<S>` | Streaming-aware decode returning `Packet<T, P>` |
+| `Decoder<P, S>` | Owned-buffer streaming decoder with feed / next |
 | `BreakCondition<S>` | Per-`(key, len)` stop predicate for decode loops |
 
 ## Documentation
@@ -115,4 +137,4 @@ Licensed under the MIT License. See [LICENSE](LICENSE) for details.
 If `tinyklv` is useful to you:
 
 - [Buy Me a Coffee](https://buymeacoffee.com/arpadav)
-- Bitcoin: `bc1qry7qlkfmyumu2hq3mhcdgjcnmfnulxlm7wgn6`
+- Bitcoin: `bc1q5stdywthj254agv80s5gky6440xy73cpqgv0q7`
