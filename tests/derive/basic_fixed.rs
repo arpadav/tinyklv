@@ -1,10 +1,6 @@
-// --------------------------------------------------
-// local
-// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -19,18 +15,21 @@ struct BasicFixed {
         enc = *encb::u8,
     )]
     byte_val: u8,
+
     #[klv(
         key = 0x02,
         dec = decb::be_u16,
         enc = *encb::be_u16,
     )]
     short_val: u16,
+
     #[klv(
         key = 0x03,
         dec = decb::be_u32,
         enc = *encb::be_u32,
     )]
     int_val: u32,
+
     #[klv(
         key = 0x04,
         dec = decb::be_u64,

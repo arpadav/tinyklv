@@ -5,7 +5,7 @@
 //! The smallest useful derive: a two-field heartbeat packet that round-trips
 //! through the binary encoder and decoder. Read this first to see how the
 //! container attribute sets the key/length codecs once for the whole struct,
-//! and how each field attribute wires a single key to its own value codec.
+//! and how each field attribute converts a single key to its own value codec
 //!
 //! Showcases:
 //! * `#[derive(Klv)]` with `stream`, `sentinel`, `key(...)`, `len(...)`
@@ -25,7 +25,7 @@ use tinyklv::enc::binary as encb;   // binary encoders
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 /// Minimal sensor heartbeat: a sequence counter and a temperature reading
-struct HeartbeatPacket {
+struct Heartbeat {
     #[klv(
         key = 0x01,
         dec = decb::u8,
@@ -45,7 +45,7 @@ struct HeartbeatPacket {
 
 fn main() {
     // build
-    let original = HeartbeatPacket {
+    let original = Heartbeat {
         sequence:             42,
         temperature_centideg: 2350, // 23.50 C
     };
@@ -54,7 +54,7 @@ fn main() {
     let frame = original.encode_frame();
 
     // decode - seeks the sentinel, reads the length, decodes the value region
-    let decoded = HeartbeatPacket::decode_frame(
+    let decoded = Heartbeat::decode_frame(
         &mut frame.as_slice(),
     ).unwrap();
 

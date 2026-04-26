@@ -329,7 +329,7 @@ Otherwise, you can:
         t = symbol::TYPE,
         e = symbol::ENCODER,
         aue = symbol::ALLOW_UNIMPLEMENTED_ENCODE,
-        fi = symbol::FALLBACK_IMPLS,
+        fi = symbol::TRAIT_FALLBACK,
     )]
     UnimplementedEncode(String, String),
 
@@ -347,7 +347,7 @@ Otherwise, you can:
         t = symbol::TYPE,
         d = symbol::DECODER,
         aud = symbol::ALLOW_UNIMPLEMENTED_DECODE,
-        fi = symbol::FALLBACK_IMPLS,
+        fi = symbol::TRAIT_FALLBACK,
     )]
     UnimplementedDecode(String, String),
 

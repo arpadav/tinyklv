@@ -1,10 +1,6 @@
-// --------------------------------------------------
-// local
-// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
 
 fn decode_u16_add_one(input: &mut &[u8]) -> tinyklv::Result<u16> {
     decb::be_u16(input).map(|v| v + 1)
@@ -27,6 +23,7 @@ struct CustomDecoders {
         enc = encode_u16_sub_one,
     )]
     adjusted: u16,
+
     #[klv(
         key = 0x02,
         dec = decb::u8,
@@ -36,15 +33,12 @@ struct CustomDecoders {
 }
 
 #[test]
-/// Tests that a user-provided `dec` function (wire_value + 1) is applied during decode.
+/// Tests that a user-provided `dec` function (value + 1) is applied during decode.
 fn custom_decoder_applies_transform() {
-    // Wire value is 0x0064 = 100; custom decoder adds 1 -> 101
+    // data value is 0x0064 = 100; custom decoder adds 1 -> 101
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x64, 0x02, 0x01, 0x07];
     let result = CustomDecoders::decode_value(&mut &data[..]).unwrap();
-    assert_eq!(
-        result.adjusted, 101,
-        "custom decoder should add 1 to wire value"
-    );
+    assert_eq!(result.adjusted, 101, "custom decoder should add 1 to value");
     assert_eq!(result.plain, 7);
 }
 

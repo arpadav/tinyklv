@@ -3,21 +3,10 @@
 //! Tests sentinel-based seek, encode, and extract across complex domain
 //! types from `types.rs`. Covers roundtrip, prefix verification, multi-type
 //! streams, garbage tolerance, not-found errors, and interleaved extraction.
-//!
-//! Author: aav
-
-// --------------------------------------------------
-// local
-// --------------------------------------------------
 use super::types::*;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
-
-// --------------------------------------------------
-// NavPacket - sentinel 0xBEEF
-// --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -52,10 +41,6 @@ struct NavPacket {
     )]
     color: Color,
 }
-
-// --------------------------------------------------
-// WeatherPacket - sentinel 0xCAFE
-// --------------------------------------------------
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(

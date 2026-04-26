@@ -18,7 +18,7 @@ pub struct FixedLength {
 /// [`FixedLength`] implementation
 impl FixedLength {
     #[inline(always)]
-    pub fn decode<P>(&self, input: &mut &[u8]) -> winnow::Result<P>
+    pub fn decode<P>(&self, input: &mut &[u8]) -> crate::Result<P>
     where
         P: From<u128>,
     {
@@ -36,7 +36,7 @@ impl FixedLength {
     }
 
     #[inline(always)]
-    pub fn decode_lengthed<P>(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<P>
+    pub fn decode_lengthed<P>(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<P>
     where
         P: From<u128>,
     {

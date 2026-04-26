@@ -1,6 +1,3 @@
-// --------------------------------------------------
-// mods
-// --------------------------------------------------
 mod advanced_break;
 mod advanced_defaults;
 mod advanced_generics;
@@ -17,6 +14,8 @@ mod basic_variable;
 mod ber_keyed;
 mod break_condition;
 mod custom_decoders;
+mod decode_partial_error_kinds;
+mod decode_partial_resume;
 mod default_values;
 mod deny_unknown_keys;
 mod encode_roundtrip;
@@ -32,4 +31,9 @@ mod partial_decode;
 mod repeated_decode;
 mod sentinel_seek;
 mod sigil_dispatch;
+mod streaming_decoder;
+mod streaming_mixed_fields;
+mod streaming_unknown_key;
+mod streaming_vec;
 mod types;
+mod vec_decode_value;

@@ -95,31 +95,36 @@ fn oversized_length_with_zero_value_bytes_fails_required() {
 }
 
 #[test]
-/// Tests that a truncated frame fails loudly with a "truncated" error even for optional fields, distinguishing malformed input from absence.
-fn oversized_length_with_zero_value_bytes_optional_fails() {
-    // A declared length that overruns the remaining input is a truncated frame,
-    // not "field absent". Even for optional fields, decode must fail loudly so
-    // the caller can distinguish malformed input from legitimate absence.
+/// A truncated frame with only an optional field surfaces as
+/// `Packet::NeedMore` from `decode_partial` (recoverable per the
+/// new 2-arm `Packet` contract). `decode_value` finalises the
+/// partial; with no required fields, finalisation succeeds and the
+/// optional field stays `None`. Callers wanting fail-loud must
+/// implement a `Done` break condition or drive `Decoder::finish`.
+fn oversized_length_with_zero_value_bytes_optional_yields_none() {
     let data: &[u8] = &[0x01, 0xFF];
-    let err = OptionalU32::decode_value(&mut &data[..]).expect_err("declared len overruns input");
-    assert!(format!("{err:?}").contains("truncated"));
+    let v = OptionalU32::decode_value(&mut &data[..]).expect("optional-only finalises");
+    assert!(v.value.is_none(), "optional must remain None on truncation");
 }
 
 #[test]
-/// Tests that an optional field with an oversized declared length (overruns input) returns a truncation error.
-fn optional_oversized_fails() {
+/// Optional field with declared length overrunning input -> recoverable
+/// `NeedMore` -> finalise leaves the optional `None`.
+fn optional_oversized_yields_none() {
     let data: &[u8] = &[0x01, 100, 0x00, 0x00, 0x00, 0x01];
-    let err = OptionalU32::decode_value(&mut &data[..]).expect_err("declared len overruns input");
-    assert!(format!("{err:?}").contains("truncated"));
+    let v = OptionalU32::decode_value(&mut &data[..]).expect("optional-only finalises");
+    assert!(v.value.is_none());
 }
 
 #[test]
-/// Tests that a valid first field followed by a second field with an oversized length surfaces a truncation error.
-fn first_field_valid_second_oversized_fails() {
+/// Valid first field followed by a second-field overlong length:
+/// recoverable truncation. The required first field landed before the
+/// truncation, so finalise succeeds with the optional still `None`.
+fn first_field_valid_second_oversized_keeps_required() {
     let data: &[u8] = &[0x01, 0x02, 0x12, 0x34, 0x02, 200];
-    let err = MixedFields::decode_value(&mut &data[..])
-        .expect_err("second field declared len overruns input");
-    assert!(format!("{err:?}").contains("truncated"));
+    let v = MixedFields::decode_value(&mut &data[..]).expect("required landed");
+    assert_eq!(v.required, 0x1234);
+    assert!(v.optional.is_none());
 }
 
 #[test]

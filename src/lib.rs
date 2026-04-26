@@ -4,17 +4,20 @@
 // mods
 // --------------------------------------------------
 pub mod codecs;
+pub mod decoder;
 pub mod traits;
+
 // --------------------------------------------------
 // re-exports
 // --------------------------------------------------
 pub use codecs::*;
+pub use decoder::{Decoder, Packet};
 pub use tinyklv_impl::*;
 pub use traits::*;
 
 #[doc(hidden)]
 /// Internal re-exports used during proc-macro expansion.
-/// Not part of the public API - may change without notice.
+/// Not part of the public API - may change without notice
 pub mod __export {
     #[cfg(feature = "chrono")]
     pub use chrono;
@@ -23,15 +26,16 @@ pub mod __export {
 }
 
 /// Convenience re-export of all traits and parser primitives needed to
-/// work with KLV streams. Import with `use tinyklv::prelude::*`.
+/// work with KLV streams
 pub mod prelude {
     // --------------------------------------------------
     // local
     // --------------------------------------------------
+    pub use crate::decoder::{Decoder, Packet};
     pub use crate::traits::{
-        BreakCondition as _, BreakConditionType, DecodeFrame as _, DecodeValue, EncodeAs,
-        EncodeFrame as _, EncodeValue, EncodedOutput as _, IntoKlv as _, RepeatedDecode as _,
-        SeekSentinel as _,
+        BreakCondition as _, BreakConditionType, DecodeFrame as _, DecodePartial, DecodeValue,
+        DrainFrames as _, EncodeAs, EncodeFrame as _, EncodeValue, EncodedOutput as _,
+        IntoKlv as _, Partial, SeekSentinel as _,
     };
     pub use tinyklv_impl::Klv;
     // --------------------------------------------------
@@ -40,6 +44,7 @@ pub mod prelude {
     pub use winnow::{error::AddContext as _, prelude::*, stream::Stream as _, Parser as _};
 }
 
+/// Convenience re-export of [`winnow::Result`]
 pub type Result<T> = winnow::Result<T>;
 
 #[macro_export]
@@ -112,7 +117,7 @@ macro_rules! cast {
 }
 
 #[macro_export]
-/// Encode counterpart of [`scale!`]. Divides by scale factor, casts to wire type, then encodes.
+/// Encode counterpart of [`scale!`]. Divides by scale factor, casts to data type, then encodes.
 ///
 /// Can be used directly in a `#[klv(enc = ...)]` attribute
 ///
@@ -130,13 +135,13 @@ macro_rules! cast {
 /// assert_eq!(encoded, vec![0x00, 0x01]);
 /// ```
 macro_rules! scale_enc {
-    ($encoder:path, $precision:ty, $wire:ty, $scale:tt $(,)*) => {
-        |input: &$precision| -> Vec<u8> { $encoder((*input / $scale) as $wire) }
+    ($encoder:path, $precision:ty, $data:ty, $scale:tt $(,)*) => {
+        |input: &$precision| -> Vec<u8> { $encoder((*input / $scale) as $data) }
     };
 }
 
 #[macro_export]
-/// Encode counterpart of [`cast!`]. Casts to wire type, then encodes.
+/// Encode counterpart of [`cast!`]. Casts to data type, then encodes.
 ///
 /// Can be used directly in a `#[klv(enc = ...)]` attribute
 ///
@@ -154,16 +159,16 @@ macro_rules! scale_enc {
 /// assert_eq!(encoded, vec![0x00, 0x01]);
 /// ```
 macro_rules! cast_enc {
-    ($encoder:path, $precision:ty, $wire:ty $(,)*) => {
-        |input: &$precision| -> Vec<u8> { $encoder(*input as $wire) }
+    ($encoder:path, $precision:ty, $data:ty $(,)*) => {
+        |input: &$precision| -> Vec<u8> { $encoder(*input as $data) }
     };
 }
 
 #[macro_export]
-/// Encode counterpart of [`scale!`] with offset. Subtracts offset, divides by scale, casts to wire type, then encodes.
+/// Encode counterpart of [`scale!`] with offset. Subtracts offset, divides by scale, casts to data type, then encodes.
 ///
-/// Useful fields that map a real-value range to a wire-value range
-/// via `wire_value = (real_value - offset) / scale`.
+/// Useful fields that map a real-value range to a data-value range
+/// via `data_value = (real_value - offset) / scale`.
 ///
 /// # Usage
 ///
@@ -180,8 +185,8 @@ macro_rules! cast_enc {
 /// assert_eq!(encoded, vec![0x00, 0x02]);
 /// ```
 macro_rules! scale_offset_enc {
-    ($encoder:path, $precision:ty, $wire:ty, $scale:tt, $offset:tt $(,)*) => {
-        |input: &$precision| -> Vec<u8> { $encoder(((*input - $offset) / $scale) as $wire) }
+    ($encoder:path, $precision:ty, $data:ty, $scale:tt, $offset:tt $(,)*) => {
+        |input: &$precision| -> Vec<u8> { $encoder(((*input - $offset) / $scale) as $data) }
     };
 }
 

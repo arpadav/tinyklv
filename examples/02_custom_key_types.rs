@@ -5,7 +5,7 @@
 //! The key codec is configured once at the container level and every field
 //! key is interpreted through it. Three mirrored structs carry the same two
 //! logical fields but are keyed with `u8`, big-endian `u16`, and
-//! little-endian `u16` respectively - demonstrating that the wire layout of
+//! little-endian `u16` respectively - demonstrating that the layout of
 //! the tag is a property of the codec pair, not the field.
 //!
 //! Showcases:

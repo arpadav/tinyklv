@@ -2,8 +2,8 @@
 //!
 //! Covers both call-shapes of post-decode `latebind`:
 //!
-//! * consuming - `latebind = path`       → `Fn(T) -> U` - emits `.map(path)`
-//! * mutating  - `latebind = &mut path`  → `Fn(&mut T)` - emits
+//! * consuming - `latebind = path`       -> `Fn(T) -> U` - emits `.map(path)`
+//! * mutating  - `latebind = &mut path`  -> `Fn(&mut T)` - emits
 //!   `.map(|mut __v| { path(&mut __v); __v })` (T == U)
 //!
 //! Exercised on required fields, `Option<U>` fields (present/absent), and
@@ -15,7 +15,7 @@ use tinyklv::prelude::*;
 use tinyklv::Klv;
 
 // --------------------------------------------------
-// consuming form: wire `u8` -> `Status` via `Fn(u8) -> Status`
+// consuming form: `u8` -> `Status` via `Fn(u8) -> Status`
 // --------------------------------------------------
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
@@ -42,10 +42,9 @@ impl Status {
             Status::Unknown => 0xFF,
         }
     }
-}
-
-fn enc_status(s: &Status) -> Vec<u8> {
-    encb::u8(s.as_u8())
+    fn encode(&self) -> Vec<u8> {
+        encb::u8(self.as_u8())
+    }
 }
 
 #[derive(Klv, Debug, Clone, PartialEq, Eq)]
@@ -60,20 +59,21 @@ struct ConsumingPacket {
         key = 0x01,
         dec = decb::u8,
         latebind = Status::from_u8,
-        enc = enc_status,
+        enc = Status::encode,
     )]
     status: Status,
+
     #[klv(
         key = 0x02,
         dec = decb::u8,
         latebind = Status::from_u8,
-        enc = enc_status,
+        enc = Status::encode,
     )]
     backup: Option<Status>,
 }
 
 #[test]
-/// Consuming latebind converts `u8` wire bytes into a `Status` enum and roundtrips.
+/// Consuming latebind converts `u8` bytes into a `Status` enum and roundtrips.
 fn consuming_latebind_roundtrip() {
     let original = ConsumingPacket {
         status: Status::Active,
@@ -153,7 +153,7 @@ struct MutatingPacket {
 #[test]
 /// Mutating latebind injects z from a global after the decoder parses only x/y.
 fn mutating_latebind_injects_z() {
-    let wire = MutatingPacket {
+    let data = MutatingPacket {
         pos: Coordinate {
             x: 1.0,
             y: 2.0,
@@ -165,7 +165,7 @@ fn mutating_latebind_injects_z() {
             z: 0.0,
         }),
     };
-    let bytes = wire.encode_frame();
+    let bytes = data.encode_frame();
     let mut slice = bytes.as_slice();
     let decoded = MutatingPacket::decode_frame(&mut slice).expect("decode_frame");
     assert_eq!(decoded.pos.x, 1.0);
@@ -180,7 +180,7 @@ fn mutating_latebind_injects_z() {
 #[test]
 /// Mutating latebind on absent `Option<U>` still produces `None` without invoking the mutator.
 fn mutating_latebind_optional_absent() {
-    let wire = MutatingPacket {
+    let data = MutatingPacket {
         pos: Coordinate {
             x: 9.0,
             y: 9.0,
@@ -188,7 +188,7 @@ fn mutating_latebind_optional_absent() {
         },
         maybe_pos: None,
     };
-    let bytes = wire.encode_frame();
+    let bytes = data.encode_frame();
     let mut slice = bytes.as_slice();
     let decoded = MutatingPacket::decode_frame(&mut slice).expect("decode_frame");
     assert!(decoded.maybe_pos.is_none());

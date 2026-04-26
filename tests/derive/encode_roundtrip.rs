@@ -17,30 +17,35 @@ struct AllNumerics {
         enc = *encb::u8,
     )]
     u8_field: u8,
+
     #[klv(
         key = 0x02,
         dec = decb::be_u16,
         enc = *encb::be_u16,
     )]
     u16_field: u16,
+
     #[klv(
         key = 0x03,
         dec = decb::be_u32,
         enc = *encb::be_u32,
     )]
     u32_field: u32,
+
     #[klv(
         key = 0x04,
         dec = decb::be_u64,
         enc = *encb::be_u64,
     )]
     u64_field: u64,
+
     #[klv(
         key = 0x05,
         dec = decb::be_i16,
         enc = *encb::be_i16,
     )]
     i16_field: i16,
+
     #[klv(
         key = 0x06,
         dec = decb::be_i32,

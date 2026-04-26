@@ -4,7 +4,7 @@ Tutorial 01 imported `Klv` and `DecodeValue` by name. Every subsequent page
 replaces those two lines with a single `use tinyklv::prelude::*;` - the
 prelude re-exports the derive macro and every trait the book uses.
 
-The more interesting change is the wire layout. The `temperature_centideg`
+The more interesting change is the data layout. The `temperature_centideg`
 triple now appears *before* the `sequence` triple inside the stream. KLV is keyed,
 not positional: fields are located by their `key = ...` attribute, not by offset,
 so the decoder happily walks the stream and assembles the struct in whatever
@@ -14,7 +14,7 @@ order the triples happened to arrive.
 
 Run this example: `cargo run --example book_02_out_of_order`
 
-```rust,no_run
+```rust
 {{#include ../../../../examples/book_02_out_of_order.rs}}
 ```
 

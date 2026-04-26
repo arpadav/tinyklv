@@ -1,3 +1,7 @@
+#![allow(
+    clippy::unwrap_used,
+    reason = "proc macro, context check/panic is required"
+)]
 //! Token expansion entry point for the `#[derive(Klv)]` proc-macro
 //!
 //! Drives the full derive pipeline: parses the input into a [`MainContainer`],
@@ -6,21 +10,19 @@
 //! on each field, and emits the corresponding token streams
 //!
 //! Author: aav
-#![allow(
-    clippy::unwrap_used,
-    reason = "proc macro, context check/panic is required"
-)]
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
 mod decode_impl;
 mod encode_impl;
 pub(crate) mod helpers;
+
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::ast::attr::MainContainer;
 use crate::Ctxt;
+
 // --------------------------------------------------
 // external
 // --------------------------------------------------

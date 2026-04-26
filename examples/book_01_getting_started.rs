@@ -12,7 +12,7 @@ use tinyklv::dec::binary as decb;   // binary decoders
     len(dec = decb::u8_as_usize),
     allow_unimplemented_encode,
 )]
-struct HeartbeatPacket {
+struct Heartbeat {
     #[klv(
         key = 0x01,
         dec = decb::u8,
@@ -38,7 +38,7 @@ fn main() {
     ];
 
     // manually construct the value
-    let original_constructed = HeartbeatPacket {
+    let original_constructed = Heartbeat {
         sequence: 42,
         temperature_centideg: 2350,
     };
@@ -47,7 +47,7 @@ fn main() {
     // `winnow` is used internally, which requires a &mut Stream, in
     // this case a &mut &[u8]. this allows for the slice to be borrowed
     // and changing the pointer in a zero-copy manner
-    let decoded = HeartbeatPacket::decode_value(
+    let decoded = Heartbeat::decode_value(
         &mut original_stream.as_slice()
     ).unwrap();
 

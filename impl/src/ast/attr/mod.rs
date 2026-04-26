@@ -51,7 +51,7 @@ impl<'a> MainContainer<'a> {
                     &attrs.defaults,
                     attrs.allow_unimplemented_encode.is_some(),
                     attrs.allow_unimplemented_decode.is_some(),
-                    attrs.fallback_impls.is_some(),
+                    attrs.trait_fallback.is_some(),
                 )),
                 syn::Fields::Unnamed(fields) => {
                     cx.error_spanned_by(fields, err!(UnsupportedUnnamedStructs));

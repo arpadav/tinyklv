@@ -1,8 +1,8 @@
 //! String decode codecs for KLV data
 //!
-//! Variable-length string decoders that consume `len` bytes from the wire
+//! Variable-length string decoders that consume `len` bytes
 //! and produce a [`String`]. All decoders are compatible with the [`winnow`]
-//! streaming parser framework and accept `&mut &[u8]` input.
+//! streaming parser framework and accept `&mut &[u8]` input
 //!
 //! Includes:
 //! * UTF-8 decoders (lossy and strict)
@@ -39,7 +39,7 @@ use winnow::token::take;
 /// assert_eq!(res1, Ok(String::from("AF-101")));
 /// assert_eq!(res2, Ok(String::from("MISSION01")));
 /// ```
-pub fn to_string_utf8(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<String> {
+pub fn to_string_utf8(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String> {
     move |input| {
         take(len)
             .map(|slice| String::from_utf8_lossy(slice).to_string())
@@ -66,7 +66,7 @@ pub fn to_string_utf8(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<Strin
 /// assert_eq!(res1, Ok(String::from("AF-101")));
 /// assert_eq!(res2, Ok(String::from("MISSION01")));
 /// ```
-pub fn to_string_utf8_strict(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<String> {
+pub fn to_string_utf8_strict(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String> {
     move |input| {
         let checkpoint = input.checkpoint();
         match String::from_utf8(take(len).parse_next(input)?.to_vec()) {
@@ -96,7 +96,7 @@ pub fn to_string_utf8_strict(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Resul
 /// let result = tinyklv::codecs::string::dec::to_string_utf16_le(4)(&mut input);
 /// assert_eq!(result, Ok(String::from("AB")));
 /// ```
-pub fn to_string_utf16_le(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<String> {
+pub fn to_string_utf16_le(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String> {
     move |input| {
         let checkpoint = input.checkpoint();
         if !len.is_multiple_of(2) {
@@ -139,7 +139,7 @@ pub fn to_string_utf16_le(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<S
 /// let result = tinyklv::codecs::string::dec::to_string_utf16_be(4)(&mut input);
 /// assert_eq!(result, Ok(String::from("AB")));
 /// ```
-pub fn to_string_utf16_be(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<String> {
+pub fn to_string_utf16_be(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String> {
     move |input| {
         let checkpoint = input.checkpoint();
         if !len.is_multiple_of(2) {
@@ -186,7 +186,7 @@ pub fn to_string_utf16_be(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<S
 /// assert_eq!(res1, Ok(String::from("AF-101")));
 /// assert_eq!(res2, Ok(String::from("MISSION01")));
 /// ```
-pub fn to_string_ascii(len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<String> {
+pub fn to_string_ascii(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String> {
     move |input| {
         let checkpoint = input.checkpoint();
         match ascii::AsciiString::from_ascii(take(len).parse_next(input)?) {

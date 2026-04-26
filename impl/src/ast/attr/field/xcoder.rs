@@ -29,10 +29,10 @@ pub(crate) struct FieldXcoder {
     ///
     /// See [`DefaultValue`] for the two accepted forms
     pub default: Option<DefaultValue>,
-    /// `true` if `enc` was synthesized from the `fallback_impls` container flag
+    /// `true` if `enc` was synthesized from the `trait_fallback` container flag
     /// rather than supplied by the user or a container `default(..)` match
     pub fallback_enc: bool,
-    /// `true` if `dec` was synthesized from the `fallback_impls` container flag
+    /// `true` if `dec` was synthesized from the `trait_fallback` container flag
     /// rather than supplied by the user or a container `default(..)` match
     pub fallback_dec: bool,
 }

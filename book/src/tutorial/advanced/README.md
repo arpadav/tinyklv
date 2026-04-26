@@ -4,7 +4,8 @@ Complex behaviour and real-world integration patterns.
 
 | # | Tutorial | Concept |
 |---|----------|---------|
-| 11 | [Nested packets](./11-nested-packets.md) | Inner KLV bodies as field values |
-| 12 | [Repeated extraction](./12-repeated-extraction.md) | `RepeatedDecode::repeated` for batches |
-| 13 | [Break conditions](./13-break-condition.md) | Custom loop control via `BreakConditionType` |
-| 14 | [Async / Tokio streams](./14-tokio-streams.md) | Buffer accumulation with cursor checkpointing |
+| 12 | [Nested packets](./12-nested-packets.md) | Inner KLV bodies as field values |
+| 13 | [Repeated extraction](./13-repeated-extraction.md) | `DrainFrames::drain_frames` for batches |
+| 14 | [Break conditions](./14-break-condition.md) | Custom loop control via `BreakConditionType` |
+| 15 | [Streaming partial packets](./15-streaming-decode.md) | `::decoder()`, `decode_partial`, and resume |
+| 16 | [Async / Tokio streams](./16-tokio-streams.md) | Driving `::decoder()` from Tokio channels |

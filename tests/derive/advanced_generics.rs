@@ -81,7 +81,7 @@ struct TwoParams<T, U> {
 }
 
 #[test]
-/// Tests that a type-generic struct `Tagged<MarkerA>` with a `PhantomData` marker roundtrips via sentinel-framed encode/decode.
+/// Tests that a type-generic struct `Tagged<MarkerA>` with a `PhantomData` marker roundtrips via sentinel-framed encode/decode
 fn tagged_roundtrip_marker_a() {
     let original: Tagged<MarkerA> = Tagged {
         id: 0xBEEF,
@@ -94,7 +94,7 @@ fn tagged_roundtrip_marker_a() {
 }
 
 #[test]
-/// Tests that a type-generic struct `Tagged<MarkerB>` roundtrips independently of the `MarkerA` instantiation.
+/// Tests that a type-generic struct `Tagged<MarkerB>` roundtrips independently of the `MarkerA` instantiation
 fn tagged_roundtrip_marker_b() {
     let original: Tagged<MarkerB> = Tagged {
         id: 0x0101,
@@ -107,7 +107,7 @@ fn tagged_roundtrip_marker_b() {
 }
 
 #[test]
-/// Verifies that `Tagged<MarkerA>` and `Tagged<MarkerB>` have distinct monomorphized impls sharing identical wire bytes.
+/// Verifies that `Tagged<MarkerA>` and `Tagged<MarkerB>` have distinct monomorphized impls sharing identical encoded bytes
 fn tagged_distinct_marker_types_have_separate_impls() {
     let a: Tagged<MarkerA> = Tagged {
         id: 0x1234,

@@ -7,7 +7,7 @@
 //! frame carries its own sentinel and outer length, `decode_frame` can be
 //! called repeatedly against a single slice to recover every record.
 //!
-//! The `RepeatedDecode::repeated` trait exists for the value-region form
+//! The `DrainFrames::drain_frames` trait exists for the value-region form
 //! (repeats `decode_value` until EOF), but for sentinel-framed streams the
 //! idiomatic pattern is a small `while let Ok(...) = T::decode_frame(...)`
 //! loop - shown here.

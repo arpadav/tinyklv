@@ -34,8 +34,8 @@ But encoders come in three shapes:
    view of the value:
 
    ```rust,ignore
-   pub fn utf8(s: &str) -> Vec<u8> { ... }   // String → &str
-   pub fn slice(xs: &[u8]) -> Vec<u8> { ... } // Vec<u8> → &[u8]
+   pub fn utf8(s: &str) -> Vec<u8> { ... }   // String -> &str
+   pub fn slice(xs: &[u8]) -> Vec<u8> { ... } // Vec<u8> -> &[u8]
    ```
 
 3. **Value-form encoders** - how all the built-in primitive encoders in
@@ -77,7 +77,7 @@ gps: GpsFix,
 ### With `&` sigil - `EncodeAs` bridge
 
 Use when your encoder takes a borrowed view that differs from `&T`
-(primitives by value, `String → &str`, `Vec<T> → &[T]`, smart pointers
+(primitives by value, `String -> &str`, `Vec<T> -> &[T]`, smart pointers
 to inner):
 
 ```rust,ignore

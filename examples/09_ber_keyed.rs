@@ -9,13 +9,13 @@
 //! paying a fixed two- or four-byte cost on every packet.
 //!
 //! This example builds a process-control packet with three fields whose
-//! BER-OID keys span 1, 2, and 3 wire bytes, plus a BER length codec so
+//! BER-OID keys span 1, 2, and 3 bytes, plus a BER length codec so
 //! small value regions also stay compact.
 //!
 //! Showcases:
 //! * BER-OID key codec from `dec::ber` / `enc::ber`
 //! * BER length codec wrapped in small helper fns
-//! * `u64` key type carrying values that map to 1/2/3-byte wire keys
+//! * `u64` key type carrying values that map to 1/2/3-byte keys
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -64,7 +64,7 @@ fn main() {
         alarm_code:   0x00FF, // warning bit pattern
     };
 
-    // encode - wire bytes include BER keys of 1, 2, and 3 bytes respectively
+    // encode - bytes include BER keys of 1, 2, and 3 bytes respectively
     let frame = original.encode_frame();
 
     // decode - round-trip through the BER codecs

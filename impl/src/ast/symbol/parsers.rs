@@ -104,9 +104,9 @@ create_parser!(VARIABLE_LENGTH: syn::LitBool; pnm);
 ///
 /// Accepts two forms on field attributes:
 ///
-/// * bare `default` (no `=` token) → [`DefaultValue::Call`], which codegen
+/// * bare `default` (no `=` token) -> [`DefaultValue::Call`], which codegen
 ///   lowers to `<T as ::core::default::Default>::default()`
-/// * `default = <expr>` → [`DefaultValue::Expr`], which codegen splices as-is
+/// * `default = <expr>` -> [`DefaultValue::Expr`], which codegen splices as-is
 ///
 /// Returns:
 ///

@@ -58,7 +58,7 @@ fn normal_key_order() {
 }
 
 #[test]
-/// Verifies that decoding yields the same struct when keys appear in fully reversed wire order.
+/// Verifies that decoding yields the same struct when keys appear in fully reversed data order.
 fn reversed_key_order_same_result() {
     let data = build_packet(false);
     let result = OrderIndependent::decode_value(&mut data.as_slice()).unwrap();

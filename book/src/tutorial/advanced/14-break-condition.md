@@ -1,4 +1,4 @@
-# Tutorial 13 - Break conditions
+# Tutorial 14 - Break conditions
 
 The derive-generated decode loop reads `(key, len)`, matches the key,
 decodes the value, and moves on. Occasionally you need something the
@@ -32,14 +32,14 @@ The example wires up a heartbeat where the transmitter emits a reserved key
 key (`0xFF`, stop decoding here). A `classify(key)` helper keeps the outcome
 table separate from the loop body, so the loop itself reads top to bottom.
 
-Run this example: `cargo run --example book_13_break_condition`
+Run this example: `cargo run --example book_14_break_condition`
 
 ```rust,no_run
-{{#include ../../../../examples/book_13_break_condition.rs}}
+{{#include ../../../../examples/book_14_break_condition.rs}}
 ```
 
 - `BreakConditionType` enumerates the four loop outcomes.
 - The blanket impl blocks override on derived types - manual `DecodeValue` is required.
 - Encode side can still derive; a mirror struct keeps the byte layout honest.
 
-**Next:** [14 - Async / Tokio streams](./14-tokio-streams.md)
+**Next:** [15 - Streaming partial packets](./15-streaming-decode.md)

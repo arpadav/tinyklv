@@ -10,7 +10,7 @@ use tinyklv::dec::binary as decb;   // binary decoders
     len(dec = decb::u8_as_usize),
     allow_unimplemented_encode,
 )]
-struct HeartbeatPacket {
+struct Heartbeat {
     #[klv(
         key = 0x01,
         dec = decb::u8,
@@ -36,13 +36,13 @@ fn main() {
     ];
 
     // manually construct the value
-    let original_constructed = HeartbeatPacket {
+    let original_constructed = Heartbeat {
         sequence: 42,
         temperature_centideg: 2350,
     };
 
     // decode the value
-    let decoded = HeartbeatPacket::decode_value(
+    let decoded = Heartbeat::decode_value(
         &mut out_of_order_stream.as_slice()
     ).unwrap();
 

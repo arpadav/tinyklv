@@ -74,13 +74,13 @@ impl ToTokens for XcoderLike {
 ///
 /// Written before the path/macro in `#[klv(enc = <sigil><fn>)]`:
 ///
-/// * `None`  (`enc = func`)  → emit `func(&self.field)` - fn takes `&T`
-///   (deref coercion handles `&String → &str`, `&Vec<u8> → &[u8]`, etc.)
-/// * `Ref`   (`enc = &func`) → emit `func(EncodeAs::encode_as(&self.field))` -
+/// * `None`  (`enc = func`)  -> emit `func(&self.field)` - fn takes `&T`
+///   (deref coercion handles `&String -> &str`, `&Vec<u8> -> &[u8]`, etc.)
+/// * `Ref`   (`enc = &func`) -> emit `func(EncodeAs::encode_as(&self.field))` -
 ///   dispatches via the [`EncodeAs`](`tinyklv::traits::EncodeAs`) trait:
-///   primitives pass by value (Copy), `String → &str`, `Vec<T> → &[T]`,
-///   `Box<T>/Rc<T>/Arc<T> → &T`. No clone, no heap allocation
-/// * `Deref` (`enc = *func`) → emit `func(self.field)` - fn takes `T` by value
+///   primitives pass by value (Copy), `String -> &str`, `Vec<T> -> &[T]`,
+///   `Box<T>/Rc<T>/Arc<T> -> &T`. No clone, no heap allocation
+/// * `Deref` (`enc = *func`) -> emit `func(self.field)` - fn takes `T` by value
 ///   (for `Copy` types and small primitives)
 pub(crate) enum XcoderSigil {
     None,
@@ -132,10 +132,10 @@ impl ToTokens for SiguledXcoder {
 ///
 /// Written after `latebind =` in `#[klv(latebind = <mut?><fn>)]`:
 ///
-/// * `latebind = path`       (`is_mut == false`) → emit
+/// * `latebind = path`       (`is_mut == false`) -> emit
 ///   `.map(path)` after the decoder's `.ok()`; `path` has signature
 ///   `Fn(T) -> U` where `T` is the decoder output and `U` is the field type
-/// * `latebind = &mut path`  (`is_mut == true`)  → emit
+/// * `latebind = &mut path`  (`is_mut == true`)  -> emit
 ///   `.map(|mut __v| { path(&mut __v); __v })`; `path` has signature
 ///   `Fn(&mut T)` with `T == U`
 ///

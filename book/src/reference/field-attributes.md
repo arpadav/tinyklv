@@ -11,7 +11,7 @@ temperature_centideg: u16,
 ```
 
 The key byte(s) the field is matched on at decode time and emitted at
-encode time. Literal types match the codec wired in the container's
+encode time. Literal types match the codec in the container's
 `key(dec = ..., enc = ...)` - usually an integer literal for byte keys.
 
 ## `dec = <path>`
@@ -21,7 +21,7 @@ encode time. Literal types match the codec wired in the container's
 sequence: u8,
 ```
 
-Wires the codec pair for this field. `dec` must match
+Associates the codec pair for this field. `dec` must match
 `fn(&mut S) -> tinyklv::Result<T>`, where `tinyklv::Result` is
 an alias for `winnow::Result`
 

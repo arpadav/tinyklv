@@ -35,8 +35,14 @@ fn is_option_helper(ty: &syn::Type) -> (bool, Option<&syn::Type>) {
 }
 
 /// Inserts a lifetime into a type
-pub(crate) fn insert_lifetime(ty: &syn::Type, lifetime_char: char) -> syn::Type {
-    let lifetime = syn::Lifetime::new(&format!("'{lifetime_char}"), proc_macro2::Span::call_site());
+pub(crate) fn insert_lifetime(
+    ty: &syn::Type,
+    lifetime_char: proc_macro2::TokenStream,
+) -> syn::Type {
+    let lifetime = syn::Lifetime::new(
+        lifetime_char.to_string().as_str(),
+        proc_macro2::Span::call_site(),
+    );
     match ty {
         syn::Type::Reference(ty_ref) => syn::Type::Reference(syn::TypeReference {
             and_token: Default::default(),
