@@ -1,6 +1,6 @@
 [package]
 name = "tinyklv"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Arpad Voros <arpadav@gmail.com>"]
 license = "MIT"
 description = "The simplest Key-Length-Value (KLV) framework in Rust"
@@ -12,7 +12,7 @@ keywords = ["decode", "encode", "klv", "parsing", "tlv"]
 categories = ["development-tools", "encoding", "parsing"]
 edition = "2024"
 rust-version = "1.95"
-exclude = ["TODO.md", "book/book/"]
+exclude = ["TODO.md", "book/", "examples", "tests"]
 publish = true
 
 [workspace]
