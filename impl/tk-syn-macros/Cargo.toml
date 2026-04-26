@@ -6,6 +6,7 @@ description = "Implementation detail of the `tinyklv` crate"
 documentation = "https://docs.rs/tinyklv"
 homepage = "https://arpadvoros.com/tinyklv"
 repository = "https://github.com/arpadav/tinyklv"
+license = "MIT"
 keywords = ["decode", "encode", "klv", "parsing", "tlv"]
 categories = ["development-tools", "encoding", "parsing"]
 publish = true
