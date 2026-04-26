@@ -15,7 +15,7 @@ pub(crate) fn is_option(ty: &syn::Type) -> bool {
 fn is_option_helper(ty: &syn::Type) -> (bool, Option<&syn::Type>) {
     if let syn::Type::Path(syn::TypePath { path, .. }) = ty {
         if let Some(syn::PathSegment {
-            ident: ref id,
+            ident: id,
             arguments:
                 syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments { args, .. }),
         }) = path.segments.first()
