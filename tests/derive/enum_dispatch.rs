@@ -15,7 +15,7 @@ use tinyklv::prelude::*;
     sentinel = b"\xBE\xEF",
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-    fallback_impls,
+    trait_fallback,
 )]
 struct NavPacket {
     #[klv(key = 0x01)]
@@ -46,7 +46,7 @@ impl Default for NavPacket {
     sentinel = b"\xCA\xFE",
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-    fallback_impls,
+    trait_fallback,
 )]
 struct WeatherPacket {
     #[klv(key = 0x01)]

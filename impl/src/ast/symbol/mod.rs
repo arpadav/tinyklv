@@ -59,14 +59,14 @@ pub(crate) const DENY_UNKNOWN_KEYS: Symbol = Symbol("deny_unknown_keys");
 pub(crate) const ALLOW_UNIMPLEMENTED_DECODE: Symbol = Symbol("allow_unimplemented_decode");
 /// The `allow_unimplemented_encode` sub-attribute identifier
 pub(crate) const ALLOW_UNIMPLEMENTED_ENCODE: Symbol = Symbol("allow_unimplemented_encode");
-/// The `fallback_impls` sub-attribute identifier
+/// The `trait_fallback` sub-attribute identifier
 ///
 /// Opt-in container flag. When set, any field lacking an explicit `enc`/`dec`
 /// and not matched by a container `default(..)` falls back to the
 /// [`tinyklv::EncodeValue`] / [`tinyklv::DecodeValue`] trait implementations
 /// for the field's type. If the trait is not implemented for the field's type,
 /// the compiler reports a trait-bound error at the call site
-pub(crate) const FALLBACK_IMPLS: Symbol = Symbol("fallback_impls");
+pub(crate) const TRAIT_FALLBACK: Symbol = Symbol("trait_fallback");
 
 // --------------------------------------------------
 // statics
@@ -81,7 +81,7 @@ pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
     DENY_UNKNOWN_KEYS,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,
-    FALLBACK_IMPLS,
+    TRAIT_FALLBACK,
 ]);
 
 /// Container-level symbols that accept list syntax (e.g. `key(..)`)
@@ -140,7 +140,7 @@ const KNOWN: &[Symbol] = &[
     DENY_UNKNOWN_KEYS,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,
-    FALLBACK_IMPLS,
+    TRAIT_FALLBACK,
 ];
 
 /// [`Symbol`] implementation of [`From`] for [`syn::Path`]

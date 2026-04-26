@@ -1,6 +1,6 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/10-default-fallback.md` for full example
+//! See: `book/tutorial/12-default-fallback.md` for full example
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -24,7 +24,7 @@ struct Heartbeat {
         dec = decb::i8,
         enc = *encb::i8,
     )]
-    /// Absent on the wire = `None`. Encoding a `None` emits no KLV triple
+    /// Absent in stream = `None`. Encoding a `None` emits no KLV triple
     signal_dbm: Option<i8>,
 
     #[klv(
@@ -33,7 +33,7 @@ struct Heartbeat {
         enc = *encb::u8,
         default = 100_u8,
     )]
-    /// Absent on the wire = `100` (the default expression); always emitted on encode
+    /// Absent in stream = `100` (the default expression); always emitted on encode
     battery_pct: u8,
 }
 
@@ -47,9 +47,9 @@ fn main() {
     ).unwrap();
 
     assert_eq!(decoded.sequence, 42);
-    // signal_dbm was never on the wire -> Option stayed None
+    // signal_dbm was never in stream -> Option stayed None
     assert_eq!(decoded.signal_dbm, None);
-    // battery_pct was never on the wire -> default expression 100 survived
+    // battery_pct was never in stream -> default expression 100 survived
     assert_eq!(decoded.battery_pct, 100);
 
     // round-trip a full packet

@@ -2,11 +2,10 @@
 #![allow(clippy::unwrap_used)]
 //! Example 05 - encode/decode symmetry.
 //!
-//! `#[derive(Klv)]` generates matched pairs of traits on both sides of the
-//! wire: `EncodeValue`/`DecodeValue` for the raw KLV triples and
-//! `EncodeFrame`/`DecodeFrame` for the sentinel-wrapped envelope. This
-//! example walks through both pairs on a single struct and asserts the
-//! invariants that tie them together:
+//! `#[derive(Klv)]` generates matched pairs of traits: `EncodeValue`/`DecodeValue`
+//! for the raw KLV triples and `EncodeFrame`/`DecodeFrame` for the sentinel-wrapped
+//! envelope. This example walks through both pairs on a single struct and asserts
+//! the invariants that tie them together:
 //!
 //! * `decode_value(encode_value(x)) == x`
 //! * `decode_frame(encode_frame(x)) == x`

@@ -1,6 +1,6 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/11-nested-packets.md` for full example
+//! See: `book/tutorial/12-nested-packets.md` for full example
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -11,8 +11,10 @@ use tinyklv::enc::binary as encb;   // binary encoders
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
-/// Nested sub-packet. No sentinel - it never appears as a top-level frame,
-/// only as the value region of a field in `HeartbeatPacket`
+/// Nested sub-packet
+///
+/// Sentinel **could** exist for stand-alone packet, however
+/// in this example, it will never be seen as a top-level frame
 struct GpsFix {
     #[klv(
         key = 0x01,
@@ -47,7 +49,7 @@ struct GpsFix {
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
 /// Top-level heartbeat frame with a nested `GpsFix`
-struct HeartbeatPacket {
+struct Heartbeat {
     #[klv(
         key = 0x01,
         dec = decb::u8,
@@ -74,13 +76,13 @@ struct HeartbeatPacket {
         dec = GpsFix::decode_value,
         enc = GpsFix::encode_value,
     )]
-    /// Nested GpsFix: wire `dec`/`enc` to the derived methods on the inner type
+    /// Nested GpsFix: `dec`/`enc` to the derived methods on the inner type
     gps: GpsFix,
 }
 
 fn main() {
     // build a heartbeat carrying a GPS fix
-    let original = HeartbeatPacket {
+    let original = Heartbeat {
         sequence:             42,
         temperature_centideg: 2350,
         uptime_s:             3600,
@@ -96,7 +98,7 @@ fn main() {
     let frame = original.encode_frame();
 
     // decode - outer and inner are reconstructed in one call
-    let decoded = HeartbeatPacket::decode_frame(
+    let decoded = Heartbeat::decode_frame(
         &mut frame.as_slice(),
     ).unwrap();
     assert_eq!(decoded, original);

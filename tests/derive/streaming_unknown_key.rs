@@ -81,13 +81,13 @@ fn unknown_key_under_decode_partial_is_err_label() {
     }
 }
 
-fn other_discriminant<T, P>(p: &Result<Progress<T, P>, &'static str>) -> &'static str
+fn other_discriminant<T, P>(p: &Result<Packet<T, P>, &'static str>) -> &'static str
 where
     P: tinyklv::Partial<Final = T>,
 {
     match p {
-        Ok(Progress::Ready(_)) => "Ok(Ready)",
-        Ok(Progress::NeedMore(_)) => "Ok(NeedMore)",
+        Ok(Packet::Ready(_)) => "Ok(Ready)",
+        Ok(Packet::NeedMore(_)) => "Ok(NeedMore)",
         Err(_) => "Err(label)",
     }
 }

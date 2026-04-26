@@ -31,7 +31,7 @@ use quote::ToTokens;
 /// Replaces the historical `gen_items_default` which emitted free local
 /// `let mut #name: Option<#ty> = ...;` accumulators inside the
 /// `decode_partial` body. Hoisting them onto a named struct lets the
-/// state outlive the call so a `Progress::NeedMore(Decoder<P>)` can
+/// state outlive the call so a `Packet::NeedMore(Decoder<P>)` can
 /// carry the in-flight partial across `feed`/`next` boundaries.
 pub(super) fn gen_partial_struct(
     name: &syn::Ident,
@@ -158,7 +158,7 @@ pub(super) fn gen_partial_struct(
     quote! {
         #[doc(hidden)]
         #[automatically_derived]
-        #[doc = concat!(" In-flight partial packet for [`", stringify!(#name), "`]. Mirror of the struct with every klv field as `Option<T>` so the decode loop can fill it incrementally and resume across `Progress::NeedMore` boundaries via [`tinyklv::Decoder`]")]
+        #[doc = concat!(" In-flight partial packet for [`", stringify!(#name), "`]. Mirror of the struct with every klv field as `Option<T>` so the decode loop can fill it incrementally and resume across `Packet::NeedMore` boundaries via [`tinyklv::Decoder`]")]
         #[derive(::core::fmt::Debug)]
         #vis struct #partial_name #impl_generics #where_clause {
             #(#field_decls)*

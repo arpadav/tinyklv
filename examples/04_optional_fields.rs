@@ -3,7 +3,7 @@
 //! Example 04 - optional fields.
 //!
 //! `Option<T>` on a struct field makes the corresponding KLV triple optional
-//! on the wire. On encode, `None` emits nothing; on decode, missing keys
+//! in the stream. On encode, `None` emits nothing; on decode, missing keys
 //! leave the field as `None` without raising an error. This lets a single
 //! struct describe heterogeneous telemetry from units with different sensor
 //! sets.

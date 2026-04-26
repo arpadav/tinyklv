@@ -1,8 +1,8 @@
 //! String decode codecs for KLV data
 //!
-//! Variable-length string decoders that consume `len` bytes from the wire
+//! Variable-length string decoders that consume `len` bytes
 //! and produce a [`String`]. All decoders are compatible with the [`winnow`]
-//! streaming parser framework and accept `&mut &[u8]` input.
+//! streaming parser framework and accept `&mut &[u8]` input
 //!
 //! Includes:
 //! * UTF-8 decoders (lossy and strict)

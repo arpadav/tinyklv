@@ -1,14 +1,14 @@
 //! Direct `decode_partial` tests covering each return shape under the
-//! new 2-arm `Progress` design.
+//! new 2-arm `Packet` design.
 //!
-//! `decode_partial` returns `Result<Progress<T, P>, &'static str>`:
+//! `decode_partial` returns `Result<Packet<T, P>, &'static str>`:
 //!
-//! * `Ok(Progress::NeedMore(p))` - the loop ran out of bytes mid-packet
+//! * `Ok(Packet::NeedMore(p))` - the loop ran out of bytes mid-packet
 //!   OR exited via top-of-loop EOF without a `Done` break condition.
 //!   the partial `p` carries every field that landed; the caller
 //!   chooses when to finalise (via `Decoder::finish`,
 //!   `decode_value`, or `p.try_into()` directly).
-//! * `Ok(Progress::Ready(t))` - only when the codegen takes a
+//! * `Ok(Packet::Ready(t))` - only when the codegen takes a
 //!   conversion-on-give-up path (key bytes consumed but undecodable,
 //!   `take(len)` failed, or `BreakConditionType::Done` fired) AND the
 //!   partial finalises cleanly.
@@ -46,7 +46,7 @@ fn decode_partial_complete_input_emits_needmore_with_full_partial() {
     let mut cursor: &[u8] = encoded.as_slice();
 
     let p = match Pair::decode_partial(&mut cursor) {
-        Ok(Progress::NeedMore(p)) => p,
+        Ok(Packet::NeedMore(p)) => p,
         other => panic!("expected NeedMore, got {}", kind(&other)),
     };
     assert!(
@@ -68,7 +68,7 @@ fn decode_partial_need_more_rewinds_cursor() {
     let before = cursor.len();
 
     match Pair::decode_partial(&mut cursor) {
-        Ok(Progress::NeedMore(_)) => {}
+        Ok(Packet::NeedMore(_)) => {}
         other => panic!("expected NeedMore, got {}", kind(&other)),
     }
     assert_eq!(
@@ -89,7 +89,7 @@ fn decode_partial_short_len_is_recoverable() {
     let before = cursor.len();
 
     match Pair::decode_partial(&mut cursor) {
-        Ok(Progress::NeedMore(_)) => {}
+        Ok(Packet::NeedMore(_)) => {}
         other => panic!(
             "expected NeedMore (recoverable truncation), got {}",
             kind(&other)
@@ -113,7 +113,7 @@ fn decode_partial_missing_required_label_via_try_into() {
     let mut cursor: &[u8] = &stream;
 
     let p = match Pair::decode_partial(&mut cursor) {
-        Ok(Progress::NeedMore(p)) => p,
+        Ok(Packet::NeedMore(p)) => p,
         other => panic!("expected NeedMore, got {}", kind(&other)),
     };
     let label: &'static str = <Pair as core::convert::TryFrom<_>>::try_from(p)
@@ -140,13 +140,13 @@ fn decode_value_one_shot_missing_required() {
     );
 }
 
-fn kind<T, P>(p: &Result<Progress<T, P>, &'static str>) -> &'static str
+fn kind<T, P>(p: &Result<Packet<T, P>, &'static str>) -> &'static str
 where
     P: tinyklv::Partial<Final = T>,
 {
     match p {
-        Ok(Progress::Ready(_)) => "Ok(Ready)",
-        Ok(Progress::NeedMore(_)) => "Ok(NeedMore)",
+        Ok(Packet::Ready(_)) => "Ok(Ready)",
+        Ok(Packet::NeedMore(_)) => "Ok(NeedMore)",
         Err(_) => "Err(label)",
     }
 }

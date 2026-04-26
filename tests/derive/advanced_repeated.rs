@@ -43,7 +43,7 @@ impl Waypoint {
     sentinel = b"UF",
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-    fallback_impls,
+    trait_fallback,
 )]
 struct FramedPacket {
     #[klv(key = 0x01)]

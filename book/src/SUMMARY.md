@@ -15,16 +15,17 @@
     - [Value lengths](./tutorial/fundamentals/07-val-lengths.md)
     - [Latebind transforms](./tutorial/fundamentals/08-latebind.md)
     - [Encoding & the `&` sigil](./tutorial/fundamentals/09-encode-sigil.md)
-    - [Optional fields & default](./tutorial/fundamentals/10-default-fallback.md)
+    - [Macros](./tutorial/fundamentals/10-macros.md)
+    - [Optional fields & default](./tutorial/fundamentals/11-default-fallback.md)
 
 # Tutorial - complex behaviour
 
 - [Advanced](./tutorial/advanced/README.md)
-    - [Nested packets](./tutorial/advanced/11-nested-packets.md)
-    - [Repeated extraction](./tutorial/advanced/12-repeated-extraction.md)
-    - [Break conditions](./tutorial/advanced/13-break-condition.md)
-    - [Async / Tokio streams](./tutorial/advanced/14-tokio-streams.md)
-    - [Streaming decode with `Decoder<T>`](./tutorial/advanced/15-streaming-decode.md)
+    - [Nested packets](./tutorial/advanced/12-nested-packets.md)
+    - [Repeated extraction](./tutorial/advanced/13-repeated-extraction.md)
+    - [Break conditions](./tutorial/advanced/14-break-condition.md)
+    - [Streaming partial packets](./tutorial/advanced/15-streaming-decode.md)
+    - [Async / Tokio streams](./tutorial/advanced/16-tokio-streams.md)
 
 # Reference
 
@@ -33,10 +34,6 @@
 - [Sigil coercion & `EncodeAs`](./reference/sigil-coercion.md)
 - [Traits](./reference/traits.md)
 - [Codecs](./reference/codecs.md)
-
-# Architecture
-
-- [Overview](./architecture/overview.md)
 
 # Appendix
 

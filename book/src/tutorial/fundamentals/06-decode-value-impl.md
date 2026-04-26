@@ -1,10 +1,10 @@
 # Tutorial 06 - Implementing `DecodeValue`
 
-Tutorial 05 wired a free-standing `decode_celsius` into the field attribute.
+Tutorial 05 used a free-standing `decode_celsius` into the field attribute.
 That works, but the codec lives *next to* `Celsius`, not *on* it. Any other
 KLV struct that wants to embed a `Celsius` has to import the function.
 
-`DecodeValue<S>` lifts the same contract onto the type itself:
+`tinyklv::DecodeValue<S>` lifts the same contract onto the type itself:
 
 ```rust
 impl DecodeValue<&[u8]> for Celsius {
@@ -21,7 +21,7 @@ that embeds a `Celsius` gets the decoder for free.
 
 Run this example: `cargo run --example book_06_decode_value_impl`
 
-```rust,no_run
+```rust
 {{#include ../../../../examples/book_06_decode_value_impl.rs}}
 ```
 

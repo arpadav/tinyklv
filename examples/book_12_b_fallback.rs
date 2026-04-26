@@ -1,6 +1,6 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/10-default-fallback.md` for full example
+//! See: `book/tutorial/12-default-fallback.md` for full example
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -23,7 +23,7 @@ impl EncodeValue<Vec<u8>> for DeviceId {
     stream = &[u8],
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-    fallback_impls,
+    trait_fallback,
 )]
 /// Fields lacking `enc` / `dec` fall back to the `EncodeValue` /
 /// `DecodeValue` impls on the field type

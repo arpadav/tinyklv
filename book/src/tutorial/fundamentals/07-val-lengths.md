@@ -1,6 +1,6 @@
 # Tutorial 07 - Value lengths
 
-Every field so far had a fixed wire width. `u8` is one byte, `u16` is two,
+Every field so far had a fixed width. `u8` is one byte, `u16` is two,
 `Celsius` is two. The KLV length byte was informational inside the body - the
 decoder ignored it because the field's type already told it how many bytes to
 read. 
@@ -9,26 +9,35 @@ read.
 
 Realistically, what happens is the key is sought, the len value is "grabbed"
 as a sub-slice, and only the sub-slice (value) is passed into the decoder. As a result,
-you can have functions work like the following:
+you can have functions work which can decode zero-padded values.
+
+In this example, you see that `value: u16` and uses the big-endian `u16` decoder. However,
+the length is set to 4. As a result, the slice passed to the decoder will be of 
+length 4, but the `u16` decoder will only use the first two values, discarding the
+rest. 
 
 Run this example: `cargo run --example book_07_a_subslice`
 
-```rust,no_run
+```rust
 {{#include ../../../../examples/book_07_a_subslice.rs}}
 ```
 
 ## Variable length
 
-`String` is different. Its wire width is only known at parse time, from the
-KLV length byte. The codec contract shifts from
-`fn(&mut S) -> Result<T>` to `fn(len: usize) -> impl Fn(&mut S) -> Result<T>`:
-a function that takes the parsed length and returns a parser specialised to
+`String` and other variable length types are different. Its width is only
+known at parse time, from the KLV length byte. The codec contract becomes:
+
+```rust
+fn(len: usize) -> impl Fn(&mut S) -> Result<T>;
+```
+
+which is a function that takes the parsed length and returns a parser specialised to
 that length. Setting `varlen = true` on the field tells the derive to call
 `decs::to_string_utf8(len)(input)` instead of `decs::to_string_utf8(input)`.
 
 Run this example: `cargo run --example book_07_b_varlen`
 
-```rust,no_run
+```rust
 {{#include ../../../../examples/book_07_b_varlen.rs}}
 ```
 

@@ -6,15 +6,17 @@ Rust. It is built on top of [`winnow`](https://crates.io/crates/winnow) parser
 combinators.
 
 `tinyklv` is protocol-agnostic, and is usually used to create protocols. The
-derive macro generates encoder/decoder trait implementations; you define the
-schema.
+derive macro generates encoder/decoder trait implementations, allowing for
+byte-stream data to be generated and parsed on the fly.
 
 ## Who this is for
 
-Anyone decoding or emitting binary framed data in Rust: telemetry parsers,
-video metadata tools, embedded protocol handlers, test harnesses for custom
-wire formats. Prior exposure to `winnow` helps but is not required; this book
-introduces parser-combinator concepts where they matter.
+Anyone decoding or emitting binary framed data in Rust. Some examples may
+include telemetry parsers, video metadata tools, embedded protocol handlers,]
+test harnesses for custom binary formats. 
+
+Prior exposure to `winnow` helps but is not required, but is highly encouranged. 
+This book introduces parser-combinator concepts where they matter.
 
 ## Quick start
 

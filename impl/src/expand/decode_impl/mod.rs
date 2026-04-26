@@ -179,8 +179,8 @@ fn gen_decode_value_impl(
             fn decode_value(input: &mut #stream) -> ::tinyklv::__export::winnow::Result<Self> {
                 let checkpoint = input.checkpoint();
                 match <Self as ::tinyklv::traits::DecodePartial<#stream>>::decode_partial(input) {
-                    Ok(::tinyklv::traits::Progress::Ready(v)) => Ok(v),
-                    Ok(::tinyklv::traits::Progress::NeedMore(p)) => match <#partial_name #ty_generics as ::tinyklv::traits::Partial>::finalize(p) {
+                    Ok(::tinyklv::decoder::Packet::Ready(v)) => Ok(v),
+                    Ok(::tinyklv::decoder::Packet::NeedMore(p)) => match <#partial_name #ty_generics as ::tinyklv::traits::Partial>::finalize(p) {
                         Ok(v) => Ok(v),
                         Err(label) => Err(
                             ::tinyklv::__export::winnow::error::ContextError::new()

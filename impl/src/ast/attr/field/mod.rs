@@ -35,7 +35,7 @@ impl Field {
         container_defaults: &HashMap<syn::Type, DefaultXcoder>,
         allow_unimplemented_encode: bool,
         allow_unimplemented_decode: bool,
-        fallback_impls: bool,
+        trait_fallback: bool,
     ) -> Option<Self> {
         // --------------------------------------------------
         // return if no attrs on field
@@ -204,13 +204,13 @@ impl Field {
         }
 
         // --------------------------------------------------
-        // fallback to trait impls (opt-in via `fallback_impls`)
+        // fallback to trait impls (opt-in via `trait_fallback`)
         //
         // only engages when the user set the container-level flag AND no
         // explicit xcoder / container default filled the slot. `allow_unimplemented_*`
         // takes precedence - if either is set, fallback is skipped on that side
         // --------------------------------------------------
-        if fallback_impls
+        if trait_fallback
             && !keep_enc_none
             && !allow_unimplemented_encode
             && field_xcoder.enc.is_none()
@@ -227,7 +227,7 @@ impl Field {
             });
             field_xcoder.fallback_enc = true;
         }
-        if fallback_impls
+        if trait_fallback
             && !keep_dec_none
             && !allow_unimplemented_decode
             && field_xcoder.dec.is_none()

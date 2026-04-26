@@ -42,7 +42,7 @@ use tinyklv::enc::binary as encb;
     len(dec = decb::u8_as_usize,
         enc = encb::u8_from_usize),
 )]
-struct HeartbeatPacket {
+struct Heartbeat {
     #[klv(
         key = 0x01,
         dec = decb::u8,
@@ -59,12 +59,12 @@ struct HeartbeatPacket {
 }
 
 fn main() {
-    let original = HeartbeatPacket {
+    let original = Heartbeat {
         sequence: 42,
         temperature_centideg: 2350,
     };
     let frame = original.encode_frame();
-    let decoded = HeartbeatPacket::decode_frame(
+    let decoded = Heartbeat::decode_frame(
         &mut frame.as_slice()
     ).unwrap();
     assert_eq!(decoded, original);
@@ -78,22 +78,25 @@ Full annotated version: [`examples/01_hello_world.rs`](examples/01_hello_world.r
 - `#[derive(Klv)]` generates encode and decode in one pass
 - Built-in codecs: binary (native/BE/LE for `u8`..`u128`, `i8`..`i128`, `f32`/`f64`), BER length, BER-OID keys, UTF-8 / UTF-16 / ASCII strings
 - Sentinel seeking - resync on noisy byte streams
+- Streaming partial packets - `::decoder()`, `iter()`, `next()`, and `DecodePartial`
 - Repeated decode with user-defined break conditions
 - Nested `Klv` structs - compose packets from sub-packets
 - Generic structs and lifetimes supported
-- `Option<T>` fields, per-field and per-container defaults, `fallback_impls`, `deny_unknown_keys`
+- `Option<T>` fields, per-field and per-container defaults, `trait_fallback`, `deny_unknown_keys`
 - Stream type is user-selected - any `winnow::Stream` works
 
 ## Traits
 
-| Trait | Purpose |
-|-------|---------|
-| `DecodeValue<S>` | Decode value body from an unframed slice |
-| `DecodeFrame<S>` | Seek sentinel, read length, subslice, then decode |
-| `EncodeValue<O>` | Encode the value body (KLV triples, no frame header) |
-| `EncodeFrame<O>` | Encode sentinel + length + value body |
-| `DrainFrames<S>` | Decode a sentinel-framed stream into `Vec<T>` |
-| `BreakCondition<S>` | Per-`(key, len)` stop predicate for decode loops |
+| Trait | Purpose | Derived? |
+|-------|---------|----------|
+| `DecodeValue<S>` | Decode value body from an unframed slice | yes |
+| `DecodeFrame<S>` | Seek sentinel, read length, subslice, then decode | yes |
+| `EncodeValue<O>` | Encode the value body (KLV triples, no frame header) | yes |
+| `EncodeFrame<O>` | Encode sentinel + length + value body | yes |
+| `DrainFrames<S>` | Decode a sentinel-framed stream into `Vec<T>` | yes |
+| `DecodePartial<S>` | Streaming-aware decode returning `Packet<T, P>` | yes |
+| `Decoder<P, S>` | Owned-buffer streaming decoder with `feed`, `iter`, and `next` | yes |
+| `BreakCondition<S>` | Per-`(key, len)` stop predicate for decode loops | no |
 
 ## Documentation
 
@@ -115,4 +118,4 @@ Licensed under the MIT License. See [LICENSE](LICENSE) for details.
 If `tinyklv` is useful to you:
 
 - [Buy Me a Coffee](https://buymeacoffee.com/arpadav)
-- Bitcoin: `bc1qry7qlkfmyumu2hq3mhcdgjcnmfnulxlm7wgn6`
+- Bitcoin: `bc1q5stdywthj254agv80s5gky6440xy73cpqgv0q7`

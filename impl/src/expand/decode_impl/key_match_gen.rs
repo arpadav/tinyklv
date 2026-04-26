@@ -16,7 +16,7 @@ use quote::quote;
 /// Used by the pre-match unknown-key gate inside `decode_partial`: before
 /// `take(len)` consumes the value bytes, we check whether `key` is one the
 /// struct declared. If not, and the container carries `deny_unknown_keys`, we
-/// bail with [`tinyklv::prelude::Progress::Malformed`] immediately - no bytes
+/// bail with [`tinyklv::prelude::Packet::Malformed`] immediately - no bytes
 /// wasted, and the error says "unknown key" rather than the downstream
 /// "packet truncated" the old ordering would have produced when the declared
 /// length overran remaining input.

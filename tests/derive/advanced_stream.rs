@@ -13,7 +13,7 @@ use tinyklv::prelude::*;
     stream = &[u8],
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-    fallback_impls,
+    trait_fallback,
 )]
 struct SimplePosition {
     #[klv(key = 0x01)]
@@ -28,7 +28,7 @@ struct SimplePosition {
     stream = &[u8],
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-    fallback_impls,
+    trait_fallback,
 )]
 struct PartialReading {
     #[klv(key = 0x01)]
@@ -47,7 +47,7 @@ struct PartialReading {
     sentinel = b"\x57\x41",
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-    fallback_impls,
+    trait_fallback,
 )]
 struct Waypoint {
     #[klv(key = 0x01)]
@@ -66,7 +66,7 @@ struct Waypoint {
     sentinel = b"\x41\x4C",
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-    fallback_impls,
+    trait_fallback,
 )]
 struct Alert {
     #[klv(key = 0x01)]
@@ -129,7 +129,7 @@ fn unknown_keys_between_valid() {
 
 #[test]
 /// Tests that a declared length exceeding the remaining input surfaces
-/// as recoverable truncation under the 2-arm `Progress` design:
+/// as recoverable truncation under the 2-arm `Packet` design:
 /// `Ok(NeedMore(p))` carrying the bytes that DID land. The previous
 /// "fail-loud-on-overrun" behaviour was a heuristic; the new contract
 /// is "an entity never knows when the stream is complete unless the
@@ -148,7 +148,7 @@ fn corrupt_length_surfaces_as_recoverable_needmore() {
 
     let mut cursor: &[u8] = stream.as_slice();
     let p = match PartialReading::decode_partial(&mut cursor) {
-        Ok(tinyklv::Progress::NeedMore(p)) => p,
+        Ok(tinyklv::Packet::NeedMore(p)) => p,
         other => panic!("expected NeedMore (recoverable truncation), got: {other:?}"),
     };
     // color landed before the bad-length key; velocity/timestamp did

@@ -21,7 +21,7 @@ use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-/// Three-level signal strength indicator stored as one byte on the wire
+/// Three-level signal strength indicator stored as one byte
 enum SignalStrength {
     None,
     Weak,
@@ -53,7 +53,7 @@ impl EncodeValue<Vec<u8>> for SignalStrength {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-/// Network transport mode stored as one byte on the wire
+/// Network transport mode stored as one bytAe
 enum NetworkMode {
     Offline,
     WiFi,

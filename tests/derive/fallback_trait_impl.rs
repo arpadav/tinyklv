@@ -1,4 +1,4 @@
-//! Tests for the opt-in `#[klv(fallback_impls)]` container flag.
+//! Tests for the opt-in `#[klv(trait_fallback)]` container flag.
 //!
 //! When set, any field lacking an explicit `enc`/`dec` and not matched by a
 //! container `default(..)` falls back to the `EncodeValue`/`DecodeValue` trait
@@ -60,7 +60,7 @@ impl tinyklv::EncodeValue<Vec<u8>> for Mode {
     stream = &[u8],
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-    fallback_impls,
+    trait_fallback,
 )]
 struct Inner {
     #[klv(
@@ -79,7 +79,7 @@ struct Inner {
     stream = &[u8],
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-    fallback_impls,
+    trait_fallback,
 )]
 struct OuterFallback {
     #[klv(key = 0x01)]
@@ -185,7 +185,7 @@ fn custom_id_enc(id: &Id) -> Vec<u8> {
     stream = &[u8],
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-    fallback_impls,
+    trait_fallback,
 )]
 struct PrecedenceField {
     #[klv(
@@ -199,7 +199,7 @@ struct PrecedenceField {
 }
 
 #[test]
-/// Explicit field-level xcoder takes precedence over `fallback_impls`
+/// Explicit field-level xcoder takes precedence over `trait_fallback`
 fn fallback_precedence_field_xcoder_beats_fallback() {
     let original = PrecedenceField {
         custom: Id(0x1234),
@@ -224,7 +224,7 @@ fn fallback_precedence_field_xcoder_beats_fallback() {
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
     default(typ = Id, dec = custom_id_dec, enc = custom_id_enc),
-    fallback_impls,
+    trait_fallback,
 )]
 struct PrecedenceDefault {
     #[klv(key = 0x01)]
@@ -232,7 +232,7 @@ struct PrecedenceDefault {
 }
 
 #[test]
-/// Container-level `default(..)` takes precedence over `fallback_impls`
+/// Container-level `default(..)` takes precedence over `trait_fallback`
 fn fallback_precedence_default_beats_fallback() {
     let original = PrecedenceDefault {
         via_default: Id(0xABCD),

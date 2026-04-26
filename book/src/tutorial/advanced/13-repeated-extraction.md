@@ -1,4 +1,4 @@
-# Tutorial 12 - Repeated extraction
+# Tutorial 13 - Repeated extraction
 
 Sensor pipelines frequently batch readings back-to-back inside a single UDP
 datagram, file record, or log line. When each reading is sentinel-framed,
@@ -27,14 +27,14 @@ The example builds five `SensorReading` values, encodes each as a full
 frame, concatenates them into one buffer, and drains the whole batch in a
 single call.
 
-Run this example: `cargo run --example book_12_repeated_extraction`
+Run this example: `cargo run --example book_13_repeated_extraction`
 
 ```rust,no_run
-{{#include ../../../../examples/book_12_repeated_extraction.rs}}
+{{#include ../../../../examples/book_13_repeated_extraction.rs}}
 ```
 
 - `DrainFrames::drain_frames` returns `Vec<Self>` from a sentinel-framed stream.
 - `Vec<T>::decode_value` returns `Vec<T>` from an unframed stream.
 - Clean EOF = success; parse error = propagated error, not silent truncation.
 
-**Next:** [13 - Break conditions](./13-break-condition.md)
+**Next:** [14 - Break conditions](./14-break-condition.md)
