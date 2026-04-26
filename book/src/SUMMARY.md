@@ -24,7 +24,7 @@
     - [Nested packets](./tutorial/advanced/12-nested-packets.md)
     - [Repeated extraction](./tutorial/advanced/13-repeated-extraction.md)
     - [Break conditions](./tutorial/advanced/14-break-condition.md)
-    - [Streaming decode with `Decoder<T>`](./tutorial/advanced/15-streaming-decode.md)
+    - [Streaming partial packets](./tutorial/advanced/15-streaming-decode.md)
     - [Async / Tokio streams](./tutorial/advanced/16-tokio-streams.md)
 
 # Reference
@@ -34,10 +34,6 @@
 - [Sigil coercion & `EncodeAs`](./reference/sigil-coercion.md)
 - [Traits](./reference/traits.md)
 - [Codecs](./reference/codecs.md)
-
-# Architecture
-
-- [Overview](./architecture/overview.md)
 
 # Appendix
 

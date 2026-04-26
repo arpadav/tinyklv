@@ -13,7 +13,7 @@ use crate::traits::Partial;
 /// * [`Packet::NeedMore`] - the decode loop paused because more input
 ///   is needed. The partial holds every KLV field that landed so far.
 ///   Feed more bytes into a [`crate::Decoder`] (via
-///   [`crate::decoder::Feed::feed`] + [`crate::Decoder::next`]), or
+///   [`crate::Decoder::feed`] + [`crate::Decoder::next`]), or
 ///   call [`crate::traits::ResumePartial::resume_partial`] directly,
 ///   once more bytes are available. Malformed input surfaces as
 ///   `Err(&'static str)` on the outer `Result` from

@@ -73,31 +73,12 @@ fn main() {
 
 Full annotated version: [`examples/01_hello_world.rs`](examples/01_hello_world.rs).
 
-### Streaming / partial decode
-
-For fragmented transports where a single packet may straddle multiple
-reads, `Decoder<T>` owns an internal buffer and reassembles packets
-automatically. Requires `sentinel = ...` on the struct.
-
-```rust,ignore
-let mut dec = Heartbeat::decoder();
-loop {
-    let n = socket.recv(&mut buf)?;
-    dec.feed(&buf[..n]);
-    for pkt in dec.by_ref() {
-        handle(pkt?);
-    }
-}
-```
-
-Uses iterator patterns - `Decoder` implements `Iterator`, so `for pkt in dec.by_ref()` drains all available packets after each feed.
-
 ## Feature Highlights
 
 - `#[derive(Klv)]` generates encode and decode in one pass
 - Built-in codecs: binary (native/BE/LE for `u8`..`u128`, `i8`..`i128`, `f32`/`f64`), BER length, BER-OID keys, UTF-8 / UTF-16 / ASCII strings
 - Sentinel seeking - resync on noisy byte streams
-- Streaming `Decoder<T>` - feed/next API for fragmented transports (TCP, UDP, ring buffers)
+- Streaming partial packets - `::decoder()`, `iter()`, `next()`, and `DecodePartial`
 - Repeated decode with user-defined break conditions
 - Nested `Klv` structs - compose packets from sub-packets
 - Generic structs and lifetimes supported
@@ -106,16 +87,16 @@ Uses iterator patterns - `Decoder` implements `Iterator`, so `for pkt in dec.by_
 
 ## Traits
 
-| Trait | Purpose |
-|-------|---------|
-| `DecodeValue<S>` | Decode value body from an unframed slice |
-| `DecodeFrame<S>` | Seek sentinel, read length, subslice, then decode |
-| `EncodeValue<O>` | Encode the value body (KLV triples, no frame header) |
-| `EncodeFrame<O>` | Encode sentinel + length + value body |
-| `DrainFrames<S>` | Decode a sentinel-framed stream into `Vec<T>` |
-| `DecodePartial<S>` | Streaming-aware decode returning `Packet<T, P>` |
-| `Decoder<P, S>` | Owned-buffer streaming decoder with feed / next |
-| `BreakCondition<S>` | Per-`(key, len)` stop predicate for decode loops |
+| Trait | Purpose | Derived? |
+|-------|---------|----------|
+| `DecodeValue<S>` | Decode value body from an unframed slice | yes |
+| `DecodeFrame<S>` | Seek sentinel, read length, subslice, then decode | yes |
+| `EncodeValue<O>` | Encode the value body (KLV triples, no frame header) | yes |
+| `EncodeFrame<O>` | Encode sentinel + length + value body | yes |
+| `DrainFrames<S>` | Decode a sentinel-framed stream into `Vec<T>` | yes |
+| `DecodePartial<S>` | Streaming-aware decode returning `Packet<T, P>` | yes |
+| `Decoder<P, S>` | Owned-buffer streaming decoder with `feed`, `iter`, and `next` | yes |
+| `BreakCondition<S>` | Per-`(key, len)` stop predicate for decode loops | no |
 
 ## Documentation
 

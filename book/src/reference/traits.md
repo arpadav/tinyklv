@@ -26,7 +26,7 @@ Types implementing `DecodeValue` also get
 `Vec<T>::decode_value(&mut stream) -> Vec<T>` via a blanket impl for
 unframed repeated decode. For sentinel-framed streams, use
 `T::drain_frames(&mut stream)` instead (requires `DecodeFrame`). See
-[Tutorial 12 - Repeated extraction](../tutorial/advanced/12-repeated-extraction.md).
+[Tutorial 13 - Repeated extraction](../tutorial/advanced/13-repeated-extraction.md).
 
 ### `DecodePartial<S>`
 
@@ -70,6 +70,9 @@ one-shot contract assumes the caller has already committed all bytes.
 Typical direct use is rare - most callers reach for `Decoder` instead
 (see below). Direct use is valuable when you know the input is exactly
 one complete packet's body and want to inspect the result explicitly.
+At end-of-input, `decode_partial` still returns `NeedMore(p)` unless a
+break condition ends the packet; if the caller knows the body is
+complete, it should call `p.finalize()`.
 
 ### `Partial`
 
@@ -112,7 +115,6 @@ impl<P, S> Decoder<P, S> {
     pub fn clear(&mut self);
     pub fn iter(&mut self) -> DecoderIter<'_, P, S>;
     pub fn next<T>(&mut self) -> Option<T>;
-    pub fn consume<I, B, T>(&mut self, input: I) -> ConsumeIter<'_, P, S, ...>;
 }
 
 impl<P, T> Decoder<P, &[u8]>
@@ -123,14 +125,19 @@ where
 }
 ```
 
-User-facing streaming API. Owns a byte buffer, accepts incremental
-feeds from a socket / file / ring buffer, and yields fully-decoded
-`T` values as enough bytes arrive.
+User-facing buffered streaming API. Owns a byte buffer, accepts
+incremental feeds from a socket / file / ring buffer, and yields
+fully-decoded `T` values as enough bytes arrive.
 
 Requires `T` to carry a `sentinel = ...` attribute - the decoder uses
 the sentinel + declared packet length to locate each packet's
 boundaries inside the buffer. Without that, there is no way to tell
 one packet's bytes from the next inside a continuous stream.
+
+Internally it has two modes:
+
+- fresh mode: seek sentinel, read frame length, call `decode_partial` on the body
+- resume mode: keep the in-flight partial and continue it with newly fed bytes
 
 `next()` returns:
 
@@ -158,7 +165,7 @@ loop {
 }
 ```
 
-See [Tutorial 14 - Streaming decode](../tutorial/advanced/14-streaming-decode.md).
+See [Tutorial 15 - Streaming partial packets](../tutorial/advanced/15-streaming-decode.md).
 
 ### `DecodeFrame<S>`
 
@@ -229,7 +236,7 @@ User-extensible stop predicate consulted inside the derive-generated
 `decode_value` loop for each decoded `(key, len)`. A blanket impl
 returning `Proceed` covers the common case. Override requires a manual
 `DecodeValue` impl - the blanket impl wins over a derived one. See
-[Tutorial 13 - Break conditions](../tutorial/advanced/13-break-condition.md).
+[Tutorial 14 - Break conditions](../tutorial/advanced/14-break-condition.md).
 
 `BreakConditionType` variants:
 

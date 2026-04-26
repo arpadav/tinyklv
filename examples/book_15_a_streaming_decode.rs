@@ -4,6 +4,7 @@
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::ResumePartial;
 
 #[derive(Klv, Debug, Clone, PartialEq)]
 #[klv(
@@ -47,18 +48,18 @@ fn main() {
     ];
     buf.extend(want.iter().flat_map(|p| p.encode_frame()));
 
-    // Pattern 1: feed the whole buffer at once, iterate with for-loop.
-    // IntoIterator on &mut Decoder drains all currently complete packets.
+    // Pattern 1: feed the whole stream into `::decoder()`, then drain with
+    // IntoIterator on &mut Decoder.
     {
         let mut dec = Heartbeat::decoder();
         dec.feed(&buf);
         let got: Vec<Heartbeat> = (&mut dec).into_iter().collect();
-        assert_eq!(got, want, "pattern 1 (feed + for)");
+        assert_eq!(got, want, "pattern 1 (::decoder + IntoIterator)");
     }
 
-    // Pattern 2: drip-feed 3-byte chunks, drain with iter() after each feed.
-    // 3 bytes is well below one framed packet (9 sentinel + 1 len + body),
-    // so every packet is split across multiple feeds - the decoder reassembles.
+    // Pattern 2: drip-feed framed bytes and drain with iter() after each feed.
+    // 3 bytes is well below one framed packet, so every frame is split across
+    // several feeds - the decoder keeps the partial packet internally.
     {
         let mut dec = Heartbeat::decoder();
         let mut got: Vec<Heartbeat> = Vec::new();
@@ -68,12 +69,40 @@ fn main() {
                 got.push(pkt);
             }
         }
-        assert_eq!(got, want, "pattern 2 (chunked feed + iter)");
+        assert_eq!(got, want, "pattern 2 (::decoder + iter)");
         assert!(dec.buffered().is_empty(), "no bytes left behind");
     }
 
+    // Pattern 3: direct `decode_partial` / `resume_partial` on one body.
+    // This bypasses frame seeking completely - the caller already knows the
+    // body boundaries and manages the in-flight partial explicitly.
+    {
+        let original = want[0].clone();
+        let body = original.encode_value();
+        let split = 5;
+
+        let mut first_half: &[u8] = &body[..split];
+        let partial = match Heartbeat::decode_partial(&mut first_half).unwrap() {
+            Packet::Ready(_) => panic!("body should not be complete yet"),
+            Packet::NeedMore(partial) => partial,
+        };
+
+        let second_half: &[u8] = &body[split..];
+        let mut resumed_body = Vec::from(first_half);
+        resumed_body.extend_from_slice(second_half);
+
+        let mut resumed_input: &[u8] = &resumed_body;
+        let got = match Heartbeat::resume_partial(&mut resumed_input, partial).unwrap() {
+            Packet::Ready(pkt) => pkt,
+            Packet::NeedMore(partial) => partial.finalize().unwrap(),
+        };
+
+        assert_eq!(got, original, "pattern 3 (decode_partial + resume_partial)");
+        assert!(resumed_input.is_empty(), "resumed input fully consumed");
+    }
+
     println!(
-        "all 2 patterns decoded {} packets correctly",
+        "all 3 patterns decoded {} packets correctly",
         want.len(),
     );
 }

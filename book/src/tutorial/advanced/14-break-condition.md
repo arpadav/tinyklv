@@ -42,4 +42,4 @@ Run this example: `cargo run --example book_14_break_condition`
 - The blanket impl blocks override on derived types - manual `DecodeValue` is required.
 - Encode side can still derive; a mirror struct keeps the byte layout honest.
 
-**Next:** [15 - Streaming decode](./15-streaming-decode.md)
+**Next:** [15 - Streaming partial packets](./15-streaming-decode.md)

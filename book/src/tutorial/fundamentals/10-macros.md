@@ -1,4 +1,4 @@
-# Tutorial 09 - Macros
+# Tutorial 10 - Macros
 
 `tinyklv` ships utility macros (`scale!`, `cast!`, and their encode
 counterparts) that expand to closures matching the decoder/encoder

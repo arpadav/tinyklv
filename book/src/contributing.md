@@ -15,10 +15,12 @@ cargo test --all
 # lint: zero warnings gate
 cargo clippy --all-targets -- -D warnings
 
-# examples build
+# examples build + run
 cargo build --examples
+bash examples/run-examples.sh
 
 # the book
+cd book
 mdbook build book
 mdbook test book
 ```
@@ -38,10 +40,9 @@ mdbook test book
 ## Code style
 
 - Format with rustfmt.
-- No `Box::leak` in proc-macro paths - attribute parsing happens at
-  every build.
 - Parser errors use `winnow::error::ParserError::from_input(input)`; do
   not rebuild `ContextError` from scratch.
+- Idiomatic Rust
 
 ## Questions
 
