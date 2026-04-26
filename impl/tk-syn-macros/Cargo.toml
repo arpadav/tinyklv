@@ -1,14 +1,15 @@
 [package]
 name = "tk-syn-macros"
 version = "0.0.1"
-edition = "2021"
+edition = "2024"
+description = "Implementation detail of the `tinyklv` crate"
 publish = true
 
 [dependencies]
-syn = "~2.0"
-quote = "~1.0"
-paste = "~1.0"
+paste = "^1.0"
+quote = "^1.0"
+syn = "^2.0"
 
 [dev-dependencies]
-const_format = "~0.2"
-syn = { version = "~2.0", features = ["full", "extra-traits"] }
+const_format = "^0.2"
+syn = { version = "^2.0", features = ["extra-traits", "full"] }
