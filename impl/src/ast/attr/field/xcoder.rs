@@ -1,32 +1,40 @@
 // --------------------------------------------------
+// local
+// --------------------------------------------------
+use crate::ast::symbol;
+use crate::ast::types::{DefaultValue, LatebindXcoder, SiguledXcoder, XcoderType};
+
+// --------------------------------------------------
 // external
 // --------------------------------------------------
 use quote::ToTokens;
 use tk_syn_macros::handle_unique_nested_meta_values;
 
-// --------------------------------------------------
-// local
-// --------------------------------------------------
-use crate::ast::symbol;
-use crate::ast::types::XcoderType;
-
 #[derive(Debug, Default)]
 pub(crate) struct FieldXcoder {
     /// The key for the field
     pub key: Option<syn::Lit>,
-    /// The encoder for the field
-    pub enc: Option<XcoderType>,
+    /// The encoder for the field, with optional dispatch sigil
+    pub enc: Option<SiguledXcoder>,
     /// The decoder for the field
     pub dec: Option<XcoderType>,
-    /// Whether the TODO requires a variable length input
-    pub var: Option<syn::LitBool>,
+    /// Whether the decoder requires a variable length input
+    pub varlen: Option<syn::LitBool>,
+    /// Post-decode conversion or in-place mutation (`latebind = path` or
+    /// `latebind = &mut path`). `None` means no post-decode step.
+    pub latebind: Option<LatebindXcoder>,
     /// syn errors
     pub errors: Option<syn::Error>,
-
-    /// testing: len
-    pub len: crate::Length,
-    /// testing: init
-    pub init: Option<syn::Expr>,
+    /// Fallback value used when the field's key is absent from the input
+    ///
+    /// See [`DefaultValue`] for the two accepted forms
+    pub default: Option<DefaultValue>,
+    /// `true` if `enc` was synthesized from the `trait_fallback` container flag
+    /// rather than supplied by the user or a container `default(..)` match
+    pub fallback_enc: bool,
+    /// `true` if `dec` was synthesized from the `trait_fallback` container flag
+    /// rather than supplied by the user or a container `default(..)` match
+    pub fallback_dec: bool,
 }
 /// [`FieldXcoder`] implementation of [`TryFrom`] for [`syn::MetaList`]
 impl From<&syn::MetaList> for FieldXcoder {
@@ -36,11 +44,11 @@ impl From<&syn::MetaList> for FieldXcoder {
         // init
         // --------------------------------------------------
         let mut key: Option<syn::Lit> = None;
-        let mut enc: Option<XcoderType> = None;
+        let mut enc: Option<SiguledXcoder> = None;
         let mut dec: Option<XcoderType> = None;
-        let mut var: Option<syn::LitBool> = None;
-        let mut len: Option<crate::Length> = None;
-        let mut init: Option<syn::Expr> = None;
+        let mut varlen: Option<syn::LitBool> = None;
+        let mut latebind: Option<LatebindXcoder> = None;
+        let mut default: Option<DefaultValue> = None;
         // --------------------------------------------------
         // parse nested meta
         // --------------------------------------------------
@@ -50,16 +58,15 @@ impl From<&syn::MetaList> for FieldXcoder {
                     meta;
                     err!(UnknownFieldField(meta.path));
                     6;
-                    key: symbol::parse_pnm_key              => err!(DuplicateKeyInField),
-                    enc: symbol::pnm_parse_maybestr_encoder => err!(DuplicateEncoderInField),
-                    dec: symbol::pnm_parse_maybestr_decoder => err!(DuplicateDecoderInField),
-                    var: symbol::parse_pnm_variable_length  => err!(DuplicateVariableLengthInField),
-                    len: symbol::parse_pnm_length           => err!(DuplicateLengthInField),
-                    init: symbol::parse_pnm_initial_value,
+                    key: symbol::parse_pnm_key                      => err!(DuplicateKeyInField),
+                    enc: symbol::pnm_parse_maybestr_encoder         => err!(DuplicateEncoderInField),
+                    dec: symbol::pnm_parse_maybestr_decoder         => err!(DuplicateDecoderInField),
+                    varlen: symbol::parse_pnm_variable_length       => err!(DuplicateVariableLengthInField),
+                    latebind: symbol::pnm_parse_maybestr_latebind   => err!(DuplicateLatebindInField),
+                    default: symbol::parse_pnm_default_value        => err!(DuplicateDefaultInField),
                 }
             })
             .err();
-        // println!("init: {:?}", init);
         // --------------------------------------------------
         // return
         // --------------------------------------------------
@@ -67,11 +74,12 @@ impl From<&syn::MetaList> for FieldXcoder {
             key,
             enc,
             dec,
-            var,
+            varlen,
+            latebind,
             errors,
-
-            len: len.unwrap_or_default(),
-            init,
+            default,
+            fallback_enc: false,
+            fallback_dec: false,
         }
     }
 }

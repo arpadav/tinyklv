@@ -13,14 +13,13 @@ impl std::fmt::Debug for Sentinel {
 impl TryFrom<&syn::MetaNameValue> for Sentinel {
     type Error = syn::Error;
     fn try_from(input: &syn::MetaNameValue) -> syn::Result<Self> {
-        match symbol::parse_nv_sentinel(&input) {
+        match symbol::parse_nv_sentinel(input) {
             // `sentinel` keyword is detected, and value is parsed correctly
             Some(Ok(x)) => Ok(Sentinel(Some(x))),
             // `sentinel` keyword is detected, but value is not parsed correctly
-            Some(Err(err)) => return Err(err),
-            // // `sentinel` keyword is not detected
-            // None => return Err(syn::Error::new_spanned(input, "`sentinel` keyword is not detected")),
-            None => return Ok(Sentinel(None)),
+            Some(Err(err)) => Err(err),
+            // `sentinel` keyword is not detected
+            None => Ok(Sentinel(None)),
         }
     }
 }

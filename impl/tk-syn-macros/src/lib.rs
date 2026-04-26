@@ -28,7 +28,7 @@ use syn::parse::Parser;
 ///
 ///         foo: foo_parser,    // <-- parser fn: `fn(&syn::meta::ParseNestedMeta) -> Option<syn::Result<T>>`
 ///         bar: bar_parser,    //     with default error message if duplicate: "duplicate `bar` field"
-///         
+///
 ///         // using custom error message
 ///         baz: baz_parser => "there can only be one `baz` field because i said so!",
 ///
@@ -128,12 +128,12 @@ use syn::parse::Parser;
 /// impl Example {
 ///
 ///     fn parse_example_from_metalist(input: &syn::MetaList) -> syn::Result<Self> {
-///     
+///
 ///         let mut typ: Option<syn::Type> = None;
 ///         let mut encoder: Option<syn::Path> = None;
 ///         let mut decoder: Option<syn::Path> = None;
 ///         let mut var: Option<syn::LitBool> = None;
-///         
+///
 ///         input.parse_nested_meta(|meta| {
 ///             tk_syn_macros::handle_unique_nested_meta_values! {
 ///                 meta;                                           // <-- syn::meta::ParseNestedMeta
@@ -157,7 +157,7 @@ use syn::parse::Parser;
 ///                 None => false,
 ///             },
 ///         })
-///     
+///
 ///     }
 ///
 /// }
@@ -250,7 +250,7 @@ use syn::parse::Parser;
 ///         )"
 ///     ).unwrap();
 ///     let output = Example::parse_example_from_metalist(&input);
-///     assert!(output.is_err());    
+///     assert!(output.is_err());
 ///     assert_eq!(
 ///         "missing required `type` field",
 ///         output.unwrap_err().to_string(),
@@ -268,7 +268,7 @@ use syn::parse::Parser;
 ///         )"
 ///     ).unwrap();
 ///     let output = Example::parse_example_from_metalist(&input);
-///     assert!(output.is_err());    
+///     assert!(output.is_err());
 ///     assert_eq!(
 ///         "duplicate `decoder` field",
 ///         output.unwrap_err().to_string(),
@@ -286,7 +286,7 @@ use syn::parse::Parser;
 ///         )"
 ///     ).unwrap();
 ///     let output = Example::parse_example_from_metalist(&input);
-///     assert!(output.is_err());    
+///     assert!(output.is_err());
 ///     assert_eq!(
 ///         "duplicate `type` field! you can only have one!",
 ///         output.unwrap_err().to_string(),
@@ -363,46 +363,83 @@ macro_rules! handle_unique_nested_meta_values {
 }
 
 #[macro_export]
-/// Something
+/// Creates a parser for nested meta and name value and maybe str implementations
 macro_rules! create_parser {
     // shorthand for parsing MetaNameValue using `crate::parse_nv`
-    ($keyword:tt : $ty:ty ; nv) => {
-        $crate::create_parser!(@emit $keyword : $ty; (crate) parse_nv => syn::MetaNameValue);
+    ($keyword:tt : $ty:ty ; nv $(as $fname:tt)?) => {
+        $crate::create_parser!(
+            @main $keyword : $ty;
+            $($fname,)? (crate) parse_nv => syn::MetaNameValue
+        );
     };
 
     // shorthand for parsing ParseNestedMeta using `crate::parse_pnm`
-    ($keyword:tt : $ty:ty ; pnm) => {
-        $crate::create_parser!(@emit $keyword : $ty; (crate) parse_pnm => syn::meta::ParseNestedMeta);
+    ($keyword:tt : $ty:ty ; pnm $(as $fname:tt)?) => {
+        $crate::create_parser!(
+            @main $keyword : $ty;
+            $($fname,)? (crate) parse_pnm => syn::meta::ParseNestedMeta
+        );
     };
 
-    // main parser implementation
-    ($keyword:tt : $ty:ty ; $pname:path => $input_ty:ty  $(, $($args:expr),*)? ) => {
-        $crate::create_parser!(@emit $keyword : $ty; (local) $pname => $input_ty  $(, $($args),*)?);
+    // direct with custom fname
+    ($keyword:tt : $ty:ty ; $fname:tt, $pname:path => $input_ty:ty $(, $($args:expr),*)?) => {
+        $crate::create_parser!(
+            @main $keyword : $ty;
+            $fname, (local) $pname => $input_ty $(, $($args),*)?
+        );
+    };
+
+    // direct without fname
+    ($keyword:tt : $ty:ty ; $pname:path => $input_ty:ty $(, $($args:expr),*)?) => {
+        $crate::create_parser!(
+            @main $keyword : $ty;
+            (local) $pname => $input_ty $(, $($args),*)?
+        );
+    };
+
+    // fname provided -> straight to emit
+    (@main $keyword:tt : $ty:ty;
+        $fname:tt, ($where:ident) $pname:path => $input_ty:ty $(, $($args:expr),*)?) =>
+    {
+        $crate::create_parser!(
+            @emit $keyword : $ty;
+            $fname, ($where) $pname => $input_ty $(, $($args),*)?
+        );
+    };
+
+    // no fname -> generate via paste, then @emit
+    (@main $keyword:tt : $ty:ty;
+        ($where:ident) $pname:path => $input_ty:ty $(, $($args:expr),*)?) =>
+    {
+        ::paste::paste! {
+            $crate::create_parser!(
+                @emit $keyword : $ty;
+                [<$pname:lower _ $keyword:lower>], ($where) $pname => $input_ty $(, $($args),*)?
+            );
+        }
     };
 
     // final
-    (@emit $keyword:tt : $ty:ty; ($where:ident) $pname:path => $input_ty:ty  $(, $($args:expr),*)?) => {
-        ::paste::paste! {
-            #[doc = concat!(
-                " Try to parse a [`", stringify!($ty),
-                "`] from a [`", stringify!($from_type_deref),
-                "`] to assign to [`", stringify!($keyword), "`]."
-            )]
-            #[doc = ""]
-            #[doc = " # Returns"]
-            #[doc = ""]
-            #[doc = concat!(" * [`None`] if the keyword [`", stringify!($keyword), "`] is not detected")]
-            #[doc = concat!(" * [`Some`] if the keyword [`", stringify!($keyword), "`] is detected")]
-            #[doc = "   * [`Ok`] if the value is parsed correctly"]
-            #[doc = "   * [`Err`] if the value is not parsed correctly"]
-            pub(crate) fn [<$pname:lower _ $keyword:lower>](input: &$input_ty)
-                -> Option<::syn::Result<$ty>>
-            {
-                if $crate::create_parser!(@getif input $keyword) {
-                    return None;
-                }
-                Some($crate::create_parser!(@getfn ($where) $pname)(input $(, $($args),*)?))
+    (@emit $keyword:tt : $ty:ty; $fname:tt, ($where:ident) $pname:tt => $input_ty:ty  $(, $($args:expr),*)?) => {
+        #[doc = concat!(
+            " Try to parse a [`", stringify!($ty),
+            "`] from a [`", stringify!($input_ty),
+            "`] to assign to [`", stringify!($keyword), "`]."
+        )]
+        #[doc = ""]
+        #[doc = " # Returns"]
+        #[doc = ""]
+        #[doc = concat!(" * [`None`] if the keyword [`", stringify!($keyword), "`] is not detected")]
+        #[doc = concat!(" * [`Some`] if the keyword [`", stringify!($keyword), "`] is detected")]
+        #[doc = "   * [`Ok`] if the value is parsed correctly"]
+        #[doc = "   * [`Err`] if the value is not parsed correctly"]
+        pub(crate) fn $fname(input: &$input_ty)
+            -> Option<::syn::Result<$ty>>
+        {
+            if $crate::create_parser!(@getif input $keyword) {
+                return None;
             }
+            Some($crate::create_parser!(@getfn ($where) $pname)(input $(, $($args),*)?))
         }
     };
 
@@ -452,17 +489,16 @@ pub fn parse_nv<T: syn::parse::Parse>(
 pub mod helpers {
     use super::*;
 
+    #[inline(always)]
     /// A parser of [`syn::meta::ParseNestedMeta`], where the [`syn::meta::ParseNestedMeta::value`] is parsed as-is into type `T`.
     pub fn parse_pnm<T>(pnm: &syn::meta::ParseNestedMeta) -> syn::Result<T>
     where
         T: syn::parse::Parse,
     {
-        match pnm.value() {
-            Ok(value) => value.parse(),
-            Err(err) => Err(err),
-        }
+        pnm.value().and_then(|v| v.parse())
     }
 
+    #[inline(always)]
     /// A parser of [`syn::MetaNameValue`], where the [`syn::MetaNameValue::value`] is parsed as-is into type `T`.
     pub fn parse_nv<T>(nv: &syn::MetaNameValue) -> syn::Result<T>
     where

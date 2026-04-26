@@ -35,8 +35,14 @@ fn is_option_helper(ty: &syn::Type) -> (bool, Option<&syn::Type>) {
 }
 
 /// Inserts a lifetime into a type
-pub(crate) fn insert_lifetime(ty: &syn::Type, lifetime_char: char) -> syn::Type {
-    let lifetime = syn::Lifetime::new(&format!("'{lifetime_char}"), proc_macro2::Span::call_site());
+pub(crate) fn insert_lifetime(
+    ty: &syn::Type,
+    lifetime_char: proc_macro2::TokenStream,
+) -> syn::Type {
+    let lifetime = syn::Lifetime::new(
+        lifetime_char.to_string().as_str(),
+        proc_macro2::Span::call_site(),
+    );
     match ty {
         syn::Type::Reference(ty_ref) => syn::Type::Reference(syn::TypeReference {
             and_token: Default::default(),
@@ -120,25 +126,21 @@ pub(crate) fn type2fish(ty: &syn::Type) -> proc_macro2::TokenStream {
                 }
                 let ident = &segment.ident;
                 tokens.extend(quote::quote!(#ident));
-                match &segment.arguments {
-                    syn::PathArguments::AngleBracketed(args) => {
-                        let args_tokens: Vec<proc_macro2::TokenStream> = args
-                            .args
-                            .iter()
-                            .map(|arg| {
-                                match arg {
-                                    syn::GenericArgument::Type(ty) => type2fish(ty),
-                                    // extend this match to handle other [`syn::GenericArgument`] variants as needed
-                                    _ => quote::quote!(#arg),
-                                }
-                            })
-                            .collect();
-                        if !args_tokens.is_empty() {
-                            tokens.extend(quote::quote!(::<#(#args_tokens),*>));
-                        }
+                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                    let args_tokens: Vec<proc_macro2::TokenStream> = args
+                        .args
+                        .iter()
+                        .map(|arg| {
+                            match arg {
+                                syn::GenericArgument::Type(ty) => type2fish(ty),
+                                // extend this match to handle other [`syn::GenericArgument`] variants as needed
+                                _ => quote::quote!(#arg),
+                            }
+                        })
+                        .collect();
+                    if !args_tokens.is_empty() {
+                        tokens.extend(quote::quote!(::<#(#args_tokens),*>));
                     }
-                    // handle other [`syn::PathArguments`] variants if necessary
-                    _ => {}
                 }
             }
             tokens

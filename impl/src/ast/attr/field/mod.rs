@@ -14,7 +14,9 @@ use xcoder::FieldXcoder;
 // local
 // --------------------------------------------------
 use crate::ast::attr::container::default::DefaultXcoder;
-use crate::ast::types::XcoderType;
+use crate::ast::types::{
+    DefaultValue, LatebindXcoder, SiguledXcoder, XcoderLike, XcoderSigil, XcoderType,
+};
 use crate::symbol;
 use crate::Ctxt;
 
@@ -33,6 +35,7 @@ impl Field {
         container_defaults: &HashMap<syn::Type, DefaultXcoder>,
         allow_unimplemented_encode: bool,
         allow_unimplemented_decode: bool,
+        trait_fallback: bool,
     ) -> Option<Self> {
         // --------------------------------------------------
         // return if no attrs on field
@@ -142,9 +145,9 @@ impl Field {
         // --------------------------------------------------
         let vars = all_field_xcoders
             .iter()
-            .filter_map(|f| f.var.clone())
+            .filter_map(|f| f.varlen.clone())
             .collect::<Vec<_>>();
-        field_xcoder.var = match vars.len() {
+        field_xcoder.varlen = match vars.len() {
             0 => None,
             1 => Some(vars[0].clone()),
             _ => {
@@ -154,17 +157,33 @@ impl Field {
         };
 
         // --------------------------------------------------
-        // get all klv attr init's
+        // get all klv attr latebind
         // --------------------------------------------------
-        let inits = all_field_xcoders
+        let latebinds = all_field_xcoders
             .iter()
-            .filter_map(|f| f.init.clone())
+            .filter_map(|f| f.latebind.clone())
             .collect::<Vec<_>>();
-        field_xcoder.init = match inits.len() {
+        field_xcoder.latebind = match latebinds.len() {
             0 => None,
-            1 => Some(inits[0].clone()),
+            1 => Some(latebinds[0].clone()),
             _ => {
-                cx.error_spanned_by(field, err!(DuplicateDecoderInField)); // TODO <-- make custom error
+                cx.error_spanned_by(field, err!(DuplicateLatebindInField));
+                None
+            }
+        };
+
+        // --------------------------------------------------
+        // get all klv attr default's
+        // --------------------------------------------------
+        let defaults = all_field_xcoders
+            .iter()
+            .filter_map(|f| f.default.clone())
+            .collect::<Vec<_>>();
+        field_xcoder.default = match defaults.len() {
+            0 => None,
+            1 => Some(defaults[0].clone()),
+            _ => {
+                cx.error_spanned_by(field, err!(DuplicateDefaultInField));
                 None
             }
         };
@@ -180,12 +199,60 @@ impl Field {
             }
             if let (Some(default_dec), false) = (&default.dec, keep_dec_none) {
                 field_xcoder.dec = Some(default_dec.clone());
-                field_xcoder.var = default.var.clone();
+                field_xcoder.varlen = default.var.clone();
             }
         }
 
         // --------------------------------------------------
-        // unimplemented encode error
+        // fallback to trait impls (opt-in via `trait_fallback`)
+        //
+        // only engages when the user set the container-level flag AND no
+        // explicit xcoder / container default filled the slot. `allow_unimplemented_*`
+        // takes precedence - if either is set, fallback is skipped on that side
+        // --------------------------------------------------
+        if trait_fallback
+            && !keep_enc_none
+            && !allow_unimplemented_encode
+            && field_xcoder.enc.is_none()
+        {
+            // placeholder path - replaced at emit time in `encode_impl.rs`
+            // by a fully-qualified `<T as EncodeValue<Vec<u8>>>::encode_value`
+            // call. `syn::Path` cannot represent the qualified form directly
+            // (qself lives on `TypePath`/`ExprPath`), so a marker flag plus
+            // a never-emitted placeholder keeps the type signature clean
+            let placeholder: syn::Path = syn::parse_quote! { __tinyklv_fallback_enc };
+            field_xcoder.enc = Some(SiguledXcoder {
+                sigil: XcoderSigil::None,
+                inner: XcoderLike::Path(placeholder),
+            });
+            field_xcoder.fallback_enc = true;
+        }
+        if trait_fallback
+            && !keep_dec_none
+            && !allow_unimplemented_decode
+            && field_xcoder.dec.is_none()
+        {
+            let varlen_set = field_xcoder
+                .varlen
+                .as_ref()
+                .map(|v| v.value)
+                .unwrap_or(false);
+            if varlen_set {
+                cx.error_spanned_by(
+                    name.clone(),
+                    err!(VarlenFallbackRequiresExplicitDec(name, typ_maybe_unwrapped)),
+                );
+            } else {
+                // placeholder - see encode comment above. `decode_impl.rs`
+                // branches on `fallback_dec` and emits the real qualified path
+                let placeholder: syn::Path = syn::parse_quote! { __tinyklv_fallback_dec };
+                field_xcoder.dec = Some(XcoderLike::Path(placeholder));
+                field_xcoder.fallback_dec = true;
+            }
+        }
+
+        // --------------------------------------------------
+        // unimplemented encode error - only fires if fallback did not fill
         // --------------------------------------------------
         if !allow_unimplemented_encode && field_xcoder.enc.is_none() {
             cx.error_spanned_by(
@@ -195,7 +262,7 @@ impl Field {
         }
 
         // --------------------------------------------------
-        // unimplemented decode error
+        // unimplemented decode error - only fires if fallback did not fill
         // --------------------------------------------------
         if !allow_unimplemented_decode && field_xcoder.dec.is_none() {
             cx.error_spanned_by(
@@ -216,12 +283,13 @@ impl Field {
 /// A parsed field
 pub(crate) struct FieldParsed {
     pub key: syn::Lit,
-    pub enc: Option<XcoderType>,
+    pub enc: Option<SiguledXcoder>,
     pub dec: Option<XcoderType>,
     pub var: Option<syn::LitBool>,
-
-    pub _len: crate::Length,
-    pub _init: Option<syn::Expr>,
+    pub latebind: Option<LatebindXcoder>,
+    pub default: Option<DefaultValue>,
+    pub fallback_enc: bool,
+    pub fallback_dec: bool,
 }
 /// [`FieldParsed`] implementation
 impl FieldParsed {
@@ -236,8 +304,6 @@ impl FieldParsed {
                 return None;
             }
         };
-        let _init = f.contents.init.clone();
-        println!("init: {:?}", _init);
         // --------------------------------------------------
         // return parsed field
         // --------------------------------------------------
@@ -245,10 +311,11 @@ impl FieldParsed {
             key: key.clone(),
             enc: f.contents.enc.clone(),
             dec: f.contents.dec.clone(),
-            var: f.contents.var.clone(),
-
-            _len: f.contents.len.clone(),
-            _init: f.contents.init.clone(),
+            var: f.contents.varlen.clone(),
+            latebind: f.contents.latebind.clone(),
+            default: f.contents.default.clone(),
+            fallback_enc: f.contents.fallback_enc,
+            fallback_dec: f.contents.fallback_dec,
         })
     }
 }

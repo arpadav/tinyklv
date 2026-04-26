@@ -3,6 +3,10 @@
 // --------------------------------------------------
 pub use super::*;
 
+/// Encodes the value portion of a KLV field to owned stream-type `O`.
+///
+/// Decode counterpart: [`DecodeValue`](crate::traits::DecodeValue)
+///
 /// Trait for encoding ***data only*** to owned stream-type `O`, where `O` is an owned stream-type of [`winnow::stream::Stream`], with elements `T`.
 ///
 /// ```text
@@ -27,6 +31,7 @@ pub use super::*;
 /// ```rust
 /// use tinyklv::Klv;
 /// use tinyklv::prelude::*;
+/// use tinyklv::traits::EncodeValue;
 ///
 /// struct InnerValue {}
 ///
@@ -91,7 +96,7 @@ pub use super::*;
 ///     example_one: InnerValue {},
 ///     example_two: InnerValue {},
 ///     example_three: InnerValue {},
-/// }.encode(); // See: `tinyklv::prelude::Encode` -> This prepends the key and length
+/// }.encode_frame(); // See: `tinyklv::prelude::EncodeFrame` -> This prepends the key and length
 ///
 /// assert_eq!(my_struct_encoded, vec![
 ///     0x00,               // sentinel
@@ -115,6 +120,7 @@ pub use super::*;
 /// ]);
 /// ```
 pub trait EncodeValue<O: EncodedOutput> {
+    #[must_use = "encoded value is discarded; call `.into_klv(...)` or assign the result"]
     fn encode_value(&self) -> O;
 }
 
@@ -133,6 +139,7 @@ pub trait EncodeValue<O: EncodedOutput> {
 ///
 /// ```rust
 /// use tinyklv::prelude::*;
+/// use tinyklv::traits::EncodeValue;
 ///
 /// struct MyStruct {}
 ///
@@ -159,6 +166,7 @@ pub trait EncodeValue<O: EncodedOutput> {
 ///
 /// See [`EncodeValue`] for more information.
 pub trait IntoKlv<O: EncodedOutput> {
+    #[must_use = "the KLV-wrapped output is discarded; assign or extend into a buffer"]
     fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O;
 }
 /// [`IntoKlv`] implementation for all types O that implement [`EncodedOutput<T>`]
@@ -169,22 +177,15 @@ impl<O: EncodedOutput> IntoKlv<O> for O {
             encoded_key
                 .into()
                 .into_iter()
-                .chain(len_encoder(self.as_ref().len()).into_iter())
-                .chain(self.into_iter()),
+                .chain(len_encoder(self.as_ref().len()))
+                .chain(self),
         )
     }
 }
-/// [`IntoKlv`] implementation for all types [`Result<O>`] that implement [`EncodedOutput<T>`]
-impl<O: EncodedOutput, E> IntoKlv<O> for Result<O, E> {
-    #[inline(always)]
-    fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
-        match self {
-            Ok(x) => x.into_klv(encoded_key, len_encoder),
-            Err(_) => O::from_iter(std::iter::empty::<O::Element>()),
-        }
-    }
-}
 /// [`IntoKlv`] implementation for all types [`Option<O>`] that implement [`EncodedOutput<T>`]
+///
+/// `None` produces empty output (field omitted from encoded packet). This is
+/// typically the correct behavior for optional KLV fields.
 impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
     #[inline(always)]
     fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
@@ -195,6 +196,10 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
     }
 }
 
+/// Full KLV encode pipeline: prepends key and length to [`EncodeValue`] output.
+///
+/// Decode counterpart: [`DecodeFrame`](crate::traits::DecodeFrame)
+///
 /// Trait for encoding data to its full key-length-value representation.
 ///
 /// ```text
@@ -218,6 +223,7 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 ///
 /// ```rust
 /// use tinyklv::prelude::*;
+/// use tinyklv::traits::EncodeValue;
 ///
 /// struct MyStruct {}
 ///
@@ -242,10 +248,11 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 /// ]);
 /// ```
 ///
-/// However, you can also implement the [`Encode`] trait instead to combine both of these operations:
+/// However, you can also implement the [`EncodeFrame`] trait instead to combine both of these operations:
 ///
 /// ```rust
 /// use tinyklv::prelude::*;
+/// use tinyklv::traits::{EncodeValue, EncodeFrame};
 ///
 /// struct MyStruct {}
 ///
@@ -255,8 +262,8 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 ///     }
 /// }
 ///
-/// impl Encode<Vec<u8>> for MyStruct {
-///     fn encode(&self) -> Vec<u8> {
+/// impl EncodeFrame<Vec<u8>> for MyStruct {
+///     fn encode_frame(&self) -> Vec<u8> {
 ///         return self.encode_value().into_klv(
 ///             [0xFF, 0xBB],   // encoded key (must implement into iter)
 ///             |x: usize|      // length encoder
@@ -267,7 +274,7 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 ///
 /// let my_struct = MyStruct {};
 ///
-/// let key_len_val_of_my_struct = my_struct.encode();
+/// let key_len_val_of_my_struct = my_struct.encode_frame();
 ///
 /// assert_eq!(key_len_val_of_my_struct, [
 ///     0xFF, 0xBB,                         // key
@@ -293,7 +300,7 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 ///     allow_unimplemented_decode,
 ///     key(enc = tinyklv::codecs::binary::enc::u8),
 ///     len(enc = tinyklv::codecs::binary::enc::u8_from_usize),
-/// )]  // this implements `tinyklv::prelude::EncodeValue` and `tinyklv::prelude::Encode`
+/// )]  // this implements `tinyklv::prelude::EncodeValue` and `tinyklv::prelude::EncodeFrame`
 ///     // given a key and length encoder are provided
 /// struct MyStruct {
 ///     #[klv(key = 0xFF, enc = string_encoder)]
@@ -303,7 +310,7 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 /// // using `tinyklv::Klv` to encode as KLV
 /// let mystruct_klv_1 = MyStruct {
 ///     value: "example".into()
-/// }.encode();                                         // `tinyklv::prelude::Encode` implementation
+/// }.encode_frame();                                   // `tinyklv::prelude::EncodeFrame` implementation
 ///
 /// // using manual implementation to encode as KLV
 /// let mystruct_klv_2 = MyStruct {
@@ -315,6 +322,7 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 ///
 /// assert_eq!(mystruct_klv_1, mystruct_klv_2);
 /// ```
-pub trait Encode<O: EncodedOutput> {
-    fn encode(&self) -> O;
+pub trait EncodeFrame<O: EncodedOutput> {
+    #[must_use = "encoded frame is discarded; assign or send the result"]
+    fn encode_frame(&self) -> O;
 }

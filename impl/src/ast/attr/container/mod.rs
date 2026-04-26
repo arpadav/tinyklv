@@ -7,14 +7,6 @@ pub(crate) mod sentinel;
 pub(crate) mod stream;
 
 // --------------------------------------------------
-// external
-// --------------------------------------------------
-use quote::ToTokens;
-use std::collections::HashMap;
-use syn::punctuated::Punctuated;
-use syn::Token;
-
-// --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::symbol;
@@ -23,6 +15,14 @@ use default::DefaultXcoder;
 use keylen::Xcoder;
 use sentinel::Sentinel;
 use stream::Stream;
+
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use quote::ToTokens;
+use std::collections::HashMap;
+use syn::punctuated::Punctuated;
+use syn::Token;
 
 #[derive(Debug)]
 /// Represents struct attribute information
@@ -34,9 +34,9 @@ pub(crate) struct Container {
     pub defaults: HashMap<syn::Type, DefaultXcoder>,
     pub debug: Option<syn::Path>,
     pub deny_unknown_keys: Option<syn::Path>,
-    pub allow_length_mismatch: Option<syn::Path>,
     pub allow_unimplemented_decode: Option<syn::Path>,
     pub allow_unimplemented_encode: Option<syn::Path>,
+    pub trait_fallback: Option<syn::Path>,
 }
 /// [`Container`] implementation
 impl Container {
@@ -54,9 +54,9 @@ impl Container {
         let mut defaults: HashMap<syn::Type, DefaultXcoder> = HashMap::new();
         let mut debug = None;
         let mut deny_unknown_keys = None;
-        let mut allow_length_mismatch = None;
         let mut allow_unimplemented_decode = None;
         let mut allow_unimplemented_encode = None;
+        let mut trait_fallback = None;
 
         // --------------------------------------------------
         // loop through attrs
@@ -165,10 +165,6 @@ impl Container {
                             &list.path,
                             err!(ExpectedAsPath(symbol::DENY_UNKNOWN_KEYS)),
                         ),
-                        symbol::ALLOW_LENGTH_MISMATCH => cx.error_spanned_by(
-                            &list.path,
-                            err!(ExpectedAsPath(symbol::ALLOW_LENGTH_MISMATCH)),
-                        ),
                         symbol::ALLOW_UNIMPLEMENTED_DECODE => cx.error_spanned_by(
                             &list.path,
                             err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_DECODE)),
@@ -176,6 +172,10 @@ impl Container {
                         symbol::ALLOW_UNIMPLEMENTED_ENCODE => cx.error_spanned_by(
                             &list.path,
                             err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_ENCODE)),
+                        ),
+                        symbol::TRAIT_FALLBACK => cx.error_spanned_by(
+                            &list.path,
+                            err!(ExpectedAsPath(symbol::TRAIT_FALLBACK)),
                         ),
                         _ => cx.error_spanned_by(
                             &list.path,
@@ -221,10 +221,6 @@ impl Container {
                             &nv.path,
                             err!(ExpectedAsPath(symbol::DENY_UNKNOWN_KEYS)),
                         ),
-                        symbol::ALLOW_LENGTH_MISMATCH => cx.error_spanned_by(
-                            &nv.path,
-                            err!(ExpectedAsPath(symbol::ALLOW_LENGTH_MISMATCH)),
-                        ),
                         symbol::ALLOW_UNIMPLEMENTED_DECODE => cx.error_spanned_by(
                             &nv.path,
                             err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_DECODE)),
@@ -232,6 +228,10 @@ impl Container {
                         symbol::ALLOW_UNIMPLEMENTED_ENCODE => cx.error_spanned_by(
                             &nv.path,
                             err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_ENCODE)),
+                        ),
+                        symbol::TRAIT_FALLBACK => cx.error_spanned_by(
+                            &nv.path,
+                            err!(ExpectedAsPath(symbol::TRAIT_FALLBACK)),
                         ),
                         _ => cx.error_spanned_by(
                             &nv.path,
@@ -246,13 +246,13 @@ impl Container {
                     syn::Meta::Path(path) => match symbol::Symbol::from(&path) {
                         symbol::DEBUG => debug = Some(path),
                         symbol::DENY_UNKNOWN_KEYS => deny_unknown_keys = Some(path),
-                        symbol::ALLOW_LENGTH_MISMATCH => allow_length_mismatch = Some(path),
                         symbol::ALLOW_UNIMPLEMENTED_DECODE => {
                             allow_unimplemented_decode = Some(path)
                         }
                         symbol::ALLOW_UNIMPLEMENTED_ENCODE => {
                             allow_unimplemented_encode = Some(path)
                         }
+                        symbol::TRAIT_FALLBACK => trait_fallback = Some(path),
                         // --------------------------------------------------
                         // non paths
                         // --------------------------------------------------
@@ -312,9 +312,9 @@ impl Container {
             defaults,
             debug,
             deny_unknown_keys,
-            allow_length_mismatch,
             allow_unimplemented_decode,
             allow_unimplemented_encode,
+            trait_fallback,
         }
     }
 }
@@ -323,6 +323,7 @@ impl Container {
 ///
 /// * `_allow_unimplemented_decode`
 /// * `_allow_unimplemented_encode`
+/// * `trait_fallback`
 ///
 /// are currently not used at this stage, but the paths are kept for potential
 /// future docs/debugging during expansion.
@@ -332,10 +333,10 @@ pub(crate) struct ContainerParsed {
     pub key: Xcoder,
     pub len: Xcoder,
     pub debug: Option<syn::Path>,
-    pub _deny_unknown_keys: Option<syn::Path>,
-    pub _allow_length_mismatch: Option<syn::Path>,
+    pub deny_unknown_keys: Option<syn::Path>,
     pub _allow_unimplemented_decode: Option<syn::Path>,
     pub _allow_unimplemented_encode: Option<syn::Path>,
+    pub _trait_fallback: Option<syn::Path>,
 }
 /// [`ContainerParsed`] implementation
 impl ContainerParsed {
@@ -368,10 +369,10 @@ impl ContainerParsed {
             key,
             len,
             debug: cont.debug,
-            _deny_unknown_keys: cont.deny_unknown_keys,
-            _allow_length_mismatch: cont.allow_length_mismatch,
+            deny_unknown_keys: cont.deny_unknown_keys,
             _allow_unimplemented_decode: cont.allow_unimplemented_decode,
             _allow_unimplemented_encode: cont.allow_unimplemented_encode,
+            _trait_fallback: cont.trait_fallback,
         })
     }
 }

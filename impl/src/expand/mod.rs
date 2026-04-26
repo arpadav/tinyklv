@@ -1,13 +1,46 @@
+#![allow(
+    clippy::unwrap_used,
+    reason = "proc macro, context check/panic is required"
+)]
+//! Token expansion entry point for the `#[derive(Klv)]` proc-macro
+//!
+//! Drives the full derive pipeline: parses the input into a [`MainContainer`],
+//! checks for attribute errors, determines whether encode and/or decode
+//! implementations can be generated based on the presence of encoders/decoders
+//! on each field, and emits the corresponding token streams
+//!
+//! Author: aav
+// --------------------------------------------------
+// mods
+// --------------------------------------------------
 mod decode_impl;
 mod encode_impl;
 pub(crate) mod helpers;
 
-use proc_macro2::TokenStream;
-use quote::quote;
-
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use crate::ast::attr::MainContainer;
 use crate::Ctxt;
 
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use proc_macro2::TokenStream;
+use quote::quote;
+
+/// Drives the full `#[derive(Klv)]` expansion
+///
+/// Parses the derive input into a [`MainContainer`], validates all container
+/// and field attributes, then conditionally emits `Decode`/`DecodeValue` and
+/// `Encode`/`EncodeValue` implementations based on whether every field carries
+/// the corresponding encoder or decoder. A partial set (some fields have
+/// encoders, some do not) suppresses the implementation for that direction
+/// entirely
+///
+/// # Arguments
+///
+/// * `input` - The raw `syn::DeriveInput` produced by the proc-macro harness
 pub fn derive(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
     // --------------------------------------------------
     // create a new error context
@@ -40,7 +73,7 @@ pub fn derive(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
     all_encoders_exist &= any_encoders_exist;
     all_decoders_exist &= any_decoders_exist;
     // --------------------------------------------------
-    // init
+    // init the output token stream
     // --------------------------------------------------
     let mut expanded = quote! {};
     // --------------------------------------------------
@@ -65,24 +98,11 @@ pub fn derive(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
         cont.attrs.len.enc.as_ref(),
         all_encoders_exist,
     ) {
-        let encode_impls = encode_impl::gen_encode_impl(&cont, &key_enc, &len_enc);
+        let encode_impls = encode_impl::gen_encode_impl(&cont, key_enc, len_enc);
         expanded = quote! {
             #expanded
             #encode_impls
         }
     }
-
-    // --------------------------------------------------
-    // testing tokens -> fn, for doc commenting, something to consider?
-    // --------------------------------------------------
-    // let name = cont.ident;
-    // let aue = cont.attrs.aue_path.unwrap_or(symbol::ALLOW_UNIMPLEMENTED_ENCODE.into());
-    // expanded = quote! {
-    //     #expanded
-    //     impl ::tinyklv::prelude::TinyklvDoc for #name {
-    //         fn #aue() { }
-    //     }
-    // };
-
     Ok(expanded)
 }

@@ -26,7 +26,7 @@ const CRATE_NAME: &str = "tinyklv";
 const DERIVE_NAME: &str = "Klv";
 const ATTR_NAME: &str = "klv";
 
-#[proc_macro_derive(Klv, attributes(klv, allow))]
+#[proc_macro_derive(Klv, attributes(klv))]
 /// [`tinyklv`](crate) proc-macro
 pub fn klv_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -275,7 +275,7 @@ Expected {s}.",
     #[error("\
         Duplicate `{s}` field.
 Currently only one key per field is supported.",
-        s = symbol::ENCODER,
+        s = symbol::KEY,
     )]
     DuplicateKeyInField,
 
@@ -299,9 +299,15 @@ Currently only one key per field is supported.",
 
     #[error("\
         Duplicate `{s}` field.",
-        s = symbol::LENGTH,
+        s = symbol::LATEBIND,
     )]
-    DuplicateLengthInField,
+    DuplicateLatebindInField,
+
+    #[error("\
+        Duplicate `{s}` field.",
+        s = symbol::DEFAULT_VALUE,
+    )]
+    DuplicateDefaultInField,
 
     #[error("\
         Missing required `{s}` field.",
@@ -310,29 +316,20 @@ Currently only one key per field is supported.",
     MissingKeyInField,
 
     #[error("\
-Expected
-    1. Fixed-length decoder:    `{l} = <usize>`.
-    2. Variable-length decoder: `{l} = {vl}`.
-    3. Implicit-length decoder: remove `{l}` field.
-Got: `{l} = {0}`.",
-        vl = symbol::VARIABLE_LENGTH,
-        l = symbol::LENGTH,
-    )]
-    ExpectedLengthInField(String),
-
-    #[error("\
-No encoder is found for field `{0}: {1}`. 
+No encoder is found for field `{0}: {1}`.
 
 If encoding is not required, use `#[{k}({aue})]` on the struct.
 
 Otherwise, you can:
     a. add a default encoder for all `{1}` types using `#[{k}({df}({t} = {1}, {e} = <..>)))]` on the struct
-    b. or add an encoder to `{0}` using `#[{k}({e} = <..>)]`.",
+    b. add an encoder to `{0}` using `#[{k}({e} = <..>)]`
+    c. set `#[{k}({fi})]` on the struct to fall back to try and use `tinyklv::EncodeValue` trait implementation",
         k = symbol::KLV_ATTR,
         df = symbol::DEFAULT,
         t = symbol::TYPE,
         e = symbol::ENCODER,
         aue = symbol::ALLOW_UNIMPLEMENTED_ENCODE,
+        fi = symbol::TRAIT_FALLBACK,
     )]
     UnimplementedEncode(String, String),
 
@@ -343,30 +340,29 @@ If decoding is not required, use `#[{k}({aud})]` on the struct.
 
 Otherwise, you can:
     a. add a default decoder for all `{1}` types using `#[{k}({df}({t} = {1}, {d} = <..>)))]` on the struct
-    b. or add a decoder to `{0}` using `#[{k}({d} = <..>)]`",
+    b. add a decoder to `{0}` using `#[{k}({d} = <..>)]`
+    c. set `#[{k}({fi})]` on the struct to fall back to try and use `tinyklv::DecodeValue` trait implementation",
         k = symbol::KLV_ATTR,
         df = symbol::DEFAULT,
         t = symbol::TYPE,
         d = symbol::DECODER,
         aud = symbol::ALLOW_UNIMPLEMENTED_DECODE,
+        fi = symbol::TRAIT_FALLBACK,
     )]
     UnimplementedDecode(String, String),
+
+    #[error("\
+Field `{0}: {1}` has `{v} = true` but no `{d} = ..` was set.
+The trait fallback (`<{1} as ::tinyklv::DecodeValue<..>>::decode_value`) has no length argument - \
+supply an explicit `{d}` or remove `{v}`.",
+        v = symbol::VARIABLE_LENGTH,
+        d = symbol::DECODER,
+    )]
+    VarlenFallbackRequiresExplicitDec(String, String),
 }
 /// [`Error`] implementation
 impl Error {
     fn as_str(&self) -> std::borrow::Cow<'_, str> {
         std::borrow::Cow::Owned(self.to_string())
-    }
-}
-
-#[derive(Debug, Clone)]
-enum Length {
-    Fixed(syn::LitInt),
-    Implicit,
-    Variable(syn::Path),
-}
-impl Default for Length {
-    fn default() -> Self {
-        Length::Implicit
     }
 }

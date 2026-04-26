@@ -8,7 +8,6 @@ use tk_syn_macros::create_parser;
 // --------------------------------------------------
 use crate::ast::types::*;
 use crate::symbol::*;
-use crate::Length;
 
 /// Attempts to parse a type `T` from a [`syn::meta::ParseNestedMeta`]
 ///
@@ -49,17 +48,26 @@ fn nv_parse_maybestr<T: syn::parse::Parse>(input: &syn::MetaNameValue) -> syn::R
 // --------------------------------------------------
 // encoder / decoder
 // --------------------------------------------------
+// A siguled xcoder, for different encoding fn signatures
+// using &
 create_parser!(
-    ENCODER: XcoderType;
+    ENCODER: SiguledXcoder;
     pnm_parse_maybestr => syn::meta::ParseNestedMeta
 );
+create_parser!(
+    ENCODER: SiguledXcoder;
+    nv_parse_maybestr => syn::MetaNameValue
+);
+// A non siguled xcoder, for different encoding fn signatures
+create_parser!(
+    ENCODER: XcoderType;
+    pnm_parse_maybestr_encoder_no_sigil, pnm_parse_maybestr => syn::meta::ParseNestedMeta
+);
+
+// A non siguled xcoder, for different decoding fn signatures
 create_parser!(
     DECODER: XcoderType;
     pnm_parse_maybestr => syn::meta::ParseNestedMeta
-);
-create_parser!(
-    ENCODER: XcoderType;
-    nv_parse_maybestr => syn::MetaNameValue
 );
 create_parser!(
     DECODER: XcoderType;
@@ -90,61 +98,45 @@ create_parser!(SENTINEL: syn::Lit; nv);
 create_parser!(VARIABLE_LENGTH: syn::LitBool; pnm);
 
 // --------------------------------------------------
-// variable length x 2
+// default
 // --------------------------------------------------
-pub(crate) fn parse_pnm_length(input: &syn::meta::ParseNestedMeta) -> Option<syn::Result<Length>> {
-    if input.path != LENGTH {
+/// Parses a [`DefaultValue`] from a [`syn::meta::ParseNestedMeta`]
+///
+/// Accepts two forms on field attributes:
+///
+/// * bare `default` (no `=` token) -> [`DefaultValue::Call`], which codegen
+///   lowers to `<T as ::core::default::Default>::default()`
+/// * `default = <expr>` -> [`DefaultValue::Expr`], which codegen splices as-is
+///
+/// Returns:
+///
+/// * [`None`] if the keyword is not [`DEFAULT_VALUE`]
+/// * [`Some(Ok(..))`] on a successful parse (both bare and name-value forms)
+/// * [`Some(Err(..))`] if `default = <expr>` was written but `<expr>` failed
+///   to parse as a [`syn::Expr`]
+///
+/// Not emitted via `create_parser!` because the bare form must yield
+/// `Some(Ok(Call))` on a missing `=`, which the macro's helper can't express
+pub(crate) fn parse_pnm_default_value(
+    input: &syn::meta::ParseNestedMeta,
+) -> Option<syn::Result<DefaultValue>> {
+    if input.path != DEFAULT_VALUE {
         return None;
     }
-    match input.value() {
-        Ok(value) => {
-            // --------------------------------------------------
-            // try parse as integer
-            // --------------------------------------------------
-            if let Ok(litint) = value.parse::<syn::LitInt>() {
-                let int: isize = match litint.base10_parse() {
-                    Ok(int) => int,
-                    Err(err) => return Some(Err(err)),
-                };
-                // --------------------------------------------------
-                // if negative, return error
-                // --------------------------------------------------
-                if int < 0 {
-                    return Some(Err(syn::Error::new_spanned(
-                        litint,
-                        err!(ExpectedLengthInField(int)),
-                    )));
-                }
-                return Some(Ok(Length::Fixed(litint)));
-            }
-            // --------------------------------------------------
-            // try to parse as path
-            // --------------------------------------------------
-            if let Ok(x) = value.parse::<syn::Path>() {
-                // --------------------------------------------------
-                // if not designated `VARIABLE_LENGTH`, return error
-                // --------------------------------------------------
-                if x != VARIABLE_LENGTH {
-                    return Some(Err(syn::Error::new_spanned(
-                        &x,
-                        err!(ExpectedLengthInField(x)),
-                    )));
-                }
-                return Some(Ok(Length::Variable(x)));
-            }
-            // --------------------------------------------------
-            // can not parse correctly, return an error
-            // --------------------------------------------------
-            return Some(Err(syn::Error::new_spanned(
-                &input.path,
-                err!(ExpectedLengthInField(@String value.to_string())),
-            )));
-        }
-        // --------------------------------------------------
-        // failed to get value, return error
-        // --------------------------------------------------
-        Err(err) => Some(Err(err)),
-    }
+    Some(match input.value() {
+        Ok(value) => value.parse::<syn::Expr>().map(DefaultValue::Expr),
+        Err(_) => Ok(DefaultValue::Call),
+    })
 }
 
-create_parser!(INITIAL_VALUE: syn::Expr; pnm);
+// --------------------------------------------------
+// latebind
+// --------------------------------------------------
+create_parser!(
+    LATEBIND: LatebindXcoder;
+    pnm_parse_maybestr => syn::meta::ParseNestedMeta
+);
+create_parser!(
+    LATEBIND: LatebindXcoder;
+    nv_parse_maybestr => syn::MetaNameValue
+);
