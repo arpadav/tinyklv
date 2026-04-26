@@ -13,6 +13,7 @@ categories = ["development-tools", "encoding", "parsing"]
 edition = "2024"
 rust-version = "1.95"
 exclude = ["TODO.md", "book/book/"]
+publish = true
 
 [workspace]
 members = ["impl"]
