@@ -1,6 +1,6 @@
 [package]
 name = "tinyklv"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Arpad Voros <arpadav@gmail.com>"]
 license = "MIT"
 description = "The simplest Key-Length-Value (KLV) framework in Rust"
@@ -39,7 +39,7 @@ chrono = { version = "0.4.44", optional = true }
 memchr = "2.8.0"
 num-traits = "0.2.19"
 pastey = "0.2.3"
-tinyklv-impl = { path = "impl", version = "0.1.0" }
+tinyklv-impl = { path = "impl", version = "0.1.2" }
 tracing = { version = "0.1.44", optional = true }
 winnow = { version = "1.0.2", features = ["binary", "parser", "simd"] }
 
