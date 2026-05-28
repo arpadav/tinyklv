@@ -134,7 +134,7 @@ struct Platform {
     id: u32,
     
     #[klv(key = 0x02)]
-    coord: GpsCoord,
+    coord: GpsCoord, // where this struct has `#[derive(Klv)]`
     
     // ...the remaining fields, one attribute line each...
 }
