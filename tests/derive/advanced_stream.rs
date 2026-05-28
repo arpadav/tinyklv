@@ -2,7 +2,10 @@
 //!
 //! Covers unknown key skipping, corrupt length truncation, corrupt value
 //! recovery via `.ok()`, and multi-packet encode/extract loops using
-//! sentinel structs built from domain types in `types.rs`.
+//! sentinel structs built from domain types in `types.rs`
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use super::types::*;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
@@ -76,8 +79,11 @@ struct Alert {
     flags: StatusFlags,
 }
 
-/// Encode a `SimplePosition` manually so we can inject arbitrary bytes between
-/// its fields.  Layout: key(1) + len(1) + value for each TLV triple.
+/// Encode a [`Coordinate`] as a raw TLV triple with the given key byte
+///
+/// Produces `[key, len, ...value]` using [`Coordinate::encode_value`]
+/// Used to hand-build streams that can intersperse unknown or corrupt keys
+/// between valid fields
 fn encode_coordinate_tlv(key: u8, coord: &Coordinate) -> Vec<u8> {
     let val = Coordinate::encode_value(coord);
     let mut out = vec![key, val.len() as u8];
@@ -85,6 +91,9 @@ fn encode_coordinate_tlv(key: u8, coord: &Coordinate) -> Vec<u8> {
     out
 }
 
+/// Encode a [`Color`] as a raw TLV triple with the given key byte
+///
+/// Produces `[key, len, ...value]` using [`Color::encode_value`]
 fn encode_color_tlv(key: u8, color: &Color) -> Vec<u8> {
     let val = Color::encode_value(color);
     let mut out = vec![key, val.len() as u8];
@@ -92,6 +101,9 @@ fn encode_color_tlv(key: u8, color: &Color) -> Vec<u8> {
     out
 }
 
+/// Encode a [`Timestamp`] as a raw TLV triple with the given key byte
+///
+/// Produces `[key, len, ...value]` using [`Timestamp::encode_value`]
 fn encode_timestamp_tlv(key: u8, ts: &Timestamp) -> Vec<u8> {
     let val = Timestamp::encode_value(ts);
     let mut out = vec![key, val.len() as u8];
@@ -100,7 +112,7 @@ fn encode_timestamp_tlv(key: u8, ts: &Timestamp) -> Vec<u8> {
 }
 
 #[test]
-/// Tests that unknown TLV triples inserted between valid keys are skipped without disrupting decode of known fields.
+/// Tests that unknown TLV triples inserted between valid keys are skipped without disrupting decode of known fields
 fn unknown_keys_between_valid() {
     // Build stream manually: valid coord(0x01), unknown 0xAA(len=3, garbage),
     // unknown 0xBB(len=2, garbage), valid color(0x02).
@@ -138,7 +150,7 @@ fn unknown_keys_between_valid() {
 ///
 /// Callers that want fail-loud-on-overrun explicitly should drive
 /// finalisation via `Decoder::finish` (it surfaces missing-required
-/// labels) or implement a `Done` break condition.
+/// labels) or implement a `Done` break condition
 fn corrupt_length_surfaces_as_recoverable_needmore() {
     let color = Color::Blue;
 
@@ -159,7 +171,7 @@ fn corrupt_length_surfaces_as_recoverable_needmore() {
 }
 
 #[test]
-/// Tests that a field-decoder failure on an optional (e.g. short velocity) leaves the field `None` and decoding continues for subsequent keys.
+/// Tests that a field-decoder failure on an optional (e.g. short velocity) leaves the field `None` and decoding continues for subsequent keys
 fn corrupt_value_recoverable() {
     // Stream: valid color(0x01), key 0x02 len=6 but garbage bytes (Velocity
     // decode fails -> .ok()->None, loop continues), then valid timestamp(0x03).
@@ -190,7 +202,7 @@ fn corrupt_value_recoverable() {
 }
 
 #[test]
-/// Tests that a concatenated stream of 10 sentinel-framed `Waypoint` packets decodes back to the original sequence in order.
+/// Tests that a concatenated stream of 10 sentinel-framed `Waypoint` packets decodes back to the original sequence in order
 fn auto_generate_10_packets() {
     // Build 10 distinct Waypoints, encode each, concatenate, then extract all.
     let waypoints: Vec<Waypoint> = (0..10)
@@ -212,7 +224,7 @@ fn auto_generate_10_packets() {
         })
         .collect();
 
-    let stream: Vec<u8> = waypoints.iter().flat_map(|w| w.encode_frame()).collect();
+    let stream: Vec<u8> = waypoints.iter().flat_map(tinyklv::EncodeFrame::encode_frame).collect();
 
     let mut slice = stream.as_slice();
     let mut decoded: Vec<Waypoint> = Vec::new();
@@ -227,7 +239,7 @@ fn auto_generate_10_packets() {
 }
 
 #[test]
-/// Tests that interleaved `Waypoint` and `Alert` frames can each be extracted independently using separate cursors keyed on their sentinels.
+/// Tests that interleaved `Waypoint` and `Alert` frames can each be extracted independently using separate cursors keyed on their sentinels
 fn auto_generate_mixed_types() {
     // 3 Waypoints + 3 Alerts interleaved, then extract each type independently.
     let waypoints: Vec<Waypoint> = vec![

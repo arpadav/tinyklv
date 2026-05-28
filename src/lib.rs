@@ -23,10 +23,48 @@ pub mod __export {
     pub use chrono;
     pub use memchr;
     pub use winnow;
+
+    /// Builds a [`winnow::error::ContextError`] anchored at `input` carrying a
+    /// single [`winnow::error::StrContext::Label`].
+    ///
+    /// Shared construction path for single-label errors that cannot be
+    /// expressed through a parser combinator (precondition failures and
+    /// derive-generated decoders); multi-context sites build their error
+    /// inline. Keeps manual error construction uniform with the hand-written
+    /// codecs.
+    ///
+    /// Not part of the public API - may change without notice.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - the stream the error is anchored to
+    /// * `checkpoint` - the position recorded before the failing step
+    /// * `label` - a static description of what was being parsed
+    #[must_use]
+    pub fn labeled_error<S>(
+        input: &S,
+        checkpoint: &<S as winnow::stream::Stream>::Checkpoint,
+        label: &'static str,
+    ) -> winnow::error::ContextError
+    where
+        S: winnow::stream::Stream,
+    {
+        use winnow::error::{AddContext, ParserError};
+        winnow::error::ContextError::from_input(input).add_context(
+            input,
+            checkpoint,
+            winnow::error::StrContext::Label(label),
+        )
+    }
 }
 
-/// Convenience re-export of all traits and parser primitives needed to
-/// work with KLV streams
+/// Convenience re-export of all traits and parser primitives needed to work with KLV streams
+///
+/// Importing `tinyklv::prelude::*` brings into scope the [`Decoder`],
+/// [`Packet`], all codec traits ([`DecodeValue`], [`EncodeValue`],
+/// [`EncodeFrame`], [`DecodeFrame`], [`BreakCondition`], etc.), the
+/// [`Klv`] derive macro, and the winnow combinators and stream
+/// utilities that the derive-generated code depends on.
 pub mod prelude {
     // --------------------------------------------------
     // local
@@ -44,13 +82,22 @@ pub mod prelude {
     pub use winnow::{error::AddContext as _, prelude::*, stream::Stream as _, Parser as _};
 }
 
-/// Convenience re-export of [`winnow::Result`]
+/// Convenience type alias for [`winnow::Result`] used throughout the tinyklv codec API
+///
+/// Equivalent to `Result<T, winnow::error::ContextError>`. All decoder
+/// functions in `tinyklv` return this type so that they compose directly
+/// with winnow combinators without extra type annotations.
 pub type Result<T> = winnow::Result<T>;
 
 #[macro_export]
-/// Scales a parsed value of some predefined precision
+/// Decodes a field and multiplies the result by a scale factor, yielding a floating-point value
 ///
-/// Can be used directly in a `#[klv(dec = ...)]` attribute
+/// Applies `(parser(input)? as $precision) * $scale`, casting the raw decoded
+/// integer to the target floating-point type before multiplying. The result is
+/// a closure compatible with `#[klv(dec = ...)]`.
+///
+/// Typical use: a raw integer encodes a physical quantity at a known LSB
+/// resolution (e.g. `360.0 / 65535.0` degrees per count).
 ///
 /// # Usage
 ///
@@ -84,9 +131,14 @@ macro_rules! scale {
 }
 
 #[macro_export]
-/// Sets precision of a parsed value
+/// Decodes a field and casts the result to a target type without scaling
 ///
-/// Can be used directly in a `#[klv(dec = ...)]` attribute
+/// Applies `parser(input)? as $precision`, which performs a lossless or
+/// narrowing numeric cast depending on the types involved. The result is
+/// a closure compatible with `#[klv(dec = ...)]`.
+///
+/// Use this when the raw decoded integer already represents the desired
+/// value without any unit conversion. For scaled values, use [`scale!`].
 ///
 /// # Usage
 ///
@@ -117,7 +169,10 @@ macro_rules! cast {
 }
 
 #[macro_export]
-/// Encode counterpart of [`scale!`]. Divides by scale factor, casts to data type, then encodes.
+/// Encodes a floating-point field by dividing by a scale factor, casting to the wire type, then encoding
+///
+/// Applies `encoder((*input / $scale) as $data)`, which is the exact inverse
+/// of [`scale!`]. The result is a closure compatible with `#[klv(enc = ...)]`.
 ///
 /// Can be used directly in a `#[klv(enc = ...)]` attribute
 ///
@@ -141,7 +196,10 @@ macro_rules! scale_enc {
 }
 
 #[macro_export]
-/// Encode counterpart of [`cast!`]. Casts to data type, then encodes.
+/// Encodes a field by casting to the wire type and encoding, without applying any scale factor
+///
+/// Applies `encoder(*input as $data)`, which is the direct inverse of
+/// [`cast!`]. The result is a closure compatible with `#[klv(enc = ...)]`.
 ///
 /// Can be used directly in a `#[klv(enc = ...)]` attribute
 ///
@@ -165,9 +223,15 @@ macro_rules! cast_enc {
 }
 
 #[macro_export]
-/// Encode counterpart of [`scale!`] with offset. Subtracts offset, divides by scale, casts to data type, then encodes.
+/// Encodes a field by subtracting an offset, dividing by a scale factor, casting to the wire type, then encoding
 ///
-/// Useful fields that map a real-value range to a data-value range
+/// Applies `encoder(((*input - $offset) / $scale) as $data)`, which encodes
+/// real-world values that are mapped to a data range via
+/// `data_value = (real_value - offset) / scale`. This is the encode-side
+/// counterpart to a decode pipeline that uses [`scale!`] combined with a
+/// manual offset addition.
+///
+/// Useful for fields that map a real-value range to a data-value range
 /// via `data_value = (real_value - offset) / scale`.
 ///
 /// # Usage

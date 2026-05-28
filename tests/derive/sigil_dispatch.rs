@@ -4,17 +4,22 @@
 //! * `enc = func`  -> `func(&self.field)`                          (`Fn(&T) -> O`)
 //! * `enc = *func` -> `func(EncodeAs::encode_as(&self.field))`     dispatches via
 //!   the [`EncodeAs`] trait: primitives by value (Copy), `String -> &str`,
-//!   `Vec<T> -> &[T]`, `Box<T>/Rc<T>/Arc<T> -> &T`. No clone, no heap alloc.
+//!   `Vec<T> -> &[T]`, `Box<T>/Rc<T>/Arc<T> -> &T`. No clone, no heap alloc
 //!
 //! Each sigil is exercised on both a required field and an `Option<T>` field
 //! so the optional branch of the codegen is also verified. Roundtrip via
 //! `decode_frame` / `encode_frame` confirms the generated closure shapes
 //! type-check and produce identical bytes
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use super::types::{Color, Priority};
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-
+// --------------------------------------------------
+// external
+// --------------------------------------------------
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -87,7 +92,7 @@ struct AllSigils {
         dec = decb::be_u16,
         enc = *enc_u16_owned,
     )]
-    /// & sigil: primitive by value through EncodeAs
+    /// & sigil: primitive by value through `EncodeAs`
     id: u16,
 
     #[klv(
@@ -95,7 +100,7 @@ struct AllSigils {
         dec = dec_u8_len_string,
         enc = &enc_str_ref,
     )]
-    /// & sigil: String -> &str through EncodeAs
+    /// & sigil: String -> &str through `EncodeAs`
     label: String,
 
     #[klv(
@@ -103,12 +108,12 @@ struct AllSigils {
         dec = dec_u8_len_bytes,
         enc = &enc_bytes_ref,
     )]
-    /// & sigil: Vec<u8> -> &[u8] through EncodeAs
+    /// & sigil: Vec<u8> -> &[u8] through `EncodeAs`
     blob: Vec<u8>,
 }
 
 #[test]
-/// Verifies frame roundtrip across a struct that mixes no-sigil and `&` sigil encoders covering `u8`, custom enums, `u16`, `String`, and `Vec<u8>` fields.
+/// Verifies frame roundtrip across a struct that mixes no-sigil and `&` sigil encoders covering `u8`, custom enums, `u16`, `String`, and `Vec<u8>` fields
 fn all_sigils_roundtrip() {
     let original = AllSigils {
         count: 42,
@@ -168,7 +173,7 @@ struct AllSigilsOptional {
 }
 
 #[test]
-/// Verifies that the `&` sigil dispatches through `EncodeAs` correctly for `Option<T>` fields when every optional is `Some(_)`.
+/// Verifies that the `&` sigil dispatches through `EncodeAs` correctly for `Option<T>` fields when every optional is `Some(_)`
 fn all_sigils_optional_all_present() {
     let original = AllSigilsOptional {
         count: Some(7),
@@ -184,7 +189,7 @@ fn all_sigils_optional_all_present() {
 }
 
 #[test]
-/// Tests that when every `Option<T>` field is `None`, both sigil code paths emit nothing and the frame decodes back to all-`None`.
+/// Tests that when every `Option<T>` field is `None`, both sigil code paths emit nothing and the frame decodes back to all-`None`
 fn all_sigils_optional_all_absent() {
     let original = AllSigilsOptional {
         count: None,
@@ -200,7 +205,7 @@ fn all_sigils_optional_all_absent() {
 }
 
 #[test]
-/// Tests a mixed `Some`/`None` pattern across every sigil-dispatched optional field to exercise the optional branch of the codegen.
+/// Tests a mixed `Some`/`None` pattern across every sigil-dispatched optional field to exercise the optional branch of the codegen
 fn all_sigils_optional_partial() {
     let original = AllSigilsOptional {
         count: Some(99),
@@ -215,27 +220,29 @@ fn all_sigils_optional_partial() {
     assert_eq!(original, decoded);
 }
 
-// --------------------------------------------------
-// `&` sigil on smart-pointer wrappers - EncodeAs dispatches to `&T`
-// --------------------------------------------------
+/// `&` sigil target for `Box<u32>` / `Rc<u32>` via `EncodeAs` -> `&u32`
 fn enc_inner_u32_ref(v: &u32) -> Vec<u8> {
     encb::be_u32(*v)
 }
 
+/// `&` sigil target for `Arc<str>` via `EncodeAs` -> `&str`, length-prefixed
 fn enc_inner_str_ref(s: &str) -> Vec<u8> {
     let mut out = encb::u8_from_usize(s.len());
     out.extend_from_slice(s.as_bytes());
     out
 }
 
+/// Decode a big-endian `u32` and box it, for use as `dec =` on a `Box<u32>` field
 fn dec_box_u32(input: &mut &[u8]) -> tinyklv::Result<Box<u32>> {
     decb::be_u32(input).map(Box::new)
 }
 
+/// Decode a big-endian `u32` and wrap it in `Rc`, for use as `dec =` on an `Rc<u32>` field
 fn dec_rc_u32(input: &mut &[u8]) -> tinyklv::Result<Rc<u32>> {
     decb::be_u32(input).map(Rc::new)
 }
 
+/// Decode a u8-length-prefixed UTF-8 string and wrap it in `Arc<str>`, for use on `Arc<str>` fields
 fn dec_arc_str(input: &mut &[u8]) -> tinyklv::Result<Arc<str>> {
     let len = decb::u8(input)? as usize;
     let (head, rest) = input.split_at(len);
@@ -272,7 +279,7 @@ struct SmartPointerSigils {
 }
 
 #[test]
-/// Verifies that the `&` sigil dispatches through `EncodeAs` for smart-pointer fields (`Box<T>`, `Rc<T>`, `Arc<str>`) without cloning.
+/// Verifies that the `&` sigil dispatches through `EncodeAs` for smart-pointer fields (`Box<T>`, `Rc<T>`, `Arc<str>`) without cloning
 fn smart_pointer_sigils_roundtrip() {
     let original = SmartPointerSigils {
         boxed: Box::new(0xAABBCCDD),
@@ -285,10 +292,6 @@ fn smart_pointer_sigils_roundtrip() {
     assert_eq!(original, decoded);
 }
 
-// --------------------------------------------------
-// Every sigil in one struct, mixed with multiple fields of each
-// to confirm codegen emits one call-shape per attribute, not per-type
-// --------------------------------------------------
 #[derive(Klv, Debug, Clone, PartialEq)]
 #[klv(
     sentinel = b"\x00\x00\x00\x04",
@@ -334,7 +337,7 @@ struct SigilMixture {
 }
 
 #[test]
-/// Tests that a struct mixing both sigil shapes across multiple fields of each type codegens one call-shape per attribute and roundtrips correctly.
+/// Tests that a struct mixing both sigil shapes across multiple fields of each type codegens one call-shape per attribute and roundtrips correctly
 fn sigil_mixture_roundtrip() {
     let original = SigilMixture {
         a: 1,

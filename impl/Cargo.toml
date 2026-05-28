@@ -17,7 +17,7 @@ publish = true
 proc-macro = true
 
 [dependencies]
-paste = "1.0"
+pastey = "0.2.3"
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", features = ["extra-traits", "full"] }
@@ -28,3 +28,21 @@ tk-syn-macros = { path = "tk-syn-macros", version = "0.0.1" }
 
 [features]
 tracing = []
+
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+cast_possible_truncation = "allow" # wire-format width casts
+cast_possible_wrap = "allow"       # wire-format width casts
+cast_sign_loss = "allow"           # wire-format width casts
+cast_lossless = "allow"            # wire-format width casts
+inline_always = "allow"            # hot-path inlining convention
+wildcard_imports = "allow"         # prelude glob is the import surface
+float_cmp = "allow"                # exact-roundtrip float eq in tests
+must_use_candidate = "allow"       # must_use applied deliberately
+module_name_repetitions = "allow"  # module-qualified names intentional
+too_many_lines = "allow"           # codegen fns
+needless_pass_by_value = "allow"   # proc-macro helpers consume owned AST
+default_trait_access = "allow"     # Default::default() clear in token code
+used_underscore_binding = "allow"  # _-prefixed fields mark retained AST
+needless_for_each = "allow"        # for_each idiomatic in tests
+similar_names = "allow"            # short domain names (lat/lon)

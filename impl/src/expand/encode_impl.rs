@@ -160,12 +160,18 @@ fn gen_items_encoded(
             if crate::expand::helpers::is_option(ty) {
                 quote_spanned! { span =>
                     if let Some(ref __val) = self.#name {
-                        output.extend(#enc_tokens(#opt_arg).into_klv(#key_encoder(#key), #len_encoder));
+                        let __value = #enc_tokens(#opt_arg);
+                        output.extend(#key_encoder(#key));
+                        output.extend(#len_encoder(__value.len()));
+                        output.extend(__value);
                     }
                 }
             } else {
                 quote_spanned! { span =>
-                    output.extend(#enc_tokens(#nonopt_arg).into_klv(#key_encoder(#key), #len_encoder));
+                    let __value = #enc_tokens(#nonopt_arg);
+                    output.extend(#key_encoder(#key));
+                    output.extend(#len_encoder(__value.len()));
+                    output.extend(__value);
                 }
             }
         });

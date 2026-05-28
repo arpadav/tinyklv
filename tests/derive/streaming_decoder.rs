@@ -1,22 +1,16 @@
-//! End-to-end streaming tests for [`tinyklv::Decoder`].
+//! End-to-end streaming tests for [`tinyklv::Decoder`]
 //!
 //! Feeds a byte stream through `Decoder<T>::feed` + `next()` in several
 //! granularities (one packet at a time, one byte at a time, random chunks)
-//! and asserts every packet emerges with no lost progress.
+//! and asserts every packet emerges with no lost progress
 
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
 
-// --------------------------------------------------
-// fixture: a small KLV struct carrying three fixed-length fields.
-//
-// sentinel framing is required by `Decoder<T>`: each emitted packet on
-// is `sentinel + packet_len + body`, and the decoder uses the
-// sentinel to find each packet's boundaries inside the streamed buffer.
-// the sentinel bytes here are `b"SMPL"` purely for readability in hex
-// dumps; any unique byte pattern works.
-// --------------------------------------------------
 #[derive(Klv, Debug, Clone, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -33,6 +27,10 @@ struct Sample {
     c: u8,
 }
 
+/// Build a sentinel-framed `Sample` byte vector from raw field values
+///
+/// Constructs a `Sample` and calls `encode_frame`, producing the canonical
+/// `sentinel + body_len + body` wire format used by all streaming tests
 fn encoded(a: u8, b: u8, c: u8) -> Vec<u8> {
     // framed form: sentinel + len + body
     Sample { a, b, c }.encode_frame()
@@ -40,7 +38,7 @@ fn encoded(a: u8, b: u8, c: u8) -> Vec<u8> {
 
 #[test]
 /// One complete packet fed in one shot must yield exactly one `Ready`
-/// from `next()`, then `None` (buffer empty).
+/// from `next()`, then `None` (buffer empty)
 fn decoder_one_shot_complete_packet() {
     let mut dec = Sample::decoder();
     dec.feed(&encoded(1, 2, 3));
@@ -54,7 +52,7 @@ fn decoder_one_shot_complete_packet() {
 
 #[test]
 /// Three back-to-back packets fed as a single blob must emerge one at a
-/// time via successive `next()` calls, in order.
+/// time via successive `next()` calls, in order
 fn decoder_multiple_packets_one_feed() {
     let mut blob = Vec::new();
     blob.extend(encoded(1, 2, 3));
@@ -76,7 +74,7 @@ fn decoder_multiple_packets_one_feed() {
 #[test]
 /// Feed one byte at a time. Every `next()` should return `None` until the
 /// full 9-byte packet has arrived, then `Ready`. Repeat across a stream
-/// of 5 packets.
+/// of 5 packets
 fn decoder_byte_by_byte_preserves_progress() {
     let packets = [
         Sample {
@@ -127,8 +125,8 @@ fn decoder_byte_by_byte_preserves_progress() {
 
 #[test]
 /// Feeding a truncated first packet and nothing else must yield `None`
-/// from `next()` (NeedMore) without losing any buffered bytes. Completing
-/// the packet later must produce `Ready` with the correct value.
+/// from `next()` (`NeedMore`) without losing any buffered bytes. Completing
+/// the packet later must produce `Ready` with the correct value
 fn decoder_truncated_then_resumed() {
     let full = encoded(42, 43, 44);
     let (head, tail) = full.split_at(5);
@@ -153,7 +151,7 @@ fn decoder_truncated_then_resumed() {
 
 #[test]
 /// Feed a multi-packet stream in arbitrary odd chunks and assert no
-/// packet is lost, no duplicate emission, and no buffer residue.
+/// packet is lost, no duplicate emission, and no buffer residue
 fn decoder_irregular_chunks() {
     let packets: Vec<Sample> = (0u8..7)
         .map(|i| Sample {
@@ -191,7 +189,7 @@ fn decoder_irregular_chunks() {
 
 #[test]
 /// Junk bytes (zeros, 0xFF, arbitrary patterns) between sentinel-framed
-/// packets are skipped by the sentinel seeker. All packets decode in order.
+/// packets are skipped by the sentinel seeker. All packets decode in order
 fn decoder_skips_junk_between_packets() {
     let mut blob = Vec::new();
     // junk before first sentinel
@@ -217,7 +215,7 @@ fn decoder_skips_junk_between_packets() {
 
 #[test]
 /// Byte-at-a-time feeding through junk-interspersed packets. The sentinel
-/// seeker finds each packet despite single-byte feeds through noise.
+/// seeker finds each packet despite single-byte feeds through noise
 fn decoder_skips_junk_byte_by_byte() {
     let mut blob = Vec::new();
     // junk before first sentinel
@@ -246,8 +244,8 @@ fn decoder_skips_junk_byte_by_byte() {
 }
 
 #[test]
-/// A malformed packet (missing required fields) followed by a good one.
-/// The decoder surfaces the error and recovers to decode the next packet.
+/// A malformed packet (missing required fields) followed by a good one
+/// The decoder surfaces the error and recovers to decode the next packet
 fn decoder_malformed_then_good_recovers() {
     let mut blob = Vec::new();
     // malformed: sentinel + length + only field a (b and c are absent)
@@ -279,7 +277,7 @@ fn decoder_malformed_then_good_recovers() {
 
 #[test]
 /// `finish()` on a fresh decoder with no bytes and no partial yields an
-/// error naming the first missing required field.
+/// error naming the first missing required field
 fn decoder_finish_on_empty() {
     let dec = Sample::decoder();
     let result = dec.finish();
@@ -288,7 +286,7 @@ fn decoder_finish_on_empty() {
 
 #[test]
 /// Feed 3 packets in a single blob, then drain via `for pkt in &mut dec`
-/// (the `IntoIterator` impl). All 3 packets must emerge in order.
+/// (the `IntoIterator` impl). All 3 packets must emerge in order
 fn decoder_into_iter_pattern() {
     let mut blob = Vec::new();
     blob.extend(encoded(5, 6, 7));

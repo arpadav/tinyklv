@@ -1,9 +1,12 @@
-//! Streaming tests with a realistic multi-type KLV struct.
+//! Streaming tests with a realistic multi-type KLV struct
 //!
 //! `SensorReport` carries u16, f32, u32, u8, and Option<u16> fields to
 //! exercise the `Decoder` API beyond the simple all-u8 test structs used
-//! elsewhere.
+//! elsewhere
 
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
@@ -52,6 +55,7 @@ struct SensorReport {
     humidity: Option<u16>,
 }
 impl SensorReport {
+    /// Construct a [`SensorReport`] from individual field values
     fn new(node_id: u16, temp: f32, status: u32, batt: u8, humidity: Option<u16>) -> SensorReport {
         SensorReport {
             node_id,
@@ -64,9 +68,9 @@ impl SensorReport {
 }
 
 #[test]
-/// One complete `SensorReport` encoded, fed in a single shot, and decoded.
+/// One complete `SensorReport` encoded, fed in a single shot, and decoded
 /// Asserts the decoded value matches exactly, then that the buffer is empty
-/// and a second `next()` returns `None`.
+/// and a second `next()` returns `None`
 fn mixed_one_shot() {
     let pkt = SensorReport::new(1001, 23.5_f32, 0x0000_0001, 87, None);
     let frame = pkt.encode_frame();
@@ -85,7 +89,7 @@ fn mixed_one_shot() {
 /// Three reports with varied field values (including Some and None humidity)
 /// are encoded into a single blob and fed byte-by-byte. Asserts all three
 /// decode in order with correct values. f32 round-trips are verified by bit
-/// pattern equality.
+/// pattern equality
 fn mixed_byte_by_byte() {
     let pkts = [
         SensorReport::new(10, 18.25_f32, 0xDEAD_BEEF, 100, Some(4500)),
@@ -93,7 +97,7 @@ fn mixed_byte_by_byte() {
         SensorReport::new(30, 99.125_f32, 0x1234_5678, 11, Some(9999)),
     ];
 
-    let blob: Vec<u8> = pkts.iter().flat_map(|p| p.encode_frame()).collect();
+    let blob: Vec<u8> = pkts.iter().flat_map(tinyklv::EncodeFrame::encode_frame).collect();
 
     let mut dec = SensorReport::decoder();
     let mut got = Vec::new();
@@ -119,7 +123,7 @@ fn mixed_byte_by_byte() {
 #[test]
 /// A blob with junk bytes and zeros before the first sentinel is fed all at
 /// once. The sentinel seeker must skip the junk and decode both reports
-/// cleanly.
+/// cleanly
 fn mixed_with_junk_prefix() {
     let report1 = SensorReport::new(200, 21.0_f32, 0x0000_0002, 75, Some(6000));
     let report2 = SensorReport::new(201, 22.5_f32, 0x0000_0003, 60, None);
@@ -147,7 +151,7 @@ fn mixed_with_junk_prefix() {
 #[test]
 /// Five reports fed through the same rotating chunk-size pattern used in
 /// `streaming_decoder.rs`. Asserts no packet is lost, no duplicate emitted,
-/// and no buffer residue remains after all chunks are consumed.
+/// and no buffer residue remains after all chunks are consumed
 fn mixed_irregular_chunks() {
     let pkts = [
         SensorReport::new(1, 0.0_f32, 0x0000_0001, 99, None),
@@ -156,7 +160,7 @@ fn mixed_irregular_chunks() {
         SensorReport::new(4, 100.0_f32, 0x0000_0004, 55, Some(8192)),
         SensorReport::new(5, 37.25_f32, 0x0000_0005, 11, Some(1)),
     ];
-    let blob: Vec<u8> = pkts.iter().flat_map(|p| p.encode_frame()).collect();
+    let blob: Vec<u8> = pkts.iter().flat_map(tinyklv::EncodeFrame::encode_frame).collect();
     let chunk_sizes = [1usize, 4, 2, 3, 9, 5, 7, 11, 2, 8, 1, 6, 3];
     let mut dec = SensorReport::decoder();
     let mut got = Vec::new();
@@ -187,7 +191,7 @@ fn mixed_irregular_chunks() {
 #[test]
 /// Two reports streamed byte-by-byte: the first carries `humidity: Some(6500)`,
 /// the second carries `humidity: None`. Verifies that the optional field is
-/// correctly present in one and absent in the other.
+/// correctly present in one and absent in the other
 fn mixed_optional_absent() {
     let with_humidity = SensorReport::new(50, 25.0_f32, 0x0000_00AA, 90, Some(6500));
     let without_humidity = SensorReport::new(51, 26.0_f32, 0x0000_00BB, 80, None);

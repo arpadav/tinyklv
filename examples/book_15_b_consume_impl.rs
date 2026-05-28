@@ -1,6 +1,16 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/15b-consume-impl.md` for full example
+//! Book tutorial 15b - implementing a custom `Consume` extension on `Decoder`
+//!
+//! Shows how to add a `consume` method to `Decoder` that lazily pulls byte
+//! chunks from any iterator, feeding each chunk and yielding decoded packets
+//! on demand. `ConsumeIter` drives the `Decoder` from an arbitrary chunk
+//! source and returns decoded values one at a time without buffering them all
+//! upfront
+//!
+//! See `book/tutorial/15b-consume-impl.md` for the full narrative.
+//!
+//! Author: aav
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -46,7 +56,7 @@ where
     _marker: std::marker::PhantomData<B>,
 }
 
-impl<'a, P, S, I, B> Iterator for ConsumeIter<'a, P, S, I, B>
+impl<P, S, I, B> Iterator for ConsumeIter<'_, P, S, I, B>
 where
     I: Iterator<Item = B>,
     B: AsRef<[u8]>,
@@ -105,7 +115,7 @@ fn main() {
         Heartbeat { sequence: 3, temperature_centideg: 2340, uptime_s: 30 },
     ];
     let buf: Vec<u8> = want.iter()
-        .flat_map(|p| p.encode_frame())
+        .flat_map(tinyklv::EncodeFrame::encode_frame)
         .collect();
 
     let mut dec = Heartbeat::decoder();

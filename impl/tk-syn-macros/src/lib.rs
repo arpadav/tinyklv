@@ -407,11 +407,11 @@ macro_rules! create_parser {
         );
     };
 
-    // no fname -> generate via paste, then @emit
+    // no fname -> generate via pastey, then @emit
     (@main $keyword:tt : $ty:ty;
         ($where:ident) $pname:path => $input_ty:ty $(, $($args:expr),*)?) =>
     {
-        ::paste::paste! {
+        ::pastey::paste! {
             $crate::create_parser!(
                 @emit $keyword : $ty;
                 [<$pname:lower _ $keyword:lower>], ($where) $pname => $input_ty $(, $($args),*)?

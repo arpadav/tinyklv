@@ -1,3 +1,16 @@
+//! Derive macro integration-test harness
+//!
+//! Declares every `#[derive(Klv)]` test sub-module so `cargo test` can
+//! discover them.  Sub-modules are organised by feature area: basic fixed
+//! and variable fields, advanced streaming / sentinel / scaling / nesting,
+//! ASCII-encoded fields, sigil dispatch, partial decode / resume, optional
+//! fields, and vec-decode semantics.  The `types` module provides shared
+//! domain types used across the advanced sub-modules
+//!
+//! Author: aav
+// --------------------------------------------------
+// mods
+// --------------------------------------------------
 mod advanced_break;
 mod advanced_defaults;
 mod advanced_generics;
@@ -9,6 +22,8 @@ mod advanced_scaling;
 mod advanced_sentinel;
 mod advanced_stream;
 mod advanced_variable;
+#[cfg(feature = "ascii")]
+mod ascii_fields;
 mod basic_fixed;
 mod basic_variable;
 mod ber_keyed;

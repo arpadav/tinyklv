@@ -1,11 +1,18 @@
+//! Core AST types for representing encoder/decoder specifications
+//!
+//! Defines the Rust representations of xcoder (encoder/decoder) annotations
+//! parsed from `#[klv(..)]` attributes: the [`XcoderLike`] enum covering paths,
+//! expressions, and macro invocations; the [`XcoderSigil`] enum that controls
+//! how the argument is passed to the xcoder function; [`SiguledXcoder`] which
+//! pairs a sigil with an inner xcoder; and supporting types [`LatebindXcoder`]
+//! and [`DefaultValue`]
+//!
+//! Author: aav
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use quote::ToTokens;
 
-// --------------------------------------------------
-// outward-facing types, can change
-// --------------------------------------------------
 pub(crate) type TypeType = syn::Type;
 pub(crate) type XcoderType = XcoderLike;
 
@@ -14,7 +21,7 @@ pub(crate) type XcoderType = XcoderLike;
 ///
 /// * a path
 /// * a macro call
-/// * a fn call which returns impl FnOnce
+/// * a fn call which returns impl `FnOnce`
 pub(crate) enum XcoderLike {
     Path(syn::Path),
     Expr(syn::Expr),
@@ -22,6 +29,16 @@ pub(crate) enum XcoderLike {
 }
 
 /// [`XcoderLike`] implementation of [`syn::parse::Parse`]
+///
+/// Attempts to parse an xcoder specification in priority order:
+///
+/// 1. If the token stream contains a path immediately followed by `!`, parse
+///    it as a [`syn::Macro`] invocation
+/// 2. If the stream starts with `(`, `{`, `if`, or `match`, parse it as a
+///    [`syn::Expr`]
+/// 3. Otherwise, parse it as a [`syn::Path`]
+///
+/// Returns an error if none of the above forms matches
 impl syn::parse::Parse for XcoderLike {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let lookahead = input.lookahead1();
@@ -37,14 +54,13 @@ impl syn::parse::Parse for XcoderLike {
         // --------------------------------------------------
         // expressions
         // --------------------------------------------------
-        if input.peek(syn::token::Paren)
+        if (input.peek(syn::token::Paren)
             || input.peek(syn::token::Brace)
             || input.peek(syn::Token![if])
-            || input.peek(syn::Token![match])
+            || input.peek(syn::Token![match]))
+            && let Ok(x) = input.parse::<syn::Expr>()
         {
-            if let Ok(x) = input.parse::<syn::Expr>() {
-                return Ok(XcoderLike::Expr(x));
-            }
+            return Ok(XcoderLike::Expr(x));
         }
         // --------------------------------------------------
         // check paths last
@@ -97,7 +113,7 @@ pub(crate) struct SiguledXcoder {
 /// [`SiguledXcoder`] implementation of [`syn::parse::Parse`]
 ///
 /// Consumes an optional leading `&` or `*` before delegating to
-/// [`XcoderLike::parse`]. No change to [`XcoderLike::parse`] itself.
+/// [`XcoderLike::parse`]. No change to [`XcoderLike::parse`] itself
 impl syn::parse::Parse for SiguledXcoder {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let sigil = if input.peek(syn::Token![&]) {
@@ -140,7 +156,7 @@ impl ToTokens for SiguledXcoder {
 ///   `Fn(&mut T)` with `T == U`
 ///
 /// The plain `&` (without `mut`) form is rejected at parse time - the
-/// consuming form has no `&` variant.
+/// consuming form has no `&` variant
 pub(crate) struct LatebindXcoder {
     pub(crate) is_mut: bool,
     pub(crate) inner: XcoderLike,
@@ -157,6 +173,13 @@ pub(crate) enum DefaultValue {
 }
 
 /// [`LatebindXcoder`] implementation of [`syn::parse::Parse`]
+///
+/// Parses the value after `latebind =` in a `#[klv(latebind = ..)]` attribute:
+///
+/// * `&mut path` - sets `is_mut = true` and parses `path` as the inner [`XcoderLike`]
+/// * `& path` (without `mut`) - rejected with an error; only the consuming or
+///   mutating forms are valid
+/// * `path` - sets `is_mut = false` and parses `path` as the inner [`XcoderLike`]
 impl syn::parse::Parse for LatebindXcoder {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let is_mut = if input.peek(syn::Token![&]) && input.peek2(syn::Token![mut]) {

@@ -1,3 +1,11 @@
+//! Code generation for the `SeekSentinel` trait implementation
+//!
+//! Emits the `SeekSentinel` impl, associated statics, and the per-container
+//! `memmem` seeker for containers that declare a `sentinel = ..` attribute
+//! The sentinel mechanism allows a streaming decoder to scan a raw byte buffer
+//! for a known marker byte sequence before attempting to decode a packet
+//!
+//! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
@@ -8,7 +16,32 @@ use crate::ast::types;
 // --------------------------------------------------
 use quote::quote;
 
-/// Code generation for seek sentinel implementation
+/// Generates the `SeekSentinel` trait implementation and its supporting statics
+///
+/// For a container that declares `#[klv(sentinel = <bytes>)]`, this function emits:
+///
+/// * A `const __TINYKLV_SENTINEL_LEN_<NAME>: usize` holding the sentinel byte count
+/// * A `static __TINYKLV_SEEKER_<NAME>: LazyLock<memmem::Finder>` for zero-cost
+///   repeated searches
+/// * An `impl SeekSentinel<Stream> for Name` block that uses the seeker to locate
+///   the sentinel in the input, advances past it, decodes the following length field,
+///   and returns the value slice
+///
+/// # Arguments
+///
+/// * `name` - The container ident the impl is generated for
+/// * `sentinel` - The sentinel literal (e.g. `b"HEARTBEAT"`) from the container attribute
+/// * `stream` - The stream type parameterising the impl (e.g. `&[u8]`)
+/// * `stream_lifetimed` - The stream type with the generated lifetime inserted
+/// * `lifetime` - The lifetime token used in the impl signature (e.g. `'z`)
+/// * `len_decoder` - Token expression used to decode the packet length that follows
+///   the sentinel in the stream
+/// * `generics` - Generic parameters from the original struct definition
+///
+/// # Returns
+///
+/// A [`proc_macro2::TokenStream`] containing the sentinel constant, static, and
+/// `SeekSentinel` impl block
 pub(super) fn gen_sentinel_impl(
     name: &syn::Ident,
     sentinel: &syn::Lit,
@@ -22,7 +55,6 @@ pub(super) fn gen_sentinel_impl(
     // generics
     // --------------------------------------------------
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
     // --------------------------------------------------
     // seeker using memchr
     // --------------------------------------------------
@@ -30,7 +62,6 @@ pub(super) fn gen_sentinel_impl(
         quote::format_ident!("__TINYKLV_SENTINEL_LEN_{}", name.to_string().to_uppercase());
     let sentinel_seeker_static_name =
         quote::format_ident!("__TINYKLV_SEEKER_{}", name.to_string().to_uppercase());
-
     // --------------------------------------------------
     // return seek sentinel impl
     // --------------------------------------------------
@@ -54,29 +85,20 @@ pub(super) fn gen_sentinel_impl(
                 let checkpoint = input.checkpoint();
                 match #sentinel_seeker_static_name.find(&input) {
                     Some(position) => *input = &input[position + #sentinel_len_static_name..],
-                    None => return Err(
-                        ::tinyklv::__export::winnow::error::ContextError::new().add_context(
-                            input,
-                            &checkpoint,
-                            ::tinyklv::__export::winnow::error::StrContext::Label(
-                                concat!("Unable to find recognition sentinel for `", stringify!(#name), "` packet")
-                            ),
-                        )
-                    )
+                    None => return Err(::tinyklv::__export::labeled_error(
+                        input,
+                        &checkpoint,
+                        concat!("Unable to find recognition sentinel for `", stringify!(#name), "` packet"),
+                    )),
                 };
-                let checkpoint = input.checkpoint();
-                let packet_len = match #len_decoder.parse_next(input) {
-                    Ok(x) => x as usize,
-                    Err(e) => return Err(
-                        e.add_context(
-                            input,
-                            &checkpoint,
-                            ::tinyklv::__export::winnow::error::StrContext::Label(
-                                concat!("Unable to parse packet length for `", stringify!(#name), "` packet")
-                            ),
-                        )
-                    ),
-                };
+                // `as usize` truncates a decoded length only if it exceeds
+                // `usize::MAX`, which cannot occur on 64-bit targets for any
+                // supported length codec
+                let packet_len = #len_decoder
+                    .context(::tinyklv::__export::winnow::error::StrContext::Label(
+                        concat!("Unable to parse packet length for `", stringify!(#name), "` packet")
+                    ))
+                    .parse_next(input)? as usize;
                 ::tinyklv::__export::winnow::token::take(packet_len).parse_next(input)
             }
         }

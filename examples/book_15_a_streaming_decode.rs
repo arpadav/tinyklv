@@ -1,6 +1,17 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/15-streaming-decode.md` for full example
+//! Book tutorial 15a - streaming decode via `Decoder`
+//!
+//! Demonstrates three patterns for incrementally decoding a sentinel-framed
+//! KLV stream: (1) feeding the whole buffer then draining with `IntoIterator`,
+//! (2) drip-feeding 3-byte chunks and calling `iter()` after each feed, and
+//! (3) low-level `decode_partial` / `resume_partial` for callers that manage
+//! their own in-flight partial state. All three patterns are asserted to yield
+//! the same result
+//!
+//! See `book/tutorial/15-streaming-decode.md` for the full narrative.
+//!
+//! Author: aav
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -46,7 +57,7 @@ fn main() {
         // junk / zeros before the first sentinel
         0xDE, 0xAD, 0x00, 0x00, 0xFF, 0x00,
     ];
-    buf.extend(want.iter().flat_map(|p| p.encode_frame()));
+    buf.extend(want.iter().flat_map(tinyklv::EncodeFrame::encode_frame));
 
     // Pattern 1: feed the whole stream into `::decoder()`, then drain with
     // IntoIterator on &mut Decoder.

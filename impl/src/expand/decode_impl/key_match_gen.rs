@@ -1,3 +1,13 @@
+//! Code generation for key-dispatch match arms and unknown-key pre-checks
+//!
+//! Provides two code-generation helpers used by `decode_partial_gen`:
+//!
+//! * [`gen_known_keys_check`] - emits a `matches!` guard that rejects unknown
+//!   keys before value bytes are consumed, when `deny_unknown_keys` is set
+//! * [`gen_items_match`] - emits the per-field match arms that route each key
+//!   to its decoder and write the result into the partial-packet accumulator
+//!
+//! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
@@ -11,7 +21,7 @@ use crate::ast::attr::MainField;
 use quote::quote;
 
 /// Generates a `|`-joined pattern of every field's `#[klv(key = ..)]` literal,
-/// suitable for the RHS of a `matches!(key, #pattern)` expression.
+/// suitable for the RHS of a `matches!(key, #pattern)` expression
 ///
 /// Used by the pre-match unknown-key gate inside `decode_partial`: before
 /// `take(len)` consumes the value bytes, we check whether `key` is one the
@@ -19,7 +29,7 @@ use quote::quote;
 /// bail with [`tinyklv::prelude::Packet::Malformed`] immediately - no bytes
 /// wasted, and the error says "unknown key" rather than the downstream
 /// "packet truncated" the old ordering would have produced when the declared
-/// length overran remaining input.
+/// length overran remaining input
 ///
 /// # Degenerate case
 ///
@@ -27,7 +37,7 @@ use quote::quote;
 /// `_ if false` which is a never-match pattern, so `matches!(key, _ if false)`
 /// is always `false` and every key is treated as unknown. Under
 /// `deny_unknown_keys` this rejects everything, which is the only sensible
-/// behavior for a struct that declared no keys.
+/// behavior for a struct that declared no keys
 ///
 /// # Emission shape
 ///
@@ -77,14 +87,32 @@ pub(super) fn gen_known_keys_check(
     }
 }
 
-/// Generates the tokens for matching the key/len's with fields and parsers
+/// Generates match arms that dispatch a parsed key to its per-field decoder
 ///
-/// `#key => __acc.#name = #dec #optional_len_arg (&mut subinput).ok(),`
+/// For each field that carries a `#[klv(..)]` annotation this function emits
+/// one match arm of the form:
 ///
-/// Where `subinput` is a sub-slice of `input` of the value's length,
-/// designated by the stream after its key, and `__acc` is the in-flight
-/// `XxxPartialPacket` being filled by the surrounding
-/// `ResumePartial::resume_partial` body.
+/// ```text
+/// #key => __acc.#name = #dec #optional_len_arg (&mut subinput).ok() #latebind_map .or(__acc.#name),
+/// ```
+///
+/// Where `subinput` is a sub-slice of `input` of exactly `len` bytes (already
+/// consumed by the surrounding `take`), and `__acc` is the in-flight
+/// `XxxPartialPacket` accumulator. Optional fields use `.or(__acc.#name)` to
+/// preserve a previously decoded value when a duplicate key appears later in
+/// the stream. When the `debug` flag is set each arm additionally logs the key
+/// name and decoded value via the `logger()` macro
+///
+/// # Arguments
+///
+/// * `fields` - All fields of the container; those without KLV annotations are skipped
+/// * `stream` - The stream type, used to qualify the `DecodeValue` fallback trait call
+/// * `debug` - When `true`, emit per-field debug logging inside each match arm
+///
+/// # Returns
+///
+/// A [`proc_macro2::TokenStream`] containing one match arm per annotated field,
+/// ready to be spliced into the `match key { .. }` block in `resume_partial`
 pub(super) fn gen_items_match(
     fields: &[MainField],
     stream: &syn::Type,
@@ -118,7 +146,7 @@ pub(super) fn gen_items_match(
             // --------------------------------------------------
             // varlen - changes fn signature
             // --------------------------------------------------
-            let varlen = attrs.var.as_ref().map(|v| v.value).unwrap_or(false); // <-- defaults to false
+            let varlen = attrs.var.as_ref().is_some_and(|v| v.value); // <-- defaults to false
             let optional_len_arg = if varlen {
                 quote! { (len) }
             } else {
@@ -147,21 +175,18 @@ pub(super) fn gen_items_match(
             // --------------------------------------------------
             // field assignment with optional logging
             // --------------------------------------------------
-            match debug {
-                true => {
-                    let logger = constants::logger();
-                    quote! {
-                        #key => {
-                            let val = #dec_tokens #optional_len_arg (&mut subinput);
-                            #logger ("\t{}: {:?}", stringify!(#name), val);
-                            __acc.#name = val.ok() #latebind_map .or(__acc.#name);
-                        },
-                    }
+            if debug {
+                let logger = constants::logger();
+                quote! {
+                    #key => {
+                        let val = #dec_tokens #optional_len_arg (&mut subinput);
+                        #logger ("\t{}: {:?}", stringify!(#name), val);
+                        __acc.#name = val.ok() #latebind_map .or(__acc.#name);
+                    },
                 }
-                false => quote! {
-                    #key => __acc.#name = #dec_tokens #optional_len_arg (&mut subinput).ok() #latebind_map .or(__acc.#name),
-                },
-            }
+            } else { quote! {
+                #key => __acc.#name = #dec_tokens #optional_len_arg (&mut subinput).ok() #latebind_map .or(__acc.#name),
+            } }
         });
     // --------------------------------------------------
     // return all match arms

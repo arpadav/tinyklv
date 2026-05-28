@@ -1,3 +1,16 @@
+//! Orchestration of the full decode implementation code-generation pass
+//!
+//! This module is the top-level entry point for generating all decode-related
+//! trait implementations for a `#[derive(Klv)]` struct. It drives the
+//! sub-modules in order and assembles their outputs into a single token stream:
+//!
+//! * `sentinel_gen` - `SeekSentinel` impl (only when a sentinel is declared)
+//! * `partial_gen` - partial-packet struct definition, `Partial` impl, and
+//!   `TryFrom<Partial>` impl
+//! * `decode_partial_gen` - `DecodePartial` and `ResumePartial` impls
+//! * local helpers - `decoder()` constructor and `DecodeValue` impl
+//!
+//! Author: aav
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
@@ -20,8 +33,25 @@ use crate::{
 // --------------------------------------------------
 use quote::quote;
 
-/// Generates the tokens for the entire [`tinyklv::prelude::DecodeValue`]
-/// and associated decode traits implementation
+/// Generates the complete set of decode trait implementations for a container
+///
+/// Assembles and returns the token stream for every decode-related impl block
+/// that `#[derive(Klv)]` emits. The output always includes the partial-packet
+/// struct, its `Partial` and `TryFrom` impls, the `DecodePartial` and
+/// `ResumePartial` impls, the `decoder()` constructor, and the `DecodeValue`
+/// impl. If the container declares a `sentinel`, a `SeekSentinel` impl is
+/// prepended as well
+///
+/// # Arguments
+///
+/// * `input` - The fully parsed container, providing field data and all attributes
+/// * `key_decoder` - Token expression used to parse each TLV key from the stream
+/// * `len_decoder` - Token expression used to parse each TLV length from the stream
+///
+/// # Returns
+///
+/// A [`proc_macro2::TokenStream`] containing all decode-related impl blocks,
+/// concatenated in dependency order (sentinel first, then partial struct, then impls)
 pub(crate) fn gen_decode_impl(
     input: &MainContainer,
     key_decoder: &types::XcoderType,
@@ -74,11 +104,8 @@ pub(crate) fn gen_decode_impl(
         partial_gen::gen_partial_impl(name, &partial_name, input.generics, &input.data);
     let try_from_partial_struct_impl =
         partial_gen::gen_try_from_partial_impl(name, &partial_name, input.generics);
-
     // --------------------------------------------------
     // partial implementations
-    // --------------------------------------------------
-    // this includes the MAIN LOGIC inside of resume partial
     // --------------------------------------------------
     let decode_partial_impl =
         decode_partial_gen::gen_decode_partial_impl(name, &partial_name, &stream, input.generics);
@@ -90,7 +117,6 @@ pub(crate) fn gen_decode_impl(
         key_decoder,
         len_decoder,
     );
-
     // --------------------------------------------------
     // main decoder functions
     // --------------------------------------------------
@@ -102,7 +128,6 @@ pub(crate) fn gen_decode_impl(
         input.generics,
     );
     let decode_value_impl = gen_decode_value_impl(name, &partial_name, &stream, input.generics);
-
     // --------------------------------------------------
     // return em all
     // --------------------------------------------------
@@ -118,11 +143,24 @@ pub(crate) fn gen_decode_impl(
     }
 }
 
-/// Generates a trait-less implementation for idiomatic getting
-/// of a partial decoder
+/// Generates the `decoder()` inherent method for a container
 ///
-/// This is used in other impls rather than having a complicated
-/// constructor
+/// Emits a `pub fn decoder<'z>() -> tinyklv::Decoder<XxxPartialPacket, &'z Stream>`
+/// associated function on the container. This is the idiomatic entry point for
+/// constructing a streaming [`tinyklv::Decoder`] without needing to name the
+/// partial-packet type directly
+///
+/// # Arguments
+///
+/// * `name` - The container ident the method is generated on
+/// * `partial_name` - The partial-packet struct ident used as the `Decoder` type parameter
+/// * `stream_lifetimed` - The stream type with the generated lifetime already inserted
+/// * `lifetime` - The lifetime token (e.g. `'z`) to add as a generic parameter
+/// * `generics` - Generic parameters from the original struct definition
+///
+/// # Returns
+///
+/// A [`proc_macro2::TokenStream`] containing the `impl` block with the `decoder()` method
 fn gen_decoder_fn(
     name: &syn::Ident,
     partial_name: &syn::Ident,
@@ -134,7 +172,6 @@ fn gen_decoder_fn(
     // generics
     // --------------------------------------------------
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
     // --------------------------------------------------
     // return
     // --------------------------------------------------
@@ -150,13 +187,27 @@ fn gen_decoder_fn(
     }
 }
 
-/// Generates the [`tinyklv::traits::DecodeValue`] implementation for a given type
+/// Generates the [`tinyklv::traits::DecodeValue`] implementation for a container
 ///
-/// This simply calls `decode_partial` and performs the following match / mapping:
+/// The emitted impl calls `DecodePartial::decode_partial` and maps the three
+/// outcomes:
 ///
-/// * Ok and ready -> return decoded
-/// * Ok but needs more -> attempt to coerce from partial to final, return Result
-/// * Err -> return Err
+/// * `Packet::Ready(v)` - the stream contained a complete packet; return `Ok(v)`
+/// * `Packet::NeedMore(partial)` - the stream was exhausted mid-packet; attempt
+///   `Partial::finalize` on the accumulated partial and return the result
+/// * `Err(label)` - a decode error occurred; wrap the static label with input
+///   context using [`tinyklv::__export::labeled_error`] and return `Err`
+///
+/// # Arguments
+///
+/// * `name` - The container ident the impl is generated for
+/// * `partial_name` - The partial-packet struct ident
+/// * `stream` - The stream type parameterising the impl
+/// * `generics` - Generic parameters from the original struct definition
+///
+/// # Returns
+///
+/// A [`proc_macro2::TokenStream`] containing the complete `DecodeValue` impl block
 fn gen_decode_value_impl(
     name: &syn::Ident,
     partial_name: &syn::Ident,
@@ -167,7 +218,6 @@ fn gen_decode_value_impl(
     // generics
     // --------------------------------------------------
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
     // --------------------------------------------------
     // return
     // --------------------------------------------------
@@ -182,23 +232,9 @@ fn gen_decode_value_impl(
                     Ok(::tinyklv::decoder::Packet::Ready(v)) => Ok(v),
                     Ok(::tinyklv::decoder::Packet::NeedMore(p)) => match <#partial_name #ty_generics as ::tinyklv::traits::Partial>::finalize(p) {
                         Ok(v) => Ok(v),
-                        Err(label) => Err(
-                            ::tinyklv::__export::winnow::error::ContextError::new()
-                                .add_context(
-                                    input,
-                                    &checkpoint,
-                                    ::tinyklv::__export::winnow::error::StrContext::Label(label),
-                                )
-                        ),
+                        Err(label) => Err(::tinyklv::__export::labeled_error(input, &checkpoint, label)),
                     },
-                    Err(label) => Err(
-                        ::tinyklv::__export::winnow::error::ContextError::new()
-                            .add_context(
-                                input,
-                                &checkpoint,
-                                ::tinyklv::__export::winnow::error::StrContext::Label(label),
-                            )
-                    ),
+                    Err(label) => Err(::tinyklv::__export::labeled_error(input, &checkpoint, label)),
                 }
             }
         }

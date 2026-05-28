@@ -12,6 +12,10 @@
 // mods
 // --------------------------------------------------
 mod parsers;
+
+// --------------------------------------------------
+// re-exports
+// --------------------------------------------------
 pub(crate) use parsers::*;
 
 // --------------------------------------------------
@@ -118,11 +122,11 @@ impl std::fmt::Display for Symbol {
 /// Sentinel [`Symbol`] returned for any path that is not one of the known
 /// KLV attribute identifiers. Callers match against the known constants first,
 /// and fall through to a `_` arm that emits an error referencing the original
-/// `syn::Path` - so the sentinel's string is never displayed.
+/// `syn::Path` - so the sentinel's string is never displayed
 pub(crate) const UNKNOWN: Symbol = Symbol("<unknown>");
 
-/// All known [`Symbol`] constants that [`Symbol::from`] can resolve against.
-/// Lookup is linear - the set is tiny (<20) and resolution runs at macro-expansion time.
+/// All known [`Symbol`] constants that [`Symbol::from`] can resolve against
+/// Lookup is linear - the set is tiny (<20) and resolution runs at macro-expansion time
 const KNOWN: &[Symbol] = &[
     KLV_ATTR,
     KEY,
@@ -148,7 +152,7 @@ const KNOWN: &[Symbol] = &[
 /// Resolves the path's last segment against [`KNOWN`]. If the ident matches a known
 /// KLV symbol, returns that constant (with its `&'static str` backing). Otherwise
 /// returns [`UNKNOWN`] - callers must treat this as the "default" match arm and
-/// emit errors referencing the original `syn::Path`, not the [`Symbol`]'s string.
+/// emit errors referencing the original `syn::Path`, not the [`Symbol`]'s string
 impl From<&syn::Path> for Symbol {
     fn from(path: &syn::Path) -> Self {
         let last = path.segments.last().expect("path has no segments");
@@ -173,16 +177,23 @@ impl ToTokens for Symbol {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         #[allow(clippy::unwrap_used)] // all symbols are idents
         let ident: syn::Ident = syn::parse_str(self.0).unwrap();
-        tokens.extend(quote::quote! { #ident })
+        tokens.extend(quote::quote! { #ident });
     }
 }
 
+/// [`syn::Path`] implementation of [`PartialEq`] against [`Symbol`]
+///
+/// Allows writing `attr.path() == symbol::KEY` in match guards and `if` conditions
 impl PartialEq<Symbol> for syn::Path {
     fn eq(&self, word: &Symbol) -> bool {
         self.is_ident(word.0)
     }
 }
 
+/// `&syn::Path` implementation of [`PartialEq`] against [`Symbol`]
+///
+/// Convenience impl so borrowed paths can be compared to [`Symbol`] constants
+/// without an explicit dereference
 impl PartialEq<Symbol> for &syn::Path {
     fn eq(&self, word: &Symbol) -> bool {
         self.is_ident(word.0)

@@ -58,6 +58,7 @@ use core::marker::PhantomData;
 // --------------------------------------------------
 // constants
 // --------------------------------------------------
+/// Empty byte slice used as a positional anchor when constructing errors at [`Decoder::finish`] time, where no live input exists
 const EMPTY: &[u8] = &[];
 
 /// Owned-buffer streaming decoder, parameterised on the [`Partial`] type.
@@ -109,8 +110,21 @@ impl<P, S> Default for Decoder<P, S> {
 }
 /// [`Decoder`] implementation
 impl<P, S> Decoder<P, S> {
+    /// Constructs an empty [`Decoder`] in fresh mode with no buffered bytes and no in-flight partial
+    ///
+    /// Fresh mode means the decoder will seek a sentinel boundary on the next
+    /// [`Self::next`] call. Use [`Self::with_capacity`] when the expected
+    /// packet size is known in advance, to avoid reallocations.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use tinyklv::Decoder;
+    ///
+    /// // type inference requires the partial type to be known from context
+    /// // let mut dec: Decoder<MyPacketPartial, &[u8]> = Decoder::new();
+    /// ```
     #[inline(always)]
-    /// Construct an empty decoder in fresh mode (no in-flight partial).
     pub fn new() -> Self {
         Self {
             buf: Vec::new(),
@@ -119,9 +133,17 @@ impl<P, S> Decoder<P, S> {
         }
     }
 
+    /// Constructs an empty [`Decoder`] in fresh mode with a pre-allocated internal buffer
+    ///
+    /// Equivalent to [`Self::new`] but avoids the first reallocation when
+    /// the caller knows roughly how many bytes will arrive. The `cap` hint is
+    /// passed to [`Vec::with_capacity`]; the buffer will still grow beyond `cap`
+    /// if needed.
+    ///
+    /// # Arguments
+    ///
+    /// * `cap` - Initial byte capacity to pre-allocate in the internal buffer
     #[inline(always)]
-    /// Construct an empty decoder with a pre-allocated buffer capacity, in
-    /// fresh mode.
     pub fn with_capacity(cap: usize) -> Self {
         Self {
             buf: Vec::with_capacity(cap),
@@ -130,49 +152,91 @@ impl<P, S> Decoder<P, S> {
         }
     }
 
+    /// Returns the bytes currently buffered but not yet consumed by decoding
+    ///
+    /// Useful for observability, diagnostics, and logging. The returned slice
+    /// is borrowed from the decoder's internal `Vec<u8>` and does not copy.
+    ///
+    /// # Returns
+    ///
+    /// A `&[u8]` view of the pending bytes; empty when all data has been decoded
     #[inline(always)]
-    /// The bytes currently buffered but not yet decoded. Useful for
-    /// observability and diagnostics.
     pub fn buffered(&self) -> &[u8] {
         &self.buf
     }
 
+    /// Borrows the in-flight partial, if any
+    ///
+    /// Returns `Some(&P)` only when the decoder is in resume mode - i.e., after
+    /// a [`Packet::NeedMore`] result was stored and before the next
+    /// [`Self::next`] call successfully completes the packet. Returns `None`
+    /// when the decoder is in fresh mode.
+    ///
+    /// # Returns
+    ///
+    /// `Some(&P)` when a partial packet is in-flight, `None` in fresh mode
     #[inline(always)]
-    /// Borrow the in-flight partial, if any. `Some` only after the decoder
-    /// was constructed from a [`Packet::NeedMore`] return and before the
-    /// next [`Self::next`] completes the packet.
     pub fn partial(&self) -> Option<&P> {
         self.partial.as_ref()
     }
 
+    /// Consumes the decoder and returns the in-flight partial, if one exists
+    ///
+    /// Used by the derive-generated `decode_partial` wrapper to convert a
+    /// "buffer fully consumed with `NeedMore` still pending" state into a
+    /// finalisation decision at the fresh-mode boundary. Callers outside of
+    /// generated code rarely need this directly; prefer [`Self::finish`] on the
+    /// `&[u8]` specialisation when the upstream signals end-of-stream.
+    ///
+    /// # Returns
+    ///
+    /// `Some(P)` if a partial is in-flight, `None` in fresh mode
     #[inline(always)]
-    /// Consume the decoder and return its in-flight partial, if any.
-    /// Used by the derive-generated `decode_partial` wrapper to lift
-    /// "input fully consumed, NeedMore returned" into a finalisation
-    /// at the fresh-mode boundary.
+    #[must_use]
     pub fn into_partial(self) -> Option<P> {
         self.partial
     }
 
+    /// Drops all buffered bytes and clears any in-flight partial, resetting the decoder to fresh mode
+    ///
+    /// Call this after a [`crate::decoder::iter::DecodeIterError::Malformed`] error when
+    /// you want a clean resync point rather than byte-walking through the corrupt
+    /// region. After `clear`, the next [`Self::next`] call will seek a new sentinel
+    /// from scratch.
     #[inline(always)]
-    /// Drop all buffered bytes and any in-flight partial. Call after a
-    /// `Malformed` error if you want to resync cleanly rather than
-    /// byte-walk through corrupt input.
     pub fn clear(&mut self) {
         self.buf.clear();
         self.partial = None;
     }
 
+    /// Appends bytes to the internal buffer without triggering decoding
+    ///
+    /// This is the intake point for new data arriving from a socket, ring buffer,
+    /// or any other byte source. Decoding is intentionally deferred: call
+    /// [`Self::next`] or iterate with [`Self::iter`] after feeding to attempt
+    /// to produce complete values from the accumulated bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - The new bytes to append; may be a partial packet, multiple
+    ///   packets, or anything in between
     #[inline(always)]
-    /// Append bytes to the internal buffer. Does not trigger decoding on its
-    /// own - call [`next`](Self::next) to try to consume complete values.
     pub fn feed(&mut self, bytes: &[u8]) {
         self.buf.extend_from_slice(bytes);
     }
 
+    /// Returns a borrowing iterator that yields decoded values from the buffer
+    ///
+    /// The returned [`DecoderIter`] borrows `self` mutably and yields `T`
+    /// values (the `Partial::Final` type) until the buffer is exhausted or a
+    /// packet is incomplete. Buffered-but-undecoded bytes are retained between
+    /// iterations so that a later [`Self::feed`] + re-iteration can pick up
+    /// where decoding stopped.
+    ///
+    /// # Returns
+    ///
+    /// A [`DecoderIter`] borrowing this decoder for the lifetime of the iterator
     #[inline(always)]
-    /// Returns an iterator over the buffered values, consuming them as they are
-    /// decoded
     pub fn iter(&mut self) -> DecoderIter<'_, P, S> {
         DecoderIter { dec: self }
     }
@@ -181,8 +245,22 @@ impl<P, S> Decoder<P, S> {
         clippy::should_implement_trait,
         reason = "the people should be allowed to use .next() in-line"
     )]
+    /// Decodes and returns the next complete value from the buffer, if one is available
+    ///
+    /// Calls [`Self::iter`] and pulls one item. Returns `None` when the buffer
+    /// contains no complete packet (EOF, incomplete, or malformed). Malformed
+    /// packets are silently skipped - the framed bytes are drained - to keep
+    /// the decoder advancing. Call [`Self::buffered`] afterward to inspect
+    /// remaining bytes.
+    ///
+    /// # Returns
+    ///
+    /// `Some(T)` when a complete, successfully-decoded value is available, `None` otherwise
+    #[allow(
+        clippy::should_implement_trait,
+        reason = "the people should be allowed to use .next() in-line"
+    )]
     #[inline(always)]
-    /// Decode the next complete value from the buffer, if one is available
     pub fn next<T>(&mut self) -> Option<T>
     where
         S: winnow::stream::Stream,
@@ -211,23 +289,35 @@ impl<P, S> Decoder<P, S> {
     // }
 }
 
-/// [`Decoder`] decoding implementation - resume mode
+/// [`Decoder`] implementation specialised to `&[u8]` streams, adding [`Decoder::finish`]
 ///
-/// This is just the &[u8] specialization of [`Decoder`]
-///
-/// When the decoder carries an in-flight partial, [`next`](Self::next)
-/// resumes [`DecodePartial::decode_partial`] without re-seeking the
-/// sentinel: the partial state already lives past the framing.
+/// This specialisation adds [`Decoder::finish`], which is only meaningful
+/// on `&[u8]` streams where the end-of-stream condition is definite. When
+/// the decoder carries an in-flight partial, [`Decoder::next`] resumes
+/// [`DecodePartial::decode_partial`] without re-seeking the sentinel because
+/// the partial state already contains the bytes consumed past the framing.
 impl<P, T> Decoder<P, &[u8]>
 where
     P: Partial<Final = T> + Default,
     for<'a> T:
         DecodePartial<&'a [u8], Partial = P> + ResumePartial<&'a [u8]> + SeekSentinel<&'a [u8]>,
 {
-    /// Force-finalise the current partial. Use when the upstream signals
-    /// "no more bytes coming" and you want the accumulated partial
-    /// surfaced (or its required-field failure reported). The decoder
-    /// is consumed; the buffered bytes are discarded.
+    /// Force-finalises the in-flight partial, consuming the decoder
+    ///
+    /// Call this when the upstream transport signals end-of-stream and you
+    /// want either the accumulated partial surfaced as `T` (if all required
+    /// fields are present) or a definitive error. The decoder is consumed
+    /// and the buffered bytes are discarded - no further decoding is possible
+    /// after this call.
+    ///
+    /// If no partial is in-flight, a default partial is finalised; depending
+    /// on the `T` type this may succeed (all fields optional) or fail (required
+    /// fields missing).
+    ///
+    /// # Returns
+    ///
+    /// `Ok(T)` when the partial can be finalised with all required fields satisfied,
+    /// or `Err(DecodeIterError::Malformed)` when required fields are absent
     pub fn finish(self) -> Result<T, DecodeIterError> {
         let partial = self.partial.unwrap_or_default();
         partial.finalize().map_err(|label| {

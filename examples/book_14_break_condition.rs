@@ -1,6 +1,16 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/14-break-condition.md` for full example
+//! Book tutorial 14 - hand-written decoder with break conditions
+//!
+//! Demonstrates implementing `DecodeValue` by hand and using
+//! `BreakConditionType` to control the key-dispatch loop. A reserved key
+//! (`0xFE`) is silently skipped, and a terminator key (`0xFF`) stops parsing
+//! before any junk bytes that follow. The derive macro generates the encode
+//! side; the decode side is written by hand to show the pattern
+//!
+//! See `book/tutorial/14-break-condition.md` for the full narrative.
+//!
+//! Author: aav
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -86,6 +96,8 @@ impl DecodeValue<&[u8]> for HeartbeatDecoded {
                 }
                 BreakConditionType::Done     => break,
                 BreakConditionType::Abort(e) => return Err(e),
+                // BreakConditionType is non-exhaustive; treat new variants as Proceed
+                _ => {}
             }
 
             // proceed: dispatch the value decoder based on key

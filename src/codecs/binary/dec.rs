@@ -27,14 +27,19 @@ use winnow::token::take;
 // --------------------------------------------------
 // constants
 // --------------------------------------------------
+/// Zero-filled 1-byte pad array used when a lengthed decoder receives fewer bytes than the 8-bit native width
 const B8_PADDED: &[u8; 1] = &[0];
+/// Zero-filled 2-byte pad array used when a lengthed decoder receives fewer bytes than the 16-bit native width
 const B16_PADDED: &[u8; 2] = &[0, 0];
+/// Zero-filled 4-byte pad array used when a lengthed decoder receives fewer bytes than the 32-bit native width
 const B32_PADDED: &[u8; 4] = &[0, 0, 0, 0];
+/// Zero-filled 8-byte pad array used when a lengthed decoder receives fewer bytes than the 64-bit native width
 const B64_PADDED: &[u8; 8] = &[0, 0, 0, 0, 0, 0, 0, 0];
+/// Zero-filled 16-byte pad array used when a lengthed decoder receives fewer bytes than the 128-bit native width
 const B128_PADDED: &[u8; 16] = &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 macro_rules! wrap {
-    ($ty:ty) => { paste::paste! {
+    ($ty:ty) => { pastey::paste! {
         #[inline(always)]
         #[doc = concat!(" Wrapper for [`winnow::binary::be_", stringify!($ty), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
@@ -64,7 +69,7 @@ macro_rules! wrap {
     }};
 }
 macro_rules! wrap_native {
-    ($ty:ty) => { paste::paste! {
+    ($ty:ty) => { pastey::paste! {
         #[inline(always)]
         #[doc = concat!(" Wrapper for [`winnow::binary::", stringify!($ty), "`] with implied native-endianness generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
@@ -79,7 +84,7 @@ macro_rules! wrap_native {
             winnow::binary::$ty(winnow::binary::Endianness::Native).parse_next(input)
         }
     }};
-    (simple $ty:ty) => { paste::paste! {
+    (simple $ty:ty) => { pastey::paste! {
         #[inline(always)]
         #[doc = concat!(" Wrapper for [`winnow::binary::", stringify!($ty), "`] with implied native-endianness generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
@@ -121,7 +126,7 @@ wrap!(f64);
 wrap_native!(f64);
 
 macro_rules! as_usize {
-    ($parser:ident) => { paste::paste! {
+    ($parser:ident) => { pastey::paste! {
         #[inline(always)]
         #[doc = concat!(" [`usize`] wrapper for [`winnow::binary::", stringify!($parser), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
@@ -176,7 +181,7 @@ as_usize!(u64);
 as_usize!(u128);
 
 macro_rules! lengthed_be {
-    ($type:ty, $len:expr, $pad:expr, $doc:literal) => { paste::paste! {
+    ($type:ty, $len:expr, $pad:expr, $doc:literal) => { pastey::paste! {
         #[inline(always)]
         #[doc = $doc]
         pub fn [<be_ $type _lengthed>](len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<$type> {
@@ -199,7 +204,7 @@ macro_rules! lengthed_be {
     ($type:ty, $len:expr, $pad:expr) => { lengthed_be!($type, $len, $pad, ""); };
 }
 macro_rules! lengthed_le {
-    ($type:ty, $precision_len:expr, $pad:expr, $doc:literal) => { paste::paste! {
+    ($type:ty, $precision_len:expr, $pad:expr, $doc:literal) => { pastey::paste! {
         #[inline(always)]
         #[doc = $doc]
         pub fn [<le_ $type _lengthed>](len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<$type> {

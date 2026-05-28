@@ -1,9 +1,27 @@
+//! Break-condition types and trait for controlling the KLV field-decoding loop
+//!
+//! The derive-generated `decode_value` implementation loops over key-length-value
+//! triples. After each key and length are decoded, [`BreakCondition::break_condition`]
+//! is called to let the type decide what to do next. The return value is one
+//! of four [`BreakConditionType`] variants that map directly to control-flow
+//! actions inside the loop.
+//!
+//! Most types accept the default blanket implementation (always [`BreakConditionType::Proceed`]);
+//! implement [`BreakCondition`] explicitly only when custom early-exit or skip
+//! logic is needed.
+//!
+//! Author: aav
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use winnow::error::ContextError;
 
-/// Decoding-loop break types
+/// The four possible outcomes of a per-field break-condition check in the decode loop
+///
+/// Returned by [`BreakCondition::break_condition`] after each key and length
+/// are parsed. The derive-generated loop branches on this value to decide
+/// whether to decode the field, skip it, return early, or abort with an error.
+#[non_exhaustive]
 pub enum BreakConditionType {
     /// Do nothing in the decoding loop in [`crate::prelude::DecodeValue::decode_value`].
     ///
@@ -98,7 +116,26 @@ pub enum BreakConditionType {
     Abort(ContextError),
 }
 
-/// A trait for breaking during during decoding loop
+/// Allows a type to inspect each decoded key and length and control the decode loop
+///
+/// The derive macro calls [`BreakCondition::break_condition`] inside the
+/// field-dispatch loop after every key and length decode. The default
+/// implementation always returns [`BreakConditionType::Proceed`], which is
+/// correct for the vast majority of types.
+///
+/// Override this method to:
+/// * skip unrecognised tags ([`BreakConditionType::Skip`])
+/// * stop early when a sentinel tag is seen ([`BreakConditionType::Done`])
+/// * abort with a hard error on an impossible length ([`BreakConditionType::Abort`])
+///
+/// # Arguments
+///
+/// * `decoded_key` - The tag/key value just decoded from the stream
+/// * `decoded_len` - The length value just decoded from the stream
+///
+/// # Returns
+///
+/// A [`BreakConditionType`] directing the decode loop how to proceed
 pub trait BreakCondition<S> {
     #[inline(always)]
     #[allow(unused_variables)]
@@ -107,6 +144,10 @@ pub trait BreakCondition<S> {
     }
 }
 /// [`BreakCondition`] blanket implementation for all types `T` that implement [`DecodeValue`]
+///
+/// Provides the default "always proceed" behaviour for every type that can
+/// be decoded. Override [`BreakCondition::break_condition`] on the concrete
+/// type when custom loop-control logic is required.
 impl<T, S> BreakCondition<S> for T
 where
     T: crate::traits::dec::DecodeValue<S>,

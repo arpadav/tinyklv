@@ -5,7 +5,7 @@
 //! end of a parse pass. Dropping a [`Ctxt`] without calling [`Ctxt::check`]
 //! panics, enforcing that all accumulated errors are explicitly handled
 //!
-//! Taken from: [https://github.com/serde-rs/serde/blob/930401b0dd58a809fce34da091b8aa3d6083cb33/serde_derive/src/internals/ctxt.rs]
+//! Taken from: [<https://github.com/serde-rs/serde/blob/930401b0dd58a809fce34da091b8aa3d6083cb33/serde_derive/src/internals/ctxt.rs>]
 //!
 //! Author: aav
 #![allow(clippy::unwrap_used, clippy::panic)]
@@ -25,7 +25,7 @@ use std::fmt::Display;
 /// were recorded, or `Ok(())` otherwise
 ///
 /// Dropping this object without calling [`Ctxt::check`] will cause a panic,
-/// enforcing that all errors are surfaced rather than silently discarded.
+/// enforcing that all errors are surfaced rather than silently discarded
 /// References can be shared since this type uses run-time exclusive mut
 /// checking via [`RefCell`]
 pub(crate) struct Ctxt {
@@ -67,7 +67,6 @@ impl Ctxt {
             .borrow_mut()
             .as_mut()
             .unwrap()
-            // Curb monomorphization from generating too many identical methods.
             .push(syn::Error::new_spanned(obj.into_token_stream(), msg));
     }
 
@@ -99,9 +98,8 @@ impl Ctxt {
         // --------------------------------------------------
         // return `Ok` immediately if no errors were recorded
         // --------------------------------------------------
-        let mut combined = match errors.next() {
-            Some(first) => first,
-            None => return Ok(()),
+        let Some(mut combined) = errors.next() else {
+            return Ok(());
         };
         // --------------------------------------------------
         // combine all remaining errors into the first one
@@ -120,8 +118,9 @@ impl Drop for Ctxt {
         // panic if the context was dropped without checking,
         // unless a panic is already in progress
         // --------------------------------------------------
-        if !std::thread::panicking() && self.errors.borrow().is_some() {
-            panic!("forgot to check for errors");
-        }
+        assert!(
+            std::thread::panicking() || self.errors.borrow().is_none(),
+            "forgot to check for errors"
+        );
     }
 }

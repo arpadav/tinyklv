@@ -1,3 +1,16 @@
+//! Decode traits for KLV field values, frames, and partial/streaming decode
+//!
+//! Core decode-side traits:
+//! * [`DecodeValue`] - decodes the value portion `V` of a KLV triple from stream `S`
+//! * [`DecodeFrame`] (re-exported from `frame`) - decodes a full key-length-value frame
+//! * [`DecodePartial`] / [`Partial`] / [`ResumePartial`] (re-exported from `partial`) -
+//!   support for incremental decode of a packet across multiple byte deliveries
+//! * [`SeekSentinel`] (re-exported from `sentinel`) - locate a packet boundary in a
+//!   continuous byte stream
+//! * [`BreakCondition`] / [`BreakConditionType`] (re-exported from `breakcond`) -
+//!   per-field loop control for the derive-generated decode loop
+//!
+//! Author: aav
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
@@ -7,7 +20,7 @@ mod partial;
 mod sentinel;
 
 // --------------------------------------------------
-// local
+// re-exports
 // --------------------------------------------------
 pub use crate::prelude::*;
 pub use breakcond::*;
@@ -15,35 +28,55 @@ pub use frame::*;
 pub use partial::*;
 pub use sentinel::*;
 
-/// Decodes the value portion of a KLV field from stream-type `S`
+/// Decodes the value portion `V` of a KLV triple from stream `S`
 ///
-/// Encode counterpart: [`EncodeValue`](crate::traits::EncodeValue)
+/// Encode counterpart: [`crate::traits::EncodeValue`]
 ///
-/// Common examples of stream types include `&[u8]` and `&str`
+/// The `S` type parameter is the stream type (most commonly `&[u8]` or
+/// `&str`). The method advances `input` by exactly the bytes it consumes;
+/// on error the cursor position is unspecified (callers should restore a
+/// checkpoint if they need to retry).
 ///
-/// Automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv) trait which have decoders for every field covered.
+/// This trait is **automatically implemented** for structs deriving
+/// [`tinyklv::Klv`](crate::Klv) when every field has an associated decoder.
+/// It is also blanket-implemented for [`Vec<T>`] where `T: DecodeValue<S>`.
 ///
-/// For custom decoding functions, ***no need to use this trait***. Instead, please ensure the functions signature matches the following:
+/// For ad-hoc custom decoders passed directly to `#[klv(dec = ...)]`,
+/// you do **not** need to implement this trait. Instead, supply a free
+/// function with one of the following signatures:
 ///
-/// * fixed length:     `fn <name>(input: &mut S)   -> tinyklv::Result<Self>;`
-/// * variable length:  `fn <name>(len: usize)      -> impl Fn(&mut S) -> tinyklv::Result<Self>;`
+/// * Fixed-length field: `fn decoder(input: &mut S) -> tinyklv::Result<MyType>`
+/// * Variable-length field: `fn decoder(len: usize) -> impl Fn(&mut S) -> tinyklv::Result<MyType>`
 pub trait DecodeValue<S>: Sized
 where
     S: winnow::stream::Stream,
 {
+    /// Decodes `Self` by consuming bytes from `input`
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - The stream to decode from; advanced by the consumed bytes on success
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Self)` on success, or a [`winnow::error::ContextError`] describing the failure
     fn decode_value(input: &mut S) -> crate::Result<Self>;
 }
 
-/// Automatically implemented for `Vec<T>` where `T` implements [`DecodeValue`].
+/// [`Vec`] implementation of [`DecodeValue`]
 ///
-/// Semantics: repeated inner decode until failure. Appropriate for representing
-/// a repeated inner field in one parent KLV packet. For streaming a sequence of
-/// top-level packets across fragmented reads, use [`crate::Decoder`] instead.
+/// Decodes repeated `T` values until the inner decoder fails, collecting
+/// successes into a [`Vec`]. Appropriate for representing a repeated inner
+/// field within a single parent KLV packet body.
 ///
-/// Cursor safety: if inner `T::decode_value` fails without consuming any bytes,
-/// the outer cursor is rewound to the pre-attempt checkpoint so surrounding
-/// parsers see the un-eaten bytes. If inner consumed bytes then failed, the
-/// progress is committed and the loop stops.
+/// For streaming a sequence of top-level packets across fragmented reads
+/// (where a packet may straddle a buffer boundary), use [`crate::Decoder`]
+/// instead.
+///
+/// Cursor safety: if `T::decode_value` fails *without* consuming any bytes,
+/// the cursor is rewound to the pre-attempt checkpoint so surrounding parsers
+/// see the un-eaten bytes. If the inner decoder consumed bytes and then
+/// failed, that progress is committed and the loop stops.
 impl<S, T> DecodeValue<S> for Vec<T>
 where
     S: winnow::stream::Stream,
@@ -55,14 +88,11 @@ where
         loop {
             let before = input.eof_offset();
             let cp = input.checkpoint();
-            match T::decode_value(input) {
-                Ok(val) => acc.push(val),
-                Err(_) => {
-                    if input.eof_offset() == before {
-                        input.reset(&cp);
-                    }
-                    break;
+            if let Ok(val) = T::decode_value(input) { acc.push(val) } else {
+                if input.eof_offset() == before {
+                    input.reset(&cp);
                 }
+                break;
             }
         }
         Ok(acc)
