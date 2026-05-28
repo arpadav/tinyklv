@@ -32,7 +32,7 @@ use tinyklv::enc::binary as encb;   // binary encoders
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
-/// IoT environment reading transmitted over a UDP-like async channel
+/// `IoT` environment reading transmitted over a UDP-like async channel
 struct EnvReading {
     /// Sensor node identifier
     #[klv(

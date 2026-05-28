@@ -1,3 +1,16 @@
+//! Encode traits for KLV field values, key-length-value framing, and output types
+//!
+//! Core encode-side traits:
+//! * [`EncodeValue`] - encodes the value portion `V` of a KLV triple to owned output `O`
+//! * [`IntoKlv`] - prepends key and length bytes to an already-encoded value to form a
+//!   complete KLV triple
+//! * [`EncodeFrame`] - combines both steps: produces a full key-length-value byte sequence
+//! * [`EncodedOutput`] (re-exported from parent) - marker for owned byte-sequence types
+//!   that can serve as the output of an encoding operation
+//!
+//! Decode counterparts live in [`crate::traits::dec`].
+//!
+//! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
@@ -120,6 +133,11 @@ pub use super::*;
 /// ]);
 /// ```
 pub trait EncodeValue<O: EncodedOutput> {
+    /// Encodes the value portion of this KLV field into the owned output type `O`
+    ///
+    /// Does **not** prepend the key or length bytes. Use [`IntoKlv::into_klv`]
+    /// on the result to produce a complete KLV triple, or use [`EncodeFrame`]
+    /// to combine both steps.
     #[must_use = "encoded value is discarded; call `.into_klv(...)` or assign the result"]
     fn encode_value(&self) -> O;
 }
@@ -166,6 +184,18 @@ pub trait EncodeValue<O: EncodedOutput> {
 ///
 /// See [`EncodeValue`] for more information.
 pub trait IntoKlv<O: EncodedOutput> {
+    /// Prepends the encoded key and a length prefix to `self`, producing a complete KLV triple
+    ///
+    /// # Arguments
+    ///
+    /// * `encoded_key` - The already-encoded key bytes (e.g. `[0xFF, 0xBB]`); anything
+    ///   that implements `Into<O>` is accepted, including byte arrays and `Vec<u8>`
+    /// * `len_encoder` - A function that encodes a `usize` length as `O` (e.g.
+    ///   `tinyklv::codecs::binary::enc::u8_from_usize`)
+    ///
+    /// # Returns
+    ///
+    /// `O` containing `key_bytes || length_bytes || self_bytes`
     #[must_use = "the KLV-wrapped output is discarded; assign or extend into a buffer"]
     fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O;
 }
@@ -173,13 +203,12 @@ pub trait IntoKlv<O: EncodedOutput> {
 impl<O: EncodedOutput> IntoKlv<O> for O {
     #[inline(always)]
     fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
-        O::from_iter(
-            encoded_key
-                .into()
-                .into_iter()
-                .chain(len_encoder(self.as_ref().len()))
-                .chain(self),
-        )
+        encoded_key
+            .into()
+            .into_iter()
+            .chain(len_encoder(self.as_ref().len()))
+            .chain(self)
+            .collect()
     }
 }
 /// [`IntoKlv`] implementation for all types [`Option<O>`] that implement [`EncodedOutput<T>`]
@@ -191,7 +220,7 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
     fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
         match self {
             Some(x) => x.into_klv(encoded_key, len_encoder),
-            None => O::from_iter(std::iter::empty::<O::Element>()),
+            None => std::iter::empty::<O::Element>().collect(),
         }
     }
 }
@@ -323,6 +352,11 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 /// assert_eq!(mystruct_klv_1, mystruct_klv_2);
 /// ```
 pub trait EncodeFrame<O: EncodedOutput> {
+    /// Encodes `self` as a complete KLV frame: key bytes, length bytes, and value bytes concatenated
+    ///
+    /// Combines the steps of [`EncodeValue::encode_value`] and [`IntoKlv::into_klv`]
+    /// in a single call. The derive macro generates this implementation when both
+    /// `key` and `len` encoders are provided in the `#[klv(...)]` attribute.
     #[must_use = "encoded frame is discarded; assign or send the result"]
     fn encode_frame(&self) -> O;
 }

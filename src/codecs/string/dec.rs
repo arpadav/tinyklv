@@ -7,7 +7,15 @@
 //! Includes:
 //! * UTF-8 decoders (lossy and strict)
 //! * UTF-16 decoders (little-endian and big-endian)
-//! * ASCII decoder (gated behind the `ascii` feature)
+//! * ASCII string decoder (validates 7-bit ASCII)
+//! * ASCII-text *value* decoders: base-10 ints (`u8`..`u128`, `i8`..`i128`),
+//!   floats (`f32`/`f64`), base-16 ints (`hex_*`), and `alpha`/`digit`/
+//!   `alphanumeric` run validators
+//!
+//! ASCII-encoded values are length-bounded: they consume exactly `len` bytes
+//! and parse the whole field. The decimal integer decoders inherit winnow's
+//! `dec_uint`/`dec_int` grammar (bare `0` or a non-zero-led run; leading zeros
+//! rejected); the hex decoders tolerate leading zeros
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -19,6 +27,10 @@ use crate::prelude::*;
 // external
 // --------------------------------------------------
 use winnow::token::take;
+#[cfg(feature = "ascii")]
+use winnow::ascii::{alpha1, alphanumeric1, dec_int, dec_uint, digit1, float, hex_uint};
+#[cfg(feature = "ascii")]
+use winnow::combinator::{eof, terminated};
 
 #[inline(always)]
 /// Decodes a byte slice into a [`String`], using [`String::from_utf8_lossy`]
@@ -68,17 +80,12 @@ pub fn to_string_utf8(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String
 /// ```
 pub fn to_string_utf8_strict(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String> {
     move |input| {
-        let checkpoint = input.checkpoint();
-        match String::from_utf8(take(len).parse_next(input)?.to_vec()) {
-            Ok(s) => Ok(s),
-            Err(_) => Err(winnow::error::ContextError::new().add_context(
-                input,
-                &checkpoint,
-                winnow::error::StrContext::Label(
-                    "Unable to decode string using `String::from_utf8`",
-                ),
-            )),
-        }
+        take(len)
+            .try_map(|slice: &[u8]| core::str::from_utf8(slice).map(str::to_owned))
+            .context(winnow::error::StrContext::Label(
+                "Unable to decode bytes as UTF-8",
+            ))
+            .parse_next(input)
     }
 }
 
@@ -98,12 +105,12 @@ pub fn to_string_utf8_strict(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result
 /// ```
 pub fn to_string_utf16_le(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String> {
     move |input| {
-        let checkpoint = input.checkpoint();
         if !len.is_multiple_of(2) {
-            return Err(winnow::error::ContextError::new().add_context(
+            let checkpoint = input.checkpoint();
+            return Err(crate::__export::labeled_error(
                 input,
                 &checkpoint,
-                winnow::error::StrContext::Label("Invalid UTF-16 slice length"),
+                "Invalid UTF-16 slice length",
             ));
         }
         take(len)
@@ -141,12 +148,12 @@ pub fn to_string_utf16_le(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<St
 /// ```
 pub fn to_string_utf16_be(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String> {
     move |input| {
-        let checkpoint = input.checkpoint();
         if !len.is_multiple_of(2) {
-            return Err(winnow::error::ContextError::new().add_context(
+            let checkpoint = input.checkpoint();
+            return Err(crate::__export::labeled_error(
                 input,
                 &checkpoint,
-                winnow::error::StrContext::Label("Invalid UTF-16 slice length"),
+                "Invalid UTF-16 slice length",
             ));
         }
         take(len)
@@ -168,9 +175,13 @@ pub fn to_string_utf16_be(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<St
     }
 }
 
-#[inline(always)]
 #[cfg(feature = "ascii")]
-/// Decodes a byte slice into a [`String`], using [`ascii::AsciiString::from_ascii`]
+#[inline(always)]
+/// Decodes `len` bytes into a [`String`], validating that every byte is 7-bit ASCII
+///
+/// Rejects the field if any byte is `>= 0x80` (including multi-byte UTF-8), which
+/// distinguishes this from [`to_string_utf8`]. Since ASCII is a subset of UTF-8,
+/// the validated bytes convert to a [`String`] without loss
 ///
 /// # Example
 ///
@@ -188,16 +199,140 @@ pub fn to_string_utf16_be(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<St
 /// ```
 pub fn to_string_ascii(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String> {
     move |input| {
-        let checkpoint = input.checkpoint();
-        match ascii::AsciiString::from_ascii(take(len).parse_next(input)?) {
-            Ok(s) => Ok(s.to_string()),
-            Err(_) => Err(winnow::error::ContextError::new().add_context(
-                input,
-                &checkpoint,
-                winnow::error::StrContext::Label(
-                    "Unable to decode string using `ascii::AsciiString::from_ascii`",
-                ),
-            )),
-        }
+        take(len)
+            .verify(<[u8]>::is_ascii)
+            // bytes are verified ASCII above, so `from_utf8_lossy` never substitutes
+            .map(|slice: &[u8]| String::from_utf8_lossy(slice).into_owned())
+            .context(winnow::error::StrContext::Label("Unable to decode bytes as ASCII"))
+            .parse_next(input)
     }
 }
+
+/// Generates a length-bounded base-10 unsigned integer decoder
+macro_rules! ascii_uint {
+    ($ty:ty) => {
+        pastey::paste! {
+            #[cfg(feature = "ascii")]
+            #[inline(always)]
+            #[doc = concat!("Decodes exactly `len` ASCII bytes as a base-10 [`", stringify!($ty), "`].")]
+            #[doc = ""]
+            #[doc = "The entire `len`-byte field must be the decimal numeral; any"]
+            #[doc = "trailing or non-digit byte is rejected."]
+            pub fn [<$ty>](len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<$ty> {
+                move |input| {
+                    take(len)
+                        .and_then(terminated(dec_uint::<_, $ty, _>, eof))
+                        .parse_next(input)
+                }
+            }
+        }
+    };
+}
+
+/// Generates a length-bounded base-10 signed integer decoder
+macro_rules! ascii_int {
+    ($ty:ty) => {
+        pastey::paste! {
+            #[cfg(feature = "ascii")]
+            #[inline(always)]
+            #[doc = concat!("Decodes exactly `len` ASCII bytes as a base-10 [`", stringify!($ty), "`].")]
+            #[doc = ""]
+            #[doc = "Accepts an optional leading `+`/`-` sign. The entire `len`-byte"]
+            #[doc = "field must be the numeral; any trailing byte is rejected."]
+            pub fn [<$ty>](len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<$ty> {
+                move |input| {
+                    take(len)
+                        .and_then(terminated(dec_int::<_, $ty, _>, eof))
+                        .parse_next(input)
+                }
+            }
+        }
+    };
+}
+
+/// Generates a length-bounded floating-point decoder
+macro_rules! ascii_float {
+    ($ty:ty) => {
+        pastey::paste! {
+            #[cfg(feature = "ascii")]
+            #[inline(always)]
+            #[doc = concat!("Decodes exactly `len` ASCII bytes as an [`", stringify!($ty), "`].")]
+            #[doc = ""]
+            #[doc = "Accepts standard textual float syntax (sign, exponent, `inf`,"]
+            #[doc = "`nan`). The entire `len`-byte field must be the number."]
+            pub fn [<$ty>](len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<$ty> {
+                move |input| {
+                    take(len)
+                        .and_then(terminated(float::<_, $ty, _>, eof))
+                        .parse_next(input)
+                }
+            }
+        }
+    };
+}
+
+/// Generates a length-bounded base-16 unsigned integer decoder
+macro_rules! ascii_hex {
+    ($ty:ty) => {
+        pastey::paste! {
+            #[cfg(feature = "ascii")]
+            #[inline(always)]
+            #[doc = concat!("Decodes exactly `len` ASCII hex bytes as a [`", stringify!($ty), "`].")]
+            #[doc = ""]
+            #[doc = "Accepts upper- or lower-case hex digits. The entire `len`-byte"]
+            #[doc = "field must be hexadecimal; any trailing byte is rejected."]
+            pub fn [<hex_ $ty>](len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<$ty> {
+                move |input| {
+                    take(len)
+                        .and_then(terminated(hex_uint::<_, $ty, _>, eof))
+                        .parse_next(input)
+                }
+            }
+        }
+    };
+}
+
+/// Generates a length-bounded ASCII character-class run validator
+macro_rules! ascii_run {
+    ($name:ident, $parser:expr, $class:literal) => {
+        #[cfg(feature = "ascii")]
+        #[inline(always)]
+        #[doc = concat!("Decodes exactly `len` ASCII ", $class, " bytes into a [`String`].")]
+        #[doc = ""]
+        #[doc = concat!("Rejects the field unless every one of the `len` bytes is ", $class, ".")]
+        pub fn $name(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String> {
+            move |input| {
+                take(len)
+                    .and_then(terminated($parser, eof))
+                    // the run parser only matches ASCII, so `from_utf8_lossy` never substitutes
+                    .map(|run: &[u8]| String::from_utf8_lossy(run).into_owned())
+                    .parse_next(input)
+            }
+        }
+    };
+}
+
+ascii_uint!(u8);
+ascii_uint!(u16);
+ascii_uint!(u32);
+ascii_uint!(u64);
+ascii_uint!(u128);
+
+ascii_int!(i8);
+ascii_int!(i16);
+ascii_int!(i32);
+ascii_int!(i64);
+ascii_int!(i128);
+
+ascii_float!(f32);
+ascii_float!(f64);
+
+ascii_hex!(u8);
+ascii_hex!(u16);
+ascii_hex!(u32);
+ascii_hex!(u64);
+ascii_hex!(u128);
+
+ascii_run!(alpha, alpha1, "alphabetic");
+ascii_run!(digit, digit1, "decimal-digit");
+ascii_run!(alphanumeric, alphanumeric1, "alphanumeric");

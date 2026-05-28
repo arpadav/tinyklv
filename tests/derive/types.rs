@@ -1,8 +1,18 @@
 //! Shared domain types for advanced derive tests
 //!
-//! Realistic types that implement Decode + tinyklv::EncodeValue manually,
-//! used as field types in `#[derive(Klv)]` test structs throughout
-//! the `advanced_*` test modules
+//! Realistic types that implement `DecodeValue` + `EncodeValue` manually,
+//! used as field types in `#[derive(Klv)]` test structs throughout the
+//! `advanced_*` test modules.  Each type exercises a different wire layout:
+//! 1-byte discriminants (`Priority`, `OpMode`, `SensorKind`), 2-byte
+//! discriminants (`Color`, `Material`), packed composites (`Coordinate`,
+//! `Velocity`, `Attitude`, `Timestamp`, `StatusFlags`), and a nested
+//! composite (`SensorReading`).  Helper functions `decode_sensor_readings`
+//! and `encode_sensor_readings` demonstrate the `varlen` decoder signature
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
@@ -41,7 +51,7 @@ impl tinyklv::EncodeValue<Vec<u8>> for Color {
     }
 }
 /// User-side escape hatch for the `&` sigil: a `Copy` enum is cheapest to
-/// pass by value, so [`EncodeAs::Borrowed`] resolves to `Self`.
+/// pass by value, so [`EncodeAs::Borrowed`] resolves to `Self`
 impl tinyklv::EncodeAs for Color {
     type Borrowed<'a> = Color;
     #[inline(always)]
@@ -82,7 +92,7 @@ impl tinyklv::EncodeValue<Vec<u8>> for Priority {
     }
 }
 /// User-side escape hatch for the `&` sigil: a `Copy` enum is cheapest to
-/// pass by value, so [`EncodeAs::Borrowed`] resolves to `Self`.
+/// pass by value, so [`EncodeAs::Borrowed`] resolves to `Self`
 impl tinyklv::EncodeAs for Priority {
     type Borrowed<'a> = Priority;
     #[inline(always)]
@@ -351,6 +361,12 @@ pub fn decode_sensor_readings(
         Ok(readings)
     }
 }
+/// Encode a slice of sensor readings into a flat byte vector
+///
+/// Serialises each [`SensorReading`] in order using its `EncodeValue`
+/// implementation (1 kind byte + 4 value bytes = 5 bytes per reading) and
+/// concatenates the results.  Intended as the `enc =` counterpart to
+/// `decode_sensor_readings` inside a `varlen = true` field annotation
 pub fn encode_sensor_readings(v: &Vec<SensorReading>) -> Vec<u8> {
     let mut out = Vec::new();
     for r in v {

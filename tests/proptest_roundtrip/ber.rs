@@ -1,6 +1,20 @@
-use proptest::prelude::*;
+//! Property-based roundtrip tests for BER length and OID codecs
+//!
+//! Uses `proptest` to verify that the [`BerLength`] and [`BerOid`] typed
+//! struct APIs and the corresponding `enc::ber` / `dec::ber` function APIs
+//! satisfy roundtrip, structural (short-form / long-form MSB), non-empty
+//! output, and full-consume invariants across the entire `u32` value range
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::codecs::ber::{BerLength, BerOid};
 use tinyklv::prelude::*;
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use proptest::prelude::*;
 
 proptest! {
     #[test]
@@ -61,7 +75,7 @@ proptest! {
     fn ber_oid_roundtrip_u32_range(val in 1u32..u32::MAX) {
         let encoded = BerOid::new(val as u64).encode_value();
         let decoded = BerOid::<u64>::decode_value(&mut encoded.as_slice()).unwrap();
-        prop_assert_eq!(val as u64, decoded.value);
+        prop_assert_eq!(val as u64, decoded.value());
     }
 
     #[test]
@@ -109,7 +123,7 @@ proptest! {
 
 proptest! {
     #[test]
-    /// Function-API OID roundtrip: `enc::ber_oid` followed by `dec::ber_oid` recovers the original value.
+    /// Function-API OID roundtrip: `enc::ber_oid` followed by `dec::ber_oid` recovers the original value
     fn ber_oid_fn_api_roundtrip(val in 1u32..u32::MAX) {
         let encoded = tinyklv::enc::ber::ber_oid(val as u64);
         let decoded: u64 = tinyklv::dec::ber::ber_oid(&mut encoded.as_slice()).unwrap();

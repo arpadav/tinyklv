@@ -1,3 +1,14 @@
+//! Code generation for `DecodePartial` and `ResumePartial` trait implementations
+//!
+//! Provides two entry points consumed by [`super::gen_decode_impl`]:
+//!
+//! * [`gen_decode_partial_impl`] - emits the `DecodePartial` impl, which
+//!   allocates a default partial struct and delegates to `ResumePartial`
+//! * [`gen_resume_partial_impl`] - emits the `ResumePartial` impl, which
+//!   contains the main streaming decode loop: key/len parsing, break-condition
+//!   dispatch, value slicing, and per-field partial accumulation
+//!
+//! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
@@ -9,6 +20,23 @@ use crate::ast::{attr::MainContainer, types};
 // --------------------------------------------------
 use quote::quote;
 
+/// Generates the `DecodePartial` trait implementation for a container
+///
+/// The emitted impl delegates entirely to `ResumePartial::resume_partial`,
+/// constructing a default partial struct and handing control over. This keeps
+/// the `DecodePartial` impl thin and ensures fresh-start and mid-stream
+/// resumption share identical logic
+///
+/// # Arguments
+///
+/// * `name` - The container ident the impl is generated for
+/// * `partial_name` - The associated partial-packet struct ident
+/// * `stream` - The stream type (e.g. `&[u8]`) the impl is parameterised over
+/// * `generics` - Generic parameters from the original struct definition
+///
+/// # Returns
+///
+/// A [`proc_macro2::TokenStream`] containing the complete `DecodePartial` impl block
 pub(super) fn gen_decode_partial_impl(
     name: &syn::Ident,
     partial_name: &syn::Ident,
@@ -19,7 +47,6 @@ pub(super) fn gen_decode_partial_impl(
     // split generics
     // --------------------------------------------------
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
     // --------------------------------------------------
     // fresh-start dispatch: build a default partial struct
     // and hand off to resume entry
@@ -47,6 +74,30 @@ pub(super) fn gen_decode_partial_impl(
     }
 }
 
+/// Generates the `ResumePartial` trait implementation containing the main decode loop
+///
+/// The emitted impl is the core of the streaming decoder. On each call it:
+///
+/// 1. Checks for EOF and surfaces a `NeedMore` if no bytes are available
+/// 2. Parses the key, distinguishing zero-consumed truncation from key malformation
+/// 3. Parses the length; on failure rewinds and surfaces `NeedMore`
+/// 4. Dispatches to `break_condition`, handling `Proceed`, `Skip`, `Done`, and `Abort`
+/// 5. Optionally checks the parsed key against the known-key set when `deny_unknown_keys` is set
+/// 6. Slices the value bytes and dispatches to per-field decoders via the generated `match` arms
+/// 7. When the loop exits (`Done`), calls `Partial::finalize` and returns `Ready` or an error label
+///
+/// # Arguments
+///
+/// * `input` - The fully parsed container, providing field data and container attributes
+/// * `name` - The container ident the impl is generated for
+/// * `partial_name` - The associated partial-packet struct ident
+/// * `stream` - The stream type parameterising the impl
+/// * `key_decoder` - Token expression used to decode each TLV key from the stream
+/// * `len_decoder` - Token expression used to decode each TLV length from the stream
+///
+/// # Returns
+///
+/// A [`proc_macro2::TokenStream`] containing the complete `ResumePartial` impl block
 pub(super) fn gen_resume_partial_impl(
     input: &MainContainer,
     name: &syn::Ident,
@@ -59,13 +110,11 @@ pub(super) fn gen_resume_partial_impl(
     // split generics
     // --------------------------------------------------
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-
     // --------------------------------------------------
     // container attributes
     // --------------------------------------------------
     let debug_on = input.attrs.debug.is_some();
     let deny_unknown_keys = input.attrs.deny_unknown_keys.is_some();
-
     // --------------------------------------------------
     // * field assignment during decode
     // * known-keys precheck - only if deny_unknown_keys is enabled
@@ -84,20 +133,15 @@ pub(super) fn gen_resume_partial_impl(
     } else {
         (quote! {}, quote! {})
     };
-
     // --------------------------------------------------
     // debug statement after key/len parse
     // --------------------------------------------------
-    let debug_key_val = match debug_on {
-        true => {
-            let logger = constants::logger();
-            quote! {
-                #logger ("key: {}, len: {}", key, len);
-            }
+    let debug_key_val = if debug_on {
+        let logger = constants::logger();
+        quote! {
+            #logger ("key: {}, len: {}", key, len);
         }
-        false => quote! {},
-    };
-
+    } else { quote! {} };
     // --------------------------------------------------
     // return impl - this is main decoding logic
     // --------------------------------------------------
@@ -244,6 +288,8 @@ pub(super) fn gen_resume_partial_impl(
                                 ),
                             };
                         }
+                        // future `BreakConditionType` variants behave as `Proceed`
+                        _ => (),
                     }
                     #debug_key_val
                     #pre_check_gate

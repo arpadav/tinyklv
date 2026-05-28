@@ -18,10 +18,11 @@ macro_rules! encode_native {
     };
 
     ($ty:ty, $doc_native:literal, $doc_from_usize:literal) => {
-        paste::paste! {
+        pastey::paste! {
             #[doc = $doc_native]
             #[inline(always)]
-            pub fn [<$ty>](input: $ty) -> Vec<u8> {
+            #[must_use]
+            pub fn[<$ty>](input: $ty) -> Vec<u8> {
                 #[cfg(target_endian = "big")]
                 { input.to_be_bytes().to_vec() }
                 #[cfg(target_endian = "little")]
@@ -30,7 +31,8 @@ macro_rules! encode_native {
 
             #[doc = $doc_from_usize]
             #[inline(always)]
-            pub fn [<$ty _from_usize>](input: usize) -> Vec<u8> {
+            #[must_use]
+            pub fn[<$ty _from_usize>](input: usize) -> Vec<u8> {
                 #[cfg(target_endian = "big")]
                 { (input as $ty).to_be_bytes().to_vec() }
                 #[cfg(target_endian = "little")]
@@ -46,28 +48,32 @@ macro_rules! encode_endian {
     };
 
     ($ty:ty, $doc_be:literal, $doc_le:literal, $doc_be_usize:literal, $doc_le_usize:literal) => {
-        paste::paste! {
+        pastey::paste! {
             #[doc = $doc_be]
             #[inline(always)]
-            pub fn [<be_ $ty>](input: $ty) -> Vec<u8> {
+            #[must_use]
+            pub fn[<be_ $ty>](input: $ty) -> Vec<u8> {
                 input.to_be_bytes().to_vec()
             }
 
             #[doc = $doc_be_usize]
             #[inline(always)]
-            pub fn [<be_ $ty _from_usize>](input: usize) -> Vec<u8> {
+            #[must_use]
+            pub fn[<be_ $ty _from_usize>](input: usize) -> Vec<u8> {
                 (input as $ty).to_be_bytes().to_vec()
             }
 
             #[doc = $doc_le]
             #[inline(always)]
-            pub fn [<le_ $ty>](input: $ty) -> Vec<u8> {
+            #[must_use]
+            pub fn[<le_ $ty>](input: $ty) -> Vec<u8> {
                 input.to_le_bytes().to_vec()
             }
 
             #[doc = $doc_le_usize]
             #[inline(always)]
-            pub fn [<le_ $ty _from_usize>](input: usize) -> Vec<u8> {
+            #[must_use]
+            pub fn[<le_ $ty _from_usize>](input: usize) -> Vec<u8> {
                 (input as $ty).to_le_bytes().to_vec()
             }
         }
@@ -80,10 +86,11 @@ macro_rules! encode_lengthed {
     };
 
     ($ty:ty, $doc_be_lengthed:literal, $doc_le_lengthed:literal) => {
-        paste::paste! {
+        pastey::paste! {
             #[doc = $doc_be_lengthed]
             #[inline(always)]
-            pub fn [<be_ $ty _lengthed>](len: usize) -> impl Fn($ty) -> Vec<u8> {
+            #[must_use]
+            pub fn[<be_ $ty _lengthed>](len: usize) -> impl Fn($ty) -> Vec<u8> {
                 move |input: $ty| {
                     let bytes = input.to_be_bytes();
                     let start = bytes.len().saturating_sub(len);
@@ -96,7 +103,8 @@ macro_rules! encode_lengthed {
 
             #[doc = $doc_le_lengthed]
             #[inline(always)]
-            pub fn [<le_ $ty _lengthed>](len: usize) -> impl Fn($ty) -> Vec<u8> {
+            #[must_use]
+            pub fn[<le_ $ty _lengthed>](len: usize) -> impl Fn($ty) -> Vec<u8> {
                 move |input: $ty| {
                     let mut v = input.to_le_bytes().to_vec();
                     v.resize(len, 0);
@@ -1154,50 +1162,45 @@ mod tests {
                 x,
                 &dec::be_f32_lengthed(NBYTES_32)(&mut be_f32_lengthed(NBYTES_32)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_f32().iter().for_each(|x| {
             assert_eq!(
                 x,
                 &dec::le_f32_lengthed(NBYTES_32)(&mut le_f32_lengthed(NBYTES_32)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_f32().iter().for_each(|x| {
             random_usize(NBYTES_32 * NBYTES_32).iter().for_each(|y| {
-                match *y < NBYTES_32 {
-                    // there is information loss here, due to not enough bytes in the input
-                    true => {
-                        assert_eq!(
-                            be_f32_lengthed(*y)(*x),
-                            be_f32_lengthed(*y)(
-                                dec::be_f32_lengthed(*y)(&mut be_f32_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                        assert_eq!(
-                            le_f32_lengthed(*y)(*x),
-                            le_f32_lengthed(*y)(
-                                dec::le_f32_lengthed(*y)(&mut le_f32_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                    }
-                    // no information loss: output is either equal or padded with 0's / MaybeUninitialized slice
-                    false => {
-                        assert_eq!(
-                            x,
-                            &dec::be_f32_lengthed(*y)(&mut be_f32_lengthed(*y)(*x).as_slice())
+                if *y < NBYTES_32 {
+                    assert_eq!(
+                        be_f32_lengthed(*y)(*x),
+                        be_f32_lengthed(*y)(
+                            dec::be_f32_lengthed(*y)(&mut be_f32_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                        assert_eq!(
-                            x,
-                            &dec::le_f32_lengthed(*y)(&mut le_f32_lengthed(*y)(*x).as_slice())
+                        ),
+                    );
+                    assert_eq!(
+                        le_f32_lengthed(*y)(*x),
+                        le_f32_lengthed(*y)(
+                            dec::le_f32_lengthed(*y)(&mut le_f32_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                    }
+                        ),
+                    );
+                } else {
+                    assert_eq!(
+                        x,
+                        &dec::be_f32_lengthed(*y)(&mut be_f32_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
+                    assert_eq!(
+                        x,
+                        &dec::le_f32_lengthed(*y)(&mut le_f32_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
                 }
-            })
+            });
         });
 
         random_f64()
@@ -1214,50 +1217,45 @@ mod tests {
                 x,
                 &dec::be_f64_lengthed(NBYTES_64)(&mut be_f64_lengthed(NBYTES_64)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_f64().iter().for_each(|x| {
             assert_eq!(
                 x,
                 &dec::le_f64_lengthed(NBYTES_64)(&mut le_f64_lengthed(NBYTES_64)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_f64().iter().for_each(|x| {
             random_usize(NBYTES_64 * NBYTES_64).iter().for_each(|y| {
-                match *y < NBYTES_64 {
-                    // there is information loss here, due to not enough bytes in the input
-                    true => {
-                        assert_eq!(
-                            be_f64_lengthed(*y)(*x),
-                            be_f64_lengthed(*y)(
-                                dec::be_f64_lengthed(*y)(&mut be_f64_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                        assert_eq!(
-                            le_f64_lengthed(*y)(*x),
-                            le_f64_lengthed(*y)(
-                                dec::le_f64_lengthed(*y)(&mut le_f64_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                    }
-                    // no information loss: output is either equal or padded with 0's / MaybeUninitialized slice
-                    false => {
-                        assert_eq!(
-                            x,
-                            &dec::be_f64_lengthed(*y)(&mut be_f64_lengthed(*y)(*x).as_slice())
+                if *y < NBYTES_64 {
+                    assert_eq!(
+                        be_f64_lengthed(*y)(*x),
+                        be_f64_lengthed(*y)(
+                            dec::be_f64_lengthed(*y)(&mut be_f64_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                        assert_eq!(
-                            x,
-                            &dec::le_f64_lengthed(*y)(&mut le_f64_lengthed(*y)(*x).as_slice())
+                        ),
+                    );
+                    assert_eq!(
+                        le_f64_lengthed(*y)(*x),
+                        le_f64_lengthed(*y)(
+                            dec::le_f64_lengthed(*y)(&mut le_f64_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                    }
+                        ),
+                    );
+                } else {
+                    assert_eq!(
+                        x,
+                        &dec::be_f64_lengthed(*y)(&mut be_f64_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
+                    assert_eq!(
+                        x,
+                        &dec::le_f64_lengthed(*y)(&mut le_f64_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
                 }
-            })
+            });
         });
 
         random_u8()
@@ -1268,14 +1266,14 @@ mod tests {
                 x,
                 &dec::be_u8_lengthed(NBYTES_8)(&mut be_u8_lengthed(NBYTES_8)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_u8().iter().for_each(|x| {
             assert_eq!(
                 x,
                 &dec::le_u8_lengthed(NBYTES_8)(&mut le_u8_lengthed(NBYTES_8)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_u8().iter().for_each(|x| {
             random_usize(4).iter().for_each(|y| {
@@ -1287,7 +1285,7 @@ mod tests {
                     x,
                     &dec::le_u8_lengthed(*y)(&mut le_u8_lengthed(*y)(*x).as_slice()).unwrap()
                 );
-            })
+            });
         });
 
         random_u16()
@@ -1304,50 +1302,45 @@ mod tests {
                 x,
                 &dec::be_u16_lengthed(NBYTES_16)(&mut be_u16_lengthed(NBYTES_16)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_u16().iter().for_each(|x| {
             assert_eq!(
                 x,
                 &dec::le_u16_lengthed(NBYTES_16)(&mut le_u16_lengthed(NBYTES_16)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_u16().iter().for_each(|x| {
             random_usize(NBYTES_16 * NBYTES_16).iter().for_each(|y| {
-                match *y < NBYTES_16 {
-                    // there is information loss here, due to not enough bytes in the input
-                    true => {
-                        assert_eq!(
-                            be_u16_lengthed(*y)(*x),
-                            be_u16_lengthed(*y)(
-                                dec::be_u16_lengthed(*y)(&mut be_u16_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                        assert_eq!(
-                            le_u16_lengthed(*y)(*x),
-                            le_u16_lengthed(*y)(
-                                dec::le_u16_lengthed(*y)(&mut le_u16_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                    }
-                    // no information loss: output is either equal or padded with 0's / MaybeUninitialized slice
-                    false => {
-                        assert_eq!(
-                            x,
-                            &dec::be_u16_lengthed(*y)(&mut be_u16_lengthed(*y)(*x).as_slice())
+                if *y < NBYTES_16 {
+                    assert_eq!(
+                        be_u16_lengthed(*y)(*x),
+                        be_u16_lengthed(*y)(
+                            dec::be_u16_lengthed(*y)(&mut be_u16_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                        assert_eq!(
-                            x,
-                            &dec::le_u16_lengthed(*y)(&mut le_u16_lengthed(*y)(*x).as_slice())
+                        ),
+                    );
+                    assert_eq!(
+                        le_u16_lengthed(*y)(*x),
+                        le_u16_lengthed(*y)(
+                            dec::le_u16_lengthed(*y)(&mut le_u16_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                    }
+                        ),
+                    );
+                } else {
+                    assert_eq!(
+                        x,
+                        &dec::be_u16_lengthed(*y)(&mut be_u16_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
+                    assert_eq!(
+                        x,
+                        &dec::le_u16_lengthed(*y)(&mut le_u16_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
                 }
-            })
+            });
         });
 
         random_u32()
@@ -1364,50 +1357,45 @@ mod tests {
                 x,
                 &dec::be_u32_lengthed(NBYTES_32)(&mut be_u32_lengthed(NBYTES_32)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_u32().iter().for_each(|x| {
             assert_eq!(
                 x,
                 &dec::le_u32_lengthed(NBYTES_32)(&mut le_u32_lengthed(NBYTES_32)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_u32().iter().for_each(|x| {
             random_usize(NBYTES_32 * NBYTES_32).iter().for_each(|y| {
-                match *y < NBYTES_32 {
-                    // there is information loss here, due to not enough bytes in the input
-                    true => {
-                        assert_eq!(
-                            be_u32_lengthed(*y)(*x),
-                            be_u32_lengthed(*y)(
-                                dec::be_u32_lengthed(*y)(&mut be_u32_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                        assert_eq!(
-                            le_u32_lengthed(*y)(*x),
-                            le_u32_lengthed(*y)(
-                                dec::le_u32_lengthed(*y)(&mut le_u32_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                    }
-                    // no information loss: output is either equal or padded with 0's / MaybeUninitialized slice
-                    false => {
-                        assert_eq!(
-                            x,
-                            &dec::be_u32_lengthed(*y)(&mut be_u32_lengthed(*y)(*x).as_slice())
+                if *y < NBYTES_32 {
+                    assert_eq!(
+                        be_u32_lengthed(*y)(*x),
+                        be_u32_lengthed(*y)(
+                            dec::be_u32_lengthed(*y)(&mut be_u32_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                        assert_eq!(
-                            x,
-                            &dec::le_u32_lengthed(*y)(&mut le_u32_lengthed(*y)(*x).as_slice())
+                        ),
+                    );
+                    assert_eq!(
+                        le_u32_lengthed(*y)(*x),
+                        le_u32_lengthed(*y)(
+                            dec::le_u32_lengthed(*y)(&mut le_u32_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                    }
+                        ),
+                    );
+                } else {
+                    assert_eq!(
+                        x,
+                        &dec::be_u32_lengthed(*y)(&mut be_u32_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
+                    assert_eq!(
+                        x,
+                        &dec::le_u32_lengthed(*y)(&mut le_u32_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
                 }
-            })
+            });
         });
 
         random_u64()
@@ -1424,50 +1412,45 @@ mod tests {
                 x,
                 &dec::be_u64_lengthed(NBYTES_64)(&mut be_u64_lengthed(NBYTES_64)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_u64().iter().for_each(|x| {
             assert_eq!(
                 x,
                 &dec::le_u64_lengthed(NBYTES_64)(&mut le_u64_lengthed(NBYTES_64)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_u64().iter().for_each(|x| {
             random_usize(NBYTES_64 * NBYTES_64).iter().for_each(|y| {
-                match *y < NBYTES_64 {
-                    // there is information loss here, due to not enough bytes in the input
-                    true => {
-                        assert_eq!(
-                            be_u64_lengthed(*y)(*x),
-                            be_u64_lengthed(*y)(
-                                dec::be_u64_lengthed(*y)(&mut be_u64_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                        assert_eq!(
-                            le_u64_lengthed(*y)(*x),
-                            le_u64_lengthed(*y)(
-                                dec::le_u64_lengthed(*y)(&mut le_u64_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                    }
-                    // no information loss: output is either equal or padded with 0's / MaybeUninitialized slice
-                    false => {
-                        assert_eq!(
-                            x,
-                            &dec::be_u64_lengthed(*y)(&mut be_u64_lengthed(*y)(*x).as_slice())
+                if *y < NBYTES_64 {
+                    assert_eq!(
+                        be_u64_lengthed(*y)(*x),
+                        be_u64_lengthed(*y)(
+                            dec::be_u64_lengthed(*y)(&mut be_u64_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                        assert_eq!(
-                            x,
-                            &dec::le_u64_lengthed(*y)(&mut le_u64_lengthed(*y)(*x).as_slice())
+                        ),
+                    );
+                    assert_eq!(
+                        le_u64_lengthed(*y)(*x),
+                        le_u64_lengthed(*y)(
+                            dec::le_u64_lengthed(*y)(&mut le_u64_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                    }
+                        ),
+                    );
+                } else {
+                    assert_eq!(
+                        x,
+                        &dec::be_u64_lengthed(*y)(&mut be_u64_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
+                    assert_eq!(
+                        x,
+                        &dec::le_u64_lengthed(*y)(&mut le_u64_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
                 }
-            })
+            });
         });
 
         random_u128()
@@ -1486,7 +1469,7 @@ mod tests {
                     &mut be_u128_lengthed(NBYTES_128)(*x).as_slice()
                 )
                 .unwrap()
-            )
+            );
         });
         random_u128().iter().for_each(|x| {
             assert_eq!(
@@ -1495,43 +1478,38 @@ mod tests {
                     &mut le_u128_lengthed(NBYTES_128)(*x).as_slice()
                 )
                 .unwrap()
-            )
+            );
         });
         random_u128().iter().for_each(|x| {
             random_usize(NBYTES_128 * NBYTES_128).iter().for_each(|y| {
-                match *y < NBYTES_128 {
-                    // there is information loss here, due to not enough bytes in the input
-                    true => {
-                        assert_eq!(
-                            be_u128_lengthed(*y)(*x),
-                            be_u128_lengthed(*y)(
-                                dec::be_u128_lengthed(*y)(&mut be_u128_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                        assert_eq!(
-                            le_u128_lengthed(*y)(*x),
-                            le_u128_lengthed(*y)(
-                                dec::le_u128_lengthed(*y)(&mut le_u128_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                    }
-                    // no information loss: output is either equal or padded with 0's / MaybeUninitialized slice
-                    false => {
-                        assert_eq!(
-                            x,
-                            &dec::be_u128_lengthed(*y)(&mut be_u128_lengthed(*y)(*x).as_slice())
+                if *y < NBYTES_128 {
+                    assert_eq!(
+                        be_u128_lengthed(*y)(*x),
+                        be_u128_lengthed(*y)(
+                            dec::be_u128_lengthed(*y)(&mut be_u128_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                        assert_eq!(
-                            x,
-                            &dec::le_u128_lengthed(*y)(&mut le_u128_lengthed(*y)(*x).as_slice())
+                        ),
+                    );
+                    assert_eq!(
+                        le_u128_lengthed(*y)(*x),
+                        le_u128_lengthed(*y)(
+                            dec::le_u128_lengthed(*y)(&mut le_u128_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                    }
+                        ),
+                    );
+                } else {
+                    assert_eq!(
+                        x,
+                        &dec::be_u128_lengthed(*y)(&mut be_u128_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
+                    assert_eq!(
+                        x,
+                        &dec::le_u128_lengthed(*y)(&mut le_u128_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
                 }
-            })
+            });
         });
 
         random_i8()
@@ -1542,14 +1520,14 @@ mod tests {
                 x,
                 &dec::be_i8_lengthed(NBYTES_8)(&mut be_i8_lengthed(NBYTES_8)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_i8().iter().for_each(|x| {
             assert_eq!(
                 x,
                 &dec::le_i8_lengthed(NBYTES_8)(&mut le_i8_lengthed(NBYTES_8)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_i8().iter().for_each(|x| {
             random_usize(4).iter().for_each(|y| {
@@ -1561,7 +1539,7 @@ mod tests {
                     x,
                     &dec::le_i8_lengthed(*y)(&mut le_i8_lengthed(*y)(*x).as_slice()).unwrap()
                 );
-            })
+            });
         });
 
         random_i16()
@@ -1578,50 +1556,45 @@ mod tests {
                 x,
                 &dec::be_i16_lengthed(NBYTES_16)(&mut be_i16_lengthed(NBYTES_16)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_i16().iter().for_each(|x| {
             assert_eq!(
                 x,
                 &dec::le_i16_lengthed(NBYTES_16)(&mut le_i16_lengthed(NBYTES_16)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_i16().iter().for_each(|x| {
             random_usize(NBYTES_16 * NBYTES_16).iter().for_each(|y| {
-                match *y < NBYTES_16 {
-                    // there is information loss here, due to not enough bytes in the input
-                    true => {
-                        assert_eq!(
-                            be_i16_lengthed(*y)(*x),
-                            be_i16_lengthed(*y)(
-                                dec::be_i16_lengthed(*y)(&mut be_i16_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                        assert_eq!(
-                            le_i16_lengthed(*y)(*x),
-                            le_i16_lengthed(*y)(
-                                dec::le_i16_lengthed(*y)(&mut le_i16_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                    }
-                    // no information loss: output is either equal or padded with 0's / MaybeUninitialized slice
-                    false => {
-                        assert_eq!(
-                            x,
-                            &dec::be_i16_lengthed(*y)(&mut be_i16_lengthed(*y)(*x).as_slice())
+                if *y < NBYTES_16 {
+                    assert_eq!(
+                        be_i16_lengthed(*y)(*x),
+                        be_i16_lengthed(*y)(
+                            dec::be_i16_lengthed(*y)(&mut be_i16_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                        assert_eq!(
-                            x,
-                            &dec::le_i16_lengthed(*y)(&mut le_i16_lengthed(*y)(*x).as_slice())
+                        ),
+                    );
+                    assert_eq!(
+                        le_i16_lengthed(*y)(*x),
+                        le_i16_lengthed(*y)(
+                            dec::le_i16_lengthed(*y)(&mut le_i16_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                    }
+                        ),
+                    );
+                } else {
+                    assert_eq!(
+                        x,
+                        &dec::be_i16_lengthed(*y)(&mut be_i16_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
+                    assert_eq!(
+                        x,
+                        &dec::le_i16_lengthed(*y)(&mut le_i16_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
                 }
-            })
+            });
         });
 
         random_i32()
@@ -1638,50 +1611,45 @@ mod tests {
                 x,
                 &dec::be_i32_lengthed(NBYTES_32)(&mut be_i32_lengthed(NBYTES_32)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_i32().iter().for_each(|x| {
             assert_eq!(
                 x,
                 &dec::le_i32_lengthed(NBYTES_32)(&mut le_i32_lengthed(NBYTES_32)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_i32().iter().for_each(|x| {
             random_usize(NBYTES_32 * NBYTES_32).iter().for_each(|y| {
-                match *y < NBYTES_32 {
-                    // there is information loss here, due to not enough bytes in the input
-                    true => {
-                        assert_eq!(
-                            be_i32_lengthed(*y)(*x),
-                            be_i32_lengthed(*y)(
-                                dec::be_i32_lengthed(*y)(&mut be_i32_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                        assert_eq!(
-                            le_i32_lengthed(*y)(*x),
-                            le_i32_lengthed(*y)(
-                                dec::le_i32_lengthed(*y)(&mut le_i32_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                    }
-                    // no information loss: output is either equal or padded with 0's / MaybeUninitialized slice
-                    false => {
-                        assert_eq!(
-                            x,
-                            &dec::be_i32_lengthed(*y)(&mut be_i32_lengthed(*y)(*x).as_slice())
+                if *y < NBYTES_32 {
+                    assert_eq!(
+                        be_i32_lengthed(*y)(*x),
+                        be_i32_lengthed(*y)(
+                            dec::be_i32_lengthed(*y)(&mut be_i32_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                        assert_eq!(
-                            x,
-                            &dec::le_i32_lengthed(*y)(&mut le_i32_lengthed(*y)(*x).as_slice())
+                        ),
+                    );
+                    assert_eq!(
+                        le_i32_lengthed(*y)(*x),
+                        le_i32_lengthed(*y)(
+                            dec::le_i32_lengthed(*y)(&mut le_i32_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                    }
+                        ),
+                    );
+                } else {
+                    assert_eq!(
+                        x,
+                        &dec::be_i32_lengthed(*y)(&mut be_i32_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
+                    assert_eq!(
+                        x,
+                        &dec::le_i32_lengthed(*y)(&mut le_i32_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
                 }
-            })
+            });
         });
 
         random_i64()
@@ -1698,50 +1666,45 @@ mod tests {
                 x,
                 &dec::be_i64_lengthed(NBYTES_64)(&mut be_i64_lengthed(NBYTES_64)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_i64().iter().for_each(|x| {
             assert_eq!(
                 x,
                 &dec::le_i64_lengthed(NBYTES_64)(&mut le_i64_lengthed(NBYTES_64)(*x).as_slice())
                     .unwrap()
-            )
+            );
         });
         random_i64().iter().for_each(|x| {
             random_usize(NBYTES_64 * NBYTES_64).iter().for_each(|y| {
-                match *y < NBYTES_64 {
-                    // there is information loss here, due to not enough bytes in the input
-                    true => {
-                        assert_eq!(
-                            be_i64_lengthed(*y)(*x),
-                            be_i64_lengthed(*y)(
-                                dec::be_i64_lengthed(*y)(&mut be_i64_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                        assert_eq!(
-                            le_i64_lengthed(*y)(*x),
-                            le_i64_lengthed(*y)(
-                                dec::le_i64_lengthed(*y)(&mut le_i64_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                    }
-                    // no information loss: output is either equal or padded with 0's / MaybeUninitialized slice
-                    false => {
-                        assert_eq!(
-                            x,
-                            &dec::be_i64_lengthed(*y)(&mut be_i64_lengthed(*y)(*x).as_slice())
+                if *y < NBYTES_64 {
+                    assert_eq!(
+                        be_i64_lengthed(*y)(*x),
+                        be_i64_lengthed(*y)(
+                            dec::be_i64_lengthed(*y)(&mut be_i64_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                        assert_eq!(
-                            x,
-                            &dec::le_i64_lengthed(*y)(&mut le_i64_lengthed(*y)(*x).as_slice())
+                        ),
+                    );
+                    assert_eq!(
+                        le_i64_lengthed(*y)(*x),
+                        le_i64_lengthed(*y)(
+                            dec::le_i64_lengthed(*y)(&mut le_i64_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                    }
+                        ),
+                    );
+                } else {
+                    assert_eq!(
+                        x,
+                        &dec::be_i64_lengthed(*y)(&mut be_i64_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
+                    assert_eq!(
+                        x,
+                        &dec::le_i64_lengthed(*y)(&mut le_i64_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
                 }
-            })
+            });
         });
 
         random_i128()
@@ -1760,7 +1723,7 @@ mod tests {
                     &mut be_i128_lengthed(NBYTES_128)(*x).as_slice()
                 )
                 .unwrap()
-            )
+            );
         });
         random_i128().iter().for_each(|x| {
             assert_eq!(
@@ -1769,43 +1732,38 @@ mod tests {
                     &mut le_i128_lengthed(NBYTES_128)(*x).as_slice()
                 )
                 .unwrap()
-            )
+            );
         });
         random_i128().iter().for_each(|x| {
             random_usize(NBYTES_128 * NBYTES_128).iter().for_each(|y| {
-                match *y < NBYTES_128 {
-                    // there is information loss here, due to not enough bytes in the input
-                    true => {
-                        assert_eq!(
-                            be_i128_lengthed(*y)(*x),
-                            be_i128_lengthed(*y)(
-                                dec::be_i128_lengthed(*y)(&mut be_i128_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                        assert_eq!(
-                            le_i128_lengthed(*y)(*x),
-                            le_i128_lengthed(*y)(
-                                dec::le_i128_lengthed(*y)(&mut le_i128_lengthed(*y)(*x).as_slice())
-                                    .unwrap()
-                            ),
-                        );
-                    }
-                    // no information loss: output is either equal or padded with 0's / MaybeUninitialized slice
-                    false => {
-                        assert_eq!(
-                            x,
-                            &dec::be_i128_lengthed(*y)(&mut be_i128_lengthed(*y)(*x).as_slice())
+                if *y < NBYTES_128 {
+                    assert_eq!(
+                        be_i128_lengthed(*y)(*x),
+                        be_i128_lengthed(*y)(
+                            dec::be_i128_lengthed(*y)(&mut be_i128_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                        assert_eq!(
-                            x,
-                            &dec::le_i128_lengthed(*y)(&mut le_i128_lengthed(*y)(*x).as_slice())
+                        ),
+                    );
+                    assert_eq!(
+                        le_i128_lengthed(*y)(*x),
+                        le_i128_lengthed(*y)(
+                            dec::le_i128_lengthed(*y)(&mut le_i128_lengthed(*y)(*x).as_slice())
                                 .unwrap()
-                        );
-                    }
+                        ),
+                    );
+                } else {
+                    assert_eq!(
+                        x,
+                        &dec::be_i128_lengthed(*y)(&mut be_i128_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
+                    assert_eq!(
+                        x,
+                        &dec::le_i128_lengthed(*y)(&mut le_i128_lengthed(*y)(*x).as_slice())
+                            .unwrap()
+                    );
                 }
-            })
+            });
         });
     }
 }

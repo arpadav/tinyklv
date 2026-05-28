@@ -49,9 +49,8 @@ pub fn derive(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
     // --------------------------------------------------
     // get the parsed container for Klv derive
     // --------------------------------------------------
-    let cont = match MainContainer::from_ast(&cx, input) {
-        Some(cont) => cont,
-        None => return Err(cx.check().unwrap_err()),
+    let Some(cont) = MainContainer::from_ast(&cx, input) else {
+        return Err(cx.check().unwrap_err());
     };
     // --------------------------------------------------
     // check for errors

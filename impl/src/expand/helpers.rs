@@ -1,40 +1,93 @@
 //! Parsing utilities for proc-macro use in the [`tinyklv_impl`](crate) crate
+//!
+//! Provides small helper functions shared across the encode and decode
+//! code-generation passes: `Option` detection and inner-type extraction,
+//! lifetime insertion into reference types, the default `&[u8]` stream
+//! type constructor, and turbofish-notation type serialization
+//!
+//! Author: aav
 
-/// Returns the inner type of an [`Option`], if it exists
+/// Returns the inner type `T` of an `Option<T>`, if the type is an `Option`
+///
+/// Delegates to [`is_option_helper`]. Returns `None` if `ty` is not an
+/// `Option` or if the generic argument is not a plain type
+///
+/// # Arguments
+///
+/// * `ty` - The [`syn::Type`] to inspect
+///
+/// # Returns
+///
+/// `Some(&inner_ty)` when `ty` is `Option<inner_ty>`, or `None` otherwise
 pub(crate) fn unwrap_option_type(ty: &syn::Type) -> Option<&syn::Type> {
     is_option_helper(ty).1
 }
 
-/// Returns [`bool`] if [`syn::Type`] is an [`Option`]
+/// Returns `true` if a [`syn::Type`] is an `Option<T>`
+///
+/// Delegates to [`is_option_helper`], discarding the inner-type result
+///
+/// # Arguments
+///
+/// * `ty` - The [`syn::Type`] to inspect
+///
+/// # Returns
+///
+/// `true` when `ty` is `Option<..>`, `false` otherwise
 pub(crate) fn is_option(ty: &syn::Type) -> bool {
     is_option_helper(ty).0
 }
 
-/// Helps determine if a [`syn::Type`] is an [`Option`] or not, with some
-/// ancillary information. Used in [`crate::expand`]
+/// Determines whether a [`syn::Type`] is an `Option` and extracts its inner type
+///
+/// Checks whether `ty` is a single-segment path whose ident is `Option` and
+/// whose first generic argument is a type. Returns both the boolean flag and
+/// the optional inner type so callers can use either piece without a second pass
+///
+/// # Arguments
+///
+/// * `ty` - The [`syn::Type`] to inspect
+///
+/// # Returns
+///
+/// A tuple `(is_option, inner)` where `is_option` is `true` when `ty` is
+/// `Option<..>`, and `inner` is `Some(&T)` for `Option<T>` or `None` otherwise
 fn is_option_helper(ty: &syn::Type) -> (bool, Option<&syn::Type>) {
-    if let syn::Type::Path(syn::TypePath { path, .. }) = ty {
-        if let Some(syn::PathSegment {
+    if let syn::Type::Path(syn::TypePath { path, .. }) = ty
+        && let Some(syn::PathSegment {
             ident: id,
             arguments:
                 syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments { args, .. }),
         }) = path.segments.first()
-        {
-            if id == "Option" {
-                return (
-                    true,
-                    args.first().and_then(|arg| match arg {
-                        syn::GenericArgument::Type(inner_ty) => Some(inner_ty),
-                        _ => None,
-                    }),
-                );
-            }
-        }
+        && id == "Option"
+    {
+        return (
+            true,
+            args.first().and_then(|arg| match arg {
+                syn::GenericArgument::Type(inner_ty) => Some(inner_ty),
+                _ => None,
+            }),
+        );
     }
     (false, None)
 }
 
-/// Inserts a lifetime into a type
+/// Inserts a named lifetime into a [`syn::Type`], producing a reference type
+///
+/// When `ty` is already a reference (`&T` or `&mut T`), the lifetime is placed
+/// on the existing reference. When `ty` is any other form (e.g. `[u8]`, a path
+/// type), it is wrapped in a new shared reference `&'lifetime ty`. This is used
+/// to produce the stream-with-lifetime form required by `SeekSentinel` and
+/// `decoder()` function signatures
+///
+/// # Arguments
+///
+/// * `ty` - The base type to attach the lifetime to
+/// * `lifetime_char` - A token stream containing the lifetime token, e.g. `'z`
+///
+/// # Returns
+///
+/// A new [`syn::Type`] with the named lifetime attached
 pub(crate) fn insert_lifetime(
     ty: &syn::Type,
     lifetime_char: proc_macro2::TokenStream,
@@ -59,7 +112,15 @@ pub(crate) fn insert_lifetime(
     }
 }
 
-/// Default stream type, if not specified, for [`tinyklv`](crate) is `&[u8]`
+/// Constructs the default stream type `&[u8]` as a [`syn::Type`]
+///
+/// Used throughout the decode codegen when the container's `stream = ..`
+/// attribute is absent. Builds the type programmatically to avoid a
+/// `syn::parse_str` call that would require an `unwrap`
+///
+/// # Returns
+///
+/// A [`syn::Type`] equivalent to `&[u8]`
 pub(crate) fn u8_slice() -> syn::Type {
     syn::Type::Reference(syn::TypeReference {
         and_token: Default::default(),
@@ -108,7 +169,7 @@ pub(crate) fn u8_slice() -> syn::Type {
 /// During the decoding process, this is returned (see: [`crate::expand::gen_item_set`]):
 ///
 /// ```rust no_run ignore
-/// // parses from byte stream...
+/// // parses from byte stream..
 /// let klv_field_decoded = ...;
 /// // return once parsed
 /// return Ok(MyStruct {
@@ -117,35 +178,34 @@ pub(crate) fn u8_slice() -> syn::Type {
 /// });
 /// ```
 pub(crate) fn type2fish(ty: &syn::Type) -> proc_macro2::TokenStream {
-    match ty {
-        syn::Type::Path(type_path) => {
-            let mut tokens = proc_macro2::TokenStream::new();
-            for (i, segment) in type_path.path.segments.iter().enumerate() {
-                if i > 0 {
-                    tokens.extend(quote::quote!(::));
-                }
-                let ident = &segment.ident;
-                tokens.extend(quote::quote!(#ident));
-                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
-                    let args_tokens: Vec<proc_macro2::TokenStream> = args
-                        .args
-                        .iter()
-                        .map(|arg| {
-                            match arg {
-                                syn::GenericArgument::Type(ty) => type2fish(ty),
-                                // extend this match to handle other [`syn::GenericArgument`] variants as needed
-                                _ => quote::quote!(#arg),
-                            }
-                        })
-                        .collect();
-                    if !args_tokens.is_empty() {
-                        tokens.extend(quote::quote!(::<#(#args_tokens),*>));
-                    }
-                }
-            }
-            tokens
+    // extend this to handle other [`syn::Type`] variants as needed
+    let syn::Type::Path(type_path) = ty else {
+        return quote::quote!(#ty);
+    };
+    let mut tokens = proc_macro2::TokenStream::new();
+    for (i, segment) in type_path.path.segments.iter().enumerate() {
+        if i > 0 {
+            tokens.extend(quote::quote!(::));
         }
-        // extend this match to handle other [`syn::Type`] variants as needed
-        _ => quote::quote!(#ty),
+        let ident = &segment.ident;
+        tokens.extend(quote::quote!(#ident));
+        if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+            let args_tokens: Vec<proc_macro2::TokenStream> = args
+                .args
+                .iter()
+                .map(|arg| {
+                    if let syn::GenericArgument::Type(ty) = arg {
+                        type2fish(ty)
+                    } else {
+                        // extend this to handle other [`syn::GenericArgument`] variants as needed
+                        quote::quote!(#arg)
+                    }
+                })
+                .collect();
+            if !args_tokens.is_empty() {
+                tokens.extend(quote::quote!(::<#(#args_tokens),*>));
+            }
+        }
     }
+    tokens
 }

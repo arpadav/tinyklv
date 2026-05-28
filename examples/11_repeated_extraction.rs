@@ -76,7 +76,7 @@ fn main() {
     // and the results are concatenated into one byte stream
     let stream: Vec<u8> = waypoints
         .iter()
-        .flat_map(|w| w.encode_frame())
+        .flat_map(tinyklv::EncodeFrame::encode_frame)
         .collect();
 
     // decode - drain the stream one frame at a time until EOF

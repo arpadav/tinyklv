@@ -1,6 +1,6 @@
 [package]
 name = "tinyklv"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Arpad Voros <arpadav@gmail.com>"]
 license = "MIT"
 description = "The simplest Key-Length-Value (KLV) framework in Rust"
@@ -12,7 +12,7 @@ keywords = ["decode", "encode", "klv", "parsing", "tlv"]
 categories = ["development-tools", "encoding", "parsing"]
 edition = "2024"
 rust-version = "1.95"
-exclude = ["TODO.md", "book/", "examples", "tests"]
+exclude = ["TODO.md", "book/", "examples", "tests", "benches"]
 publish = true
 
 [workspace]
@@ -35,28 +35,65 @@ name = "proptest_roundtrip"
 path = "tests/proptest_roundtrip/main.rs"
 
 [dependencies]
-ascii = { version = "1.1.0", optional = true }
 chrono = { version = "0.4.44", optional = true }
 memchr = "2.8.0"
 num-traits = "0.2.19"
-paste = "1.0.15"
-tinyklv-impl = { path = "impl", version = "0.1.0" }
+pastey = "0.2.3"
+tinyklv-impl = { path = "impl", version = "0.1.2" }
 tracing = { version = "0.1.44", optional = true }
-winnow = { version = "1.0.2", features = ["parser", "simd"] }
+winnow = { version = "1.0.2", features = ["binary", "parser", "simd"] }
 
 [dev-dependencies]
+criterion = "^0.8"
 proptest = "1.11"
 rand = "^0.10"
 rand_distr = "^0.6"
+serde = { version = "^1", features = ["derive"] }
+serde_bytes = "^0.11"
+serde_klv = "^0.3"
+tlv_parser = "^0.10"
 tokio = { version = "^1.52", features = ["macros", "rt-multi-thread", "sync"] }
+
+[[bench]]
+name = "suite"
+harness = false
 
 [features]
 default = []
+ascii = ["winnow/ascii"]
 full = ["ascii", "chrono"]
 tracing = ["dep:tracing", "tinyklv-impl/tracing"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+cast_possible_truncation = "allow"    # wire-format width casts
+cast_possible_wrap = "allow"          # wire-format width casts
+cast_sign_loss = "allow"              # wire-format width casts
+cast_lossless = "allow"               # wire-format width casts
+inline_always = "allow"               # hot-path inlining convention
+wildcard_imports = "allow"            # prelude glob is the import surface
+float_cmp = "allow"                   # exact-roundtrip float eq in tests
+must_use_candidate = "allow"          # must_use applied deliberately
+module_name_repetitions = "allow"     # module-qualified names intentional
+too_many_lines = "allow"              # codegen/decode fns
+needless_for_each = "allow"           # for_each idiomatic in tests
+missing_errors_doc = "allow"          # decoders all return Result
+missing_panics_doc = "allow"          # decoders all return Result
+similar_names = "allow"               # short domain names (lat/lon)
+cast_precision_loss = "allow"         # scale/precision casts in codecs
+unreadable_literal = "allow"          # numeric test fixtures
+iter_not_returning_iterator = "allow" # bounded Decoder iterator surface
+into_iter_without_iter = "allow"      # bounded Decoder iterator surface
+double_must_use = "allow"             # deliberate on must_use returns
+manual_let_else = "allow"             # test/example exemption
+struct_field_names = "allow"          # test/example exemption
+many_single_char_names = "allow"      # single-char loop vars in tests
+trivially_copy_pass_by_ref = "allow"  # small-Copy-by-ref in tests
+match_same_arms = "allow"             # explicit match in tests
+doc_markdown = "allow"                # doc-backtick nits in tests
 
 [profile.dev]
 opt-level = 0

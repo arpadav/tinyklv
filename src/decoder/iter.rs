@@ -1,3 +1,16 @@
+//! Iterator adapters and the [`DecodeIterError`] type for [`crate::decoder::Decoder`]
+//!
+//! Contains:
+//! * [`DecodeIterError`] - the error type surfaced when a decode step in the
+//!   iterator loop cannot complete (EOF, need-more-bytes, or malformed data)
+//! * [`DecoderIter`] - a borrowing iterator over a [`crate::decoder::Decoder`]
+//!   that yields fully-decoded values
+//! * [`Iterator`] impl for [`DecoderIter`]
+//! * [`IntoIterator`] impl for `&mut Decoder`
+//! * [`crate::traits::PartialIterator`] impls for both owned and `&mut`
+//!   [`crate::decoder::Decoder`] specialised to `&[u8]` streams
+//!
+//! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
@@ -9,11 +22,12 @@ use crate::traits::{DecodePartial, Partial, PartialIterator, ResumePartial, Seek
 // --------------------------------------------------
 use winnow::error::ContextError;
 
-/// Wrap a `&'static str` label into a [`ContextError`] using the
-/// supplied input slice as the position context. Single helper used by
-/// both [`Decoder::next_resume`], [`Decoder::next_fresh`], and
-/// [`Decoder::finish`] so the label-to-error translation lives in one
-/// place
+/// Wraps a `&'static str` label into a [`ContextError`] anchored at the supplied input slice
+///
+/// Single construction path used by [`Decoder::next_resume`], [`Decoder::next_fresh`],
+/// and [`Decoder::finish`] so that label-to-error translation is consistent
+/// and does not repeat boilerplate at each call site. The `$input` expression
+/// supplies the position context for winnow's error reporting machinery.
 macro_rules! label_to_context_error {
     ($input:expr, $label:expr) => {{
         use winnow::stream::Stream as _;
@@ -28,24 +42,35 @@ macro_rules! label_to_context_error {
 }
 
 #[derive(Debug)]
-/// Boundary error type surfaced by [`Decoder::next`]
+#[non_exhaustive]
+/// Error type returned by [`Decoder::next`] and the [`crate::traits::PartialIterator`] methods
 ///
-/// These will all be coerced into the loop stopping. The decoder
-/// must be fed more bytes before the loop can continue
+/// All three variants cause the iterator loop to yield `None` (or for the
+/// methods to return `Err`). The caller's response differs per variant:
+///
+/// * `Eof` - no bytes remain; call [`Decoder::feed`] with new data or stop the loop
+/// * `NeedMore` - bytes remain but the current packet is incomplete; call
+///   [`Decoder::feed`] with additional bytes then resume iteration
+/// * `Malformed` - the framed bytes could not be decoded; the [`Decoder`]
+///   has already drained the offending bytes to guarantee forward progress,
+///   so iteration may safely continue after this error
 pub enum DecodeIterError {
-    /// The buffer is empty and no more bytes are available
+    /// The buffer is empty and no more bytes are available to decode
     Eof,
 
-    /// The packet is not done decoding yet - incompete
+    /// The current packet is incomplete; more bytes must be fed before decoding can finish
     NeedMore,
 
-    /// The bytes present in the buffer could not be parsed as the target
-    /// type. The [`Decoder`] has already advanced past the offending bytes
+    /// The bytes present in the buffer could not be parsed as the target type
+    ///
+    /// The [`Decoder`] has already advanced past the offending bytes
     /// (drained the framed packet, or the consumed prefix in resume mode)
     /// to guarantee forward progress on subsequent calls
     Malformed(ContextError),
 }
+/// [`DecodeIterError`] implementation of [`std::error::Error`]
 impl std::error::Error for DecodeIterError {}
+/// [`DecodeIterError`] implementation of [`core::fmt::Display`]
 impl core::fmt::Display for DecodeIterError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
@@ -56,7 +81,14 @@ impl core::fmt::Display for DecodeIterError {
     }
 }
 
-/// An [`Iterator`] over [`Decoder`] results
+/// A borrowing iterator adapter that yields decoded values from a [`Decoder`]
+///
+/// Created by [`Decoder::iter`] or via the [`IntoIterator`] impl on
+/// `&mut Decoder`. Yields `T` (the `Partial::Final` associated type) on each
+/// `next` call until the buffer is exhausted or a packet is incomplete.
+///
+/// Stopping iteration does not discard buffered bytes; call [`Decoder::feed`]
+/// to add more data then iterate again to continue decoding.
 pub struct DecoderIter<'a, P, S> {
     pub(super) dec: &'a mut Decoder<P, S>,
 }
@@ -84,7 +116,7 @@ where
     ///
     /// * **Fresh mode** (`self.partial.is_none()`): scan for the sentinel
     ///   + length, run `decode_partial` on the framed body. Same
-    ///     shortfall semantics as before: a NeedMore from a body whose
+    ///     shortfall semantics as before: a `NeedMore` from a body whose
     ///     length was already declared is malformed
     fn next(&mut self) -> Option<Self::Item> {
         if self.dec.partial.is_some() {
@@ -109,6 +141,10 @@ where
 }
 
 /// `&mut` [`Decoder`] implementation of [`PartialIterator`] for [`&[u8]`]
+///
+/// Delegates both methods to the owned [`Decoder`] impl via double-deref so
+/// that a mutable reference to a decoder can be used anywhere an owned
+/// decoder is expected without moving it.
 impl<'a, P, T> PartialIterator<P> for &mut Decoder<P, &'a [u8]>
 where
     P: Partial<Final = T> + Default,
@@ -132,7 +168,18 @@ where
     for<'a> T:
         DecodePartial<&'a [u8], Partial = P> + ResumePartial<&'a [u8]> + SeekSentinel<&'a [u8]>,
 {
-    /// Resume-mode entry
+    /// Resumes decoding a packet that was previously interrupted with [`crate::decoder::Packet::NeedMore`]
+    ///
+    /// Pops the in-flight partial from `self.partial`, runs
+    /// [`crate::traits::ResumePartial::resume_partial`] against the buffered bytes,
+    /// then drains the consumed prefix from the buffer regardless of outcome.
+    ///
+    /// Returns `Ok(T)` when the packet is now complete, or one of:
+    /// * [`DecodeIterError::Eof`] - buffer is empty and no partial is set
+    /// * [`DecodeIterError::NeedMore`] - the partial made progress but still
+    ///   needs more bytes; the updated partial is re-stored in `self.partial`
+    /// * [`DecodeIterError::Malformed`] - decoding failed; the consumed bytes
+    ///   are drained to advance the stream past the bad data
     fn next_resume(&mut self) -> Result<T, DecodeIterError> {
         // --------------------------------------------------
         // early exit - partial should never be none here
@@ -180,7 +227,21 @@ where
         }
     }
 
-    /// Fresh-mode entry
+    /// Seeks the next sentinel boundary and decodes the framed packet body
+    ///
+    /// Runs [`crate::traits::SeekSentinel::seek_sentinel`] to locate and
+    /// consume the packet framing (sentinel + length prefix), then calls
+    /// [`crate::traits::DecodePartial::decode_partial`] on the framed body
+    /// slice. The consumed bytes (framing + body) are drained from the buffer.
+    ///
+    /// A `NeedMore` result from `decode_partial` inside fresh mode means the
+    /// framing declared a body length that the parser did not fully consume,
+    /// which is treated as malformed rather than resumable (the body was already
+    /// framed to an exact length).
+    ///
+    /// Returns `Ok(T)` when decoding succeeds, or one of:
+    /// * [`DecodeIterError::Eof`] - buffer is empty
+    /// * [`DecodeIterError::Malformed`] - sentinel seek or body decode failed
     fn next_fresh(&mut self) -> Result<T, DecodeIterError> {
         // --------------------------------------------------
         // early exit

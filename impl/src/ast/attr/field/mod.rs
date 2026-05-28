@@ -1,19 +1,30 @@
+//! Parsing of field-level `#[klv(..)]` attributes
+//!
+//! Defines [`Field`] (the raw parsed form of a single struct field's KLV
+//! annotations) and [`FieldParsed`] (the validated form that guarantees a
+//! `key` literal is present). Container-level `default(..)` xcoders are
+//! applied here when a field does not carry its own explicit encoder/decoder
+//! The `trait_fallback` opt-in is also resolved at this stage, injecting
+//! placeholder paths that the expand phase replaces with fully-qualified
+//! `<T as EncodeValue<..>>::encode_value` / `<T as DecodeValue<..>>::decode_value` calls
+//!
+//! Author: aav
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
 mod xcoder;
 
 // --------------------------------------------------
+// local
+// --------------------------------------------------
+use crate::ast::attr::container::default::DefaultXcoder;
+use xcoder::FieldXcoder;
+
+// --------------------------------------------------
 // external
 // --------------------------------------------------
 use quote::ToTokens;
 use std::collections::HashMap;
-use xcoder::FieldXcoder;
-
-// --------------------------------------------------
-// local
-// --------------------------------------------------
-use crate::ast::attr::container::default::DefaultXcoder;
 use crate::ast::types::{
     DefaultValue, LatebindXcoder, SiguledXcoder, XcoderLike, XcoderSigil, XcoderType,
 };
@@ -21,13 +32,40 @@ use crate::symbol;
 use crate::Ctxt;
 
 #[derive(Debug)]
-/// Represents field attribute information
+/// Raw parsed form of a single struct field's `#[klv(..)]` annotations
+///
+/// Holds a [`FieldXcoder`] that may have been enriched with container-level
+/// `default(..)` xcoders or `trait_fallback` placeholders. Fields with no
+/// `#[klv(..)]` attribute at all produce `None` from [`Field::from_ast`]
 pub(crate) struct Field {
+    /// The combined key, encoder, decoder, and auxiliary settings for this field
     pub contents: FieldXcoder,
 }
 /// [`Field`] implementation
 impl Field {
-    /// Extract out the `#[klv(...)]` attributes from a struct field.
+    /// Parses the `#[klv(..)]` attributes from a single struct field
+    ///
+    /// Scans every attribute on `field` for the top-level `klv` attribute name,
+    /// collects all [`FieldXcoder`] entries, merges duplicates (emitting errors
+    /// to `cx` for true conflicts), applies container-level `default(..)` xcoders
+    /// for fields whose type matches, and injects `trait_fallback` placeholders
+    /// when the opt-in flag is set and no explicit xcoder was found. Returns
+    /// `None` when the field carries no `#[klv(..)]` attribute at all
+    ///
+    /// # Arguments
+    ///
+    /// * `cx` - Error accumulation context for recording diagnostics
+    /// * `field` - The syn field whose attributes are parsed
+    /// * `name` - The field ident, used as a span anchor for error messages
+    /// * `container_defaults` - Per-type default xcoders from the container annotation
+    /// * `allow_unimplemented_encode` - When `true`, missing encoders do not produce errors
+    /// * `allow_unimplemented_decode` - When `true`, missing decoders do not produce errors
+    /// * `trait_fallback` - When `true`, inject trait-impl placeholders for missing xcoders
+    ///
+    /// # Returns
+    ///
+    /// `Some(Field)` if the field carried at least one `#[klv(..)]` attribute, or
+    /// `None` if no KLV annotation was found
     pub fn from_ast(
         cx: &Ctxt,
         field: &syn::Field,
@@ -57,7 +95,7 @@ impl Field {
             // --------------------------------------------------
             match attr.meta {
                 syn::Meta::List(ref contents) => {
-                    all_field_xcoders.push(FieldXcoder::from(contents))
+                    all_field_xcoders.push(FieldXcoder::from(contents));
                 }
                 _ => {
                     cx.error_spanned_by(attr, err!(MalformedField));
@@ -199,7 +237,7 @@ impl Field {
             }
             if let (Some(default_dec), false) = (&default.dec, keep_dec_none) {
                 field_xcoder.dec = Some(default_dec.clone());
-                field_xcoder.varlen = default.var.clone();
+                field_xcoder.varlen.clone_from(&default.var);
             }
         }
 
@@ -235,8 +273,7 @@ impl Field {
             let varlen_set = field_xcoder
                 .varlen
                 .as_ref()
-                .map(|v| v.value)
-                .unwrap_or(false);
+                .is_some_and(|v| v.value);
             if varlen_set {
                 cx.error_spanned_by(
                     name.clone(),
@@ -250,7 +287,6 @@ impl Field {
                 field_xcoder.fallback_dec = true;
             }
         }
-
         // --------------------------------------------------
         // unimplemented encode error - only fires if fallback did not fill
         // --------------------------------------------------
@@ -260,7 +296,6 @@ impl Field {
                 err!(UnimplementedEncode(name, typ_maybe_unwrapped)),
             );
         }
-
         // --------------------------------------------------
         // unimplemented decode error - only fires if fallback did not fill
         // --------------------------------------------------
@@ -270,7 +305,6 @@ impl Field {
                 err!(UnimplementedDecode(name, typ_maybe_unwrapped)),
             );
         }
-
         // --------------------------------------------------
         // return
         // --------------------------------------------------
@@ -280,29 +314,61 @@ impl Field {
     }
 }
 
-/// A parsed field
+/// Validated form of a single field's KLV attributes, with a guaranteed key literal
+///
+/// Produced by [`FieldParsed::from_field`] once the presence of `key` has been
+/// confirmed. Flags `fallback_enc` and `fallback_dec` signal that the encoder/decoder
+/// path stored in `enc`/`dec` is a placeholder to be replaced by a fully-qualified
+/// trait call during expansion, rather than a user-supplied function path
 pub(crate) struct FieldParsed {
+    /// The key literal used to identify this field in the KLV stream
     pub key: syn::Lit,
+
+    /// The encoder xcoder, if one was resolved (explicit, default, or fallback)
     pub enc: Option<SiguledXcoder>,
+
+    /// The decoder xcoder, if one was resolved (explicit, default, or fallback)
     pub dec: Option<XcoderType>,
+
+    /// Whether the decoder expects a length argument (variable-length fields)
     pub var: Option<syn::LitBool>,
+
+    /// Optional post-decode transformation applied via `.map(..)`
     pub latebind: Option<LatebindXcoder>,
+
+    /// Field-level default value emitted when no value is decoded for this field
     pub default: Option<DefaultValue>,
+
+    /// `true` when `enc` holds a trait-fallback placeholder rather than a real path
     pub fallback_enc: bool,
+
+    /// `true` when `dec` holds a trait-fallback placeholder rather than a real path
     pub fallback_dec: bool,
 }
 /// [`FieldParsed`] implementation
 impl FieldParsed {
+    /// Converts a raw [`Field`] into a validated [`FieldParsed`]
+    ///
+    /// Checks that a key literal is present in `f.contents`, records a
+    /// missing-key error in `cx` if absent, and projects all remaining
+    /// xcoder settings into the returned struct
+    ///
+    /// # Arguments
+    ///
+    /// * `cx` - Error accumulation context for recording the missing-key diagnostic
+    /// * `sf` - The syn field, used as a span anchor for error messages
+    /// * `f` - The raw parsed field to validate and project
+    ///
+    /// # Returns
+    ///
+    /// `Some(FieldParsed)` when a key is present, or `None` if the key was absent
     pub fn from_field(cx: &Ctxt, sf: &syn::Field, f: &Field) -> Option<FieldParsed> {
         // --------------------------------------------------
         // check for required fields
         // --------------------------------------------------
-        let key = match &f.contents.key {
-            Some(k) => k,
-            None => {
-                cx.error_spanned_by(sf.ident.clone(), err!(MissingKeyInField));
-                return None;
-            }
+        let Some(key) = &f.contents.key else {
+            cx.error_spanned_by(sf.ident.clone(), err!(MissingKeyInField));
+            return None;
         };
         // --------------------------------------------------
         // return parsed field

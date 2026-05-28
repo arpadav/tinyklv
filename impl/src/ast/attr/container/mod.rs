@@ -1,3 +1,11 @@
+//! Parsing of container-level `#[klv(..)]` attributes
+//!
+//! Defines [`Container`] (the raw parsed form of every recognised attribute on
+//! a `#[derive(Klv)]` struct) and [`ContainerParsed`] (the validated form that
+//! guarantees `key` and `len` are both present). Sub-modules handle the
+//! individual attribute parsers: `default`, `keylen`, `sentinel`, and `stream`
+//!
+//! Author: aav
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
@@ -21,28 +29,67 @@ use stream::Stream;
 // --------------------------------------------------
 use quote::ToTokens;
 use std::collections::HashMap;
-use syn::punctuated::Punctuated;
-use syn::Token;
+use syn::{punctuated::Punctuated, Token};
 
 #[derive(Debug)]
-/// Represents struct attribute information
+/// Raw parsed form of every recognised container-level `#[klv(..)]` attribute
+///
+/// All fields are `Option` because the attribute parser accumulates whatever it
+/// finds and leaves validation to [`ContainerParsed::from_cont`]. Fields that
+/// must be present for a valid derive (e.g. `key`, `len`) will produce errors
+/// in the [`Ctxt`] if absent
 pub(crate) struct Container {
+    /// The stream type used for decoding, e.g. `&[u8]` (defaults when absent)
     pub stream: Option<syn::Type>,
+
+    /// The recognition sentinel literal, e.g. `b"HEARTBEAT"`
     pub sentinel: Option<syn::Lit>,
+
+    /// The key encoder/decoder xcoder pair
     pub key: Option<Xcoder>,
+
+    /// The length encoder/decoder xcoder pair
     pub len: Option<Xcoder>,
+
+    /// Per-type default xcoders keyed by the Rust type they apply to
     pub defaults: HashMap<syn::Type, DefaultXcoder>,
+
+    /// Whether debug logging is enabled for this container
     pub debug: Option<syn::Path>,
+
+    /// Whether unknown keys cause a decode error rather than being silently skipped
     pub deny_unknown_keys: Option<syn::Path>,
+
+    /// Whether fields with no decoder are allowed (suppresses missing-decoder errors)
     pub allow_unimplemented_decode: Option<syn::Path>,
+
+    /// Whether fields with no encoder are allowed (suppresses missing-encoder errors)
     pub allow_unimplemented_encode: Option<syn::Path>,
+
+    /// Whether to fall back to [`tinyklv::EncodeValue`]/[`tinyklv::DecodeValue`] trait
+    /// impls for fields with no explicit xcoder
     pub trait_fallback: Option<syn::Path>,
 }
 /// [`Container`] implementation
 impl Container {
-    /// Extract out the `#[klv(...)]` attributes from a container.
+    /// Parses the `#[klv(..)]` attributes from a container derive input
     ///
-    /// Only container implemented is struct.
+    /// Iterates over all attributes on `item`, filters to those matching the
+    /// top-level `klv` attribute name, and dispatches each nested meta entry
+    /// to the appropriate sub-parser. Validation errors (unknown attributes,
+    /// duplicate entries, wrong meta form) are pushed to `cx` rather than
+    /// returned, so that as many diagnostics as possible are gathered in one
+    /// pass. Only struct containers are supported; enum support is not implemented
+    ///
+    /// # Arguments
+    ///
+    /// * `cx` - Error accumulation context used to record diagnostics
+    /// * `item` - The full derive input whose attributes are to be parsed
+    ///
+    /// # Returns
+    ///
+    /// A [`Container`] populated with whatever valid attributes were found; any
+    /// errors are deferred to [`cx`] for the caller to check via [`Ctxt::check`]
     pub fn from_ast(cx: &Ctxt, item: &syn::DeriveInput) -> Self {
         // --------------------------------------------------
         // init
@@ -57,7 +104,6 @@ impl Container {
         let mut allow_unimplemented_decode = None;
         let mut allow_unimplemented_encode = None;
         let mut trait_fallback = None;
-
         // --------------------------------------------------
         // loop through attrs
         // --------------------------------------------------
@@ -68,7 +114,6 @@ impl Container {
             if attr.path() != symbol::KLV_ATTR {
                 continue;
             }
-
             // --------------------------------------------------
             // split using comma
             // --------------------------------------------------
@@ -80,7 +125,6 @@ impl Container {
                         continue;
                     }
                 };
-
             // --------------------------------------------------
             // loop through comma blocks
             // --------------------------------------------------
@@ -96,7 +140,7 @@ impl Container {
                             None => {
                                 key = Xcoder::try_from(&list)
                                     .map_err(|err| cx.syn_error(err))
-                                    .ok()
+                                    .ok();
                             }
                         },
 
@@ -105,7 +149,7 @@ impl Container {
                             None => {
                                 len = Xcoder::try_from(&list)
                                     .map_err(|err| cx.syn_error(err))
-                                    .ok()
+                                    .ok();
                             }
                         },
 
@@ -159,7 +203,7 @@ impl Container {
                             err!(ExpectedAsNameValue(symbol::SENTINEL)),
                         ),
                         symbol::DEBUG => {
-                            cx.error_spanned_by(&list.path, err!(ExpectedAsPath(symbol::DEBUG)))
+                            cx.error_spanned_by(&list.path, err!(ExpectedAsPath(symbol::DEBUG)));
                         }
                         symbol::DENY_UNKNOWN_KEYS => cx.error_spanned_by(
                             &list.path,
@@ -191,7 +235,7 @@ impl Container {
                         symbol::STREAM => match stream {
                             Some(_) => cx.error_spanned_by(&nv, err!(DuplicateStream)),
                             None => {
-                                stream = Stream::try_from(&nv).map_err(|err| cx.syn_error(err)).ok()
+                                stream = Stream::try_from(&nv).map_err(|err| cx.syn_error(err)).ok();
                             }
                         },
                         symbol::SENTINEL => match sentinel {
@@ -199,23 +243,23 @@ impl Container {
                             None => {
                                 sentinel = Sentinel::try_from(&nv)
                                     .map_err(|err| cx.syn_error(err))
-                                    .ok()
+                                    .ok();
                             }
                         },
                         // --------------------------------------------------
                         // non name-values
                         // --------------------------------------------------
                         symbol::KEY => {
-                            cx.error_spanned_by(&nv.path, err!(ExpectedAsList(symbol::KEY)))
+                            cx.error_spanned_by(&nv.path, err!(ExpectedAsList(symbol::KEY)));
                         }
                         symbol::LENGTH => {
-                            cx.error_spanned_by(&nv.path, err!(ExpectedAsList(symbol::LENGTH)))
+                            cx.error_spanned_by(&nv.path, err!(ExpectedAsList(symbol::LENGTH)));
                         }
                         symbol::DEFAULT => {
-                            cx.error_spanned_by(&nv.path, err!(ExpectedAsList(symbol::DEFAULT)))
+                            cx.error_spanned_by(&nv.path, err!(ExpectedAsList(symbol::DEFAULT)));
                         }
                         symbol::DEBUG => {
-                            cx.error_spanned_by(&nv.path, err!(ExpectedAsPath(symbol::DEBUG)))
+                            cx.error_spanned_by(&nv.path, err!(ExpectedAsPath(symbol::DEBUG)));
                         }
                         symbol::DENY_UNKNOWN_KEYS => cx.error_spanned_by(
                             &nv.path,
@@ -247,29 +291,29 @@ impl Container {
                         symbol::DEBUG => debug = Some(path),
                         symbol::DENY_UNKNOWN_KEYS => deny_unknown_keys = Some(path),
                         symbol::ALLOW_UNIMPLEMENTED_DECODE => {
-                            allow_unimplemented_decode = Some(path)
+                            allow_unimplemented_decode = Some(path);
                         }
                         symbol::ALLOW_UNIMPLEMENTED_ENCODE => {
-                            allow_unimplemented_encode = Some(path)
+                            allow_unimplemented_encode = Some(path);
                         }
                         symbol::TRAIT_FALLBACK => trait_fallback = Some(path),
                         // --------------------------------------------------
                         // non paths
                         // --------------------------------------------------
                         symbol::KEY => {
-                            cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::KEY)))
+                            cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::KEY)));
                         }
                         symbol::LENGTH => {
-                            cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::LENGTH)))
+                            cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::LENGTH)));
                         }
                         symbol::DEFAULT => {
-                            cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::DEFAULT)))
+                            cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::DEFAULT)));
                         }
                         symbol::STREAM => {
-                            cx.error_spanned_by(&path, err!(ExpectedAsNameValue(symbol::STREAM)))
+                            cx.error_spanned_by(&path, err!(ExpectedAsNameValue(symbol::STREAM)));
                         }
                         symbol::SENTINEL => {
-                            cx.error_spanned_by(&path, err!(ExpectedAsNameValue(symbol::SENTINEL)))
+                            cx.error_spanned_by(&path, err!(ExpectedAsNameValue(symbol::SENTINEL)));
                         }
                         _ => cx.error_spanned_by(&path, err!(UnknownContainerAttribute(path))),
                     },
@@ -288,7 +332,6 @@ impl Container {
                 cx.error_spanned_by(&item.ident, err!(MissingEncInKeyLen(symbol::LENGTH)));
             }
         }
-
         // --------------------------------------------------
         // unimplemented decode error
         // --------------------------------------------------
@@ -300,7 +343,6 @@ impl Container {
                 cx.error_spanned_by(&item.ident, err!(MissingDecInKeyLen(symbol::LENGTH)));
             }
         }
-
         // --------------------------------------------------
         // return
         // --------------------------------------------------
@@ -319,27 +361,59 @@ impl Container {
     }
 }
 
-/// A parsed container
+/// Validated container attributes where required fields are guaranteed present
 ///
-/// * `_allow_unimplemented_decode`
-/// * `_allow_unimplemented_encode`
-/// * `trait_fallback`
-///
-/// are currently not used at this stage, but the paths are kept for potential
-/// future docs/debugging during expansion.
+/// Produced from a [`Container`] by [`ContainerParsed::from_cont`], which
+/// verifies that both `key` and `len` xcoders are present and emits compile
+/// errors via [`Ctxt`] if either is missing. The underscore-prefixed fields
+/// (`_allow_unimplemented_decode`, `_allow_unimplemented_encode`,
+/// `_trait_fallback`) are not consumed during expansion but are retained for
+/// potential future diagnostics or tooling
 pub(crate) struct ContainerParsed {
+    /// The stream type used for decoding; `None` means `&[u8]` will be used
     pub stream: Option<syn::Type>,
+
+    /// The recognition sentinel literal, if any
     pub sentinel: Option<syn::Lit>,
+
+    /// The key xcoder (always present after validation)
     pub key: Xcoder,
+
+    /// The length xcoder (always present after validation)
     pub len: Xcoder,
+
+    /// Whether debug logging is enabled for this container
     pub debug: Option<syn::Path>,
+
+    /// Whether unknown keys cause a decode error rather than being silently skipped
     pub deny_unknown_keys: Option<syn::Path>,
+
+    /// Retained path for `allow_unimplemented_decode`, unused in expansion
     pub _allow_unimplemented_decode: Option<syn::Path>,
+
+    /// Retained path for `allow_unimplemented_encode`, unused in expansion
     pub _allow_unimplemented_encode: Option<syn::Path>,
+
+    /// Retained path for `trait_fallback`, unused in expansion
     pub _trait_fallback: Option<syn::Path>,
 }
 /// [`ContainerParsed`] implementation
 impl ContainerParsed {
+    /// Converts a raw [`Container`] into a validated [`ContainerParsed`]
+    ///
+    /// Checks that both `key` and `len` xcoders are present, records errors
+    /// in `cx` for any that are missing, and returns `None` if validation fails
+    ///
+    /// # Arguments
+    ///
+    /// * `cx` - Error accumulation context for recording missing-field diagnostics
+    /// * `name` - The struct ident, used as the span anchor for error messages
+    /// * `cont` - The raw parsed container attributes to validate
+    ///
+    /// # Returns
+    ///
+    /// `Some(ContainerParsed)` when both `key` and `len` are present, or `None`
+    /// if either is absent (errors are recorded in `cx`)
     pub fn from_cont(cx: &Ctxt, name: &syn::Ident, cont: Container) -> Option<Self> {
         // --------------------------------------------------
         // check for required fields

@@ -46,7 +46,10 @@ pub trait EncodeAs {
     fn encode_as(&self) -> Self::Borrowed<'_>;
 }
 
-/// forward, no smart ref
+/// Implements [`EncodeAs`] for primitive `Copy` types, yielding `&Self` as the borrowed form
+///
+/// These types are `Copy` so the encoder receives a shared reference to the
+/// stack value; no heap allocation or clone occurs.
 macro_rules! impl_encode_as_ref {
     ($($t:ty),* $(,)?) => { $(
         impl EncodeAs for $t {
@@ -84,7 +87,7 @@ impl<T> EncodeAs for Vec<T> {
 }
 
 /// [`EncodeAs`] implementation for [`Cow`] strings
-impl<'b> EncodeAs for Cow<'b, str> {
+impl EncodeAs for Cow<'_, str> {
     type Borrowed<'a>
         = &'a str
     where
@@ -97,7 +100,7 @@ impl<'b> EncodeAs for Cow<'b, str> {
 }
 
 /// [`EncodeAs`] implementation for [`Cow`] slices
-impl<'b, T: Clone> EncodeAs for Cow<'b, [T]> {
+impl<T: Clone> EncodeAs for Cow<'_, [T]> {
     type Borrowed<'a>
         = &'a [T]
     where
