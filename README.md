@@ -17,17 +17,13 @@ ships no baked-in standards: you declare your keys, length encoding, sentinel,
 and per-field codecs as attributes on a struct, and `#[derive(Klv)]` generates
 the encoder and decoder in a single pass.
 
-- Built-in codecs: binary (native/BE/LE for `u8`..`u128`, `i8`..`i128`, `f32`/`f64`), BER length, BER-OID keys, UTF-8 / UTF-16 / ASCII strings
-- Sentinel seeking - resync on noisy byte streams
-- Streaming partial packets - `::decoder()`, `iter()`, `next()`, and `DecodePartial`
-- Repeated decode with user-defined break conditions
-- Nested `Klv` structs - compose packets from sub-packets
-- Generic structs and lifetimes, `Option<T>` fields, per-field/container defaults, `trait_fallback`, `deny_unknown_keys`
-- Stream type is user-selected - any `winnow::Stream` works
+## Quickstart
 
 ```sh
 cargo add tinyklv
 ```
+
+## Example
 
 ```rust
 use tinyklv::Klv;
@@ -144,12 +140,15 @@ struct Platform {
 }
 ```
 
-The `trait_fallback` container flag lets any field without an explicit `dec`/`enc`
-fall back to its type's derived `DecodeValue`/`EncodeValue` impls - so the nested
-`coord` needs only its `key`. For a real schema with dozens of fields and several
-nesting levels, the manual version is hundreds of unmaintainable lines; tinyklv
-stays one attribute per field, with the bounds checks and length handling
-generated for you.
+## Features
+
+- Built-in codecs: binary (native/BE/LE for `u8`..`u128`, `i8`..`i128`, `f32`/`f64`), BER length, BER-OID keys, UTF-8 / UTF-16 / ASCII strings
+- Sentinel seeking - resync on noisy byte streams
+- Streaming partial packets on noisy or incomplete streams
+- Repeated decode with user-defined break conditions
+- Nested `Klv` structs - compose packets from sub-packets
+- Generic structs and lifetimes, `Option<T>` fields, per-field/container defaults
+- Stream type is user-selected, where any `winnow::Stream` works
 
 ## Documentation
 
