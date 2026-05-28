@@ -41,7 +41,6 @@ book/book/
 # chart-rendering python venv + scratch CSVs
 # --------------------------------------------------
 **/.venv/
-**/tinyklv_bench*.csv
 # --------------------------------------------------
 # allow:
 # * src/_tutorial
