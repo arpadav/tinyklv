@@ -1,28 +1,27 @@
-# tinyklv - KLV framework in Rust
+# tinyklv - the fastest KLV framework in Rust
 
 [![Crates.io](https://img.shields.io/crates/v/tinyklv.svg)](https://crates.io/crates/tinyklv)
 [![Documentation](https://img.shields.io/docsrs/tinyklv)](https://docs.rs/tinyklv)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![MSRV](https://img.shields.io/badge/rustc-1.95%2B-orange.svg)](https://www.rust-lang.org)
-[![CI](https://img.shields.io/github/actions/workflow/status/arpadav/tinyklv/ci.yml?branch=main)](https://github.com/arpadav/tinyklv/actions)
 
-A derive-macro framework for encoding and decoding [Key-Length-Value (KLV)](https://en.wikipedia.org/wiki/KLV)
+The fastest derive-macro framework for encoding and decoding [Key-Length-Value (KLV)](https://en.wikipedia.org/wiki/KLV)
 binary streams, built on [`winnow`](https://crates.io/crates/winnow) parser combinators.
 
-## What is KLV?
+KLV (a generic Tag-Length-Value framing) is the backbone of telemetry packets,
+video metadata streams, `IoT` sensor framing, and most custom binary protocols
+that evolve without breaking older parsers. `tinyklv` is protocol-agnostic and
+ships no baked-in standards: you declare your keys, length encoding, sentinel,
+and per-field codecs as attributes on a struct, and `#[derive(Klv)]` generates
+the encoder and decoder in a single pass.
 
-KLV is a generic Tag-Length-Value (TLV) framing pattern: every field in a byte
-stream is prefixed by a key identifying it and a length giving its size. It is
-the backbone of telemetry packets, video metadata streams, IoT sensor framing,
-and most custom binary protocols that need to evolve without breaking older
-parsers.
-
-`tinyklv` is protocol-agnostic. It ships no baked-in standards - you declare
-your keys, your length encoding, your sentinel, and the codec for each field
-via attributes on a struct. The derive macro generates the encoder/decoder trait
-implementations; you control the schema.
-
-## Quick Start
+- Built-in codecs: binary (native/BE/LE for `u8`..`u128`, `i8`..`i128`, `f32`/`f64`), BER length, BER-OID keys, UTF-8 / UTF-16 / ASCII strings
+- Sentinel seeking - resync on noisy byte streams
+- Streaming partial packets - `::decoder()`, `iter()`, `next()`, and `DecodePartial`
+- Repeated decode with user-defined break conditions
+- Nested `Klv` structs - compose packets from sub-packets
+- Generic structs and lifetimes, `Option<T>` fields, per-field/container defaults, `trait_fallback`, `deny_unknown_keys`
+- Stream type is user-selected - any `winnow::Stream` works
 
 ```sh
 cargo add tinyklv
@@ -71,32 +70,84 @@ fn main() {
 }
 ```
 
-Full annotated version: [`examples/01_hello_world.rs`](examples/01_hello_world.rs).
+Full annotated version: [`examples/01_hello_world.rs`](https://github.com/arpadav/tinyklv/blob/main/examples/01_hello_world.rs).
 
-## Feature Highlights
+## Fastest
 
-- `#[derive(Klv)]` generates encode and decode in one pass
-- Built-in codecs: binary (native/BE/LE for `u8`..`u128`, `i8`..`i128`, `f32`/`f64`), BER length, BER-OID keys, UTF-8 / UTF-16 / ASCII strings
-- Sentinel seeking - resync on noisy byte streams
-- Streaming partial packets - `::decoder()`, `iter()`, `next()`, and `DecodePartial`
-- Repeated decode with user-defined break conditions
-- Nested `Klv` structs - compose packets from sub-packets
-- Generic structs and lifetimes supported
-- `Option<T>` fields, per-field and per-container defaults, `trait_fallback`, `deny_unknown_keys`
-- Stream type is user-selected - any `winnow::Stream` works
+Across decode and encode, flat and nested, clean and framed-over-noise,
+`tinyklv` is the fastest derive-based KLV framework - several times faster than
+`serde_klv`, an order of magnitude faster than `tlv_parser`, and within striking
+distance of hand-rolled parsing. It is also the only one of the four that
+handles **nested KLV** without hand-written glue.
 
-## Traits
+![Median per-call time across KLV frameworks](https://github.com/arpadav/tinyklv/blob/main/benches/bench.jpg?raw=true)
 
-| Trait | Purpose | Derived? |
-|-------|---------|----------|
-| `DecodeValue<S>` | Decode value body from an unframed slice | yes |
-| `DecodeFrame<S>` | Seek sentinel, read length, subslice, then decode | yes |
-| `EncodeValue<O>` | Encode the value body (KLV triples, no frame header) | yes |
-| `EncodeFrame<O>` | Encode sentinel + length + value body | yes |
-| `DrainFrames<S>` | Decode a sentinel-framed stream into `Vec<T>` | yes |
-| `DecodePartial<S>` | Streaming-aware decode returning `Packet<T, P>` | yes |
-| `Decoder<P, S>` | Owned-buffer streaming decoder with `feed`, `iter`, and `next` | yes |
-| `BreakCondition<S>` | Per-`(key, len)` stop predicate for decode loops | no |
+The benchmark suite, the four competing implementations, and the one-command
+chart reproduction (`benches/scripts/charts.sh`) all live in
+[`benches/`](https://github.com/arpadav/tinyklv/tree/main/benches).
+
+## Maintainability
+
+The only thing faster per packet is the `manual` bar - and it is the least
+maintainable code of the four. A hand-rolled decoder is a panic-adjacent
+slice-indexing loop with one `Option` per field to juggle, repeated for every
+record shape, plus a second hand-written sub-parser for every level of nesting.
+From the benchmark's `manual` nested decoder
+([`benches/suite/approaches/manual/nested.rs`](https://github.com/arpadav/tinyklv/blob/main/benches/suite/approaches/manual/nested.rs)):
+
+```rust
+fn decode(body: &[u8]) -> Option<Platform> {
+    let mut id = None;
+    let mut coord = None;
+    // ...one `let mut <field> = None;` for every one of nine fields...
+    let mut sensors = None;
+    let mut j = 0;
+    while j + 2 <= body.len() { // bounds check
+        let tag = body[j]; // allow clippy slice indexing
+        let len = usize::from(body[j + 1]);
+        j += 2;
+        let val = body.get(j..j + len)?; // hand-rolled bounds math
+        j += len;
+        match tag { // manually define keys for each struct
+            key::ID => id = Some(u32::from_be_bytes(val.try_into().ok()?)),
+            key::COORD => coord = Some(decode_coord(val)?), // a SECOND hand-written loop
+            // ...one arm per field, each with its own try_into().ok()? dance...
+            _ => {}
+        }
+    }
+    Some(Platform { id: id?, coord: coord?, /* ...unwrap all nine... */ sensors: sensors? })
+}
+```
+
+`tinyklv` collapses the whole thing - both directions, nesting included - into
+attributes on the struct:
+
+```rust
+#[derive(Klv)]
+#[klv(
+    stream = &[u8],
+    sentinel = b"\x47\x48",
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    trait_fallback,
+)]
+struct Platform {
+    #[klv(key = 0x01, dec = decb::be_u32, enc = *encb::be_u32)]
+    id: u32,
+    
+    #[klv(key = 0x02)]
+    coord: GpsCoord,
+    
+    // ...the remaining fields, one attribute line each...
+}
+```
+
+The `trait_fallback` container flag lets any field without an explicit `dec`/`enc`
+fall back to its type's derived `DecodeValue`/`EncodeValue` impls - so the nested
+`coord` needs only its `key`. For a real schema with dozens of fields and several
+nesting levels, the manual version is hundreds of unmaintainable lines; tinyklv
+stays one attribute per field, with the bounds checks and length handling
+generated for you.
 
 ## Documentation
 
