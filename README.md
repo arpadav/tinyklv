@@ -8,6 +8,8 @@
 The fastest derive-macro framework for encoding and decoding [Key-Length-Value (KLV)](https://en.wikipedia.org/wiki/KLV)
 binary streams, built on [`winnow`](https://crates.io/crates/winnow) parser combinators.
 
+![Median per-call time across KLV frameworks](https://github.com/arpadav/tinyklv/blob/main/benches/bench.jpg?raw=true)
+
 KLV (a generic Tag-Length-Value framing) is the backbone of telemetry packets,
 video metadata streams, `IoT` sensor framing, and most custom binary protocols
 that evolve without breaking older parsers. `tinyklv` is protocol-agnostic and
@@ -72,7 +74,7 @@ fn main() {
 
 Full annotated version: [`examples/01_hello_world.rs`](https://github.com/arpadav/tinyklv/blob/main/examples/01_hello_world.rs).
 
-## Fastest
+## Speed
 
 Across decode and encode, flat and nested, clean and framed-over-noise,
 `tinyklv` is the fastest derive-based KLV framework - several times faster than
@@ -80,11 +82,11 @@ Across decode and encode, flat and nested, clean and framed-over-noise,
 distance of hand-rolled parsing. It is also the only one of the four that
 handles **nested KLV** without hand-written glue.
 
-![Median per-call time across KLV frameworks](https://github.com/arpadav/tinyklv/blob/main/benches/bench.jpg?raw=true)
-
 The benchmark suite, the four competing implementations, and the one-command
 chart reproduction (`benches/scripts/charts.sh`) all live in
 [`benches/`](https://github.com/arpadav/tinyklv/tree/main/benches).
+
+See [results here](https://github.com/arpadav/tinyklv/blob/main/benches/bench.jpg?raw=true)
 
 ## Maintainability
 
