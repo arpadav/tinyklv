@@ -241,3 +241,23 @@ fn be_vs_le_u32_differ() {
     assert_eq!(be, vec![0x01, 0x02, 0x03, 0x04]);
     assert_eq!(le, vec![0x04, 0x03, 0x02, 0x01]);
 }
+
+#[test]
+/// Fixed-width little-endian decoders error (not panic) on short input of `N - 1` bytes.
+fn le_short_input_errors() {
+    assert!(tinyklv::dec::binary::le_u16(&mut &[0u8; 1][..]).is_err());
+    assert!(tinyklv::dec::binary::le_u32(&mut &[0u8; 3][..]).is_err());
+    assert!(tinyklv::dec::binary::le_u64(&mut &[0u8; 7][..]).is_err());
+    assert!(tinyklv::dec::binary::le_u128(&mut &[0u8; 15][..]).is_err());
+    assert!(tinyklv::dec::binary::le_f32(&mut &[0u8; 3][..]).is_err());
+    assert!(tinyklv::dec::binary::le_f64(&mut &[0u8; 7][..]).is_err());
+}
+
+#[test]
+/// A failed little-endian fixed-width decode must NOT advance the cursor.
+fn le_short_input_does_not_advance_cursor() {
+    let buf = [0x01, 0x02, 0x03];
+    let mut input: &[u8] = &buf;
+    assert!(tinyklv::dec::binary::le_u32(&mut input).is_err());
+    assert_eq!(input.len(), 3, "cursor advanced on a failed le_u32");
+}

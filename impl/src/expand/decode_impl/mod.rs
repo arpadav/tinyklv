@@ -226,6 +226,7 @@ fn gen_decode_value_impl(
         #[automatically_derived]
         #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::DecodeValue`] for [`", stringify!(#stream), "`].")]
         impl #impl_generics ::tinyklv::traits::DecodeValue<#stream> for #name #ty_generics #where_clause {
+            #[inline]
             fn decode_value(input: &mut #stream) -> ::tinyklv::__export::winnow::Result<Self> {
                 let checkpoint = input.checkpoint();
                 match <Self as ::tinyklv::traits::DecodePartial<#stream>>::decode_partial(input) {

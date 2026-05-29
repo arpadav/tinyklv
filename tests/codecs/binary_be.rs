@@ -351,3 +351,40 @@ fn be_u64_byte_order() {
         vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
     );
 }
+
+#[test]
+/// Fixed-width big-endian decoders error (not panic) on short input of `N - 1` bytes.
+fn be_short_input_errors() {
+    assert!(tinyklv::dec::binary::be_u16(&mut &[0u8; 1][..]).is_err());
+    assert!(tinyklv::dec::binary::be_u32(&mut &[0u8; 3][..]).is_err());
+    assert!(tinyklv::dec::binary::be_u64(&mut &[0u8; 7][..]).is_err());
+    assert!(tinyklv::dec::binary::be_u128(&mut &[0u8; 15][..]).is_err());
+    assert!(tinyklv::dec::binary::be_i16(&mut &[0u8; 1][..]).is_err());
+    assert!(tinyklv::dec::binary::be_i32(&mut &[0u8; 3][..]).is_err());
+    assert!(tinyklv::dec::binary::be_i64(&mut &[0u8; 7][..]).is_err());
+    assert!(tinyklv::dec::binary::be_i128(&mut &[0u8; 15][..]).is_err());
+    assert!(tinyklv::dec::binary::be_f32(&mut &[0u8; 3][..]).is_err());
+    assert!(tinyklv::dec::binary::be_f64(&mut &[0u8; 7][..]).is_err());
+}
+
+#[test]
+/// Fixed-width big-endian decoders error on empty input, including single-byte `u8`/`i8`.
+fn be_empty_input_errors() {
+    assert!(tinyklv::dec::binary::u8(&mut &[][..]).is_err());
+    assert!(tinyklv::dec::binary::i8(&mut &[][..]).is_err());
+    assert!(tinyklv::dec::binary::be_u16(&mut &[][..]).is_err());
+    assert!(tinyklv::dec::binary::be_u32(&mut &[][..]).is_err());
+    assert!(tinyklv::dec::binary::be_u64(&mut &[][..]).is_err());
+    assert!(tinyklv::dec::binary::be_u128(&mut &[][..]).is_err());
+    assert!(tinyklv::dec::binary::be_f32(&mut &[][..]).is_err());
+    assert!(tinyklv::dec::binary::be_f64(&mut &[][..]).is_err());
+}
+
+#[test]
+/// A failed fixed-width decode must NOT advance the cursor (callers see the un-eaten bytes).
+fn be_short_input_does_not_advance_cursor() {
+    let buf = [0x01, 0x02, 0x03];
+    let mut input: &[u8] = &buf;
+    assert!(tinyklv::dec::binary::be_u32(&mut input).is_err());
+    assert_eq!(input.len(), 3, "cursor advanced on a failed be_u32");
+}

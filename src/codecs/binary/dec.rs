@@ -41,7 +41,11 @@ const B128_PADDED: &[u8; 16] = &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 macro_rules! wrap {
     ($ty:ty) => { pastey::paste! {
         #[inline(always)]
-        #[doc = concat!(" Wrapper for [`winnow::binary::be_", stringify!($ty), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
+        #[doc = concat!(" Big-endian decoder for `", stringify!($ty), "`: takes `size_of::<", stringify!($ty), ">()` bytes and `from_be_bytes`")]
+        #[doc = ""]
+        #[doc = " A single sized read + `from_be_bytes` (one bounds check, one load + byte-swap), rather"]
+        #[doc = " than winnow's runtime-bounded shift/add integer loop. On insufficient input it returns the"]
+        #[doc = " same `take`-style backtrack error and leaves the cursor unadvanced."]
         #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
@@ -51,10 +55,19 @@ macro_rules! wrap {
         #[doc = concat!(" assert_eq!(result, Ok(1 as ", stringify!($ty), "));")]
         #[doc = " ```"]
         pub fn [<be_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
-            winnow::binary::[<be_ $ty>].parse_next(input)
+            const N: usize = ::core::mem::size_of::<$ty>();
+            let bytes = take(N).parse_next(input)?;
+            // `take(N)` yielded a slice of exactly `N` bytes, so the array conversion is infallible;
+            // LLVM folds it away to a bare load + byte-swap.
+            let array = <[u8; N]>::try_from(bytes).expect("take(N) yields exactly N bytes");
+            Ok($ty::from_be_bytes(array))
         }
         #[inline(always)]
-        #[doc = concat!(" Wrapper for [`winnow::binary::le_", stringify!($ty), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
+        #[doc = concat!(" Little-endian decoder for `", stringify!($ty), "`: takes `size_of::<", stringify!($ty), ">()` bytes and `from_le_bytes`")]
+        #[doc = ""]
+        #[doc = " A single sized read + `from_le_bytes` (one bounds check, one load), rather than winnow's"]
+        #[doc = " runtime-bounded shift/add integer loop. On insufficient input it returns the same"]
+        #[doc = " `take`-style backtrack error and leaves the cursor unadvanced."]
         #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
@@ -64,7 +77,10 @@ macro_rules! wrap {
         #[doc = concat!(" assert_eq!(result, Ok(1 as ", stringify!($ty), "));")]
         #[doc = " ```"]
         pub fn [<le_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
-            winnow::binary::[<le_ $ty>].parse_next(input)
+            const N: usize = ::core::mem::size_of::<$ty>();
+            let bytes = take(N).parse_next(input)?;
+            let array = <[u8; N]>::try_from(bytes).expect("take(N) yields exactly N bytes");
+            Ok($ty::from_le_bytes(array))
         }
     }};
 }

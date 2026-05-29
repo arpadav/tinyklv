@@ -319,6 +319,7 @@ pub(super) fn gen_partial_impl(
         #[automatically_derived]
         impl #impl_generics ::tinyklv::traits::Partial for #partial_name #ty_generics #where_clause {
             type Final = #struct_name #ty_generics;
+            #[inline]
             fn finalize(self) -> ::core::result::Result<
                 #struct_name #ty_generics,
                 &'static str,

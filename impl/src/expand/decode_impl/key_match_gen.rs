@@ -98,9 +98,10 @@ pub(super) fn gen_known_keys_check(
 ///
 /// Where `subinput` is a sub-slice of `input` of exactly `len` bytes (already
 /// consumed by the surrounding `take`), and `__acc` is the in-flight
-/// `XxxPartialPacket` accumulator. Optional fields use `.or(__acc.#name)` to
-/// preserve a previously decoded value when a duplicate key appears later in
-/// the stream. When the `debug` flag is set each arm additionally logs the key
+/// `XxxPartialPacket` accumulator. The `.ok().or(__acc.#name)` merge is LAST-WINS:
+/// since `Some(new).or(prev) == Some(new)`, a duplicate key that decodes
+/// successfully overwrites the earlier value, while a duplicate key that fails to
+/// decode keeps the prior valid one. When the `debug` flag is set each arm additionally logs the key
 /// name and decoded value via the `logger()` macro
 ///
 /// # Arguments

@@ -68,11 +68,10 @@ single in-place write. It is mostly stack traffic (the `Option<u64>` etc. are `C
 so LLVM with LTO will collapse a lot of it, but the `.or(__acc.field)` merge and the second-pass
 match are real branchy work prost simply does not do.
 
-The `.or(__acc.field)` exists to make duplicate keys last-... actually *first*-wins
-(`.ok().or(existing)` keeps the existing `Some`). That is a deliberate semantic
-(see `key_match_gen.rs` doc). prost is last-wins for scalars. This is a **behavior** difference,
-flag for `aav-idiomatic-rust-api` if the semantic is ever revisited; here it only matters that
-`.or()` adds a branch per field.
+The `.ok().or(__acc.field)` merge is **last-wins** (correcting an earlier misread): since
+`Some(new).or(prev) == Some(new)`, a duplicate key that decodes successfully overwrites the
+earlier value, while one that fails to decode keeps the prior valid one. This matches prost's
+last-wins-for-scalars. Here it only matters that the `.or()` adds a branch per field.
 
 ### Tax C — `take(len)` re-slices and the per-iteration key/len/eof bookkeeping
 
