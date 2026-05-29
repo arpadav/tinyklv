@@ -8,10 +8,10 @@
 The fastest derive-macro framework for encoding and decoding [Key-Length-Value (KLV)](https://en.wikipedia.org/wiki/KLV)
 binary streams, built on [`winnow`](https://crates.io/crates/winnow) parser combinators.
 
-![Median per-call time across serialization frameworks](https://github.com/arpadav/tinyklv/blob/main/benches/bench.jpg?raw=true)
+![tinyklv vs the KLV/TLV crates](https://github.com/arpadav/tinyklv/blob/main/benches/bench_klv.jpg?raw=true)
 
 KLV (a generic Tag-Length-Value framing) is the backbone of telemetry packets,
-video metadata streams, `IoT` sensor framing, and most custom binary protocols
+video metadata streams, IoT sensor framing, and most custom binary protocols
 that evolve without breaking older parsers. `tinyklv` is protocol-agnostic and
 ships no baked-in standards: you declare your keys, length encoding, sentinel,
 and per-field codecs as attributes on a struct, and `#[derive(Klv)]` generates
@@ -93,10 +93,15 @@ type), each using whatever native conversions the crate genuinely provides.
 
 The benchmark suite, the eight competing implementations (four KLV libraries and
 four protobuf crates), and the one-command chart reproduction
-(`benches/scripts/charts.sh`) all live in
+(`benches/scripts/gencharts.sh`) all live in
 [`benches/`](https://github.com/arpadav/tinyklv/tree/main/benches).
 
-See [results here](https://github.com/arpadav/tinyklv/blob/main/benches/bench.jpg?raw=true)
+See results here:
+[KLV/TLV](https://github.com/arpadav/tinyklv/blob/main/benches/bench_klv.jpg?raw=true) ·
+
+And tinyklv is so fast, its comparable and faster than protobuf implementations:
+
+![tinyklv vs the protobuf stacks](https://github.com/arpadav/tinyklv/blob/main/benches/bench_proto.jpg?raw=true)
 
 ## Maintainability
 
@@ -107,7 +112,7 @@ record shape, plus a second hand-written sub-parser for every level of nesting.
 From the benchmark's `manual` nested decoder
 ([`benches/suite/approaches/manual/nested.rs`](https://github.com/arpadav/tinyklv/blob/main/benches/suite/approaches/manual/nested.rs)):
 
-```rust
+```rust,ignore
 fn decode(body: &[u8]) -> Option<Platform> {
     let mut id = None;
     let mut coord = None;
@@ -134,7 +139,7 @@ fn decode(body: &[u8]) -> Option<Platform> {
 `tinyklv` collapses the whole thing - both directions, nesting included - into
 attributes on the struct:
 
-```rust
+```rust,ignore
 #[derive(Klv)]
 #[klv(
     stream = &[u8],
