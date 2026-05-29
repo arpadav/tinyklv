@@ -137,7 +137,7 @@ struct LongSentinelPacket {
 
 #[test]
 /// Finder-path (long sentinel) seek finds the sentinel after garbage and decodes the body,
-/// including skipping a false `0xAA` lead byte — parity with the inline path.
+/// including skipping a false `0xAA` lead byte - parity with the inline path.
 fn finder_path_seek_skips_false_first_byte() {
     let body: Vec<u8> = vec![0x01, 0x02, 0x12, 0x34]; // key=1 len=2 val=0x1234
     let mut stream: Vec<u8> = vec![

@@ -1,11 +1,11 @@
 # tinyklv ENCODE improvement plan (ENCODE ONLY)
 
-Goal: close tinyklv's **encode** gap to `prost`/`manual` — driven by allocation strategy, not wire
-format — without changing the encoded bytes and without breaking the public `EncodeValue` API. This
+Goal: close tinyklv's **encode** gap to `prost`/`manual` - driven by allocation strategy, not wire
+format - without changing the encoded bytes and without breaking the public `EncodeValue` API. This
 is analysis + a prioritized, line-referenced plan; no source modified yet. It is the encode
 counterpart to `TKLV_DECODER_IMPROVEMENT_PLAN.md` (which is decode-only and explicitly defers encode).
 
-Baseline (old bench, `KLV_VS_PROTOBUF.md` rows 23/25/27 — refresh from the latest `simple/compound/
+Baseline (old bench, `KLV_VS_PROTOBUF.md` rows 23/25/27 - refresh from the latest `simple/compound/
 rich · encode · value` run):
 
 | encode · value | tinyklv | manual | prost |
@@ -25,9 +25,9 @@ and `manual` writes `to_be_bytes()` stack arrays into a single `Vec` with no per
 
 The derived encoder is structurally fine (monomorphized, single struct pass) but allocation-heavy:
 
-1. **`impl/src/expand/encode_impl.rs:64-69`** — `encode_value` opens `let mut output = vec![]` with
+1. **`impl/src/expand/encode_impl.rs:64-69`** - `encode_value` opens `let mut output = vec![]` with
    **no capacity hint**, so it reallocs as it grows.
-2. **`impl/src/expand/encode_impl.rs:163-166` (optional) and `:171-174` (required)** — per field, the
+2. **`impl/src/expand/encode_impl.rs:163-166` (optional) and `:171-174` (required)** - per field, the
    generated body is:
    ```rust
    let __value = #enc_tokens(#arg);          // owned Vec<u8>  (alloc #1)
@@ -35,22 +35,22 @@ The derived encoder is structurally fine (monomorphized, single struct pass) but
    output.extend(#len_encoder(__value.len()));// owned Vec<u8> (alloc #3)
    output.extend(__value);                   // moves alloc #1's bytes, drops it
    ```
-   → **~3 heap allocations per field**, all immediately consumed by `extend`.
-3. **`src/codecs/binary/enc.rs:25-63`** — the leaf encoders are the alloc source:
+   -> **~3 heap allocations per field**, all immediately consumed by `extend`.
+3. **`src/codecs/binary/enc.rs:25-63`** - the leaf encoders are the alloc source:
    `pub fn be_u64(input) -> Vec<u8> { input.to_be_bytes().to_vec() }`. `to_be_bytes()` is a stack
    array; `.to_vec()` is the gratuitous heap copy. Same shape in `ascii`, `ber/mod.rs:174,215`, and
    `string` encoders (all `-> Vec<u8>` / collect).
-4. **`impl/src/expand/encode_impl.rs:51-58` + `src/traits/enc.rs:203-212`** — `encode_frame` =
+4. **`impl/src/expand/encode_impl.rs:51-58` + `src/traits/enc.rs:203-212`** - `encode_frame` =
    `self.encode_value()` (full value Vec) `.into_klv(sentinel, len_encoder)`, and `IntoKlv::into_klv`
-   does `key.into_iter().chain(len).chain(self).collect()` — a **second** full allocation + element
+   does `key.into_iter().chain(len).chain(self).collect()` - a **second** full allocation + element
    copy of the entire value. So framed encode pays the value cost twice.
 
-`manual`'s win is the tell: `out.extend_from_slice(&field.to_be_bytes())` — no per-field heap. The
+`manual`'s win is the tell: `out.extend_from_slice(&field.to_be_bytes())` - no per-field heap. The
 target is to make the derive emit that shape.
 
 ---
 
-## Design decision (the `enc` fn contract) — OPEN, confirm before coding
+## Design decision (the `enc` fn contract) - OPEN, confirm before coding
 
 The per-field value `Vec` (alloc #1) is inherent to the encoder contract `enc: fn(T) -> Vec<u8>`. To
 remove it the encoder must *write into* a caller buffer. Three ways, in increasing disruption:
@@ -69,7 +69,7 @@ Recommended: ship **(B)** as the always-on baseline, then **(A)** as the opt-in 
 
 ### K-L-V ordering problem (applies to A and C)
 
-KLV writes key, then **length**, then value — but the length is the *encoded value length*, which a
+KLV writes key, then **length**, then value - but the length is the *encoded value length*, which a
 streaming write doesn't know until the value is written. Three resolutions:
 
 - **(A1) Scratch buffer (recommended, general).** One reused `scratch: Vec<u8>` for the whole record;
@@ -90,19 +90,19 @@ as the eventual ceiling if profiling still shows capacity reallocs dominating on
 
 ---
 
-## STEP 1 (always-on, no flag) — capacity hint + stack-array key/len writes
+## STEP 1 (always-on, no flag) - capacity hint + stack-array key/len writes
 
-- `encode_impl.rs:66` — `let mut output = vec![]` → `Vec::with_capacity(N)` where N is a cheap
+- `encode_impl.rs:66` - `let mut output = vec![]` -> `Vec::with_capacity(N)` where N is a cheap
   compile-time lower bound (sum of fixed key+len widths; 0 is acceptable if unknowable). Removes
   early reallocs.
-- `encode_impl.rs:164-165,172-173` — replace `output.extend(#key_encoder(#key))` /
+- `encode_impl.rs:164-165,172-173` - replace `output.extend(#key_encoder(#key))` /
   `output.extend(#len_encoder(__value.len()))` with writes that don't allocate when the encoder
   output is a stack array. Cleanest without touching the encoder contract: keep the calls but ensure
   the leaf key/len encoders return `impl AsRef<[u8]>` / arrays rather than `Vec` where the width is
-  fixed — OR add `*_into` forms for key/len only (smaller blast radius than all value encoders).
+  fixed - OR add `*_into` forms for key/len only (smaller blast radius than all value encoders).
 - **Risk: LOW.** No wire change, no API break. Re-bench `*_encode_value`/`*_encode_frame`.
 
-## STEP 2 (opt-in `#[klv(encode_into)]`) — buffer-writing value path (the prost-parity win)
+## STEP 2 (opt-in `#[klv(encode_into)]`) - buffer-writing value path (the prost-parity win)
 
 - **Trait (`src/traits/enc.rs:135-143`).** Add a sibling method (keep `encode_value` as-is for
   back-compat):
@@ -123,31 +123,31 @@ as the eventual ceiling if profiling still shows capacity reallocs dominating on
   value into **one** buffer (sentinel and length written first, value appended via `encode_into`),
   replacing the `encode_value().into_klv(..)` double allocation. Keep `IntoKlv` for non-derive users.
 - **Invariants:** byte-identical output to today (optional fields still omitted on `None`, last-field
-  ordering preserved, length semantics unchanged). **Risk: HIGH (derive output)** — gate on Step 4.
+  ordering preserved, length semantics unchanged). **Risk: HIGH (derive output)** - gate on Step 4.
 
-## STEP 3 — `EncodeAs` interaction (no change expected, verify)
+## STEP 3 - `EncodeAs` interaction (no change expected, verify)
 
 The sigil path (`encode_impl.rs:143-156`) already avoids clones via `EncodeAs::encode_as` (by-ref /
-by-value, no heap). Confirm the `encode_into` rewrite preserves that — the arg shaping is orthogonal
+by-value, no heap). Confirm the `encode_into` rewrite preserves that - the arg shaping is orthogonal
 to where the bytes land.
 
-## STEP 4 — Tests / verification (the backstop)
+## STEP 4 - Tests / verification (the backstop)
 
 - **Differential:** for arbitrary records, assert `encode_into`/buffered output is **byte-identical**
   to the current `encode_value`/`encode_frame` (a proptest comparing old vs new path). The bench's
   `checks::verify` round-trip is necessary but not sufficient (it only checks decode-equality).
 - Custom structs/enums with: required + optional fields, `None` omission, nested (`fallback_enc`),
-  `Vec<T>` runs, BER length, native types — per repo norm (no primitive-only tests).
+  `Vec<T>` runs, BER length, native types - per repo norm (no primitive-only tests).
 - **Re-bench** `benches/scripts/gencharts.sh -f`; confirm `*_encode_value`/`*_encode_frame` drop toward
   manual/prost, and **decode tiers unaffected** (encode path is separate).
 
 ## Realistic targets vs prost (encode · value)
 
-- simple 75 → ~40-50 (manual is 67; prost 34): scratch path removes per-field churn; a leftover gap
-  to prost is varint-vs-fixed-width wire density, not allocation — inherent to KLV, not a defect.
-- compound 145 → ~95-110 (toward manual 129 / prost 86).
-- rich 225 → ~150-170 (toward manual 161); residual is native-type *validation*-free encode plus the
-  per-field write — already close to manual once allocation is gone.
+- simple 75 -> ~40-50 (manual is 67; prost 34): scratch path removes per-field churn; a leftover gap
+  to prost is varint-vs-fixed-width wire density, not allocation - inherent to KLV, not a defect.
+- compound 145 -> ~95-110 (toward manual 129 / prost 86).
+- rich 225 -> ~150-170 (toward manual 161); residual is native-type *validation*-free encode plus the
+  per-field write - already close to manual once allocation is gone.
 
 ## Open questions (confirm before coding)
 

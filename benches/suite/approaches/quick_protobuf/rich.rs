@@ -19,7 +19,7 @@ use quick_protobuf::{BytesReader, MessageRead as _, MessageWrite as _, Writer};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
-/// Raw (generated) → parsed (native): fallible, so the illegal-state checks live here.
+/// Raw (generated) -> parsed (native): fallible, so the illegal-state checks live here.
 impl TryFrom<generated::Rich> for Rich {
     // `()` is deliberate: the sole consumer, `Codec::decode`, discards the reason via `.ok()`
     type Error = ();
@@ -47,7 +47,7 @@ impl TryFrom<generated::Rich> for Rich {
     }
 }
 
-/// Parsed (native) → raw (generated): infallible for the bench's bounded values.
+/// Parsed (native) -> raw (generated): infallible for the bench's bounded values.
 impl From<&Rich> for generated::Rich {
     fn from(rec: &Rich) -> Self {
         generated::Rich {

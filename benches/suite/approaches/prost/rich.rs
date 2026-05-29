@@ -1,7 +1,7 @@
 //! prost x rich record: a whole-struct conversion between the generated message and the
 //! rich record - protobuf auto-generates the struct, so its fields can never be native types.
-//! Utilizes prost-types' real native paths: WKT `Duration` ↔ `std::time::Duration` (exact) and
-//! WKT `Timestamp` ↔ `SystemTime` (then chrono's `From<SystemTime>` finishes `DateTime<Utc>`).
+//! Utilizes prost-types' real native paths: WKT `Duration` <-> `std::time::Duration` (exact) and
+//! WKT `Timestamp` <-> `SystemTime` (then chrono's `From<SystemTime>` finishes `DateTime<Utc>`).
 //! The remaining native types have no protobuf support, so they convert manually.
 //!
 //! Author: aav
@@ -21,7 +21,7 @@ use prost::Message as _;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, SystemTime};
 
-/// Raw (generated) → parsed (native): fallible, so the illegal-state checks live here.
+/// Raw (generated) -> parsed (native): fallible, so the illegal-state checks live here.
 impl TryFrom<generated::Rich> for Rich {
     // `()` is deliberate: the sole consumer, `Codec::decode`, discards the reason via `.ok()`
     type Error = ();
@@ -55,7 +55,7 @@ impl TryFrom<generated::Rich> for Rich {
     }
 }
 
-/// Parsed (native) → raw (generated): infallible for the bench's bounded values.
+/// Parsed (native) -> raw (generated): infallible for the bench's bounded values.
 impl From<&Rich> for generated::Rich {
     fn from(rec: &Rich) -> Self {
         generated::Rich {

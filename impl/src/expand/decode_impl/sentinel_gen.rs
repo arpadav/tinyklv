@@ -29,7 +29,7 @@ const SHORT_SENTINEL_MAX: usize = 4;
 ///   literal): a `static __TINYKLV_SEEKER_<NAME>: LazyLock<memmem::Finder>` for
 ///   zero-cost repeated searches. Short byte-string sentinels skip this static
 ///   entirely and use an inline `memchr`-first-byte + compare scan instead (no
-///   `LazyLock` deref / searcher dispatch — far cheaper on the small one-shot
+///   `LazyLock` deref / searcher dispatch - far cheaper on the small one-shot
 ///   buffers a framed decode sees, while staying SIMD-fast on large streams).
 /// * An `impl SeekSentinel<Stream> for Name` block that locates the sentinel in the
 ///   input (via whichever strategy above), advances past it, decodes the following

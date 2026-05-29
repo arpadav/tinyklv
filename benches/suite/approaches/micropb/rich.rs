@@ -20,7 +20,7 @@ use micropb::{MessageDecode as _, MessageEncode as _, PbEncoder};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
-/// Raw (generated) → parsed (native): fallible, so the illegal-state checks live here.
+/// Raw (generated) -> parsed (native): fallible, so the illegal-state checks live here.
 impl TryFrom<bench_native_::Rich> for Rich {
     // `()` is deliberate: the sole consumer, `Codec::decode`, discards the reason via `.ok()`
     type Error = ();
@@ -52,7 +52,7 @@ impl TryFrom<bench_native_::Rich> for Rich {
     }
 }
 
-/// Parsed (native) → raw (generated): infallible for the bench's bounded values.
+/// Parsed (native) -> raw (generated): infallible for the bench's bounded values.
 impl From<&Rich> for bench_native_::Rich {
     // `set_coord` flips the presence hazzer, so build via default-then-populate
     #[allow(clippy::field_reassign_with_default)]

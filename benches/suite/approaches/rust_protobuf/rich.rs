@@ -1,5 +1,5 @@
 //! rust-protobuf x rich record: whole-struct conversion. Utilizes rust-protobuf's WKT native
-//! paths - `Duration` ↔ `std::time::Duration` (exact) and `Timestamp` ↔ `SystemTime` (then chrono
+//! paths - `Duration` <-> `std::time::Duration` (exact) and `Timestamp` <-> `SystemTime` (then chrono
 //! finishes `DateTime<Utc>`). No chrono integration exists, and the other native types have no
 //! protobuf support, so they convert manually.
 //!
@@ -22,7 +22,7 @@ use protobuf::well_known_types::timestamp::Timestamp as PbTimestamp;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, SystemTime};
 
-/// Raw (generated) → parsed (native): fallible, so the illegal-state checks live here.
+/// Raw (generated) -> parsed (native): fallible, so the illegal-state checks live here.
 impl TryFrom<generated::Rich> for Rich {
     // `()` is deliberate: the sole consumer, `Codec::decode`, discards the reason via `.ok()`
     type Error = ();
@@ -55,7 +55,7 @@ impl TryFrom<generated::Rich> for Rich {
     }
 }
 
-/// Parsed (native) → raw (generated): infallible for the bench's bounded values.
+/// Parsed (native) -> raw (generated): infallible for the bench's bounded values.
 impl From<&Rich> for generated::Rich {
     fn from(rec: &Rich) -> Self {
         generated::Rich {

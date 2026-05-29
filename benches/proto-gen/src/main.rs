@@ -39,7 +39,7 @@ const HEADER: &str = "\
 
 /// Schema basenames (no extension), the single source of truth for every `.proto` input path and
 /// the per-file backend output (`<basename>.rs`) it reads back. Renaming a schema means editing
-/// only the matching const here; nothing else in this file — or its docs — spells the name out.
+/// only the matching const here; nothing else in this file - or its docs - spells the name out.
 const SIMPLE: &str = "simple";
 
 /// See [`SIMPLE`].
@@ -120,7 +120,7 @@ fn write_generated(approaches: &Path, approach: &str, body: &str) {
 /// Reads one per-file backend output and wraps it in an inline `pub mod`, then re-exports it.
 ///
 /// `reexport` selects what escapes the module: `None` re-exports everything (`pub use m::*`),
-/// `Some(name)` re-exports only that item — used for the `native` module so its self-contained
+/// `Some(name)` re-exports only that item - used for the `native` module so its self-contained
 /// `GpsCoord` copy does not collide with the `compound` module's `GpsCoord` at the top level.
 fn wrap(dir: &Path, file: &str, module: &str, reexport: Option<&str>) -> String {
     let content = fs::read_to_string(dir.join(file)).expect("read backend output file");

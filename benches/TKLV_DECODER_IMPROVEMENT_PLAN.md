@@ -2,7 +2,7 @@
 
 **Goal (achieved).** Close tinyklv's decode gap to `prost`. As of the current `bench.csv`, tinyklv
 **decode beats `prost` on every record** and beats every other protobuf/KLV crate; only the
-hand-written `manual` baseline is faster. Decode is in good shape — this file now tracks what was
+hand-written `manual` baseline is faster. Decode is in good shape - this file now tracks what was
 done, what is deliberately left, and the one deferred opportunity.
 
 This is decode only. Encode is tracked separately (`TKLV_ENCODER_IMPROVEMENT_PLAN.md`).
@@ -19,12 +19,12 @@ This is decode only. Encode is tracked separately (`TKLV_ENCODER_IMPROVEMENT_PLA
 | rich · frame     | **51.7** | 32.0 | 146.8 | 923.1  | 101.1 | 79.2  | 119.8 | 88.0  |
 
 tinyklv now leads `prost` on `simple` (it used to trail it). Framed overhead is small (~+2–9ns),
-not the ~+50ns earlier analysis estimated — the short-sentinel seek is already inlined (below).
+not the ~+50ns earlier analysis estimated - the short-sentinel seek is already inlined (below).
 
 ## Implemented (closed)
 
-- **Winnow `be_*`/`le_*` → `take(N)` + `from_*_bytes`.** The dominant former tax — winnow's
-  runtime-bounded shift/add byte loop — is gone. `src/codecs/binary/dec.rs` now does one sized read
+- **Winnow `be_*`/`le_*` -> `take(N)` + `from_*_bytes`.** The dominant former tax - winnow's
+  runtime-bounded shift/add byte loop - is gone. `src/codecs/binary/dec.rs` now does one sized read
   + one load + bswap (the `from_be_bytes(try_into)` shape `manual` uses). This single change is what
   moved `simple` decode below `prost`. The `*_lengthed` variants pad/truncate over a local zeroed
   array (no per-call const clone) and use `if`, not `match` on a bool.
@@ -32,7 +32,7 @@ not the ~+50ns earlier analysis estimated — the short-sentinel seek is already
   1000 samples) showed `*bytes.as_ptr().cast::<[u8; N]>()` beats the checked `try_from(..).expect(..)`
   on every integer width (non-overlapping CIs); it *regressed* `f32` and was a wash on `f64`. So the
   integer `be_*`/`le_*` ship the unchecked cast (via the debug-asserted `as_array_unchecked` helper,
-  one `SAFETY` note) and the float decoders keep the checked form. Per-decode gain is ~0.01ns — small,
+  one `SAFETY` note) and the float decoders keep the checked form. Per-decode gain is ~0.01ns - small,
   but free and proven. `int_decode.rs` remains as the regression guard.
 - **`#[inline]` on the generated `decode_value` and `Partial::finalize`.** Helps non-LTO downstream
   consumers; the bench builds with `lto=true, codegen-units=1` so it does not move these numbers.
@@ -46,17 +46,17 @@ not the ~+50ns earlier analysis estimated — the short-sentinel seek is already
   proved `eof_offset() >= len` and `subinput` is exactly `len` bytes, yet the leaf re-checks via its
   own `take(width)`. Passing the already-sliced `subinput` straight to `from_be_bytes` for
   statically-fixed-width fields would drop one branch per field. Small; LLVM may already fuse the
-  adjacent checks. Only sound for fixed (`var = false`) codecs — never for `*_lengthed` (truncation/
+  adjacent checks. Only sound for fixed (`var = false`) codecs - never for `*_lengthed` (truncation/
   pad semantics). Needs an isolating micro-bench before investing; below the bar so far.
 
-## Deferred — future opportunity (revisit)
+## Deferred - future opportunity (revisit)
 
 - **In-place `decode_value` (drop the `Partial` round-trip) to chase `manual`.** Today the one-shot
-  `decode_value` goes `decode_partial` → fill an `Option<T>`-per-field accumulator → `finalize`
+  `decode_value` goes `decode_partial` -> fill an `Option<T>`-per-field accumulator -> `finalize`
   (a second pass). prost mutates `self` in place with no intermediate `Option`s and no finalize
   pass. A separate generated non-resumable `decode_value` that writes directly into locals seeded to
   their defaults (keeping the `Partial` path intact for streaming) would remove the per-field `.or()`
-  merge + the second-pass match — prost's `merge_field` shape.
+  merge + the second-pass match - prost's `merge_field` shape.
 
   **Why deferred:** decode already beats `prost`; the only faster decoder is hand-written `manual`,
   and this chases a few ns toward that floor at real cost. It touches derive output and must not
@@ -74,9 +74,9 @@ not the ~+50ns earlier analysis estimated — the short-sentinel seek is already
 
 ## How close to `manual` can decode get
 
-`manual` is raw slice indexing with zero parser framework — the floor by construction. tinyklv's
+`manual` is raw slice indexing with zero parser framework - the floor by construction. tinyklv's
 residual gap to it is the resumable-decode machinery (checkpoints, `Packet`, the `Partial`
 round-trip) and, on `rich`, native-type validation (`char::try_from`, `NonZeroU32::new`, date/time
-range checks in `src/traits/native.rs`) that decodes into real Rust types — the feature, not a
+range checks in `src/traits/native.rs`) that decodes into real Rust types - the feature, not a
 defect. Matching `prost` while staying resumable and native-typed is the win; matching `manual`
 would mean giving those up.
