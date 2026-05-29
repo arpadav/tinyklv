@@ -24,28 +24,21 @@ use crate::prelude::*;
 // --------------------------------------------------
 use winnow::token::take;
 
-// --------------------------------------------------
-// constants
-// --------------------------------------------------
-/// Zero-filled 1-byte pad array used when a lengthed decoder receives fewer bytes than the 8-bit native width
-const B8_PADDED: &[u8; 1] = &[0];
-/// Zero-filled 2-byte pad array used when a lengthed decoder receives fewer bytes than the 16-bit native width
-const B16_PADDED: &[u8; 2] = &[0, 0];
-/// Zero-filled 4-byte pad array used when a lengthed decoder receives fewer bytes than the 32-bit native width
-const B32_PADDED: &[u8; 4] = &[0, 0, 0, 0];
-/// Zero-filled 8-byte pad array used when a lengthed decoder receives fewer bytes than the 64-bit native width
-const B64_PADDED: &[u8; 8] = &[0, 0, 0, 0, 0, 0, 0, 0];
-/// Zero-filled 16-byte pad array used when a lengthed decoder receives fewer bytes than the 128-bit native width
-const B128_PADDED: &[u8; 16] = &[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-
 macro_rules! wrap {
+    // narrow integer decoders (<= 16 bits: u8/i8/u16/i16): unchecked byte-array conversion. A
+    // microbench (`benches/int_decode.rs`) showed `*bytes.as_ptr().cast::<[u8; N]>()` beats the
+    // checked `try_from(..).expect(..)` only at these small widths, so the `unsafe` read is inlined
+    // here at the `take(N)` site that proves the length. Wider integers (u32/u64/.. , i32/i64/..)
+    // and all floats use the `(checked ..)` arm below - the unchecked cast did not win past 16 bits
+    // and regressed `f32`, so they keep the checked `try_from` (whose length check is provably
+    // unreachable on a `take(N)` result, so LLVM folds it to a bare load).
     ($ty:ty) => { pastey::paste! {
-        #[inline(always)]
+        #[inline] // not always inline: take(N)+from_be_bytes folds to a load+bswap; the optimizer inlines it regardless, so forcing it only risks bloat in downstream callers
         #[doc = concat!(" Big-endian decoder for `", stringify!($ty), "`: takes `size_of::<", stringify!($ty), ">()` bytes and `from_be_bytes`")]
         #[doc = ""]
         #[doc = " A single sized read + `from_be_bytes` (one bounds check, one load + byte-swap), rather"]
         #[doc = " than winnow's runtime-bounded shift/add integer loop. On insufficient input it returns the"]
-        #[doc = " same `take`-style backtrack error and leaves the cursor unadvanced."]
+        #[doc = " same `take`-style backtrack error and leaves the cursor unadvanced"]
         #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
@@ -57,17 +50,64 @@ macro_rules! wrap {
         pub fn [<be_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
             const N: usize = ::core::mem::size_of::<$ty>();
             let bytes = take(N).parse_next(input)?;
-            // `take(N)` yielded a slice of exactly `N` bytes, so the array conversion is infallible;
-            // LLVM folds it away to a bare load + byte-swap.
-            let array = <[u8; N]>::try_from(bytes).expect("take(N) yields exactly N bytes");
+            // SAFETY: `take(N)` yielded a slice of exactly `N` bytes, so reading `[u8; N]` from its
+            // start is in-bounds; `u8` has alignment 1, so the pointer is always aligned for `[u8; N]`.
+            let array = unsafe { *bytes.as_ptr().cast::<[u8; N]>() };
             Ok($ty::from_be_bytes(array))
         }
-        #[inline(always)]
+        #[inline] // not always inline: take(N)+from_le_bytes folds to a load; the optimizer inlines it regardless, so forcing it only risks bloat in downstream callers
         #[doc = concat!(" Little-endian decoder for `", stringify!($ty), "`: takes `size_of::<", stringify!($ty), ">()` bytes and `from_le_bytes`")]
         #[doc = ""]
         #[doc = " A single sized read + `from_le_bytes` (one bounds check, one load), rather than winnow's"]
         #[doc = " runtime-bounded shift/add integer loop. On insufficient input it returns the same"]
-        #[doc = " `take`-style backtrack error and leaves the cursor unadvanced."]
+        #[doc = " `take`-style backtrack error and leaves the cursor unadvanced"]
+        #[doc = ""]
+        #[doc = " # Example"]
+        #[doc = ""]
+        #[doc = " ```"]
+        #[doc = concat!(" let mut input: &[u8] = &(1 as ", stringify!($ty), ").to_le_bytes();")]
+        #[doc = concat!(" let result = tinyklv::codecs::binary::dec::le_", stringify!($ty), "(&mut input);")]
+        #[doc = concat!(" assert_eq!(result, Ok(1 as ", stringify!($ty), "));")]
+        #[doc = " ```"]
+        pub fn [<le_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
+            const N: usize = ::core::mem::size_of::<$ty>();
+            let bytes = take(N).parse_next(input)?;
+            // SAFETY: as for `be_` above - `take(N)` guarantees exactly `N` bytes and `u8` is align-1.
+            let array = unsafe { *bytes.as_ptr().cast::<[u8; N]>() };
+            Ok($ty::from_le_bytes(array))
+        }
+    }};
+    // wide integer (> 16 bits) and float decoders: checked byte-array conversion. The unchecked
+    // cast that wins at <= 16 bits did not win for wider integers and regressed `f32` in the
+    // microbench, so these keep the lowest-level checked `<[u8; N]>::try_from(..)` (whose length
+    // check is provably unreachable on a `take(N)` result, so LLVM folds it to a bare load).
+    (checked $ty:ty) => { pastey::paste! {
+        #[inline] // not always inline: take(N)+from_be_bytes folds to a load+bswap; the optimizer inlines it regardless, so forcing it only risks bloat in downstream callers
+        #[doc = concat!(" Big-endian decoder for `", stringify!($ty), "`: takes `size_of::<", stringify!($ty), ">()` bytes and `from_be_bytes`")]
+        #[doc = ""]
+        #[doc = " A single sized read + `from_be_bytes` (one bounds check, one load + byte-swap), rather"]
+        #[doc = " than winnow's runtime-bounded shift/add integer loop. On insufficient input it returns the"]
+        #[doc = " same `take`-style backtrack error and leaves the cursor unadvanced"]
+        #[doc = ""]
+        #[doc = " # Example"]
+        #[doc = ""]
+        #[doc = " ```"]
+        #[doc = concat!(" let mut input: &[u8] = &(1 as ", stringify!($ty), ").to_be_bytes();")]
+        #[doc = concat!(" let result = tinyklv::codecs::binary::dec::be_", stringify!($ty), "(&mut input);")]
+        #[doc = concat!(" assert_eq!(result, Ok(1 as ", stringify!($ty), "));")]
+        #[doc = " ```"]
+        pub fn [<be_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
+            const N: usize = ::core::mem::size_of::<$ty>();
+            let bytes = take(N).parse_next(input)?;
+            let array = <[u8; N]>::try_from(bytes).expect("take(N) yields exactly N bytes");
+            Ok($ty::from_be_bytes(array))
+        }
+        #[inline] // not always inline: take(N)+from_le_bytes folds to a load; the optimizer inlines it regardless, so forcing it only risks bloat in downstream callers
+        #[doc = concat!(" Little-endian decoder for `", stringify!($ty), "`: takes `size_of::<", stringify!($ty), ">()` bytes and `from_le_bytes`")]
+        #[doc = ""]
+        #[doc = " A single sized read + `from_le_bytes` (one bounds check, one load), rather than winnow's"]
+        #[doc = " runtime-bounded shift/add integer loop. On insufficient input it returns the same"]
+        #[doc = " `take`-style backtrack error and leaves the cursor unadvanced"]
         #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
@@ -86,7 +126,7 @@ macro_rules! wrap {
 }
 macro_rules! wrap_native {
     ($ty:ty) => { pastey::paste! {
-        #[inline(always)]
+        #[inline] // not always inline: thin winnow::binary delegation; the optimizer inlines the small wrapper, no need to force it across crate boundaries
         #[doc = concat!(" Wrapper for [`winnow::binary::", stringify!($ty), "`] with implied native-endianness generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
         #[doc = " # Example"]
@@ -101,7 +141,7 @@ macro_rules! wrap_native {
         }
     }};
     (simple $ty:ty) => { pastey::paste! {
-        #[inline(always)]
+        #[inline] // not always inline: thin winnow::binary delegation; the optimizer inlines the small wrapper, no need to force it across crate boundaries
         #[doc = concat!(" Wrapper for [`winnow::binary::", stringify!($ty), "`] with implied native-endianness generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
         #[doc = " # Example"]
@@ -120,30 +160,30 @@ wrap!(u8);
 wrap_native!(simple u8);
 wrap!(u16);
 wrap_native!(u16);
-wrap!(u32);
+wrap!(checked u32);
 wrap_native!(u32);
-wrap!(u64);
+wrap!(checked u64);
 wrap_native!(u64);
-wrap!(u128);
+wrap!(checked u128);
 wrap_native!(u128);
 wrap!(i8);
 wrap_native!(simple i8);
 wrap!(i16);
 wrap_native!(i16);
-wrap!(i32);
+wrap!(checked i32);
 wrap_native!(i32);
-wrap!(i64);
+wrap!(checked i64);
 wrap_native!(i64);
-wrap!(i128);
+wrap!(checked i128);
 wrap_native!(i128);
-wrap!(f32);
+wrap!(checked f32);
 wrap_native!(f32);
-wrap!(f64);
+wrap!(checked f64);
 wrap_native!(f64);
 
 macro_rules! as_usize {
     ($parser:ident) => { pastey::paste! {
-        #[inline(always)]
+        #[inline] // not always inline: trivial `.map(|v| v as usize)` over a leaf decoder; the optimizer inlines it
         #[doc = concat!(" [`usize`] wrapper for [`winnow::binary::", stringify!($parser), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
         #[doc = concat!(" See: [`", stringify!($parser), "()`] for the direct [`prim@", stringify!($parser), "`] implementation.")]
@@ -158,7 +198,7 @@ macro_rules! as_usize {
         pub fn [<$parser _as_usize>](input: &mut &[u8]) -> winnow::Result<usize> {
             $parser(input).map(|val| val as usize)
         }
-        #[inline(always)]
+        #[inline] // not always inline: trivial `.map(|v| v as usize)` over a leaf decoder; the optimizer inlines it
         #[doc = concat!(" [`usize`] wrapper for [`winnow::binary::be_", stringify!($parser), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
         #[doc = concat!(" See: [`be_", stringify!($parser), "`] for the direct [`prim@", stringify!($parser), "`] implementation.")]
@@ -173,7 +213,7 @@ macro_rules! as_usize {
         pub fn [<be_ $parser _as_usize>](input: &mut &[u8]) -> winnow::Result<usize> {
             [<be_ $parser>](input).map(|val| val as usize)
         }
-        #[inline(always)]
+        #[inline] // not always inline: trivial `.map(|v| v as usize)` over a leaf decoder; the optimizer inlines it
         #[doc = concat!(" [`usize`] wrapper for [`winnow::binary::le_", stringify!($parser), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
         #[doc = concat!(" See: [`le_", stringify!($parser), "`] for the direct [`prim@", stringify!($parser), "`] implementation.")]
@@ -197,56 +237,63 @@ as_usize!(u64);
 as_usize!(u128);
 
 macro_rules! lengthed_be {
-    ($type:ty, $len:expr, $pad:expr, $doc:literal) => { pastey::paste! {
-        #[inline(always)]
+    ($type:ty, $len:expr, $doc:literal) => { pastey::paste! {
+        #[inline] // not always inline: returns a closure whose body branches and copies into a pad buffer; let the cost model decide (in-crate LTO inlines it regardless)
+        #[allow(
+            clippy::indexing_slicing,
+            reason = "both index arms are bounds-gated by `if len > $len`: when true, \
+                      value.len() == len > $len so value[value.len() - $len..] is in-bounds; when \
+                      false, $len - len >= 0 and pval is a [u8; $len] array, so pval[($len - len)..] \
+                      (length len) is in-bounds"
+        )]
         #[doc = $doc]
         pub fn [<be_ $type _lengthed>](len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<$type> {
             move |input| {
                 let value = take(len).parse_next(input)?;
-                match len > $len {
-                    true => {
-                        let mut value = &value[value.len() - $len..];
-                        [<be_ $type>](&mut value)
-                    },
-                    false => {
-                        let pval = &mut $pad.clone();
-                        pval[($len - len)..].copy_from_slice(&value);
-                        Ok($type::from_be_bytes(*pval))
-                    },
+                if len > $len {
+                    let mut value = &value[value.len() - $len..];
+                    [<be_ $type>](&mut value)
+                } else {
+                    let mut pval = [0u8; $len];
+                    pval[($len - len)..].copy_from_slice(value);
+                    Ok($type::from_be_bytes(pval))
                 }
             }
         }
     }};
-    ($type:ty, $len:expr, $pad:expr) => { lengthed_be!($type, $len, $pad, ""); };
+    ($type:ty, $len:expr) => { lengthed_be!($type, $len, ""); };
 }
 macro_rules! lengthed_le {
-    ($type:ty, $precision_len:expr, $pad:expr, $doc:literal) => { pastey::paste! {
-        #[inline(always)]
+    ($type:ty, $precision_len:expr, $doc:literal) => { pastey::paste! {
+        #[inline] // not always inline: returns a closure whose body branches and copies into a pad buffer; let the cost model decide (in-crate LTO inlines it regardless)
+        #[allow(
+            clippy::indexing_slicing,
+            reason = "both index arms are bounds-gated by `if len > $precision_len`: when true, \
+                      value.len() == len > $precision_len so value[..$precision_len] is in-bounds; \
+                      when false, len <= $precision_len and pval is a [u8; $precision_len] array, so \
+                      pval[..len] is in-bounds"
+        )]
         #[doc = $doc]
         pub fn [<le_ $type _lengthed>](len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<$type> {
             move |input| {
                 let value = take(len).parse_next(input)?;
-                match len > $precision_len {
-                    true => {
-                        let mut value = &value[..$precision_len];
-                        [<le_ $type>](&mut value)
-                    },
-                    false => {
-                        let pval = &mut $pad.clone();
-                        pval[..len].copy_from_slice(&value);
-                        Ok($type::from_le_bytes(*pval))
-                    },
+                if len > $precision_len {
+                    let mut value = &value[..$precision_len];
+                    [<le_ $type>](&mut value)
+                } else {
+                    let mut pval = [0u8; $precision_len];
+                    pval[..len].copy_from_slice(value);
+                    Ok($type::from_le_bytes(pval))
                 }
             }
         }
     }};
-    ($type:ty, $len:expr, $pad:expr) => { lengthed_le!($type, $len, $pad, ""); };
+    ($type:ty, $len:expr) => { lengthed_le!($type, $len, ""); };
 }
 
 lengthed_be!(
     u8,
     1,
-    B8_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into a [`prim@u8`] value
 using big-endian encoding.
@@ -267,7 +314,6 @@ assert_eq!(tinyklv::dec::binary::be_u8_lengthed(1)(&mut input2), Ok(0x42));
 lengthed_be!(
     u16,
     2,
-    B16_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into a [`prim@u16`] value
 using big-endian encoding.
@@ -292,7 +338,6 @@ assert_eq!(tinyklv::dec::binary::be_u16_lengthed(1)(&mut input3), Ok(0x00E0));
 lengthed_be!(
     u32,
     4,
-    B32_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into a [`prim@u32`] value
 using big-endian encoding.
@@ -314,7 +359,7 @@ assert_eq!(tinyklv::dec::binary::be_u32_lengthed(3)(&mut input3), Ok(0x0001E0FF)
 ```
 "
 );
-lengthed_be!(u64, 8, B64_PADDED, "
+lengthed_be!(u64, 8, "
 Converts a [`prim@u8`] slice of any length into a [`prim@u64`] value
 using big-endian encoding.
 
@@ -338,7 +383,6 @@ assert_eq!(tinyklv::dec::binary::be_u64_lengthed(7)(&mut input3), Ok(0x00_00_00_
 lengthed_be!(
     u128,
     16,
-    B128_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into a [`prim@u128`] value
 using big-endian encoding.
@@ -357,7 +401,6 @@ assert_eq!(tinyklv::dec::binary::be_u128_lengthed(2)(&mut input), Ok(0x0102_u128
 lengthed_be!(
     i8,
     1,
-    B8_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into an [`prim@i8`] value
 using big-endian encoding.
@@ -376,7 +419,6 @@ assert_eq!(tinyklv::dec::binary::be_i8_lengthed(1)(&mut input), Ok(-1_i8));
 lengthed_be!(
     i16,
     2,
-    B16_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into an [`prim@i16`] value
 using big-endian encoding.
@@ -395,7 +437,6 @@ assert_eq!(tinyklv::dec::binary::be_i16_lengthed(2)(&mut input), Ok(-2_i16));
 lengthed_be!(
     i32,
     4,
-    B32_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into an [`prim@i32`] value
 using big-endian encoding.
@@ -414,7 +455,6 @@ assert_eq!(tinyklv::dec::binary::be_i32_lengthed(4)(&mut input), Ok(-1_i32));
 lengthed_be!(
     i64,
     8,
-    B64_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into an [`prim@i64`] value
 using big-endian encoding.
@@ -433,7 +473,6 @@ assert_eq!(tinyklv::dec::binary::be_i64_lengthed(8)(&mut input), Ok(-1_i64));
 lengthed_be!(
     i128,
     16,
-    B128_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into an [`prim@i128`] value
 using big-endian encoding.
@@ -452,7 +491,6 @@ assert_eq!(tinyklv::dec::binary::be_i128_lengthed(16)(&mut input), Ok(-1_i128));
 lengthed_le!(
     u8,
     1,
-    B8_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into a [`prim@u8`] value
 using little-endian encoding.
@@ -471,7 +509,6 @@ assert_eq!(tinyklv::dec::binary::le_u8_lengthed(3)(&mut input), Ok(0xCC));
 lengthed_le!(
     u16,
     2,
-    B16_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into a [`prim@u16`] value
 using little-endian encoding.
@@ -496,7 +533,6 @@ assert_eq!(num2, Ok(1));
 lengthed_le!(
     u32,
     4,
-    B32_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into a [`prim@u32`] value
 using little-endian encoding.
@@ -522,7 +558,7 @@ assert_eq!(num3, Ok(197_121));
 ```
 "
 );
-lengthed_le!(u64, 8, B64_PADDED, "
+lengthed_le!(u64, 8, "
 Converts a [`prim@u8`] slice of any length into a [`prim@u64`] value
 using little-endian encoding.
 
@@ -549,7 +585,6 @@ assert_eq!(num3, Ok(1_976_943_448_883_713));
 lengthed_le!(
     u128,
     16,
-    B128_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into a [`prim@u128`] value
 using little-endian encoding.
@@ -568,7 +603,6 @@ assert_eq!(tinyklv::dec::binary::le_u128_lengthed(2)(&mut input), Ok(0x0201_u128
 lengthed_le!(
     i8,
     1,
-    B8_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into an [`prim@i8`] value
 using little-endian encoding.
@@ -587,7 +621,6 @@ assert_eq!(tinyklv::dec::binary::le_i8_lengthed(1)(&mut input), Ok(-1_i8));
 lengthed_le!(
     i16,
     2,
-    B16_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into an [`prim@i16`] value
 using little-endian encoding.
@@ -606,7 +639,6 @@ assert_eq!(tinyklv::dec::binary::le_i16_lengthed(2)(&mut input), Ok(-2_i16));
 lengthed_le!(
     i32,
     4,
-    B32_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into an [`prim@i32`] value
 using little-endian encoding.
@@ -625,7 +657,6 @@ assert_eq!(tinyklv::dec::binary::le_i32_lengthed(4)(&mut input), Ok(-1_i32));
 lengthed_le!(
     i64,
     8,
-    B64_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into an [`prim@i64`] value
 using little-endian encoding.
@@ -644,7 +675,6 @@ assert_eq!(tinyklv::dec::binary::le_i64_lengthed(8)(&mut input), Ok(-1_i64));
 lengthed_le!(
     i128,
     16,
-    B128_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into an [`prim@i128`] value
 using little-endian encoding.
@@ -664,13 +694,17 @@ assert_eq!(tinyklv::dec::binary::le_i128_lengthed(16)(&mut input), Ok(-1_i128));
 lengthed_be!(
     f32,
     4,
-    B32_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into an [`prim@f32`] value
 using big-endian encoding.
 
 * len > 4: takes last 4 bytes
 * len < 4: zero-pads high bytes
+
+**Note:** at a non-native `len` this reinterprets bytes, not precision - truncating or zero-padding an
+IEEE-754 float's bytes yields a different value, not a scaled one. It stays byte-symmetric with
+[`crate::codecs::binary::enc::be_f32_lengthed`], so encode-decode-encode is byte-stable, but the
+decoded value equals the original only when `len` is the native width (4).
 
 # Example
 
@@ -683,13 +717,17 @@ assert_eq!(tinyklv::dec::binary::be_f32_lengthed(4)(&mut input), Ok(1.0_f32));
 lengthed_be!(
     f64,
     8,
-    B64_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into an [`prim@f64`] value
 using big-endian encoding.
 
 * len > 8: takes last 8 bytes
 * len < 8: zero-pads high bytes
+
+**Note:** at a non-native `len` this reinterprets bytes, not precision - truncating or zero-padding an
+IEEE-754 float's bytes yields a different value, not a scaled one. It stays byte-symmetric with
+[`crate::codecs::binary::enc::be_f64_lengthed`], so encode-decode-encode is byte-stable, but the
+decoded value equals the original only when `len` is the native width (8).
 
 # Example
 
@@ -702,13 +740,17 @@ assert_eq!(tinyklv::dec::binary::be_f64_lengthed(8)(&mut input), Ok(1.0_f64));
 lengthed_le!(
     f32,
     4,
-    B32_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into an [`prim@f32`] value
 using little-endian encoding.
 
 * len > 4: takes first 4 bytes
 * len < 4: zero-pads high bytes
+
+**Note:** at a non-native `len` this reinterprets bytes, not precision - truncating or zero-padding an
+IEEE-754 float's bytes yields a different value, not a scaled one. It stays byte-symmetric with
+[`crate::codecs::binary::enc::le_f32_lengthed`], so encode-decode-encode is byte-stable, but the
+decoded value equals the original only when `len` is the native width (4).
 
 # Example
 
@@ -721,13 +763,17 @@ assert_eq!(tinyklv::dec::binary::le_f32_lengthed(4)(&mut input), Ok(1.0_f32));
 lengthed_le!(
     f64,
     8,
-    B64_PADDED,
     "
 Converts a [`prim@u8`] slice of any length into an [`prim@f64`] value
 using little-endian encoding.
 
 * len > 8: takes first 8 bytes
 * len < 8: zero-pads high bytes
+
+**Note:** at a non-native `len` this reinterprets bytes, not precision - truncating or zero-padding an
+IEEE-754 float's bytes yields a different value, not a scaled one. It stays byte-symmetric with
+[`crate::codecs::binary::enc::le_f64_lengthed`], so encode-decode-encode is byte-stable, but the
+decoded value equals the original only when `len` is the native width (8).
 
 # Example
 
