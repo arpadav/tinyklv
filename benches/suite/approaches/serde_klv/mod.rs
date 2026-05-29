@@ -1,4 +1,4 @@
-//! The serde_klv approach: a derive suffices for the flat record, but nesting forces a
+//! The serde_klv approach: a derive suffices for the simple record, but nesting forces a
 //! hand-written `Serialize`/`Deserialize` (see [`nested`]). serde_klv has no native
 //! framing, so it inherits the shared seek-based `encode_framed`/`decode_framed`.
 //!
@@ -6,9 +6,9 @@
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
-mod flat;
-mod native;
-mod nested;
+mod simple;
+mod rich;
+mod compound;
 
 // --------------------------------------------------
 // local

@@ -62,10 +62,20 @@ tlv_parser = "^0.10"
 tokio = { version = "^1.52", features = ["macros", "rt-multi-thread", "sync"] }
 
 [[bench]]
-name = "suite"
-harness = false
 # the suite uses the native-type codecs behind `bench`; without the feature it is skipped
+name = "compsuite"
+harness = false
 required-features = ["bench"]
+
+[[bench]]
+# guards the Decoder::feed compaction against per-feed O(n^2) on small-chunk streaming
+name = "streaming_compaction"
+harness = false
+
+[[bench]]
+# safe `try_from(..).expect(..)` vs unchecked `unsafe` conversion in the fixed-width int decoders
+name = "int_decode"
+harness = false
 
 [features]
 default = []
@@ -80,6 +90,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
+indexing_slicing = "deny"             # force explicit bounds-reasoning on every raw slice index
 cast_possible_truncation = "allow"    # wire-format width casts
 cast_possible_wrap = "allow"          # wire-format width casts
 cast_sign_loss = "allow"              # wire-format width casts

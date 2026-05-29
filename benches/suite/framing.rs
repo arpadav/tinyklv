@@ -10,8 +10,7 @@
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use rand::rngs::SmallRng;
-use rand::{RngExt, SeedableRng};
+use rand::{RngExt, SeedableRng, rngs::SmallRng};
 
 /// The 2-byte frame sentinel shared by every approach.
 pub(crate) const SENTINEL: [u8; 2] = [0x47, 0x48];
@@ -30,6 +29,13 @@ const ZERO_PAD: usize = 4;
 /// Junk bytes after the frame.
 const TRAILING_JUNK: usize = 4;
 
+/// Number of framed packets concatenated into one streamed multi-packet buffer.
+///
+/// Sized so the streaming decoder performs many feed/seek/decode cycles in a row, making the
+/// per-packet buffer-reclamation cost (the drain-vs-cursor difference) measurable rather than
+/// lost in noise.
+pub(crate) const STREAM_PACKETS: usize = 64;
+
 /// Scans past stream noise to the [`SENTINEL`], reads the 1-byte length, and returns the
 /// value body. This is the framing work serde_klv / tlv_parser / manual need but cannot do
 /// natively (tinyklv does it internally via `decode_frame`).
@@ -42,11 +48,7 @@ const TRAILING_JUNK: usize = 4;
 ///
 /// The value body slice, or `None` if the sentinel/length/body are not all present.
 pub(crate) fn seek(buf: &[u8]) -> Option<&[u8]> {
-    let pos = buf.windows(2).position(|w| w == SENTINEL)?;
-    let len_idx = pos + 2;
-    let len = usize::from(*buf.get(len_idx)?);
-    let start = len_idx + 1;
-    buf.get(start..start + len)
+    seek_next(buf).map(|(body, _)| body)
 }
 
 /// Wraps a value body in a frame: [`SENTINEL`] + 1-byte length + body. No stream noise.
@@ -115,4 +117,57 @@ fn push_junk(buf: &mut Vec<u8>, rng: &mut SmallRng, n: usize) {
         }
         buf.push(byte);
     }
+}
+
+/// Builds a multi-packet noisy stream: [`STREAM_PACKETS`] copies of `frame`, each wrapped in the
+/// same junk + zero padding as [`make_noisy`], concatenated into one buffer.
+///
+/// Models a channel carrying back-to-back frames with inter-frame noise: a streaming decoder must
+/// seek past junk to each successive sentinel, decode one packet, then reclaim the consumed bytes
+/// before the next. This is the input the `streamed` decode tier times.
+///
+/// # Arguments
+///
+/// * `frame` - one full frame (sentinel + length + value body) to repeat.
+///
+/// # Returns
+///
+/// A [`Vec<u8>`] holding [`STREAM_PACKETS`] noisy framed packets back to back.
+pub(crate) fn make_stream(frame: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for _ in 0..STREAM_PACKETS {
+        out.extend_from_slice(&make_noisy(frame));
+    }
+    out
+}
+
+/// Seeks to the next [`SENTINEL`] in `buf`, returning the value body slice and the remaining
+/// buffer immediately after that packet's value.
+///
+/// The shared (non-tinyklv) `decode_streamed` loops on this to pull successive packets out of a
+/// [`make_stream`] buffer: each call skips inter-frame junk to the sentinel, reads the 1-byte
+/// length, and hands back the body plus the tail to continue from. Returns `None` once no further
+/// complete packet remains.
+///
+/// # Arguments
+///
+/// * `buf` - the remaining stream buffer to scan from.
+///
+/// # Returns
+///
+/// `Some((body, rest))` for the next packet, or `None` if no further complete packet exists.
+pub(crate) fn seek_next(buf: &[u8]) -> Option<(&[u8], &[u8])> {
+    // --------------------------------------------------
+    // locate sentinel, then read its 1-byte length
+    // --------------------------------------------------
+    let pos = buf.windows(SENTINEL.len()).position(|w| w == SENTINEL)?;
+    let len_idx = pos + SENTINEL.len();
+    let len = usize::from(*buf.get(len_idx)?);
+    // --------------------------------------------------
+    // slice exactly `len` value bytes; tail continues after
+    // --------------------------------------------------
+    let start = len_idx + 1;
+    let body = buf.get(start..start + len)?;
+    let rest = &buf[start + len..];
+    Some((body, rest))
 }
