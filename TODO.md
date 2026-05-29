@@ -1,5 +1,6 @@
 # TODO's
 
-* fix the example with repeated fn call
-* rename repeated to something else, like batch_decode_frames or something? 
-* add winnow ascii support, deprecate my custom stuff
+* compare speed to protobuf impl
+* add book to show speed/fastest
+* modify cargo toml description to add fastest not simplest
+* 

@@ -8,7 +8,9 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::suite::approaches::{Manual, SerdeKlv, Tinyklv, TlvParser};
+use crate::suite::approaches::{
+    Manual, Micropb, Prost, QuickProtobuf, RustProtobuf, SerdeKlv, Tinyklv, TlvParser,
+};
 use crate::suite::{framing, Codec};
 
 /// Asserts every approach round-trips `sample` identically, both clean and framed.
@@ -27,11 +29,19 @@ where
     SerdeKlv: Codec<R>,
     TlvParser: Codec<R>,
     Manual: Codec<R>,
+    Prost: Codec<R>,
+    QuickProtobuf: Codec<R>,
+    RustProtobuf: Codec<R>,
+    Micropb: Codec<R>,
 {
     verify_one::<Tinyklv, R>(sample);
     verify_one::<SerdeKlv, R>(sample);
     verify_one::<TlvParser, R>(sample);
     verify_one::<Manual, R>(sample);
+    verify_one::<Prost, R>(sample);
+    verify_one::<QuickProtobuf, R>(sample);
+    verify_one::<RustProtobuf, R>(sample);
+    verify_one::<Micropb, R>(sample);
 }
 
 /// Asserts one approach's clean and framed round-trips both reproduce `sample`

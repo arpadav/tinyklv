@@ -45,7 +45,14 @@ winnow = { version = "1.0.2", features = ["binary", "parser", "simd"] }
 
 [dev-dependencies]
 criterion = "^0.8"
+micropb = { version = "^0.6", features = ["alloc"] }
 proptest = "1.11"
+# prost runtime must stay in lockstep with prost-build in benches/proto-gen (separate workspace)
+prost = "^0.14"
+# prost-types: WKT Timestamp/Duration for the native_nested record (lockstep with prost)
+prost-types = "^0.14"
+protobuf = "^3"
+quick-protobuf = "^0.8"
 rand = "^0.10"
 rand_distr = "^0.6"
 serde = { version = "^1", features = ["derive"] }
@@ -57,10 +64,14 @@ tokio = { version = "^1.52", features = ["macros", "rt-multi-thread", "sync"] }
 [[bench]]
 name = "suite"
 harness = false
+# the suite uses the native-type codecs behind `bench`; without the feature it is skipped
+required-features = ["bench"]
 
 [features]
 default = []
 ascii = ["winnow/ascii"]
+# native-type DecodeValue/EncodeValue impls (chrono/std) used by the benchmark suite
+bench = ["chrono"]
 full = ["ascii", "chrono"]
 tracing = ["dep:tracing", "tinyklv-impl/tracing"]
 

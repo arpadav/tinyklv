@@ -33,6 +33,8 @@
 mod coerce;
 mod dec;
 mod enc;
+#[cfg(feature = "bench")]
+mod native;
 mod types;
 
 // --------------------------------------------------

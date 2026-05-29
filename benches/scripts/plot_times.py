@@ -13,9 +13,10 @@ median point-estimate from each `new/estimates.json`; `box` reads the raw sample
 timings from each `new/sample.json` (per-iteration ns = times[k] / iters[k]), so
 the whiskers are the real measured distribution, not a summary.
 
-The suite emits eight groups (flat/nested x decode/encode x clean/framed); each
-becomes one cluster with one element per approach. tinyklv is drawn in a bold
-color; the others are muted so the comparison reads at a glance. lower is faster.
+The suite emits twelve groups (flat/nested/native x decode/encode x clean/framed);
+each becomes one cluster with one element per approach (the four KLV approaches plus
+four protobuf crates). tinyklv is drawn in a bold color; the others are muted so
+the comparison reads at a glance. lower is faster.
 """
 
 from __future__ import annotations
@@ -41,7 +42,7 @@ OUT_PATH = Path(sys.argv[5])
 # --------------------------------------------------
 # derived title (no CLI input: the legend already lists the frameworks)
 # --------------------------------------------------
-TITLE = "Median per-call time across KLV frameworks (lower is better)"
+TITLE = "Median per-call time across serialization frameworks (lower is better)"
 
 # --------------------------------------------------
 # fixed group + approach ordering (and per-approach colors)
@@ -55,6 +56,10 @@ TESTS = [
     ("nested_decode_framed", "nested\ndecode - framed"),
     ("nested_encode_clean", "nested\nencode - clean"),
     ("nested_encode_framed", "nested\nencode - framed"),
+    ("native_nested_decode_clean", "native\ndecode - clean"),
+    ("native_nested_decode_framed", "native\ndecode - framed"),
+    ("native_nested_encode_clean", "native\nencode - clean"),
+    ("native_nested_encode_framed", "native\nencode - framed"),
 ]
 # # bright palette
 # APPROACHES = [
@@ -72,12 +77,17 @@ TESTS = [
 #     ("tlv_parser", "#999999"),
 # ]
 
-# pastel palette
+# pastel palette: tinyklv bold green, the other KLV approaches in warm tones, the four
+# protobuf crates in cool tones so the KLV-vs-protobuf split reads at a glance
 APPROACHES = [
     ("tinyklv", "#00b81d"),
     ("manual", "#f2e2a6"),
     ("serde_klv", "#f6b26b"),
     ("tlv_parser", "#ea9999"),
+    ("prost", "#9fc5e8"),
+    ("quick_protobuf", "#6fa8dc"),
+    ("rust_protobuf", "#b4a7d6"),
+    ("micropb", "#a2c4c9"),
 ]
 
 # --------------------------------------------------

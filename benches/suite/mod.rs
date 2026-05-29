@@ -17,7 +17,9 @@ pub(crate) mod records;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use approaches::{Manual, SerdeKlv, Tinyklv, TlvParser};
+use approaches::{
+    Manual, Micropb, Prost, QuickProtobuf, RustProtobuf, SerdeKlv, Tinyklv, TlvParser,
+};
 use records::RngSample;
 
 // --------------------------------------------------
@@ -146,6 +148,10 @@ macro_rules! for_each_approach {
         $reg::<SerdeKlv, _>($group);
         $reg::<TlvParser, _>($group);
         $reg::<Manual, _>($group);
+        $reg::<Prost, _>($group);
+        $reg::<QuickProtobuf, _>($group);
+        $reg::<RustProtobuf, _>($group);
+        $reg::<Micropb, _>($group);
     }};
 }
 
@@ -165,6 +171,10 @@ where
     SerdeKlv: Codec<R>,
     TlvParser: Codec<R>,
     Manual: Codec<R>,
+    Prost: Codec<R>,
+    QuickProtobuf: Codec<R>,
+    RustProtobuf: Codec<R>,
+    Micropb: Codec<R>,
 {
     // --------------------------------------------------
     // seed rng and assert cross-approach equivalence

@@ -1,0 +1,22 @@
+# Standalone codegen helper for the protobuf benchmark approaches.
+#
+# This crate is NOT part of the main tinyklv workspace: the empty `[workspace]` table below
+# roots it as its own workspace so its protobuf codegen build-deps never enter the main
+# crate's lockfile or dependency graph. It is run manually (or via benches/scripts/charts.sh)
+# to regenerate the committed `generated.rs` files under benches/suite/approaches/*/.
+#
+# Author: aav
+[package]
+name = "proto-gen"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+micropb-gen = "0.6.0"
+pb-rs = "0.10.0"
+prost-build = "0.14.3"
+protobuf-codegen = "3.7.2"
+protoc-bin-vendored = "3.2.0"

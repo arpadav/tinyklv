@@ -1,0 +1,36 @@
+// Protobuf schema for the nested benchmark record `Platform`.
+//
+// Mirrors `benches/suite/records.rs`: `Platform` carries an embedded `GpsCoord` sub-message
+// and a `repeated Reading` run, alongside primitives. Field numbers match the KLV keys
+// (0x01..0x09). As in `telemetry.proto`, narrow KLV widths (u8/u16/i16) map to uint32 /
+// sint32 and the codec wrappers narrow back on decode.
+//
+// Author: aav
+syntax = "proto3";
+
+package bench;
+
+// Nested coordinate sub-packet (KLV keys 0x01..0x02).
+message GpsCoord {
+  double lat = 1; // KLV f64
+  double lon = 2; // KLV f64
+}
+
+// One sensor reading: a kind tag plus a float value (KLV keys 0x01..0x02 inside the run).
+message Reading {
+  uint32 kind = 1;  // KLV u8
+  float  value = 2; // KLV f32
+}
+
+// Nested platform record: a sub-packet coordinate and a repeated sensor run plus primitives.
+message Platform {
+  uint32   id = 1;                // KLV u32
+  GpsCoord coord = 2;             // nested sub-packet
+  sint32   vx = 3;                // KLV i16
+  sint32   vy = 4;                // KLV i16
+  sint32   vz = 5;                // KLV i16
+  double   altitude = 6;          // KLV f64
+  float    heading = 7;           // KLV f32
+  uint32   mode = 8;              // KLV u8
+  repeated Reading sensors = 9;   // packed sensor run
+}
