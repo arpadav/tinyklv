@@ -45,7 +45,10 @@ impl DecodeValue<&[u8]> for DateTime<Utc> {
 impl EncodeValue<Vec<u8>> for DateTime<Utc> {
     fn encode_value(&self) -> Vec<u8> {
         // infallible for the bounded timestamps `RngSample` emits (well inside the i64-ns range)
-        encb::be_i64(self.timestamp_nanos_opt().expect("timestamp within i64-ns range"))
+        encb::be_i64(
+            self.timestamp_nanos_opt()
+                .expect("timestamp within i64-ns range"),
+        )
     }
 }
 
@@ -67,7 +70,7 @@ impl DecodeValue<&[u8]> for NaiveTime {
     fn decode_value(input: &mut &[u8]) -> crate::Result<Self> {
         let secs = decb::be_u32(input)?;
         NaiveTime::from_num_seconds_from_midnight_opt(secs, 0)
-            .ok_or_else(|| ContextError::from_input(input))
+            .ok_or(ContextError::from_input(input))
     }
 }
 impl EncodeValue<Vec<u8>> for NaiveTime {

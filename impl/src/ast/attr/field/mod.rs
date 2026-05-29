@@ -23,13 +23,13 @@ use xcoder::FieldXcoder;
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use quote::ToTokens;
-use std::collections::HashMap;
+use crate::Ctxt;
 use crate::ast::types::{
     DefaultValue, LatebindXcoder, SiguledXcoder, XcoderLike, XcoderSigil, XcoderType,
 };
 use crate::symbol;
-use crate::Ctxt;
+use quote::ToTokens;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 /// Raw parsed form of a single struct field's `#[klv(..)]` annotations
@@ -270,10 +270,7 @@ impl Field {
             && !allow_unimplemented_decode
             && field_xcoder.dec.is_none()
         {
-            let varlen_set = field_xcoder
-                .varlen
-                .as_ref()
-                .is_some_and(|v| v.value);
+            let varlen_set = field_xcoder.varlen.as_ref().is_some_and(|v| v.value);
             if varlen_set {
                 cx.error_spanned_by(
                     name.clone(),

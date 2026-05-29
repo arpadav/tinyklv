@@ -8,13 +8,13 @@ mod field;
 // local
 // --------------------------------------------------
 use crate::Ctxt;
-use container::{default::DefaultXcoder, ContainerParsed};
+use container::{ContainerParsed, default::DefaultXcoder};
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use std::collections::HashMap;
-use syn::{punctuated::Punctuated, Token};
+use syn::{Token, punctuated::Punctuated};
 
 /// A source data structure annotated with `#[derive(Klv)]` parsed into an internal representation.
 pub(crate) struct MainContainer<'a> {

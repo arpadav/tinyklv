@@ -31,7 +31,7 @@ use crate::prelude::*;
 // external
 // --------------------------------------------------
 use num_traits::{
-    bounds::UpperBounded, AsPrimitive, FromPrimitive, ToBytes, ToPrimitive, Unsigned,
+    AsPrimitive, FromPrimitive, ToBytes, ToPrimitive, Unsigned, bounds::UpperBounded,
 };
 use winnow::error::ParserError;
 use winnow::token::{take, take_while};
@@ -146,7 +146,11 @@ impl<T: OfBerCommon> BerLength<T> {
     /// this cannot panic because the value is verified to be < 128 before the cast,
     /// which is always representable as `u8`
     pub fn new(len: T) -> Self {
-        if Self::can_be_short(&len) { BerLength::Short(len.to_u8().expect("if unsigned int is less than 128, then it can always fit into u8, why did this panic?")) } else { BerLength::Long(len) }
+        if Self::can_be_short(&len) {
+            BerLength::Short(len.to_u8().expect("if unsigned int is less than 128, then it can always fit into u8, why did this panic?"))
+        } else {
+            BerLength::Long(len)
+        }
     }
 
     /// Convenience static entry point: constructs a [`BerLength`] and immediately encodes it
@@ -277,6 +281,10 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerLength<T> {
         // err if no bytes
         // --------------------------------------------------
         let first_byte = take_one(input)?;
+        #[allow(
+            clippy::indexing_slicing,
+            reason = "take_one yields a slice of exactly one byte, so [0] is always in-bounds"
+        )]
         let first_byte = first_byte[0];
         // --------------------------------------------------
         // if MSB is not set, it's a short length (single byte)
@@ -441,7 +449,9 @@ impl<T: OfBerCommon> crate::EncodeValue<Vec<u8>> for BerOid<T> {
             if first_byte {
                 first_byte = false;
                 output.push(byte);
-            } else { output.push(byte | 0x80) }
+            } else {
+                output.push(byte | 0x80);
+            }
         }
         output.reverse();
         output
@@ -471,7 +481,9 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerOid<T> {
         //   - exactly one terminator byte with MSB = 0
         // --------------------------------------------------
         let prefix: &[u8] = take_while(0.., msb_is_set)
-            .context(winnow::error::StrContext::Label("BER-OID continuation bytes"))
+            .context(winnow::error::StrContext::Label(
+                "BER-OID continuation bytes",
+            ))
             .parse_next(input)?;
         let terminator = winnow::binary::be_u8
             .context(winnow::error::StrContext::Label(

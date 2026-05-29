@@ -88,7 +88,9 @@ where
         loop {
             let before = input.eof_offset();
             let cp = input.checkpoint();
-            if let Ok(val) = T::decode_value(input) { acc.push(val) } else {
+            if let Ok(val) = T::decode_value(input) {
+                acc.push(val);
+            } else {
                 if input.eof_offset() == before {
                     input.reset(&cp);
                 }

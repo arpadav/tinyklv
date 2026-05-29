@@ -79,7 +79,7 @@ pub mod prelude {
     // --------------------------------------------------
     // external
     // --------------------------------------------------
-    pub use winnow::{error::AddContext as _, prelude::*, stream::Stream as _, Parser as _};
+    pub use winnow::{Parser as _, error::AddContext as _, prelude::*, stream::Stream as _};
 }
 
 /// Convenience type alias for [`winnow::Result`] used throughout the tinyklv codec API

@@ -17,8 +17,8 @@ pub(crate) mod stream;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::symbol;
 use crate::Ctxt;
+use crate::symbol;
 use default::DefaultXcoder;
 use keylen::Xcoder;
 use sentinel::Sentinel;
@@ -29,7 +29,7 @@ use stream::Stream;
 // --------------------------------------------------
 use quote::ToTokens;
 use std::collections::HashMap;
-use syn::{punctuated::Punctuated, Token};
+use syn::{Token, punctuated::Punctuated};
 
 #[derive(Debug)]
 /// Raw parsed form of every recognised container-level `#[klv(..)]` attribute
@@ -235,7 +235,8 @@ impl Container {
                         symbol::STREAM => match stream {
                             Some(_) => cx.error_spanned_by(&nv, err!(DuplicateStream)),
                             None => {
-                                stream = Stream::try_from(&nv).map_err(|err| cx.syn_error(err)).ok();
+                                stream =
+                                    Stream::try_from(&nv).map_err(|err| cx.syn_error(err)).ok();
                             }
                         },
                         symbol::SENTINEL => match sentinel {

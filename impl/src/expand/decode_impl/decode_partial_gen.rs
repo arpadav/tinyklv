@@ -141,7 +141,9 @@ pub(super) fn gen_resume_partial_impl(
         quote! {
             #logger ("key: {}, len: {}", key, len);
         }
-    } else { quote! {} };
+    } else {
+        quote! {}
+    };
     // --------------------------------------------------
     // return impl - this is main decoding logic
     // --------------------------------------------------

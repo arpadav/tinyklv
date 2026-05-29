@@ -10,8 +10,8 @@ use crate::{
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use quote::quote;
 use quote::ToTokens;
+use quote::quote;
 
 /// Generates the partial struct definition + manual `Default` impl
 ///
