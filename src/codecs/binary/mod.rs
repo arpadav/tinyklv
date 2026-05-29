@@ -24,6 +24,51 @@ use num_traits::ToBytes;
 use std::convert::AsRef;
 use winnow::Parser;
 
+/// Infallible big-endian widening from a `u128` intermediate into a fixed-width integer
+///
+/// Implemented for the unsigned primitives `u8` through `u128`. [`FixedLength`] reads its bytes
+/// through a `u128` (via [`dec::be_u128_lengthed`]) and then narrows to the requested target via
+/// this trait, dropping any surplus high bytes: a `len` wider than the target keeps only the
+/// low-order bytes, the same big-endian truncation [`FixedLength::encode`] applies in reverse.
+/// The conversion is therefore infallible (never errors), and the trait is sealed - downstream
+/// crates cannot implement it.
+pub trait FromBeBytes: sealed::Sealed {
+    /// Narrows a big-endian `u128` intermediate to `Self`, dropping any surplus high bytes
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The decoded big-endian value, held in a `u128` intermediate
+    ///
+    /// # Returns
+    ///
+    /// The value as `Self`; high bytes beyond `Self`'s native width are truncated
+    #[must_use]
+    fn from_be_u128(value: u128) -> Self;
+}
+/// Sealing module for [`FromBeBytes`]
+mod sealed {
+    /// Sealed marker preventing foreign [`super::FromBeBytes`] implementations
+    pub trait Sealed {}
+}
+/// Implements [`FromBeBytes`] and its sealing marker for the given unsigned primitives
+macro_rules! impl_from_be_bytes {
+    ($($ty:ty),* $(,)?) => {$(
+        impl sealed::Sealed for $ty {}
+        /// [`FromBeBytes`] implementation
+        impl FromBeBytes for $ty {
+            #[inline]
+            #[allow(
+                clippy::unnecessary_cast,
+                reason = "the cast is a no-op only for the u128 arm; it narrows for every smaller width"
+            )]
+            fn from_be_u128(value: u128) -> Self {
+                value as $ty
+            }
+        }
+    )*};
+}
+impl_from_be_bytes!(u8, u16, u32, u64, u128);
+
 /// A runtime-length encoder/decoder pair for big-endian numeric fields
 ///
 /// Stores a byte-width `len` set at construction and applies it to every
@@ -31,6 +76,10 @@ use winnow::Parser;
 /// order. When the encoded bytes are shorter than the native type width,
 /// high bytes are zero-padded; when longer, the most-significant surplus
 /// bytes are dropped (truncation on decode, leading-zero strip on encode).
+///
+/// Decoding targets the unsigned primitives via [`FromBeBytes`] (`u8` through `u128`);
+/// encoding accepts any [`ToBytes`] value, signed included. Decoding into a signed type
+/// is therefore intentionally unsupported - decode into the unsigned counterpart and cast.
 ///
 /// # Example
 ///
@@ -44,6 +93,7 @@ use winnow::Parser;
 /// let decoded: u32 = codec.decode(&mut encoded.as_slice()).unwrap();
 /// assert_eq!(decoded, 0x0102_u32);
 /// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FixedLength {
     /// The exact number of bytes used for each encode or decode operation
     pub len: usize,
@@ -53,8 +103,9 @@ impl FixedLength {
     /// Decodes exactly `self.len` bytes from `input` as a big-endian integer, widening to `P`
     ///
     /// Reads `self.len` bytes and interprets them as a big-endian unsigned integer
-    /// via a `u128` intermediate. The result is then converted to `P` via [`From<u128>`].
-    /// If fewer than `self.len` bytes remain, an error is returned.
+    /// via a `u128` intermediate, then narrows to `P` via [`FromBeBytes`], dropping any
+    /// high bytes beyond `P`'s native width. If fewer than `self.len` bytes remain, an
+    /// error is returned.
     ///
     /// # Arguments
     ///
@@ -73,22 +124,21 @@ impl FixedLength {
     /// let decoded: u32 = codec.decode(&mut &[0x01, 0x02][..]).unwrap();
     /// assert_eq!(decoded, 0x0102_u32);
     /// ```
-    #[inline(always)]
+    #[inline] // not always inline: small generic wrapper (be_u128_lengthed + narrowing map); the optimizer inlines it at each monomorphization, so forcing it only risks downstream bloat
     pub fn decode<P>(&self, input: &mut &[u8]) -> crate::Result<P>
     where
-        P: From<u128>,
+        P: FromBeBytes,
     {
         crate::codecs::binary::dec::be_u128_lengthed(self.len)
             .parse_next(input)
-            .map(std::convert::Into::into)
+            .map(P::from_be_u128)
     }
 
     /// Encodes `input` as big-endian bytes, returning exactly `self.len` bytes
     ///
     /// Converts `input` to big-endian bytes via [`ToBytes::to_be_bytes`], then
     /// takes the last `self.len` bytes (truncating high-order bytes when the
-    /// value's native width exceeds `self.len`). If `self.len` exceeds the
-    /// native width, this will panic with an out-of-bounds slice.
+    /// value's native width exceeds `self.len`).
     ///
     /// # Arguments
     ///
@@ -97,6 +147,11 @@ impl FixedLength {
     /// # Returns
     ///
     /// A [`Vec<u8>`] of exactly `self.len` bytes
+    ///
+    /// # Panics
+    ///
+    /// Panics (slice-bounds underflow) when `self.len` exceeds the native byte width of `P`,
+    /// since there are then fewer than `self.len` big-endian bytes to take
     ///
     /// # Example
     ///
@@ -107,11 +162,18 @@ impl FixedLength {
     /// assert_eq!(codec.encode(&0x01020304_u32), vec![0x03, 0x04]);
     /// ```
     #[inline(always)]
+    #[allow(
+        clippy::indexing_slicing,
+        reason = "documented contract: returns the last `self.len` big-endian bytes; a `self.len` \
+                  exceeding the value's native width panics on slice underflow, as the doc states"
+    )]
     pub fn encode<P>(&self, input: &P) -> Vec<u8>
     where
         P: ToBytes,
     {
-        input.to_be_bytes().as_ref()[..self.len].to_vec()
+        let be = input.to_be_bytes();
+        let bytes = be.as_ref();
+        bytes[bytes.len() - self.len..].to_vec()
     }
 
     /// Returns a closure that decodes exactly `len` bytes as a big-endian integer, widening to `P`
@@ -137,15 +199,15 @@ impl FixedLength {
     /// let val: u32 = dec(&mut &[0x01, 0x02, 0x03][..]).unwrap();
     /// assert_eq!(val, 0x010203_u32);
     /// ```
-    #[inline(always)]
+    #[inline] // not always inline: closure factory whose body branches and copies into a pad buffer; let the cost model decide (in-crate LTO inlines it regardless)
     pub fn decode_lengthed<P>(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<P>
     where
-        P: From<u128>,
+        P: FromBeBytes,
     {
         move |input: &mut &[u8]| {
             crate::codecs::binary::dec::be_u128_lengthed(len)
                 .parse_next(input)
-                .map(std::convert::Into::into)
+                .map(P::from_be_u128)
         }
     }
 
@@ -163,6 +225,11 @@ impl FixedLength {
     ///
     /// A `impl Fn(&P) -> Vec<u8>` closure that truncates to the last `len` big-endian bytes
     ///
+    /// # Panics
+    ///
+    /// The returned closure panics (slice-bounds underflow) when `len` exceeds the native byte
+    /// width of `P`, since there are then fewer than `len` big-endian bytes to take
+    ///
     /// # Example
     ///
     /// ```rust
@@ -172,10 +239,19 @@ impl FixedLength {
     /// assert_eq!(enc(&0x01020304_u32), vec![0x03, 0x04]);
     /// ```
     #[inline(always)]
+    #[allow(
+        clippy::indexing_slicing,
+        reason = "documented contract: returns the last `len` big-endian bytes; a `len` exceeding \
+                  the value's native width panics on slice underflow, as the doc states"
+    )]
     pub fn encode_lengthed<P>(len: usize) -> impl Fn(&P) -> Vec<u8>
     where
         P: ToBytes,
     {
-        move |input: &P| input.to_be_bytes().as_ref()[..len].to_vec()
+        move |input: &P| {
+            let be = input.to_be_bytes();
+            let bytes = be.as_ref();
+            bytes[bytes.len() - len..].to_vec()
+        }
     }
 }
