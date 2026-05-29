@@ -90,6 +90,11 @@ macro_rules! encode_lengthed {
             #[doc = $doc_be_lengthed]
             #[inline(always)]
             #[must_use]
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "start = bytes.len().saturating_sub(len) is always <= bytes.len(), so \
+                  bytes[start..] is in-bounds"
+            )]
             pub fn[<be_ $ty _lengthed>](len: usize) -> impl Fn($ty) -> Vec<u8> {
                 move |input: $ty| {
                     let bytes = input.to_be_bytes();
@@ -1191,13 +1196,11 @@ mod tests {
                 } else {
                     assert_eq!(
                         x,
-                        &dec::be_f32_lengthed(*y)(&mut be_f32_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::be_f32_lengthed(*y)(&mut be_f32_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                     assert_eq!(
                         x,
-                        &dec::le_f32_lengthed(*y)(&mut le_f32_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::le_f32_lengthed(*y)(&mut le_f32_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                 }
             });
@@ -1246,13 +1249,11 @@ mod tests {
                 } else {
                     assert_eq!(
                         x,
-                        &dec::be_f64_lengthed(*y)(&mut be_f64_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::be_f64_lengthed(*y)(&mut be_f64_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                     assert_eq!(
                         x,
-                        &dec::le_f64_lengthed(*y)(&mut le_f64_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::le_f64_lengthed(*y)(&mut le_f64_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                 }
             });
@@ -1331,13 +1332,11 @@ mod tests {
                 } else {
                     assert_eq!(
                         x,
-                        &dec::be_u16_lengthed(*y)(&mut be_u16_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::be_u16_lengthed(*y)(&mut be_u16_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                     assert_eq!(
                         x,
-                        &dec::le_u16_lengthed(*y)(&mut le_u16_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::le_u16_lengthed(*y)(&mut le_u16_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                 }
             });
@@ -1386,13 +1385,11 @@ mod tests {
                 } else {
                     assert_eq!(
                         x,
-                        &dec::be_u32_lengthed(*y)(&mut be_u32_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::be_u32_lengthed(*y)(&mut be_u32_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                     assert_eq!(
                         x,
-                        &dec::le_u32_lengthed(*y)(&mut le_u32_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::le_u32_lengthed(*y)(&mut le_u32_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                 }
             });
@@ -1441,13 +1438,11 @@ mod tests {
                 } else {
                     assert_eq!(
                         x,
-                        &dec::be_u64_lengthed(*y)(&mut be_u64_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::be_u64_lengthed(*y)(&mut be_u64_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                     assert_eq!(
                         x,
-                        &dec::le_u64_lengthed(*y)(&mut le_u64_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::le_u64_lengthed(*y)(&mut le_u64_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                 }
             });
@@ -1585,13 +1580,11 @@ mod tests {
                 } else {
                     assert_eq!(
                         x,
-                        &dec::be_i16_lengthed(*y)(&mut be_i16_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::be_i16_lengthed(*y)(&mut be_i16_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                     assert_eq!(
                         x,
-                        &dec::le_i16_lengthed(*y)(&mut le_i16_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::le_i16_lengthed(*y)(&mut le_i16_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                 }
             });
@@ -1640,13 +1633,11 @@ mod tests {
                 } else {
                     assert_eq!(
                         x,
-                        &dec::be_i32_lengthed(*y)(&mut be_i32_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::be_i32_lengthed(*y)(&mut be_i32_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                     assert_eq!(
                         x,
-                        &dec::le_i32_lengthed(*y)(&mut le_i32_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::le_i32_lengthed(*y)(&mut le_i32_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                 }
             });
@@ -1695,13 +1686,11 @@ mod tests {
                 } else {
                     assert_eq!(
                         x,
-                        &dec::be_i64_lengthed(*y)(&mut be_i64_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::be_i64_lengthed(*y)(&mut be_i64_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                     assert_eq!(
                         x,
-                        &dec::le_i64_lengthed(*y)(&mut le_i64_lengthed(*y)(*x).as_slice())
-                            .unwrap()
+                        &dec::le_i64_lengthed(*y)(&mut le_i64_lengthed(*y)(*x).as_slice()).unwrap()
                     );
                 }
             });
