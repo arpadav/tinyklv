@@ -42,9 +42,9 @@ fn make_chunks(packets: &[Heartbeat]) -> Vec<Vec<u8>> {
     chunks.push(vec![0xDE, 0xAD, 0x00, 0x00, 0xFF, 0x00]);
     for p in packets {
         let frame = p.encode_frame();
-        let split = frame.len() / 2;
-        chunks.push(frame[..split].to_vec());
-        chunks.push(frame[split..].to_vec());
+        let (head, tail) = frame.split_at(frame.len() / 2);
+        chunks.push(head.to_vec());
+        chunks.push(tail.to_vec());
     }
     chunks
 }

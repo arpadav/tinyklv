@@ -11,7 +11,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use tinyklv::codecs::string::dec::{to_string_utf16_le, to_string_utf8};
+use tinyklv::codecs::string::dec::{to_string_utf8, to_string_utf16_le};
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
 use tinyklv::enc::binary as encb;

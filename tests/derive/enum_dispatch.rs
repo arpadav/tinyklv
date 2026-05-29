@@ -76,6 +76,11 @@ enum Packet {
 /// appropriate `::decode_frame()`. Returns `None` if the sentinel is unrecognised
 /// or if the stream is empty. On an unrecognised sentinel the byte is
 /// advanced past so that callers can keep scanning.
+#[allow(
+    clippy::indexing_slicing,
+    reason = "the `input.len() < 2` early-return guards both slices: input[0..2] and input[1..] \
+              are only reached once at least two bytes are present"
+)]
 fn dispatch_one(input: &mut &[u8]) -> Option<Packet> {
     if input.len() < 2 {
         *input = &[];

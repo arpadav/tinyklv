@@ -5,10 +5,10 @@
 //! * type-generic structs carrying `PhantomData<T>` (zero-size, skipped by derive)
 //! * user-authored `where` clauses preserved verbatim via `split_for_impl`
 use std::marker::PhantomData;
+use tinyklv::Klv;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(

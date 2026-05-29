@@ -1,5 +1,5 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 //! Example 12 - variant dispatch on a multiplexed stream.
 //!
 //! Real telemetry buses carry several packet types mixed together. The

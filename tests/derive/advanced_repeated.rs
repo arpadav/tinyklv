@@ -142,7 +142,10 @@ fn repeated_sentinel_three_roundtrip_values() {
         Waypoint::new(90.0, -180.0, Priority::High),
     ];
 
-    let stream: Vec<u8> = waypoints.iter().flat_map(tinyklv::EncodeFrame::encode_frame).collect();
+    let stream: Vec<u8> = waypoints
+        .iter()
+        .flat_map(tinyklv::EncodeFrame::encode_frame)
+        .collect();
     let mut slice = stream.as_slice();
     let mut decoded: Vec<Waypoint> = Vec::new();
     while let Ok(w) = Waypoint::decode_frame(&mut slice) {

@@ -99,9 +99,12 @@ fn inline_seek_skips_false_first_byte() {
     let mut body: Vec<u8> = vec![0x01, 0x02, 0x00, 0x2A, 0x02, 0x03];
     body.extend_from_slice(name);
     let mut stream: Vec<u8> = vec![
-        0xAA, 0x00, // false first byte: 0xAA NOT followed by 0xBB
-        0xAA, 0x99, // another false 0xAA
-        0xAA, 0xBB, // the real sentinel
+        0xAA,
+        0x00, // false first byte: 0xAA NOT followed by 0xBB
+        0xAA,
+        0x99, // another false 0xAA
+        0xAA,
+        0xBB, // the real sentinel
         body.len() as u8,
     ];
     stream.extend_from_slice(&body);
@@ -138,8 +141,14 @@ struct LongSentinelPacket {
 fn finder_path_seek_skips_false_first_byte() {
     let body: Vec<u8> = vec![0x01, 0x02, 0x12, 0x34]; // key=1 len=2 val=0x1234
     let mut stream: Vec<u8> = vec![
-        0xAA, 0xBB, 0x00, // false partial sentinel (0xAA 0xBB then breaks)
-        0xAA, 0xBB, 0xCC, 0xDD, 0xEE, // the real 5-byte sentinel
+        0xAA,
+        0xBB,
+        0x00, // false partial sentinel (0xAA 0xBB then breaks)
+        0xAA,
+        0xBB,
+        0xCC,
+        0xDD,
+        0xEE, // the real 5-byte sentinel
         body.len() as u8,
     ];
     stream.extend_from_slice(&body);

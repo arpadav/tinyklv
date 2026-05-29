@@ -1,7 +1,7 @@
 #![allow(noop_method_call)]
 
-use tinyklv::prelude::*;
 use tinyklv::Klv;
+use tinyklv::prelude::*;
 
 #[derive(Klv)]
 #[klv(

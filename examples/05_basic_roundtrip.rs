@@ -68,9 +68,8 @@ fn main() {
     );
 
     // the framed form must begin with the sentinel
-    assert_eq!(
-        &frame_bytes[0..b"ATMOSAMPLE".len()],
-        b"ATMOSAMPLE",
+    assert!(
+        frame_bytes.starts_with(b"ATMOSAMPLE"),
         "frame must begin with the sentinel bytes",
     );
 

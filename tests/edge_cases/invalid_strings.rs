@@ -1,5 +1,5 @@
 use tinyklv::codecs::string::dec::{
-    to_string_utf16_be, to_string_utf16_le, to_string_utf8, to_string_utf8_strict,
+    to_string_utf8, to_string_utf8_strict, to_string_utf16_be, to_string_utf16_le,
 };
 
 #[test]

@@ -88,17 +88,16 @@ fn main() {
     // This bypasses frame seeking completely - the caller already knows the
     // body boundaries and manages the in-flight partial explicitly.
     {
-        let original = want[0].clone();
+        let original = want.first().unwrap().clone();
         let body = original.encode_value();
-        let split = 5;
+        let (first, second_half) = body.split_at(5);
 
-        let mut first_half: &[u8] = &body[..split];
+        let mut first_half: &[u8] = first;
         let partial = match Heartbeat::decode_partial(&mut first_half).unwrap() {
             Packet::Ready(_) => panic!("body should not be complete yet"),
             Packet::NeedMore(partial) => partial,
         };
 
-        let second_half: &[u8] = &body[split..];
         let mut resumed_body = Vec::from(first_half);
         resumed_body.extend_from_slice(second_half);
 

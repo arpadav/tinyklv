@@ -1,7 +1,7 @@
+use tinyklv::Klv;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(

@@ -17,14 +17,20 @@ use tinyklv::enc::string as encs;
 /// Tests `to_string_ascii` decodes a printable ASCII payload
 fn ascii_known_value() {
     let mut input: &[u8] = &[0x41, 0x46, 0x2D, 0x31, 0x30, 0x31];
-    assert_eq!(decs::to_string_ascii(6)(&mut input), Ok(String::from("AF-101")));
+    assert_eq!(
+        decs::to_string_ascii(6)(&mut input),
+        Ok(String::from("AF-101"))
+    );
 }
 
 #[test]
 /// Tests `to_string_ascii` accepts the boundary byte `0x7F` (highest 7-bit value)
 fn ascii_accepts_0x7f() {
     let mut input: &[u8] = &[0x7F];
-    assert_eq!(decs::to_string_ascii(1)(&mut input), Ok(String::from("\u{7f}")));
+    assert_eq!(
+        decs::to_string_ascii(1)(&mut input),
+        Ok(String::from("\u{7f}"))
+    );
 }
 
 #[test]

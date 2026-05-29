@@ -224,7 +224,10 @@ fn auto_generate_10_packets() {
         })
         .collect();
 
-    let stream: Vec<u8> = waypoints.iter().flat_map(tinyklv::EncodeFrame::encode_frame).collect();
+    let stream: Vec<u8> = waypoints
+        .iter()
+        .flat_map(tinyklv::EncodeFrame::encode_frame)
+        .collect();
 
     let mut slice = stream.as_slice();
     let mut decoded: Vec<Waypoint> = Vec::new();

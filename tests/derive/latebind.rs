@@ -9,10 +9,10 @@
 //! Exercised on required fields, `Option<U>` fields (present/absent), and
 //! alongside `default` to confirm the default-populated path is NOT re-run
 //! through latebind
+use tinyklv::Klv;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
 
 // --------------------------------------------------
 // consuming form: `u8` -> `Status` via `Fn(u8) -> Status`

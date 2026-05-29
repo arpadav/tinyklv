@@ -36,7 +36,10 @@ fn ber_length_0x80_claims_zero_extra_bytes() {
     // Behavior: 0x80 has num_bytes=0; parse_length_u128 with 0 bytes
     // produces 0 via fold. This is technically "indefinite form" but
     // the library decodes it as length 0.
-    if let Ok(len) = result { assert_eq!(len, 0, "0x80 decodes as length 0") } else { /* also acceptable if implementation rejects it */ }
+    if let Ok(len) = result {
+        assert_eq!(len, 0, "0x80 decodes as length 0");
+    } else { /* also acceptable if implementation rejects it */
+    }
 }
 
 #[test]
