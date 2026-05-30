@@ -1,3 +1,17 @@
+//! Code generation for the partial-packet struct and its trait implementations
+//!
+//! Provides three generators consumed by [`super::gen_decode_impl`]:
+//!
+//! * [`gen_partial_struct`] - emits the hidden `XxxPartialPacket` struct (a
+//!   mirror of the user struct with every KLV field as `Option<T>`) and its
+//!   manual [`Default`] impl seeded by any field-level `default` attributes
+//! * [`gen_partial_impl`] - emits the [`tinyklv::traits::Partial`] impl,
+//!   which validates required fields and constructs the final struct via
+//!   `Partial::finalize`
+//! * [`gen_try_from_partial_impl`] - emits a `TryFrom<XxxPartialPacket> for
+//!   Xxx` convenience impl that routes through `Partial::finalize`
+//!
+//! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
@@ -10,29 +24,39 @@ use crate::{
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use quote::ToTokens;
-use quote::quote;
+use quote::{ToTokens, quote};
 
-/// Generates the partial struct definition + manual `Default` impl
+/// Generates the partial-packet struct definition and its manual [`Default`] impl
 ///
-/// The struct mirrors the main struct with one `Option<T>` field per
-/// klv-annotated field; non-klv fields are omitted (they are filled via
-/// `<#ty>::default()` only at finalisation time). The `Default` impl seeds
-/// each field according to its `default` attribute:
+/// The emitted struct mirrors the main struct with one `Option<T>` field per
+/// KLV-annotated field; non-KLV fields are omitted from the partial and filled
+/// via `<T>::default()` only at finalization time. Generic parameters are
+/// forwarded as-is; a `PhantomData` field is added when the original struct
+/// carries type or lifetime parameters so the compiler does not reject the
+/// partial struct for unused generics
 ///
-/// * no attribute       -> `Option::<#ty>::None`
-/// * bare `default`     -> `Some(<#ty as ::core::default::Default>::default())`
-/// * `default = <expr>` -> `Some(#expr)`
+/// The `Default` impl seeds each field according to its `default` attribute:
 ///
-/// Manual `Default` (rather than `#[derive(Default)]`) is required because
-/// the user's `default = <expr>` may be an arbitrary expression that does
-/// not match `<T as Default>::default()`.
+/// * no `default` attribute  -> `Option::<T>::None`
+/// * bare `default`          -> `Some(<T as ::core::default::Default>::default())`
+/// * `default = <expr>`      -> `Some(#expr)`
 ///
-/// Replaces the historical `gen_items_default` which emitted free local
-/// `let mut #name: Option<#ty> = ...;` accumulators inside the
-/// `decode_partial` body. Hoisting them onto a named struct lets the
-/// state outlive the call so a `Packet::NeedMore(Decoder<P>)` can
-/// carry the in-flight partial across `feed`/`next` boundaries.
+/// A manual `Default` impl (rather than `#[derive(Default)]`) is required
+/// because `default = <expr>` may be an arbitrary expression that does not
+/// match `<T as Default>::default()`
+///
+/// # Arguments
+///
+/// * `name` - The main struct ident, used in the generated doc comment
+/// * `partial_name` - The partial struct ident to emit (`XxxPartialPacket`)
+/// * `vis` - The visibility of the original struct, applied to the partial as well
+/// * `generics` - Generic parameters from the original struct definition
+/// * `fatts` - All fields of the container; non-KLV fields are skipped
+///
+/// # Returns
+///
+/// A [`proc_macro2::TokenStream`] containing the partial struct definition and
+/// its `Default` impl block
 pub(super) fn gen_partial_struct(
     name: &syn::Ident,
     partial_name: &syn::Ident,
@@ -44,10 +68,8 @@ pub(super) fn gen_partial_struct(
     // split generics
     // --------------------------------------------------
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
     // --------------------------------------------------
-    // user `Option<T>` fields are flattened (storing
-    // `Option<T>`, not `Option<Option<T>>`)
+    // Option<T> fields flattened: store Option<T>, not Option<Option<T>>
     // --------------------------------------------------
     let field_decls = fatts.iter().filter_map(|field| {
         field.attrs.as_ref()?;
@@ -89,8 +111,7 @@ pub(super) fn gen_partial_struct(
         })
         .collect();
     // --------------------------------------------------
-    // get the phantom field, and for default, same field
-    // exists, just without the type params
+    // phantom field for struct def and its default initializer
     // --------------------------------------------------
     let (phantom_field, phantom_default) = if type_params.is_empty() && lifetime_params.is_empty() {
         (quote! {}, quote! {})
@@ -178,22 +199,29 @@ pub(super) fn gen_partial_struct(
     }
 }
 
-/// Generates the [`tinyklv::traits::Partial`] impl for the partial-packet
-/// struct: `Partial::finalize(self) -> Result<Xxx, ContextError>`.
+/// Generates the [`tinyklv::traits::Partial`] impl for the partial-packet struct
 ///
-/// For each field that has a `#[klv(..)]` attribute, one of two things happens:
+/// Emits `Partial::finalize(self) -> Result<Xxx, &'static str>`. For each
+/// KLV-annotated field one of two things happens:
 ///
-/// * `Option<T>` field  -> moved into the struct literal unchanged
-/// * required `T` field -> a short-circuit guard is emitted above the struct
-///   literal which unwraps `Some(v)` into a plain `v` of type `T`, or returns
-///   [`Err(ContextError)`] with a rich, field-naming message if
-///   that field was never populated during the decode loop
+/// * `Option<T>` field - moved into the final struct literal unchanged
+/// * required `T` field - a short-circuit guard unwraps `Some(v)` or returns
+///   `Err` with a descriptive message naming the missing field
 ///
-/// Fields that do NOT carry a `#[klv(..)]` attribute are filled via
-/// [`Default::default`] inside the struct literal. If any such field's type
-/// does not implement [`Default`], the generated code will fail to compile -
-/// this is intentional, matching the behavior of the prior result-based
-/// `gen_item_set`.
+/// Fields without a `#[klv(..)]` attribute are filled via
+/// `<T as Default>::default()`; the generated code will not compile if their
+/// type does not implement [`Default`]
+///
+/// # Arguments
+///
+/// * `struct_name` - The main struct ident, used in missing-field error messages
+/// * `partial_name` - The partial struct ident the impl is generated for
+/// * `generics` - Generic parameters from the original struct definition
+/// * `fields` - All fields of the container; non-KLV fields get `Default::default()`
+///
+/// # Returns
+///
+/// A [`proc_macro2::TokenStream`] containing the complete `Partial` impl block
 ///
 /// Emission shape (sketch):
 ///
@@ -216,12 +244,6 @@ pub(super) fn gen_partial_struct(
 ///     }
 /// }
 /// ```
-///
-/// Counterpart of the historical `gen_item_set_progress` which inlined
-/// these guards directly into the `decode_partial` body. Hoisting the
-/// validation into `Partial::finalize` keeps it reachable from both the
-/// end-of-loop path inside `resume_partial` AND the user-facing
-/// `TryFrom<Partial> for Xxx` impl, with a single source of truth.
 pub(super) fn gen_partial_impl(
     struct_name: &syn::Ident,
     partial_name: &syn::Ident,
@@ -230,7 +252,7 @@ pub(super) fn gen_partial_impl(
 ) -> proc_macro2::TokenStream {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     // --------------------------------------------------
-    // symbol used to refer to the `default` keyword in error messages
+    // symbol for `default` keyword in error messages
     // --------------------------------------------------
     let default_symbol = symbol::DEFAULT_VALUE.to_token_stream();
     // --------------------------------------------------
@@ -267,9 +289,7 @@ pub(super) fn gen_partial_impl(
             }
         });
     // --------------------------------------------------
-    // this simply does `let #name = self.#name` since
-    // the original fields in the partial are optional,
-    // and so are the ones in the final struct
+    // optional field pass-through: let #name = self.#name
     // --------------------------------------------------
     let optional_passes = fields
         .iter()
@@ -282,19 +302,15 @@ pub(super) fn gen_partial_impl(
             }
         });
     // --------------------------------------------------
-    // assignment on KLV fields: `#name`
-    // --------------------------------------------------
-    // no need to assign using `#name: #name` since names
-    // match and rust is awesome
+    // klv field names for struct literal (shorthand assignment)
+    // rust is awesome
     // --------------------------------------------------
     let klv_field_names = fields
         .iter()
         .filter(|f| f.attrs.is_some())
         .map(|f| f.name.clone());
     // --------------------------------------------------
-    // assignment on NON-klv fields: trailing `#name: <#ty>::default(),`
-    // --------------------------------------------------
-    // collect fields WITHOUT a `#[klv(..)]` attribute
+    // non-klv fields: fill with `#name: <#ty>::default()
     // --------------------------------------------------
     let elem_name_type_without_klv = fields
         .iter()
@@ -313,7 +329,7 @@ pub(super) fn gen_partial_impl(
         quote! { #(#names: #types::default(),)* }
     };
     // --------------------------------------------------
-    // impl partial for the partial struct
+    // emit Partial impl
     // --------------------------------------------------
     quote! {
         #[automatically_derived]
@@ -335,13 +351,23 @@ pub(super) fn gen_partial_impl(
     }
 }
 
-/// Generates the ergonomic `TryFrom<XxxPartialPacket> for Xxx`
-/// impl with `Error = ContextError`. Routes through
-/// [`tinyklv::traits::Partial::finalize`] so the validation logic lives
-/// in exactly one place ([`gen_partial_impl`]).
+/// Generates the `TryFrom<XxxPartialPacket> for Xxx` convenience impl
 ///
-/// Lets user code write `let x: Xxx = partial.try_into()?;` without
-/// needing to import the `Partial` trait.
+/// Emits a `TryFrom` impl with `Error = &'static str` that routes entirely
+/// through [`tinyklv::traits::Partial::finalize`], keeping all required-field
+/// validation logic in one place. Lets user code write
+/// `let x: Xxx = partial.try_into()?;` without needing to import the
+/// `Partial` trait
+///
+/// # Arguments
+///
+/// * `struct_name` - The target struct ident (the `for Xxx` side)
+/// * `partial_name` - The source partial struct ident (the `TryFrom<..>` side)
+/// * `generics` - Generic parameters from the original struct definition
+///
+/// # Returns
+///
+/// A [`proc_macro2::TokenStream`] containing the complete `TryFrom` impl block
 pub(super) fn gen_try_from_partial_impl(
     struct_name: &syn::Ident,
     partial_name: &syn::Ident,
@@ -351,9 +377,8 @@ pub(super) fn gen_try_from_partial_impl(
     // generics
     // --------------------------------------------------
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
     // --------------------------------------------------
-    // return the tryfrom
+    // emit TryFrom impl routing through Partial::finalize
     // --------------------------------------------------
     quote! {
         #[automatically_derived]
