@@ -65,17 +65,29 @@ class Approach(Enum):
 
     @property
     def criterion_id(self) -> str:
-        """The directory / function id criterion stores this approach's results under."""
+        """The directory / function id criterion stores this approach's results under.
+
+        Returns:
+            The enum value string (e.g. `"tinyklv"`, `"prost"`)
+        """
         return self.value
 
     @property
     def label(self) -> str:
-        """The human-facing legend label (currently the criterion id)."""
+        """The human-facing legend label displayed in the chart.
+
+        Returns:
+            The enum value string (same as `criterion_id`)
+        """
         return self.value
 
     @property
     def color(self) -> str:
-        """The fill color for this approach's bars / boxes."""
+        """The fill color for this approach's bars and boxes.
+
+        Returns:
+            A hex color string from the `_COLORS` palette
+        """
         return _COLORS[self]
 
 
@@ -137,21 +149,46 @@ class CriterionReader:
     stream_packets: int = field(init=False, default=1)
 
     def __post_init__(self) -> None:
-        """Loads the bench-written sidecar holding the per-tier element count (clamped to >= 1)."""
+        """Loads the bench-written `suite_meta.json` sidecar holding the per-tier element count.
+
+        Reads `stream_packets` from the sidecar and clamps it to at least 1. When the sidecar
+        is absent (e.g. the streamed tier was not benched), `stream_packets` remains 1.
+        """
         meta = self.root / "suite_meta.json"
         if meta.is_file():
             count = int(json.loads(meta.read_text()).get("stream_packets", 1))
             self.stream_packets = max(1, count)
 
     def median_ns(self, group: str, approach: Approach) -> float:
-        """Returns the criterion median estimate in ns, or NaN if not measured."""
+        """Returns the criterion median estimate in nanoseconds, or `math.nan` if not measured.
+
+        Args:
+            group: The criterion group id (e.g. `simple_encode_value`)
+            approach: The approach to look up
+
+        Returns:
+            The median point-estimate in nanoseconds, or `math.nan` when the estimates file
+            is absent (i.e. this approach was not benched for this group)
+        """
         path = self.root / group / approach.criterion_id / "new" / "estimates.json"
         if not path.is_file():
             return math.nan
         return float(json.loads(path.read_text())["median"]["point_estimate"])
 
     def sample_ns(self, group: str, approach: Approach) -> np.ndarray | None:
-        """Returns criterion's per-iteration ns samples (times / iters), or None if not measured."""
+        """Returns criterion's per-iteration ns samples (`times / iters`), or `None` if absent.
+
+        Reads the raw `iters` and `times` arrays from `sample.json` and divides element-wise
+        to produce per-iteration timings. Used by `BoxRenderer` to build the whisker distribution.
+
+        Args:
+            group: The criterion group id
+            approach: The approach to look up
+
+        Returns:
+            A float numpy array of per-iteration ns values, or `None` when the sample file
+            does not exist
+        """
         path = self.root / group / approach.criterion_id / "new" / "sample.json"
         if not path.is_file():
             return None
@@ -161,7 +198,18 @@ class CriterionReader:
         return times / iters
 
     def input_bytes(self, group: str, approach: Approach) -> float:
-        """Returns the per-bar input byte count from criterion's `Throughput`, or NaN if absent."""
+        """Returns the per-bar input byte count from criterion's persisted `Throughput`.
+
+        Reads the `"Bytes"` key from `benchmark.json`'s throughput object. Used by
+        `PerByte` normalization to convert raw ns into ns-per-byte.
+
+        Args:
+            group: The criterion group id
+            approach: The approach to look up
+
+        Returns:
+            The byte count as a float, or `math.nan` when the file or `Bytes` key is absent
+        """
         path = self.root / group / approach.criterion_id / "new" / "benchmark.json"
         if not path.is_file():
             return math.nan
@@ -171,7 +219,18 @@ class CriterionReader:
         return float(throughput["Bytes"])
 
     def elements(self, group: str) -> int:
-        """Returns the number of decoded elements per call for `group` (streamed tier vs the rest)."""
+        """Returns the decoded element count per call for `group`.
+
+        The streamed tier decodes `stream_packets` elements per call; every other tier decodes
+        exactly one. Used by `PerElement` normalization to amortize the streamed tier's absolute
+        time down to a per-packet cost.
+
+        Args:
+            group: The criterion group id; groups ending in `_streamed` return `stream_packets`
+
+        Returns:
+            `stream_packets` for the streamed tier, `1` for all other tiers
+        """
         return self.stream_packets if group.endswith("_streamed") else 1
 
 
@@ -186,13 +245,34 @@ class Normalization(ABC):
 
     @abstractmethod
     def divisor(self, reader: CriterionReader, group: str, approach: Approach) -> float:
-        """Returns the per-(group, approach) divisor applied to every ns value."""
+        """Returns the per-(group, approach) divisor applied to every ns value.
+
+        Subclasses return 1.0 (absolute), the input byte count (per-byte), or the
+        element count (per-element). The caller must guard against NaN and zero via
+        `safe_divisor` before dividing.
+
+        Args:
+            reader: The criterion reader holding the loaded benchmark results
+            group: The criterion group id (e.g. `simple_encode_value`)
+            approach: The approach whose bar is being normalized
+
+        Returns:
+            The raw divisor; may be NaN or zero if data is missing
+        """
 
     def safe_divisor(self, reader: CriterionReader, group: str, approach: Approach) -> float:
-        """Returns [`divisor`] when it is finite and non-zero, else `math.nan`
+        """Returns `divisor` when it is finite and non-zero, else `math.nan`.
 
         Centralises the divide-by-zero / not-measured guard so the bar (scalar) and box (array)
         paths share one definition of "this bar cannot be normalized".
+
+        Args:
+            reader: The criterion reader holding the loaded benchmark results
+            group: The criterion group id
+            approach: The approach whose bar is being normalized
+
+        Returns:
+            The divisor when safe to divide by, or `math.nan` when missing or zero
         """
         value = self.divisor(reader, group, approach)
         return value if math.isfinite(value) and value != 0 else math.nan
@@ -204,7 +284,16 @@ class Absolute(Normalization):
     unit = "ns"
 
     def divisor(self, reader: CriterionReader, group: str, approach: Approach) -> float:
-        """Always 1 - values are left in raw ns."""
+        """Always 1.0 — values are left in raw nanoseconds.
+
+        Args:
+            reader: Unused; present to satisfy the abstract interface
+            group: Unused; present to satisfy the abstract interface
+            approach: Unused; present to satisfy the abstract interface
+
+        Returns:
+            1.0 unconditionally
+        """
         return 1.0
 
 
@@ -214,7 +303,16 @@ class PerByte(Normalization):
     unit = "ns/byte"
 
     def divisor(self, reader: CriterionReader, group: str, approach: Approach) -> float:
-        """The per-bar input byte count."""
+        """The per-bar input byte count from criterion's persisted `Throughput`.
+
+        Args:
+            reader: The criterion reader to query
+            group: The criterion group id
+            approach: The approach whose byte count to look up
+
+        Returns:
+            The byte count as a float, or `math.nan` when the benchmark file is absent
+        """
         return reader.input_bytes(group, approach)
 
 
@@ -224,7 +322,16 @@ class PerElement(Normalization):
     unit = "ns/element"
 
     def divisor(self, reader: CriterionReader, group: str, approach: Approach) -> float:
-        """The per-tier element count (packets for the streamed tier, 1 otherwise)."""
+        """The per-tier element count: stream packet count for the streamed tier, 1 otherwise.
+
+        Args:
+            reader: The criterion reader whose `stream_packets` count is used
+            group: The criterion group id (the `_streamed` suffix triggers the packet count)
+            approach: Unused; present to satisfy the abstract interface
+
+        Returns:
+            The per-call element count as a float
+        """
         return float(reader.elements(group))
 
 
@@ -236,39 +343,96 @@ class Layout(ABC):
 
     @abstractmethod
     def figsize(self) -> tuple[float, float]:
-        """Returns the figure size tuned for this orientation."""
+        """Returns the figure (width, height) in inches tuned for this orientation.
+
+        Returns:
+            A (width, height) tuple passed directly to `plt.subplots(figsize=...)`
+        """
 
     @abstractmethod
     def draw_bars(self, ax, positions, values, width, color):
-        """Draws the grouped bars and returns the bar container."""
+        """Draws the grouped bars for one approach and returns the bar container.
+
+        Args:
+            ax: The matplotlib Axes to draw on
+            positions: Center positions of each bar along the category axis
+            values: Heights (vertical) or widths (horizontal) of each bar
+            width: The slot width each bar occupies
+            color: Fill color string for all bars in this call
+
+        Returns:
+            The matplotlib bar container (iterable of `Rectangle` patches)
+        """
 
     @abstractmethod
     def annotate(self, ax, bar, value: float, precision: int) -> None:
-        """Places a value label (at `precision` decimals) a fixed pixel offset off the bar's tip."""
+        """Places a value label at a fixed pixel offset off the bar's tip.
+
+        Args:
+            ax: The matplotlib Axes to annotate on
+            bar: A single `Rectangle` patch from the bar container
+            value: The numeric value to format and display
+            precision: Number of decimal places for the label text
+        """
 
     @property
     @abstractmethod
     def boxplot_orientation(self) -> str:
-        """The matplotlib boxplot orientation string for this layout."""
+        """The matplotlib boxplot orientation string for this layout.
+
+        Returns:
+            `"vertical"` or `"horizontal"`, passed to `ax.boxplot(orientation=...)`
+        """
 
     @abstractmethod
     def setup_axes(self, ax, group_pos, labels, scale_name, cap, value_label) -> None:
-        """Configures the category axis (groups) and value axis (scale, limit, label)."""
+        """Configures the category axis (groups) and value axis (scale, limit, label).
+
+        Args:
+            ax: The matplotlib Axes to configure
+            group_pos: Array of category-axis center positions (one per group cluster)
+            labels: Display labels for each group position
+            scale_name: `"log"` or `"linear"`, applied to the value axis
+            cap: Upper limit for the value axis (headroom above the tallest bar)
+            value_label: Axis label string (e.g. `"Time per call (ns/byte)"`)
+        """
 
 
 class Vertical(Layout):
     """Groups along the x-axis, values rising on the y-axis."""
 
     def figsize(self) -> tuple[float, float]:
-        """Wide and short - many group clusters across the x-axis."""
+        """Wide and short — many group clusters spread across the x-axis.
+
+        Returns:
+            `(18, 6)` inches
+        """
         return (18, 6)
 
     def draw_bars(self, ax, positions, values, width, color):
-        """Vertical bars via `ax.bar`."""
+        """Vertical bars via `ax.bar`.
+
+        Args:
+            ax: The matplotlib Axes to draw on
+            positions: x-axis center positions for each bar
+            values: Heights (y-axis) of each bar
+            width: Bar width in data units
+            color: Fill color string
+
+        Returns:
+            The `BarContainer` returned by `ax.bar`
+        """
         return ax.bar(positions, values, width=width, color=color)
 
     def annotate(self, ax, bar, value: float, precision: int) -> None:
-        """Label above the bar top, rotated, with a static vertical pixel gap."""
+        """Places a rotated label above the bar top with a static vertical pixel gap.
+
+        Args:
+            ax: The matplotlib Axes to annotate on
+            bar: A single `Rectangle` patch from the bar container
+            value: The numeric value to display
+            precision: Number of decimal places
+        """
         ax.annotate(
             _fmt(value, precision),
             xy=(bar.get_x() + bar.get_width() / 2, value),
@@ -279,11 +443,24 @@ class Vertical(Layout):
 
     @property
     def boxplot_orientation(self) -> str:
-        """Boxes stand vertically."""
+        """Boxes stand vertically.
+
+        Returns:
+            `"vertical"`
+        """
         return "vertical"
 
     def setup_axes(self, ax, group_pos, labels, scale_name, cap, value_label) -> None:
-        """Group ticks on x; scaled, capped, labelled value axis on y."""
+        """Group ticks on x; scaled, capped, labelled value axis on y.
+
+        Args:
+            ax: The matplotlib Axes to configure
+            group_pos: x-axis positions for group cluster centers
+            labels: Tick labels for each group
+            scale_name: `"log"` or `"linear"` for the y-axis
+            cap: Upper y-axis limit
+            value_label: y-axis label string
+        """
         ax.set_xticks(group_pos)
         ax.set_xticklabels(labels)
         ax.set_xlim(group_pos[0] - 0.5, group_pos[-1] + 0.5)
@@ -297,15 +474,37 @@ class Horizontal(Layout):
     """Groups along the y-axis, values extending on the x-axis."""
 
     def figsize(self) -> tuple[float, float]:
-        """Tall and narrow - group clusters stacked down the y-axis."""
+        """Tall and narrow — group clusters stacked down the y-axis.
+
+        Returns:
+            `(12, 13)` inches
+        """
         return (12, 13)
 
     def draw_bars(self, ax, positions, values, width, color):
-        """Horizontal bars via `ax.barh`."""
+        """Horizontal bars via `ax.barh`.
+
+        Args:
+            ax: The matplotlib Axes to draw on
+            positions: y-axis center positions for each bar
+            values: Widths (x-axis) of each bar
+            width: Bar height in data units
+            color: Fill color string
+
+        Returns:
+            The `BarContainer` returned by `ax.barh`
+        """
         return ax.barh(positions, values, height=width, color=color)
 
     def annotate(self, ax, bar, value: float, precision: int) -> None:
-        """Label past the bar end with a static horizontal pixel gap."""
+        """Places a label past the bar end with a static horizontal pixel gap.
+
+        Args:
+            ax: The matplotlib Axes to annotate on
+            bar: A single `Rectangle` patch from the bar container
+            value: The numeric value to display
+            precision: Number of decimal places
+        """
         ax.annotate(
             _fmt(value, precision),
             xy=(value, bar.get_y() + bar.get_height() / 2),
@@ -316,11 +515,24 @@ class Horizontal(Layout):
 
     @property
     def boxplot_orientation(self) -> str:
-        """Boxes lie horizontally."""
+        """Boxes lie horizontally.
+
+        Returns:
+            `"horizontal"`
+        """
         return "horizontal"
 
     def setup_axes(self, ax, group_pos, labels, scale_name, cap, value_label) -> None:
-        """Group ticks on y (top-down); scaled, capped, labelled value axis on x."""
+        """Group ticks on y (top-down); scaled, capped, labelled value axis on x.
+
+        Args:
+            ax: The matplotlib Axes to configure
+            group_pos: y-axis positions for group cluster centers (inverted after setup)
+            labels: Tick labels for each group (newlines replaced with spaces)
+            scale_name: `"log"` or `"linear"` for the x-axis
+            cap: Right x-axis limit
+            value_label: x-axis label string
+        """
         ax.set_yticks(group_pos)
         ax.set_yticklabels([lbl.replace("\n", " ") for lbl in labels])
         ax.set_ylim(group_pos[0] - 0.5, group_pos[-1] + 0.5)
@@ -339,12 +551,25 @@ class SeriesRenderer(ABC):
 
     @abstractmethod
     def draw(self, ax, layout, reader, normalization, approach, positions, width, groups, precision) -> list[float]:
-        """Draws this approach's series across `groups` and returns the finite plotted values
+        """Draws this approach's series across all groups and returns the finite plotted values.
 
-        `groups` is the ordered list of criterion group ids aligned with `positions`; the renderer
-        reads its data through `reader` rather than knowing the global group roster. `precision` is
-        the chart-wide label precision (ignored by renderers that draw no labels). The returned
-        finite values are used by the caller to size the value-axis cap.
+        The renderer reads its data through `reader` rather than accessing global state, so
+        it stays decoupled from the chart's full group roster. Returned finite values are used
+        by the caller to size the value-axis cap across all approaches.
+
+        Args:
+            ax: The matplotlib Axes to draw on
+            layout: The orientation strategy (bar/box drawing and annotation)
+            reader: The criterion reader to load ns values and metadata from
+            normalization: The rescaling strategy applied to every raw ns value
+            approach: The approach whose series is being drawn
+            positions: Per-group center positions along the category axis for this approach's slot
+            width: The slot width (bar width or box width) in data units
+            groups: Ordered list of criterion group ids aligned with `positions`
+            precision: Chart-wide label precision in decimal places (ignored by box renderer)
+
+        Returns:
+            All finite plotted values (used by the caller to compute the value-axis cap)
         """
 
 
@@ -352,7 +577,28 @@ class BarRenderer(SeriesRenderer):
     """Median grouped bars with a per-bar value label."""
 
     def draw(self, ax, layout, reader, normalization, approach, positions, width, groups, precision) -> list[float]:
-        """Draws one normalized median bar per group and labels each at `precision` decimals."""
+        """Draws one normalized median bar per group and labels each at `precision` decimal places.
+
+        Normalizes each group's criterion median through `normalization`, draws the bars via
+        `layout.draw_bars`, and annotates each finite bar with its value label via
+        `layout.annotate`. Groups whose median is absent (not measured) produce NaN bars
+        that matplotlib renders as empty — those are silently skipped for annotation and excluded
+        from the returned values.
+
+        Args:
+            ax: The matplotlib Axes to draw on
+            layout: Orientation strategy for bar drawing and annotation
+            reader: Criterion reader supplying median ns values
+            normalization: Rescaling strategy applied to each median
+            approach: The approach being drawn
+            positions: Per-group bar center positions on the category axis
+            width: Bar width in data units
+            groups: Criterion group ids aligned with `positions`
+            precision: Decimal places for value labels
+
+        Returns:
+            The list of finite normalized median values actually plotted
+        """
         # --------------------------------------------------
         # normalize each group's median for this approach
         # --------------------------------------------------
@@ -374,7 +620,27 @@ class BoxRenderer(SeriesRenderer):
     """Box-and-whisker over criterion's raw per-iteration samples (draws no value labels)."""
 
     def draw(self, ax, layout, reader, normalization, approach, positions, width, groups, precision) -> list[float]:
-        """Draws one box per group from the normalized sample distribution (`precision` unused)."""
+        """Draws one box-and-whisker per group from the normalized sample distribution.
+
+        Loads the raw per-iteration ns samples from each group's `sample.json`, normalizes them
+        through `normalization`, and renders a boxplot via `ax.boxplot`. Groups with no sample
+        data are skipped silently. Outliers are suppressed (`showfliers=False`). Value labels are
+        not drawn (the distribution shape is the information; `precision` is unused).
+
+        Args:
+            ax: The matplotlib Axes to draw on
+            layout: Orientation strategy (supplies `boxplot_orientation`)
+            reader: Criterion reader supplying raw sample arrays
+            normalization: Rescaling strategy applied element-wise to each sample array
+            approach: The approach being drawn
+            positions: Per-group box center positions on the category axis
+            width: Box width in data units
+            groups: Criterion group ids aligned with `positions`
+            precision: Unused; accepted to satisfy the abstract interface
+
+        Returns:
+            The flat list of all finite sample min/max values from drawn boxes (for axis sizing)
+        """
         # --------------------------------------------------
         # collect normalized sample arrays for the measured groups
         # --------------------------------------------------
@@ -403,10 +669,14 @@ class BoxRenderer(SeriesRenderer):
 
     @staticmethod
     def _style(bp, color: str) -> None:
-        """Applies the shared styling to a matplotlib boxplot return dict
+        """Applies the shared palette styling to a matplotlib boxplot return dict.
 
-        `bp` is the dict returned by `ax.boxplot` (keys `boxes`, `whiskers`, `caps`, `medians`);
-        `color` fills the boxes, edges/whiskers/caps are dark grey, and the median line is black.
+        Sets box fill to `color`, edges/whiskers/caps to dark grey (`#333333`), and the median
+        line to black (`#000000`) at a slightly heavier weight.
+
+        Args:
+            bp: The dict returned by `ax.boxplot` (keys `boxes`, `whiskers`, `caps`, `medians`)
+            color: Hex fill color for the box faces
         """
         for box in bp["boxes"]:
             box.set(facecolor=color, edgecolor="#333333", linewidth=0.6)
@@ -425,11 +695,21 @@ _SLOT_FILL = 0.9
 def _normalize(
     raw_ns: float, reader: CriterionReader, normalization: Normalization, group: str, approach: Approach
 ) -> float:
-    """Applies a normalization divisor to a single raw ns value
+    """Applies a normalization divisor to a single raw ns value.
 
-    Returns `raw_ns / divisor` when `raw_ns` is finite and the guarded divisor is valid; returns
-    `math.nan` otherwise - i.e. when this approach was not measured for this group, or the divisor
-    is non-finite or zero (see [`Normalization.safe_divisor`]).
+    Returns `raw_ns / divisor` when `raw_ns` is finite and the guarded divisor is valid;
+    returns `math.nan` otherwise — i.e. when this approach was not measured for this group,
+    or the divisor is non-finite or zero (see `Normalization.safe_divisor`).
+
+    Args:
+        raw_ns: The raw criterion median in nanoseconds (may be NaN if not measured)
+        reader: The criterion reader (forwarded to `normalization.safe_divisor`)
+        normalization: The rescaling strategy whose divisor is applied
+        group: The criterion group id (forwarded to `normalization.safe_divisor`)
+        approach: The approach being normalized (forwarded to `normalization.safe_divisor`)
+
+    Returns:
+        The normalized value, or `math.nan` when the input or divisor is invalid
     """
     divisor = normalization.safe_divisor(reader, group, approach)
     if not math.isfinite(raw_ns) or not math.isfinite(divisor):
@@ -438,11 +718,17 @@ def _normalize(
 
 
 def _precision(values: list[float]) -> int:
-    """Chooses one label precision for a whole chart from its set of displayed values
+    """Chooses one label precision for a whole chart from its set of displayed values.
 
     The precision is uniform across the chart (not per-bar) so the labels read consistently:
-    2 decimals when any value is below 5, otherwise 1 decimal when any is below 15, otherwise
-    whole numbers. Empty input yields 0.
+    2 decimals when any value is below 5, 1 decimal when any is below 15, otherwise whole
+    numbers. Empty input yields 0.
+
+    Args:
+        values: All finite normalized values that will be labelled in the chart
+
+    Returns:
+        The number of decimal places to use for every bar label in the chart
     """
     if not values:
         return 0
@@ -455,7 +741,15 @@ def _precision(values: list[float]) -> int:
 
 
 def _fmt(value: float, precision: int) -> str:
-    """Formats a bar value label at the chart-wide `precision`."""
+    """Formats a bar value label at the chart-wide `precision`.
+
+    Args:
+        value: The numeric value to format
+        precision: Number of decimal places
+
+    Returns:
+        The formatted string, e.g. `"3.14"` for `value=3.1415, precision=2`
+    """
     return f"{value:.{precision}f}"
 
 
@@ -477,7 +771,13 @@ class Chart:
     out_path: Path
 
     def render(self) -> None:
-        """Draws every approach, configures the axes and legend, and writes the image."""
+        """Draws every approach's series, configures the axes and legend, and writes the image.
+
+        Groups the approaches into slots within each cluster, computes a uniform label precision
+        from all finite plotted values, sizes the value axis with headroom over the tallest
+        value, and saves the figure to `self.out_path` at 120 dpi. Prints the output path
+        when done.
+        """
         # --------------------------------------------------
         # grouped geometry: one cluster per group, one slot per approach
         # --------------------------------------------------
@@ -539,7 +839,15 @@ _NORMALIZATIONS: dict[str, Normalization] = {"abs": Absolute(), "byte": PerByte(
 
 
 def main() -> None:
-    """Parses CLI knobs and renders `bench_klv.jpg` and `bench_proto.jpg`."""
+    """Parses CLI knobs, selects layout/renderer/normalization strategies, and renders both charts.
+
+    Reads the six positional arguments (`criterion_dir`, `orientation`, `scale`, `kind`,
+    `norm`, `out_dir`) from `sys.argv`, validates each knob against its lookup table,
+    constructs a `CriterionReader` over the criterion directory, then calls `Chart.render`
+    twice — once for the KLV/TLV paradigm roster (`bench_klv.jpg`) and once for the
+    tinyklv-vs-protobuf roster (`bench_proto.jpg`). Exits with the usage string on bad
+    argument count or unknown knob.
+    """
     # --------------------------------------------------
     # parse + validate knobs (print usage on a bad arg count or unknown knob)
     # --------------------------------------------------
