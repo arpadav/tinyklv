@@ -25,7 +25,7 @@ Associates the codec pair for this field. `dec` must match
 `fn(&mut S) -> tinyklv::Result<T>`, where `tinyklv::Result` is
 an alias for `winnow::Result`
 
-`enc` must match `fn(&T) -> Vec<u8>`
+`enc` must match `fn(&T, &mut Vec<u8>)`
 (when owned-argument, add the `&` sigil below). Either can be omitted when
 the container default covers the field type.
 
@@ -51,7 +51,7 @@ sequence: u8,
 custom: MyStruct,
 ```
 
-Encoders by default expect `fn(&T) -> O`. The two sigils (`&` and `*`)
+Encoders by default expect `fn(&T, &mut Vec<u8>)`. The two sigils (`&` and `*`)
 rewrite how the field is handed to the encoder. See
 [Sigil coercion & `EncodeAs`](./sigil-coercion.md) for the full
 dispatch semantics, built-in `EncodeAs` implementations, and when to

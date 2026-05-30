@@ -123,9 +123,9 @@ signature works.
 
 | Macro | Expands to | Purpose |
 |-------|-----------|---------|
-| `scale_enc!(encoder, precision, data, factor)` | `\|val: &precision\| -> Vec<u8>` | Divide by `factor`, cast to `data`, encode |
-| `scale_offset_enc!(encoder, precision, data, factor, offset)` | `\|val: &precision\| -> Vec<u8>` | Subtract `offset`, divide by `factor`, cast to `data`, encode |
-| `cast_enc!(encoder, precision, data)` | `\|val: &precision\| -> Vec<u8>` | Cast `precision` to `data` via `as`, encode |
+| `scale_enc!(encoder, precision, data, factor)` | `\|val: &precision, out: &mut Vec<u8>\|` | Divide by `factor`, cast to `data`, encode |
+| `scale_offset_enc!(encoder, precision, data, factor, offset)` | `\|val: &precision, out: &mut Vec<u8>\|` | Subtract `offset`, divide by `factor`, cast to `data`, encode |
+| `cast_enc!(encoder, precision, data)` | `\|val: &precision, out: &mut Vec<u8>\|` | Cast `precision` to `data` via `as`, encode |
 
 ### Inline usage
 

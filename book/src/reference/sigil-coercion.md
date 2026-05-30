@@ -11,8 +11,8 @@ and when to use each.
 The [`EncodeValue`](./traits.md) trait is defined as:
 
 ```rust,ignore
-pub trait EncodeValue<O: EncodedOutput> {
-    fn encode_value(&self) -> O;
+pub trait EncodeValue {
+    fn encode_value(&self, out: &mut Vec<u8>);
 }
 ```
 
@@ -20,12 +20,12 @@ pub trait EncodeValue<O: EncodedOutput> {
 when the macro emits the per-field encode call, it has `&field_value`
 in hand.
 
-But encoders come in three shapes:
+But encoders come in three shapes (each appends into `out: &mut Vec<u8>`):
 
 1. **Borrowed-form encoders** already take a reference:
 
    ```rust,ignore
-   fn my_encoder(input: &InnerValue) -> Vec<u8> { ... }
+   fn my_encoder(input: &InnerValue, out: &mut Vec<u8>) { ... }
    ```
 
    `&field_value` matches `&InnerValue` directly.
@@ -34,8 +34,8 @@ But encoders come in three shapes:
    view of the value:
 
    ```rust,ignore
-   pub fn utf8(s: &str) -> Vec<u8> { ... }   // String -> &str
-   pub fn slice(xs: &[u8]) -> Vec<u8> { ... } // Vec<u8> -> &[u8]
+   pub fn utf8(s: &str, out: &mut Vec<u8>) { ... }   // String -> &str
+   pub fn slice(xs: &[u8], out: &mut Vec<u8>) { ... } // Vec<u8> -> &[u8]
    ```
 
 3. **Value-form encoders** - how all the built-in primitive encoders in
@@ -43,11 +43,11 @@ But encoders come in three shapes:
    value by value:
 
    ```rust,ignore
-   pub fn u8(x: u8) -> Vec<u8> { ... }
-   pub fn be_u16(x: u16) -> Vec<u8> { ... }
+   pub fn u8(x: u8, out: &mut Vec<u8>) { ... }
+   pub fn be_u16(x: u16, out: &mut Vec<u8>) { ... }
    ```
 
-   Passing `&u8` to `fn u8(x: u8)` is a type error. We need a bridge.
+   Passing `&u8` to `fn u8(x: u8, ..)` is a type error. We need a bridge.
 
 The `&` and `*` sigils are those bridges.
 
@@ -55,9 +55,9 @@ The `&` and `*` sigils are those bridges.
 
 | Syntax | Encoder signature | Emitted call |
 |---|---|---|
-| `enc = path` | `fn(&T) -> O` | `path(&self.field)` |
-| `enc = &path` | `fn(T::Borrowed) -> O` | `path(EncodeAs::encode_as(&self.field))` |
-| `enc = *path` | `fn(T) -> O` | `path(self.field)` |
+| `enc = path` | `fn(&T, &mut Vec<u8>)` | `path(&self.field, out)` |
+| `enc = &path` | `fn(T::Borrowed, &mut Vec<u8>)` | `path(EncodeAs::encode_as(&self.field), out)` |
+| `enc = *path` | `fn(T, &mut Vec<u8>)` | `path(self.field, out)` |
 
 ### No sigil - direct borrow
 
@@ -69,7 +69,7 @@ takes `&self`:
 #[klv(
     key = 0x04,
     dec = GpsFix::decode_value,
-    enc = GpsFix::encode_value,  // &GpsFix -> Vec<u8>, no sigil needed
+    enc = GpsFix::encode_value,  // fn(&GpsFix, &mut Vec<u8>), no sigil needed
 )]
 gps: GpsFix,
 ```
@@ -88,7 +88,7 @@ temperature_centideg: u16,
 Under the hood (simplified):
 
 ```rust,ignore
-encb::be_u16(EncodeAs::encode_as(&self.temperature_centideg))
+encb::be_u16(EncodeAs::encode_as(&self.temperature_centideg), out)
 ```
 
 For primitives `EncodeAs::encode_as(&u16)` is `*self` - a `Copy` - so
@@ -97,7 +97,7 @@ this compiles down to a plain call with zero overhead.
 ### With `*` sigil - by-value for `Copy` types
 
 Use when your encoder takes `T` by value and `T: Copy`. Emits
-`path(self.field)` directly, without the `EncodeAs` hop:
+`path(self.field, out)` directly, without the `EncodeAs` hop:
 
 ```rust,ignore
 #[klv(key = 0x01, dec = decb::u8, enc = *encb::u8)]
