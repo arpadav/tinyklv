@@ -1,3 +1,12 @@
+//! Field-ordering independence tests for `#[derive(Klv)]`
+//!
+//! Verifies that the derived `decode_value` implementation is order-independent:
+//! a stream where keys arrive in declaration order, reversed order, or an
+//! arbitrary interleaved order must all produce the same decoded struct. The
+//! `OrderIndependent` struct uses three keys (`0x01`, `0x02`, `0x03`) and
+//! tests all three orderings
+//!
+//! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
@@ -33,6 +42,11 @@ struct OrderIndependent {
     c: u32,
 }
 
+/// Build a raw `OrderIndependent` byte stream in either forward or reversed key order
+///
+/// When `a_first` is `true` keys arrive as `0x01, 0x02, 0x03` (declaration order);
+/// when `false` they arrive as `0x03, 0x02, 0x01` (reversed order). In both cases
+/// the encoded field values are `a=0x42`, `b=0x0102`, `c=0xABCDEF01`
 fn build_packet(a_first: bool) -> Vec<u8> {
     if a_first {
         // a=0x01 key first
@@ -48,7 +62,7 @@ fn build_packet(a_first: bool) -> Vec<u8> {
 }
 
 #[test]
-/// Tests decoding when keys appear in their declared struct order (`0x01`, `0x02`, `0x03`).
+/// Tests decoding when keys appear in their declared struct order (`0x01`, `0x02`, `0x03`)
 fn normal_key_order() {
     let data = build_packet(true);
     let result = OrderIndependent::decode_value(&mut data.as_slice()).unwrap();
@@ -58,7 +72,7 @@ fn normal_key_order() {
 }
 
 #[test]
-/// Verifies that decoding yields the same struct when keys appear in fully reversed data order.
+/// Verifies that decoding yields the same struct when keys appear in fully reversed data order
 fn reversed_key_order_same_result() {
     let data = build_packet(false);
     let result = OrderIndependent::decode_value(&mut data.as_slice()).unwrap();
@@ -68,7 +82,7 @@ fn reversed_key_order_same_result() {
 }
 
 #[test]
-/// Tests that forward- and reverse-ordered key streams decode to identical struct values, confirming order-independence.
+/// Tests that forward- and reverse-ordered key streams decode to identical struct values, confirming order-independence
 fn both_orderings_produce_identical_structs() {
     let fwd = build_packet(true);
     let rev = build_packet(false);
@@ -78,7 +92,7 @@ fn both_orderings_produce_identical_structs() {
 }
 
 #[test]
-/// Tests decoding when keys arrive in an arbitrary interleaved order (`b`, `a`, `c`).
+/// Tests decoding when keys arrive in an arbitrary interleaved order (`b`, `a`, `c`)
 fn interleaved_order() {
     let data: &[u8] = &[
         0x02, 0x02, 0x01, 0x02, 0x01, 0x01, 0x42, 0x03, 0x04, 0xAB, 0xCD, 0xEF, 0x01,

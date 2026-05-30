@@ -1,5 +1,16 @@
+//! Integration test mirroring the README quick-start example
+//!
+//! Decodes the `Foo` struct (a UTF-8 string name + big-endian `u16` number)
+//! from hand-crafted `&[u8]` streams using both the sentinel-seeking
+//! `decode_frame` path and the direct `decode_value` path, asserting the
+//! decoded values match the expected payload for two distinct packets
+//!
+//! Author: aav
 #![allow(noop_method_call)]
 
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::Klv;
 use tinyklv::prelude::*;
 
@@ -35,7 +46,9 @@ struct Foo {
 }
 
 #[test]
-/// Tests the README example end-to-end: decodes two streams via `decode_frame` (with sentinel seek) and `decode_value` (direct value decode) for the `Foo` struct.
+/// Tests the README example end-to-end: decodes two streams via `decode_frame`
+/// (with sentinel seek) and `decode_value` (direct value decode) for the
+/// `Foo` struct
 fn main() {
     #[rustfmt::skip]
     let mut stream1: &[u8] = &[

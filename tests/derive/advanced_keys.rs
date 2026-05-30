@@ -1,4 +1,15 @@
-//! Derive macro tests - non-sequential and boundary key values with complex domain types
+//! Derive macro tests for non-sequential and boundary key values with complex domain types
+//!
+//! Tests three struct shapes: `WideKeySpacing` (keys `0x01`, `0x40`, `0x80`, `0xFE`),
+//! `BoundaryKeys` (keys at `0x00`, `0x7F`, `0x80`, `0xFF`), and
+//! `WideKeySpacingOptional` (same wide keys but all `Option<T>`). Verifies
+//! correct decode when triples arrive in forward, reversed, and partial order,
+//! and full encode/decode roundtrip for the boundary and wide-key structs
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use super::types::*;
 use tinyklv::Klv;
 use tinyklv::dec::binary as decb;
@@ -104,7 +115,11 @@ struct WideKeySpacingOptional {
     flags: Option<StatusFlags>,
 }
 
-/// Build a single KLV triple: [key:1][len:1][value:N]
+/// Build a single KLV triple `[key:1][len:1][value:N]`
+///
+/// Prepends the 1-byte key and 1-byte value length header before the provided
+/// value bytes, producing a complete TLV triple suitable for hand-building
+/// streams in tests
 fn klv_triple(key: u8, value: &[u8]) -> Vec<u8> {
     let mut out = vec![key, value.len() as u8];
     out.extend_from_slice(value);
@@ -112,7 +127,7 @@ fn klv_triple(key: u8, value: &[u8]) -> Vec<u8> {
 }
 
 #[test]
-/// Tests decode-and-roundtrip for a struct using widely-spaced keys (`0x01`, `0x40`, `0x80`, `0xFE`) over complex domain types.
+/// Tests decode-and-roundtrip for a struct using widely-spaced keys (`0x01`, `0x40`, `0x80`, `0xFE`) over complex domain types
 fn wide_key_spacing_roundtrip() {
     let mut color_bytes = Vec::new();
     Color::Green.encode_value(&mut color_bytes);
@@ -184,7 +199,7 @@ fn wide_key_spacing_roundtrip() {
 }
 
 #[test]
-/// Tests encode/decode roundtrip for a struct whose keys sit at `u8` boundaries (`0x00`, `0x7F`, `0x80`, `0xFF`).
+/// Tests encode/decode roundtrip for a struct whose keys sit at `u8` boundaries (`0x00`, `0x7F`, `0x80`, `0xFF`)
 fn boundary_keys_roundtrip() {
     let ts = Timestamp {
         seconds: 0xDEAD_BEEF,
@@ -215,7 +230,7 @@ fn boundary_keys_roundtrip() {
 }
 
 #[test]
-/// Verifies that widely-spaced keys decode correctly when the triples arrive in reverse key order (`0xFE` first, `0x01` last).
+/// Verifies that widely-spaced keys decode correctly when the triples arrive in reverse key order (`0xFE` first, `0x01` last)
 fn wide_keys_reversed_order() {
     let mut color_bytes = Vec::new();
     Color::Red.encode_value(&mut color_bytes);
@@ -265,7 +280,7 @@ fn wide_keys_reversed_order() {
 }
 
 #[test]
-/// Tests that only the present optional keys (`0x01` and `0x80`) decode to `Some`, while absent keys (`0x40`, `0xFE`) decode to `None`.
+/// Tests that only the present optional keys (`0x01` and `0x80`) decode to `Some`, while absent keys (`0x40`, `0xFE`) decode to `None`
 fn wide_keys_partial_optional() {
     let mut color_bytes = Vec::new();
     Color::Alpha.encode_value(&mut color_bytes);

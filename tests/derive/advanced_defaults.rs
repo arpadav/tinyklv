@@ -4,7 +4,10 @@
 //! field-level `default = <expr>` values used when a key is absent,
 //! field-level bare `default` which calls `Default::default()` on the field
 //! type, override when the key is present, and non-KLV fields falling back
-//! to `Default::default()`.
+//! to `Default::default()`
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use super::types::*;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
@@ -234,6 +237,10 @@ struct DefaultBareOptionWrapped {
     flavor: Option<Flavor>,
 }
 
+/// Build a single KLV triple `[key:1][len:1][value:N]` from a pre-encoded value
+///
+/// Prepends the 1-byte key and 1-byte length header before `value`, producing
+/// a complete TLV triple suitable for hand-building test streams
 fn tlv(key: u8, value: Vec<u8>) -> Vec<u8> {
     let mut out = vec![key, value.len() as u8];
     out.extend(value);
@@ -241,7 +248,7 @@ fn tlv(key: u8, value: Vec<u8>) -> Vec<u8> {
 }
 
 #[test]
-/// Tests that `default(typ = ...)` container attributes resolve `dec`/`enc` for fields that omit them.
+/// Tests that `default(typ = ...)` container attributes resolve `dec`/`enc` for fields that omit them
 fn default_type_color_and_priority() {
     let original = DefaultTyped {
         color: Color::Alpha,
@@ -268,7 +275,7 @@ fn default_type_color_and_priority() {
 }
 
 #[test]
-/// Verifies encode/decode roundtrip when most fields rely on container-level `default(typ = ...)` codecs.
+/// Verifies encode/decode roundtrip when most fields rely on container-level `default(typ = ...)` codecs
 fn default_type_roundtrip() {
     let original = DefaultTyped {
         color: Color::Red,
@@ -286,7 +293,7 @@ fn default_type_roundtrip() {
 }
 
 #[test]
-/// Tests that `default = Color::Red` supplies the fallback when the field's key is absent from the stream.
+/// Tests that `default = Color::Red` supplies the fallback when the field's key is absent from the stream
 fn default_expr_color_enum_absent() {
     // Stream has no key 0x01 - `default = Color::Red` should be used
     let result = DefaultExprColor::decode_value(&mut [].as_slice()).unwrap();
@@ -298,7 +305,7 @@ fn default_expr_color_enum_absent() {
 }
 
 #[test]
-/// Tests that a present key overrides the `default = Color::Red` fallback at decode time.
+/// Tests that a present key overrides the `default = Color::Red` fallback at decode time
 fn default_expr_color_enum_present() {
     // Stream has key 0x01 = Color::Blue - decoded value overrides default expression
     let mut blue_v = Vec::new();
@@ -313,7 +320,7 @@ fn default_expr_color_enum_present() {
 }
 
 #[test]
-/// Tests that a struct-valued `default = Timestamp { ... }` fallback is applied when the key is absent.
+/// Tests that a struct-valued `default = Timestamp { ... }` fallback is applied when the key is absent
 fn default_expr_timestamp_struct_absent() {
     let zero = Timestamp {
         seconds: 0,
@@ -327,7 +334,7 @@ fn default_expr_timestamp_struct_absent() {
 }
 
 #[test]
-/// Tests that decoding a present `Timestamp` key overrides the struct-valued `default = <expr>` fallback.
+/// Tests that decoding a present `Timestamp` key overrides the struct-valued `default = <expr>` fallback
 fn default_expr_timestamp_struct_present() {
     let ts = Timestamp {
         seconds: 1_700_000_000,
@@ -344,7 +351,7 @@ fn default_expr_timestamp_struct_present() {
 }
 
 #[test]
-/// Verifies explicitly that the decoded value (`Color::Blue`) wins over the `default = Color::Red` fallback when both are available.
+/// Verifies explicitly that the decoded value (`Color::Blue`) wins over the `default = Color::Red` fallback when both are available
 fn default_expr_overridden_when_present() {
     let mut blue_v = Vec::new();
     Color::Blue.encode_value(&mut blue_v);
@@ -363,7 +370,7 @@ fn default_expr_overridden_when_present() {
 }
 
 #[test]
-/// Tests bare `default` on a primitive field - absent key yields `u32::default() == 0`.
+/// Tests bare `default` on a primitive field - absent key yields `u32::default() == 0`
 fn default_bare_primitive_u32_absent() {
     let result = DefaultBareU32::decode_value(&mut [].as_slice()).unwrap();
     assert_eq!(
@@ -373,7 +380,7 @@ fn default_bare_primitive_u32_absent() {
 }
 
 #[test]
-/// Tests bare `default` on a primitive field - present key overrides the `Default::default()` fallback.
+/// Tests bare `default` on a primitive field - present key overrides the `Default::default()` fallback
 fn default_bare_primitive_u32_present() {
     let mut counter_v = Vec::new();
     encb::be_u32(42, &mut counter_v);
@@ -386,11 +393,11 @@ fn default_bare_primitive_u32_present() {
 }
 
 #[test]
-/// Tests bare `default` on a custom struct - confirms it actually calls the type's `Default` impl.
+/// Tests bare `default` on a custom struct - confirms it actually calls the type's `Default` impl
 ///
 /// `Calibration::default()` is `{ gain: 1.0, offset: 0 }`, distinct from the
 /// struct's zero-initialized form, proving the codegen dispatches through the
-/// `Default` trait rather than bit-zero memory.
+/// `Default` trait rather than bit-zero memory
 fn default_bare_custom_struct_absent() {
     let result = DefaultBareStruct::decode_value(&mut [].as_slice()).unwrap();
     assert_eq!(
@@ -403,7 +410,7 @@ fn default_bare_custom_struct_absent() {
 }
 
 #[test]
-/// Tests bare `default` on a custom struct when the key is present - decoded value wins.
+/// Tests bare `default` on a custom struct when the key is present - decoded value wins
 fn default_bare_custom_struct_present() {
     let cal = Calibration {
         gain: 3.15,
@@ -417,7 +424,7 @@ fn default_bare_custom_struct_present() {
 }
 
 #[test]
-/// Tests bare `default` on an enum with `#[derive(Default)]` and `#[default]` variant.
+/// Tests bare `default` on an enum with `#[derive(Default)]` and `#[default]` variant
 fn default_bare_enum_with_derive_default_absent() {
     let result = DefaultBareEnum::decode_value(&mut [].as_slice()).unwrap();
     assert_eq!(
@@ -428,7 +435,7 @@ fn default_bare_enum_with_derive_default_absent() {
 }
 
 #[test]
-/// Tests a single struct that mixes bare `default` and `default = <expr>` on different fields.
+/// Tests a single struct that mixes bare `default` and `default = <expr>` on different fields
 fn default_bare_and_expr_mixed_absent() {
     let result = DefaultBareAndExpr::decode_value(&mut [].as_slice()).unwrap();
     assert_eq!(
@@ -448,7 +455,7 @@ fn default_bare_and_expr_mixed_absent() {
 
 #[test]
 /// Tests that bare `default` on an `Option<T>` field unwraps through
-/// `unwrap_option_type` and calls `<T>::default()` (not `<Option<T>>::default()`).
+/// `unwrap_option_type` and calls `<T>::default()` (not `<Option<T>>::default()`)
 fn default_bare_option_wrapped_absent() {
     let result = DefaultBareOptionWrapped::decode_value(&mut [].as_slice()).unwrap();
     assert_eq!(
@@ -459,7 +466,7 @@ fn default_bare_option_wrapped_absent() {
 }
 
 #[test]
-/// Tests that a struct field without `#[klv(...)]` resolves to `Default::default()` while other fields decode normally.
+/// Tests that a struct field without `#[klv(...)]` resolves to `Default::default()` while other fields decode normally
 fn non_klv_field_default() {
     let mut green_v = Vec::new();
     Color::Green.encode_value(&mut green_v);
@@ -477,7 +484,7 @@ fn non_klv_field_default() {
 }
 
 #[test]
-/// Tests that unknown keys in the stream do not perturb the default-valued non-KLV field.
+/// Tests that unknown keys in the stream do not perturb the default-valued non-KLV field
 fn non_klv_field_unaffected_by_unknown_keys() {
     let mut alpha_v = Vec::new();
     Color::Alpha.encode_value(&mut alpha_v);

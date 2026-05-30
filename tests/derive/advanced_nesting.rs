@@ -1,5 +1,5 @@
 //! Tests for nested `#[derive(Klv)]` structs - inner types that are themselves
-//! Klv-derived, exercising full encode/decode symmetry across composition levels.
+//! Klv-derived, exercising full encode/decode symmetry across composition levels
 //!
 //! Author: aav
 
@@ -61,7 +61,7 @@ struct Platform {
 }
 
 #[test]
-/// Tests roundtrip for a two-level `Platform -> SensorModule` nesting where the inner struct is itself `#[derive(Klv)]`.
+/// Tests roundtrip for a two-level `Platform -> SensorModule` nesting where the inner struct is itself `#[derive(Klv)]`
 fn nested_klv_derived_roundtrip() {
     let original = Platform {
         id: 42,
@@ -84,7 +84,7 @@ fn nested_klv_derived_roundtrip() {
 }
 
 #[test]
-/// Tests nested roundtrip when inner fields carry type-extreme values (`u16::MAX`, `f32::MAX`, `Color::Unknown(0xDEAD)`, polar coords).
+/// Tests nested roundtrip when inner fields carry type-extreme values (`u16::MAX`, `f32::MAX`, `Color::Unknown(0xDEAD)`, polar coords)
 fn nested_klv_derived_roundtrip_extreme_values() {
     let original = Platform {
         id: u16::MAX,
@@ -107,7 +107,7 @@ fn nested_klv_derived_roundtrip_extreme_values() {
 }
 
 #[test]
-/// Tests nested roundtrip when all inner fields are zero/default values.
+/// Tests nested roundtrip when all inner fields are zero/default values
 fn nested_klv_derived_roundtrip_zero_values() {
     let original = Platform {
         id: 0,
@@ -145,6 +145,7 @@ struct Core {
     value: u32,
 }
 
+/// Encode a [`Core`] value into `out` by delegating to `encode_value`
 fn encode_core(v: &Core, out: &mut Vec<u8>) {
     v.encode_value(out);
 }
@@ -170,6 +171,7 @@ struct Module {
     color: Color,
 }
 
+/// Encode a [`Module`] value into `out` by delegating to `encode_value`
 fn encode_module(v: &Module, out: &mut Vec<u8>) {
     v.encode_value(out);
 }
@@ -196,7 +198,7 @@ struct System {
 }
 
 #[test]
-/// Tests three-level nesting (`System -> Module -> Core`) where each tier is `#[derive(Klv)]`.
+/// Tests three-level nesting (`System -> Module -> Core`) where each tier is `#[derive(Klv)]`
 fn nested_two_deep() {
     let original = System {
         module: Module {
@@ -215,7 +217,7 @@ fn nested_two_deep() {
 }
 
 #[test]
-/// Tests three-level nested roundtrip with minimum/zero values throughout.
+/// Tests three-level nested roundtrip with minimum/zero values throughout
 fn nested_two_deep_min_values() {
     let original = System {
         module: Module {
@@ -234,7 +236,7 @@ fn nested_two_deep_min_values() {
 }
 
 #[test]
-/// Tests three-level nested roundtrip with type-maximum values throughout.
+/// Tests three-level nested roundtrip with type-maximum values throughout
 fn nested_two_deep_max_values() {
     let original = System {
         module: Module {
@@ -278,7 +280,7 @@ struct PlatformOptional {
 }
 
 #[test]
-/// Tests roundtrip when an optional `SensorModule` inner struct is `Some(_)`.
+/// Tests roundtrip when an optional `SensorModule` inner struct is `Some(_)`
 fn nested_optional_sensor_present() {
     let original = PlatformOptional {
         id: 7,
@@ -298,7 +300,7 @@ fn nested_optional_sensor_present() {
 }
 
 #[test]
-/// Tests roundtrip when an optional nested KLV struct is `None` (its key is omitted on encode).
+/// Tests roundtrip when an optional nested KLV struct is `None` (its key is omitted on encode)
 fn nested_optional_sensor_absent() {
     let original = PlatformOptional {
         id: 99,
@@ -312,7 +314,7 @@ fn nested_optional_sensor_absent() {
 }
 
 #[test]
-/// Verifies that encoding a `Some`-sensor and a `None`-sensor produce distinct bytes, each roundtripping to the original.
+/// Verifies that encoding a `Some`-sensor and a `None`-sensor produce distinct bytes, each roundtripping to the original
 fn nested_optional_roundtrip_toggle() {
     let with_sensor = PlatformOptional {
         id: 1,
@@ -370,6 +372,7 @@ struct StatusInner {
     priority: Priority,
 }
 
+/// Encode a [`StatusInner`] value into `out` by delegating to `encode_value`
 fn encode_status_inner(v: &StatusInner, out: &mut Vec<u8>) {
     v.encode_value(out);
 }
@@ -396,7 +399,7 @@ struct StatusOuter {
 }
 
 #[test]
-/// Tests a nested-KLV struct whose inner type contains enum fields (`Color`, `Priority`).
+/// Tests a nested-KLV struct whose inner type contains enum fields (`Color`, `Priority`)
 fn nested_with_enum_field() {
     let original = StatusOuter {
         status: StatusInner {
@@ -416,7 +419,7 @@ fn nested_with_enum_field() {
 }
 
 #[test]
-/// Iterates all `Color` and `Priority` variant combinations through the nested-struct roundtrip to confirm discriminant stability.
+/// Iterates all `Color` and `Priority` variant combinations through the nested-struct roundtrip to confirm discriminant stability
 fn nested_with_enum_field_all_variants() {
     let cases = [
         (Color::Red, Priority::Low),
@@ -442,7 +445,7 @@ fn nested_with_enum_field_all_variants() {
 }
 
 #[test]
-/// Tests nested struct roundtrip with `Velocity` at signed boundaries (`i16::MIN`/`MAX`).
+/// Tests nested struct roundtrip with `Velocity` at signed boundaries (`i16::MIN`/`MAX`)
 fn nested_with_enum_field_extreme_velocity() {
     let original = StatusOuter {
         status: StatusInner {

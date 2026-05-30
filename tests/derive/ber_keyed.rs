@@ -1,3 +1,15 @@
+//! BER-keyed / BER-length `#[derive(Klv)]` integration tests
+//!
+//! Verifies the derive macro with `key(dec = ber_oid, enc = ber_oid)` and
+//! `len(dec = ber_length, enc = ber_length)`. Covers single-byte OID keys
+//! (values < 128), all-zero, all-max, and reversed-order streams; encode/decode
+//! roundtrip for short-form values; long-form length encoding for a 200-byte
+//! payload; missing-required-key errors; and reversed key order
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::ber as decber;
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
@@ -38,8 +50,12 @@ struct BerPacket {
     dword_field: u32,
 }
 
-/// BER OID encoding for values < 128 is a single byte equal to the value.
-/// BER length < 128 is a single byte equal to the length.
+/// Hand-build a raw `BerPacket` byte sequence from individual field values
+///
+/// BER OID keys and BER lengths < 128 encode as a single byte equal to the
+/// value, so `key=N, len=M` each contribute exactly one byte. Fields are
+/// assembled in declaration order: `small_key_field` (1 byte value), then
+/// `word_field` (2 bytes BE), then `dword_field` (4 bytes BE)
 fn ber_packet_bytes(small: u8, word: u16, dword: u32) -> Vec<u8> {
     // key=0x01, len=1, val
     let mut v1 = vec![0x01, 0x01, small];
@@ -56,7 +72,7 @@ fn ber_packet_bytes(small: u8, word: u16, dword: u32) -> Vec<u8> {
 }
 
 #[test]
-/// Tests decoding a BER-keyed/BER-length struct where every key and length fit in a single byte.
+/// Tests decoding a BER-keyed/BER-length struct where every key and length fit in a single byte
 fn decode_ber_single_byte_keys() {
     let data = ber_packet_bytes(0xAB, 0x1234, 0xDEAD_BEEF);
     let result = BerPacket::decode_value(&mut data.as_slice()).unwrap();
@@ -66,7 +82,7 @@ fn decode_ber_single_byte_keys() {
 }
 
 #[test]
-/// Verifies BER-keyed decoding when every value is zero.
+/// Verifies BER-keyed decoding when every value is zero
 fn decode_ber_zero_values() {
     let data = ber_packet_bytes(0x00, 0x0000, 0x0000_0000);
     let result = BerPacket::decode_value(&mut data.as_slice()).unwrap();
@@ -76,7 +92,7 @@ fn decode_ber_zero_values() {
 }
 
 #[test]
-/// Verifies BER-keyed decoding when every value is at its type maximum.
+/// Verifies BER-keyed decoding when every value is at its type maximum
 fn decode_ber_max_values() {
     let data = ber_packet_bytes(u8::MAX, u16::MAX, u32::MAX);
     let result = BerPacket::decode_value(&mut data.as_slice()).unwrap();
@@ -86,7 +102,7 @@ fn decode_ber_max_values() {
 }
 
 #[test]
-/// Tests encode/decode roundtrip for a BER-keyed struct with arbitrary non-trivial values.
+/// Tests encode/decode roundtrip for a BER-keyed struct with arbitrary non-trivial values
 fn encode_ber_roundtrip() {
     let original = BerPacket {
         small_key_field: 0x7F,
@@ -100,7 +116,7 @@ fn encode_ber_roundtrip() {
 }
 
 #[test]
-/// Tests encode/decode roundtrip for a BER-keyed struct with all-zero values.
+/// Tests encode/decode roundtrip for a BER-keyed struct with all-zero values
 fn encode_ber_roundtrip_all_zeros() {
     let original = BerPacket {
         small_key_field: 0,
@@ -136,7 +152,7 @@ struct BerLargePayload {
 }
 
 #[test]
-/// Tests BER long-form length encoding for a payload of 200 bytes, forcing the `0x81 0xC8` two-byte length header.
+/// Tests BER long-form length encoding for a payload of 200 bytes, forcing the `0x81 0xC8` two-byte length header
 fn encode_ber_large_length_roundtrip() {
     let s: String = "A".repeat(200);
     let original = BerLargePayload { payload: s };
@@ -154,7 +170,7 @@ fn encode_ber_large_length_roundtrip() {
 }
 
 #[test]
-/// Tests that a BER-keyed struct errors when its required key is absent from the stream.
+/// Tests that a BER-keyed struct errors when its required key is absent from the stream
 fn decode_ber_missing_required_fails() {
     let data: &[u8] = &[
         0x02, 0x02, 0x00, 0x01, // wrong key - 0x01 absent
@@ -164,7 +180,7 @@ fn decode_ber_missing_required_fails() {
 }
 
 #[test]
-/// Verifies that BER-keyed fields arriving in reverse order still match correctly by key.
+/// Verifies that BER-keyed fields arriving in reverse order still match correctly by key
 fn decode_ber_fields_reversed_order() {
     let data = {
         let mut v = vec![];

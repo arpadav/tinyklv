@@ -5,6 +5,9 @@
 //! one-shot `decode_value` path AND the streaming `decoder()`/feed path,
 //! confirming the loop control fires identically. Field types are the shared
 //! custom enums (`Color`, `Priority`), not bare primitives.
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use super::types::*;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;

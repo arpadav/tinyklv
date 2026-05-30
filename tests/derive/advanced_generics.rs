@@ -4,11 +4,17 @@
 //! * lifetime-generic stream structs
 //! * type-generic structs carrying `PhantomData<T>` (zero-size, skipped by derive)
 //! * user-authored `where` clauses preserved verbatim via `split_for_impl`
-use std::marker::PhantomData;
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::Klv;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use std::marker::PhantomData;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(

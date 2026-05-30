@@ -3,6 +3,9 @@
 //! Tests sentinel-based seek, encode, and extract across complex domain
 //! types from `types.rs`. Covers roundtrip, prefix verification, multi-type
 //! streams, garbage tolerance, not-found errors, and interleaved extraction.
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use super::types::*;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;

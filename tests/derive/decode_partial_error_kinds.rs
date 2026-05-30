@@ -18,6 +18,9 @@
 //! Tested without the `Decoder<P>` buffering layer so a regression in
 //! the codegen mapping is caught on the shortest possible path.
 
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;

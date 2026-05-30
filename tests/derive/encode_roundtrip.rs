@@ -1,3 +1,17 @@
+//! Encode/decode roundtrip tests, append-semantics checks, and rewind tests
+//!
+//! Verifies that encoders write VALUE-FIRST into `&mut Vec<u8>` (appending
+//! to any existing content without clobbering the prefix), and that
+//! `decode_value` correctly rewinds a truncated trailing triple so the cursor
+//! is left at the start of the undecodable data. Covers numeric types
+//! (`u8`/`u16`/`u32`/`u64`/`i16`/`i32`), optional fields, UTF-8 string fields,
+//! oversized-field detection (panics on length-prefix overflow), and the
+//! leaf/BER encoder append invariant
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
 use tinyklv::enc::binary as encb;
@@ -55,7 +69,7 @@ struct AllNumerics {
 }
 
 #[test]
-/// Tests encode/decode roundtrip across `u8/u16/u32/u64/i16/i32` fields with typical non-zero values including negatives.
+/// Tests encode/decode roundtrip across `u8/u16/u32/u64/i16/i32` fields with typical non-zero values including negatives
 fn all_numerics_roundtrip_typical() {
     let original = AllNumerics {
         u8_field: 0xAB,
@@ -72,7 +86,7 @@ fn all_numerics_roundtrip_typical() {
 }
 
 #[test]
-/// Tests that all-zero numeric fields roundtrip through encode/decode unchanged.
+/// Tests that all-zero numeric fields roundtrip through encode/decode unchanged
 fn all_numerics_roundtrip_zeros() {
     let original = AllNumerics {
         u8_field: 0,
@@ -89,7 +103,7 @@ fn all_numerics_roundtrip_zeros() {
 }
 
 #[test]
-/// Tests that type-maximum values for every numeric field roundtrip correctly.
+/// Tests that type-maximum values for every numeric field roundtrip correctly
 fn all_numerics_roundtrip_max_values() {
     let original = AllNumerics {
         u8_field: u8::MAX,
@@ -106,7 +120,7 @@ fn all_numerics_roundtrip_max_values() {
 }
 
 #[test]
-/// Tests that `i16::MIN` and `i32::MIN` roundtrip correctly (exercises two's-complement sign-bit boundary).
+/// Tests that `i16::MIN` and `i32::MIN` roundtrip correctly (exercises two's-complement sign-bit boundary)
 fn all_numerics_roundtrip_min_signed() {
     let original = AllNumerics {
         u8_field: 0,
@@ -148,7 +162,7 @@ struct WithOptionalRoundtrip {
 }
 
 #[test]
-/// Verifies roundtrip when the optional field carries `Some(value)`.
+/// Verifies roundtrip when the optional field carries `Some(value)`
 fn optional_some_roundtrip() {
     let original = WithOptionalRoundtrip {
         required: 0xABCD,
@@ -161,7 +175,7 @@ fn optional_some_roundtrip() {
 }
 
 #[test]
-/// Verifies that a `None` optional is omitted on encode and decodes back to `None`.
+/// Verifies that a `None` optional is omitted on encode and decodes back to `None`
 fn optional_none_roundtrip() {
     let original = WithOptionalRoundtrip {
         required: 0xABCD,
@@ -196,7 +210,7 @@ struct WithStringRoundtrip {
 }
 
 #[test]
-/// Tests roundtrip of a plain ASCII UTF-8 string field.
+/// Tests roundtrip of a plain ASCII UTF-8 string field
 fn string_field_roundtrip_ascii() {
     let original = WithStringRoundtrip {
         id: 1,
@@ -209,7 +223,7 @@ fn string_field_roundtrip_ascii() {
 }
 
 #[test]
-/// Tests roundtrip when the UTF-8 string field is empty.
+/// Tests roundtrip when the UTF-8 string field is empty
 fn string_field_roundtrip_empty() {
     let original = WithStringRoundtrip {
         id: 0,
@@ -222,7 +236,7 @@ fn string_field_roundtrip_empty() {
 }
 
 #[test]
-/// Tests roundtrip for a UTF-8 string containing multi-byte characters and an emoji code point.
+/// Tests roundtrip for a UTF-8 string containing multi-byte characters and an emoji code point
 fn string_field_roundtrip_unicode() {
     let original = WithStringRoundtrip {
         id: 42,
@@ -256,7 +270,7 @@ struct FramedRecord {
 
 #[test]
 /// `encode_value` appends to a non-empty buffer: the pre-existing prefix is left intact and
-/// the encoded body follows it byte-for-byte (identical to encoding into a fresh buffer).
+/// the encoded body follows it byte-for-byte (identical to encoding into a fresh buffer)
 fn encode_value_appends_to_nonempty_buffer() {
     let rec = AllNumerics {
         u8_field: 0xAB,
@@ -283,7 +297,7 @@ fn encode_value_appends_to_nonempty_buffer() {
 
 #[test]
 /// `encode_frame` appends to a non-empty buffer (same invariant as `encode_value`), and the
-/// frame written into the fresh buffer still decodes back to the original record.
+/// frame written into the fresh buffer still decodes back to the original record
 fn encode_frame_appends_to_nonempty_buffer() {
     let rec = FramedRecord {
         a: 0x1234,
@@ -304,7 +318,7 @@ fn encode_frame_appends_to_nonempty_buffer() {
 }
 
 #[test]
-/// Leaf and BER encoders append into an existing buffer rather than replacing its contents.
+/// Leaf and BER encoders append into an existing buffer rather than replacing its contents
 fn leaf_and_ber_encoders_append() {
     let mut buf = b"\x01\x02".to_vec();
     encb::be_u32(0xCAFE_BABE, &mut buf);
@@ -320,7 +334,7 @@ fn leaf_and_ber_encoders_append() {
 #[should_panic(expected = "exceeds the 1-byte KLV length prefix")]
 /// A variable-width field whose encoded body is longer than the (1-byte) length prefix can
 /// represent must abort loudly: a silently-wrapped length (`300 as u8 == 44`) would emit a
-/// mis-framed, undecodable packet. Guards the back-patch path against length-prefix overflow.
+/// mis-framed, undecodable packet. Guards the back-patch path against length-prefix overflow
 fn oversized_field_aborts_rather_than_corrupting() {
     let original = WithStringRoundtrip {
         id: 7,
@@ -335,7 +349,7 @@ fn oversized_field_aborts_rather_than_corrupting() {
 /// exactly where the streaming path's `reset` would. Without that rewind, an embedded
 /// `Vec<T>::decode_value` (which reads the residual cursor to continue) would observe the trailing
 /// byte already consumed. Decodes the complete fields, then asserts the lone trailing key byte
-/// remains unconsumed.
+/// remains unconsumed
 fn decode_value_rewinds_truncated_trailing_triple() {
     let original = AllNumerics {
         u8_field: 0xAB,
@@ -365,7 +379,7 @@ fn decode_value_rewinds_truncated_trailing_triple() {
 /// Companion to the trailing-triple test, covering the *other* one-shot rewind site: a complete
 /// key+len whose declared value body overruns the remaining bytes. The decoder must rewind the
 /// whole `key,len,partial-value` triple (not just up to the value) so a surrounding parser sees the
-/// triple intact. Uses an optional trailing field so `finalize` still succeeds on the required one.
+/// triple intact. Uses an optional trailing field so `finalize` still succeeds on the required one
 fn decode_value_rewinds_truncated_value_body() {
     // required field present in full: key 0x01, len 4, be_u32 0x0000_ABCD
     let mut encoded = vec![0x01, 0x04, 0x00, 0x00, 0xAB, 0xCD];

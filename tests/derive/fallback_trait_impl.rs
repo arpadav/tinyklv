@@ -4,6 +4,9 @@
 //! container `default(..)` falls back to the `EncodeValue`/`DecodeValue` trait
 //! implementations for the field's type. Without the flag, the existing
 //! `UnimplementedEncode`/`UnimplementedDecode` errors still fire
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::Klv;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;

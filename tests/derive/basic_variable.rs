@@ -1,3 +1,14 @@
+//! Basic variable-length field decode and roundtrip tests for `#[derive(Klv)]`
+//!
+//! Tests the `WithString` struct (a fixed `u16` id plus a `varlen = true`
+//! UTF-8 string). Covers decoding known payloads, zero-length strings,
+//! long strings, reversed field order, full encode/decode roundtrip, and
+//! missing-required-field errors
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
 use tinyklv::enc::binary as encb;
@@ -28,7 +39,7 @@ struct WithString {
 }
 
 #[test]
-/// Tests decoding a struct containing a fixed `u16` id plus a variable-length UTF-8 string field.
+/// Tests decoding a struct containing a fixed `u16` id plus a variable-length UTF-8 string field
 fn decode_with_string_klv() {
     let data: &[u8] = &[0x01, 0x02, 0x01, 0x02, 0x02, 0x03, 0x4B, 0x4C, 0x56];
     let result = WithString::decode_value(&mut &data[..]).unwrap();
@@ -37,7 +48,7 @@ fn decode_with_string_klv() {
 }
 
 #[test]
-/// Verifies decoding a `"Hello World!"` UTF-8 string payload of non-trivial length.
+/// Verifies decoding a `"Hello World!"` UTF-8 string payload of non-trivial length
 fn decode_hello_world() {
     let name = b"Hello World!";
     let mut data = vec![0x01_u8, 0x02, 0x00, 42, 0x02, name.len() as u8];
@@ -48,7 +59,7 @@ fn decode_hello_world() {
 }
 
 #[test]
-/// Verifies encode/decode roundtrip for a struct with a variable-length UTF-8 string field.
+/// Verifies encode/decode roundtrip for a struct with a variable-length UTF-8 string field
 fn encode_with_string_roundtrip() {
     let original = WithString {
         id: 1234,
@@ -61,7 +72,7 @@ fn encode_with_string_roundtrip() {
 }
 
 #[test]
-/// Tests decoding a zero-length string field (length prefix = 0) as an empty `String`.
+/// Tests decoding a zero-length string field (length prefix = 0) as an empty `String`
 fn decode_empty_string_field() {
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x00, 0x02, 0x00];
     let result = WithString::decode_value(&mut &data[..]).unwrap();
@@ -70,7 +81,7 @@ fn decode_empty_string_field() {
 }
 
 #[test]
-/// Tests decoding a 26-byte UTF-8 alphabet string to exercise a longer variable-length payload.
+/// Tests decoding a 26-byte UTF-8 alphabet string to exercise a longer variable-length payload
 fn decode_long_string() {
     let name = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     let mut data = vec![0x01_u8, 0x02, 0x00, 0x01, 0x02, name.len() as u8];
@@ -81,7 +92,7 @@ fn decode_long_string() {
 }
 
 #[test]
-/// Verifies that a variable-length string field and a fixed integer field decode correctly when presented in reverse order.
+/// Verifies that a variable-length string field and a fixed integer field decode correctly when presented in reverse order
 fn decode_string_reversed_field_order() {
     let name = b"rev";
     let mut data = vec![0x02_u8, name.len() as u8];
@@ -93,7 +104,7 @@ fn decode_string_reversed_field_order() {
 }
 
 #[test]
-/// Tests that decoding errors when the required string field (key `0x02`) is missing from the input.
+/// Tests that decoding errors when the required string field (key `0x02`) is missing from the input
 fn decode_missing_required_string_fails() {
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x01];
     let result = WithString::decode_value(&mut &data[..]);

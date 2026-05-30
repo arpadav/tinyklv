@@ -1,3 +1,17 @@
+//! Numeric and BER boundary-value roundtrip tests
+//!
+//! Uses a `boundary_roundtrip!` macro to verify encode/decode roundtrips at
+//! type extremes (`0`, `1`, `MIN`, `MAX`, and intermediate boundary crossings)
+//! for every integer type (`u8` through `u128`, `i8` through `i128`) and both
+//! endiannesses. Also covers `be_f32`/`be_f64`/`le_f32`/`le_f64` with bit-
+//! exact comparison including NaN, infinity, negative zero, and epsilon
+//! boundaries, and BER length roundtrips at `0`, `127`, `128`, `255`, `256`,
+//! and `u32::MAX`
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::ber as decber;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::ber as encber;
@@ -20,7 +34,7 @@ macro_rules! boundary_roundtrip {
 }
 
 boundary_roundtrip!(
-    /// Tests `u8` boundary roundtrip for `0`, `1`, `127`, `128`, `254`, and `u8::MAX`.
+    /// Tests `u8` boundary roundtrip for `0`, `1`, `127`, `128`, `254`, and `u8::MAX`
     u8_boundaries,
     u8,
     encb::u8,
@@ -29,7 +43,7 @@ boundary_roundtrip!(
 );
 
 boundary_roundtrip!(
-    /// Tests `be_u16` boundary roundtrip across zero, byte-width transitions, and `u16::MAX`.
+    /// Tests `be_u16` boundary roundtrip across zero, byte-width transitions, and `u16::MAX`
     be_u16_boundaries,
     u16,
     encb::be_u16,
@@ -38,7 +52,7 @@ boundary_roundtrip!(
 );
 
 boundary_roundtrip!(
-    /// Tests `be_u32` boundary roundtrip across zero, byte-width transitions, signed-bit boundary, and `u32::MAX`.
+    /// Tests `be_u32` boundary roundtrip across zero, byte-width transitions, signed-bit boundary, and `u32::MAX`
     be_u32_boundaries,
     u32,
     encb::be_u32,
@@ -47,7 +61,7 @@ boundary_roundtrip!(
 );
 
 boundary_roundtrip!(
-    /// Tests `be_u64` boundary roundtrip for `0`, `1`, mid, `u64::MAX - 1`, and `u64::MAX`.
+    /// Tests `be_u64` boundary roundtrip for `0`, `1`, mid, `u64::MAX - 1`, and `u64::MAX`
     be_u64_boundaries,
     u64,
     encb::be_u64,
@@ -56,7 +70,7 @@ boundary_roundtrip!(
 );
 
 boundary_roundtrip!(
-    /// Tests `le_u16` boundary roundtrip across zero, byte-width transitions, and `u16::MAX`.
+    /// Tests `le_u16` boundary roundtrip across zero, byte-width transitions, and `u16::MAX`
     le_u16_boundaries,
     u16,
     encb::le_u16,
@@ -65,7 +79,7 @@ boundary_roundtrip!(
 );
 
 boundary_roundtrip!(
-    /// Tests `le_u32` boundary roundtrip for `0`, `1`, mid, and `u32::MAX`.
+    /// Tests `le_u32` boundary roundtrip for `0`, `1`, mid, and `u32::MAX`
     le_u32_boundaries,
     u32,
     encb::le_u32,
@@ -74,7 +88,7 @@ boundary_roundtrip!(
 );
 
 boundary_roundtrip!(
-    /// Tests `i8` boundary roundtrip for `i8::MIN`, `-1`, `0`, `1`, and `i8::MAX`.
+    /// Tests `i8` boundary roundtrip for `i8::MIN`, `-1`, `0`, `1`, and `i8::MAX`
     i8_boundaries,
     i8,
     encb::i8,
@@ -83,7 +97,7 @@ boundary_roundtrip!(
 );
 
 boundary_roundtrip!(
-    /// Tests `be_i16` boundary roundtrip across signed min/max and sign-crossing byte-width transitions.
+    /// Tests `be_i16` boundary roundtrip across signed min/max and sign-crossing byte-width transitions
     be_i16_boundaries,
     i16,
     encb::be_i16,
@@ -92,7 +106,7 @@ boundary_roundtrip!(
 );
 
 boundary_roundtrip!(
-    /// Tests `be_i32` boundary roundtrip across signed min/max and sign-crossing byte-width transitions.
+    /// Tests `be_i32` boundary roundtrip across signed min/max and sign-crossing byte-width transitions
     be_i32_boundaries,
     i32,
     encb::be_i32,
@@ -101,7 +115,7 @@ boundary_roundtrip!(
 );
 
 boundary_roundtrip!(
-    /// Tests `be_i64` boundary roundtrip for `i64::MIN`, `-1`, `0`, `1`, and `i64::MAX`.
+    /// Tests `be_i64` boundary roundtrip for `i64::MIN`, `-1`, `0`, `1`, and `i64::MAX`
     be_i64_boundaries,
     i64,
     encb::be_i64,
@@ -110,7 +124,7 @@ boundary_roundtrip!(
 );
 
 #[test]
-/// Tests BER length roundtrip at the lower boundary value `0`.
+/// Tests BER length roundtrip at the lower boundary value `0`
 fn ber_length_boundary_0() {
     let mut encoded = Vec::new();
     encber::ber_length(0_u64, &mut encoded);
@@ -119,7 +133,7 @@ fn ber_length_boundary_0() {
 }
 
 #[test]
-/// Tests BER length roundtrip at the short-form upper boundary `127` (1-byte encoding).
+/// Tests BER length roundtrip at the short-form upper boundary `127` (1-byte encoding)
 fn ber_length_boundary_127() {
     let mut encoded = Vec::new();
     encber::ber_length(127_u64, &mut encoded);
@@ -129,7 +143,7 @@ fn ber_length_boundary_127() {
 }
 
 #[test]
-/// Tests BER length roundtrip at `128`, the first long-form value (encoding must exceed 1 byte).
+/// Tests BER length roundtrip at `128`, the first long-form value (encoding must exceed 1 byte)
 fn ber_length_boundary_128() {
     let mut encoded = Vec::new();
     encber::ber_length(128_u64, &mut encoded);
@@ -139,7 +153,7 @@ fn ber_length_boundary_128() {
 }
 
 #[test]
-/// Tests BER length roundtrip at `255`, a common 1-extra-byte long-form boundary.
+/// Tests BER length roundtrip at `255`, a common 1-extra-byte long-form boundary
 fn ber_length_boundary_255() {
     let mut encoded = Vec::new();
     encber::ber_length(255_u64, &mut encoded);
@@ -148,7 +162,7 @@ fn ber_length_boundary_255() {
 }
 
 #[test]
-/// Tests BER length roundtrip at `256`, the first value requiring 2 long-form bytes.
+/// Tests BER length roundtrip at `256`, the first value requiring 2 long-form bytes
 fn ber_length_boundary_256() {
     let mut encoded = Vec::new();
     encber::ber_length(256_u64, &mut encoded);
@@ -157,7 +171,7 @@ fn ber_length_boundary_256() {
 }
 
 #[test]
-/// Tests BER length roundtrip at the upper boundary `u32::MAX`.
+/// Tests BER length roundtrip at the upper boundary `u32::MAX`
 fn ber_length_boundary_u32_max() {
     let mut encoded = Vec::new();
     encber::ber_length(u32::MAX, &mut encoded);
@@ -166,7 +180,7 @@ fn ber_length_boundary_u32_max() {
 }
 
 boundary_roundtrip!(
-    /// Tests `be_u128` boundary roundtrip for `0`, `1`, mid, `u128::MAX - 1`, and `u128::MAX`.
+    /// Tests `be_u128` boundary roundtrip for `0`, `1`, mid, `u128::MAX - 1`, and `u128::MAX`
     be_u128_boundaries,
     u128,
     encb::be_u128,
@@ -175,7 +189,7 @@ boundary_roundtrip!(
 );
 
 boundary_roundtrip!(
-    /// Tests `le_u64` boundary roundtrip for `0`, `1`, mid, and `u64::MAX`.
+    /// Tests `le_u64` boundary roundtrip for `0`, `1`, mid, and `u64::MAX`
     le_u64_boundaries,
     u64,
     encb::le_u64,
@@ -184,7 +198,7 @@ boundary_roundtrip!(
 );
 
 boundary_roundtrip!(
-    /// Tests `be_i128` boundary roundtrip for `i128::MIN`, `-1`, `0`, `1`, and `i128::MAX`.
+    /// Tests `be_i128` boundary roundtrip for `i128::MIN`, `-1`, `0`, `1`, and `i128::MAX`
     be_i128_boundaries,
     i128,
     encb::be_i128,
@@ -193,7 +207,7 @@ boundary_roundtrip!(
 );
 
 #[test]
-/// Tests `be_f32` bit-exact roundtrip across zero, unit, signed-min/max, smallest positive, and epsilon boundaries.
+/// Tests `be_f32` bit-exact roundtrip across zero, unit, signed-min/max, smallest positive, and epsilon boundaries
 fn be_f32_boundaries() {
     for bits in [
         0.0_f32.to_bits(),
@@ -213,7 +227,7 @@ fn be_f32_boundaries() {
 }
 
 #[test]
-/// Tests `be_f32` bit-exact roundtrip for positive and negative infinity.
+/// Tests `be_f32` bit-exact roundtrip for positive and negative infinity
 fn be_f32_infinity_roundtrip() {
     for val in [f32::INFINITY, f32::NEG_INFINITY] {
         let mut encoded = Vec::new();
@@ -224,7 +238,7 @@ fn be_f32_infinity_roundtrip() {
 }
 
 #[test]
-/// Tests `be_f32` NaN roundtrip compared by bit pattern (since `NaN != NaN`).
+/// Tests `be_f32` NaN roundtrip compared by bit pattern (since `NaN != NaN`)
 fn be_f32_nan_roundtrip_via_bits() {
     // NaN != NaN, so compare bit patterns directly
     let bits = f32::NAN.to_bits();
@@ -236,7 +250,7 @@ fn be_f32_nan_roundtrip_via_bits() {
 }
 
 #[test]
-/// Tests `be_f32` bit-exact roundtrip of negative zero (`-0.0`).
+/// Tests `be_f32` bit-exact roundtrip of negative zero (`-0.0`)
 fn be_f32_neg_zero_roundtrip() {
     let bits = (-0.0_f32).to_bits();
     let mut encoded = Vec::new();
@@ -246,7 +260,7 @@ fn be_f32_neg_zero_roundtrip() {
 }
 
 #[test]
-/// Tests `be_f64` bit-exact roundtrip across zero, unit, signed-min/max, smallest positive, and epsilon boundaries.
+/// Tests `be_f64` bit-exact roundtrip across zero, unit, signed-min/max, smallest positive, and epsilon boundaries
 fn be_f64_boundaries() {
     for bits in [
         0.0_f64.to_bits(),
@@ -266,7 +280,7 @@ fn be_f64_boundaries() {
 }
 
 #[test]
-/// Tests `be_f64` bit-exact roundtrip for positive and negative infinity.
+/// Tests `be_f64` bit-exact roundtrip for positive and negative infinity
 fn be_f64_infinity_roundtrip() {
     for val in [f64::INFINITY, f64::NEG_INFINITY] {
         let mut encoded = Vec::new();
@@ -277,7 +291,7 @@ fn be_f64_infinity_roundtrip() {
 }
 
 #[test]
-/// Tests `be_f64` NaN roundtrip compared by bit pattern (since `NaN != NaN`).
+/// Tests `be_f64` NaN roundtrip compared by bit pattern (since `NaN != NaN`)
 fn be_f64_nan_roundtrip_via_bits() {
     let bits = f64::NAN.to_bits();
     let mut encoded = Vec::new();
@@ -287,7 +301,7 @@ fn be_f64_nan_roundtrip_via_bits() {
 }
 
 #[test]
-/// Tests `be_f64` bit-exact roundtrip of negative zero (`-0.0`).
+/// Tests `be_f64` bit-exact roundtrip of negative zero (`-0.0`)
 fn be_f64_neg_zero_roundtrip() {
     let bits = (-0.0_f64).to_bits();
     let mut encoded = Vec::new();
@@ -297,7 +311,7 @@ fn be_f64_neg_zero_roundtrip() {
 }
 
 #[test]
-/// Tests `le_f32` bit-exact roundtrip across zero, unit, max, NaN, infinities, and negative zero.
+/// Tests `le_f32` bit-exact roundtrip across zero, unit, max, NaN, infinities, and negative zero
 fn le_f32_boundaries() {
     for bits in [
         0.0_f32.to_bits(),
@@ -317,7 +331,7 @@ fn le_f32_boundaries() {
 }
 
 #[test]
-/// Tests `le_f64` bit-exact roundtrip across zero, unit, max, NaN, infinities, and negative zero.
+/// Tests `le_f64` bit-exact roundtrip across zero, unit, max, NaN, infinities, and negative zero
 fn le_f64_boundaries() {
     for bits in [
         0.0_f64.to_bits(),

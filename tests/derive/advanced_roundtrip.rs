@@ -2,7 +2,7 @@
 //!
 //! Covers last-wins semantics when the same key appears multiple times,
 //! None-field omission from the encoded byte stream, and identity roundtrip
-//! across several struct shapes (all-required, all-optional-some, mixed).
+//! across several struct shapes (all-required, all-optional-some, mixed)
 //!
 //! Author: aav
 
@@ -172,12 +172,12 @@ struct MixedShape {
 // owned-encoder structs (encoder takes T, not &T)
 // --------------------------------------------------
 
-/// Encoder that takes Priority by value - tests autoref-deref dispatch
+/// Encode a [`Priority`] value by consuming it - tests `*` sigil autoref dispatch
 fn encode_priority_owned(v: Priority, out: &mut Vec<u8>) {
     v.encode_value(out);
 }
 
-/// Encoder that takes Color by value
+/// Encode a [`Color`] value by consuming it - tests `*` sigil autoref dispatch
 fn encode_color_owned(v: Color, out: &mut Vec<u8>) {
     v.encode_value(out);
 }
@@ -207,6 +207,7 @@ struct OwnedEncoderStruct {
 // helpers
 // --------------------------------------------------
 
+/// Construct a [`SixField`] fixture with low, typical field values
 fn make_six_field_a() -> SixField {
     SixField {
         color: Color::Red,
@@ -229,6 +230,7 @@ fn make_six_field_a() -> SixField {
     }
 }
 
+/// Construct a [`SixField`] fixture with high, extreme field values for last-wins testing
 fn make_six_field_b() -> SixField {
     SixField {
         color: Color::Alpha,
@@ -259,7 +261,7 @@ fn make_six_field_b() -> SixField {
 // --------------------------------------------------
 
 #[test]
-/// Verifies last-wins semantics across all six fields when two `SixField` encodings are concatenated and decoded.
+/// Verifies last-wins semantics across all six fields when two `SixField` encodings are concatenated and decoded
 fn duplicate_6field_last_wins() {
     let a = make_six_field_a();
     let b = make_six_field_b();
@@ -280,7 +282,7 @@ fn duplicate_6field_last_wins() {
 }
 
 #[test]
-/// Tests that a `None` optional field contributes zero bytes to the encoded output and its key/length header is absent.
+/// Tests that a `None` optional field contributes zero bytes to the encoded output and its key/length header is absent
 fn encode_skips_none() {
     let val = ThreeOptFields {
         color: Some(Color::Green),
@@ -314,7 +316,7 @@ fn encode_skips_none() {
 }
 
 #[test]
-/// Tests encode/decode identity roundtrip for a struct whose fields are all required (`Color` + `Timestamp`).
+/// Tests encode/decode identity roundtrip for a struct whose fields are all required (`Color` + `Timestamp`)
 fn roundtrip_identity_all_required() {
     let original = AllRequired {
         color: Color::Blue,
@@ -330,7 +332,7 @@ fn roundtrip_identity_all_required() {
 }
 
 #[test]
-/// Tests roundtrip for a fully-optional struct where every optional is `Some(_)`.
+/// Tests roundtrip for a fully-optional struct where every optional is `Some(_)`
 fn roundtrip_identity_all_optional_some() {
     let original = AllOptional {
         color: Some(Color::Alpha),
@@ -347,7 +349,7 @@ fn roundtrip_identity_all_optional_some() {
 }
 
 #[test]
-/// Tests roundtrip for a struct mixing a required and an optional field, with the optional as `Some(_)`.
+/// Tests roundtrip for a struct mixing a required and an optional field, with the optional as `Some(_)`
 fn roundtrip_identity_mixed_shape() {
     let original = MixedShape {
         priority: Priority::Medium,
@@ -364,7 +366,7 @@ fn roundtrip_identity_mixed_shape() {
 }
 
 #[test]
-/// Tests roundtrip for a mixed-shape struct when the optional is `None`.
+/// Tests roundtrip for a mixed-shape struct when the optional is `None`
 fn roundtrip_identity_mixed_shape_none() {
     let original = MixedShape {
         priority: Priority::High,
@@ -377,7 +379,7 @@ fn roundtrip_identity_mixed_shape_none() {
 }
 
 #[test]
-/// Verifies that the `&` sigil dispatches through `EncodeAs` when the encoder function takes `T` by value rather than `&T`.
+/// Verifies that the `&` sigil dispatches through `EncodeAs` when the encoder function takes `T` by value rather than `&T`
 fn roundtrip_owned_encoder() {
     let original = OwnedEncoderStruct {
         priority: Priority::Critical,

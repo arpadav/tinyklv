@@ -1,3 +1,14 @@
+//! `drain_frames` and repeated sentinel-extraction tests for `#[derive(Klv)]`
+//!
+//! Tests the `SimpleRecord` struct (one `u16` value field, sentinel `b"SR"`)
+//! via the `drain_frames` API. Covers empty stream, single record, three
+//! records, five records, and a stream with a malformed tail that is cleanly
+//! stopped after decoding the valid leading record
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
@@ -18,6 +29,10 @@ struct SimpleRecord {
     value: u16,
 }
 
+/// Encode a slice of `u16` values into a concatenated stream of sentinel-framed `SimpleRecord` packets
+///
+/// Each value is wrapped in a `SimpleRecord` and encoded via `encode_frame`,
+/// producing back-to-back sentinel-framed packets in the output buffer
 fn build_multi_record(values: &[u16]) -> Vec<u8> {
     let mut out = Vec::new();
     for &v in values {
@@ -27,7 +42,7 @@ fn build_multi_record(values: &[u16]) -> Vec<u8> {
 }
 
 #[test]
-/// Tests that `drain_frames` on an empty stream yields an empty `Vec` without erroring.
+/// Tests that `drain_frames` on an empty stream yields an empty `Vec` without erroring
 fn drain_frames_empty_stream_returns_empty_vec() {
     let mut input: &[u8] = &[];
     let results = SimpleRecord::drain_frames(&mut input).unwrap();
@@ -35,7 +50,7 @@ fn drain_frames_empty_stream_returns_empty_vec() {
 }
 
 #[test]
-/// Verifies that `drain_frames` extracts a single record from a stream containing exactly one encoded frame.
+/// Verifies that `drain_frames` extracts a single record from a stream containing exactly one encoded frame
 fn drain_frames_one_record() {
     let data = build_multi_record(&[0x1234]);
     let results = SimpleRecord::drain_frames(&mut data.as_slice()).unwrap();
@@ -44,7 +59,7 @@ fn drain_frames_one_record() {
 }
 
 #[test]
-/// Tests that sentinel framing lets `drain_frames` extract three independent frames.
+/// Tests that sentinel framing lets `drain_frames` extract three independent frames
 fn drain_frames_three_framed_records() {
     let data = build_multi_record(&[1, 2, 3]);
     let results = SimpleRecord::drain_frames(&mut data.as_slice()).unwrap();
@@ -55,7 +70,7 @@ fn drain_frames_three_framed_records() {
 }
 
 #[test]
-/// Tests that `drain_frames` stops cleanly when the stream contains one complete frame followed by a truncated tail.
+/// Tests that `drain_frames` stops cleanly when the stream contains one complete frame followed by a truncated tail
 fn drain_frames_stops_on_malformed_tail() {
     let mut data = build_multi_record(&[10]);
     data.push(0x01);
@@ -67,7 +82,7 @@ fn drain_frames_stops_on_malformed_tail() {
 }
 
 #[test]
-/// Tests that five sentinel-framed records are each decoded independently.
+/// Tests that five sentinel-framed records are each decoded independently
 fn drain_frames_five_framed_records() {
     let values = [100_u16, 200, 300, 400, 500];
     let data = build_multi_record(&values);

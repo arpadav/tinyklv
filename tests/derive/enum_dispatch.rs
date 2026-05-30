@@ -4,6 +4,9 @@
 //! the recommended pattern: define each packet type with `#[derive(Klv)]` and
 //! a unique sentinel, then write a thin enum wrapper that peeks the sentinel
 //! bytes and routes to the appropriate `::extract()` call.
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use super::types::*;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;

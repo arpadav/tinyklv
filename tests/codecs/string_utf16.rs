@@ -1,8 +1,21 @@
+//! UTF-16 string codec tests (LE and BE)
+//!
+//! Tests `to_string_utf16_le`, `to_string_utf16_be`, `from_string_utf16_le`,
+//! and `from_string_utf16_be`. Covers known-value decoding, ASCII roundtrips,
+//! empty-string edge cases, odd-byte-count rejection, surrogate-pair emoji
+//! roundtrip (U+1F600), Latin-1 extended Unicode roundtrips, endian-comparison
+//! assertions (LE and BE produce byte-reversed outputs), and cross-decode
+//! mismatched-endian verification
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::codecs::string::dec::{to_string_utf16_be, to_string_utf16_le};
 use tinyklv::codecs::string::enc::{from_string_utf16_be, from_string_utf16_le};
 
 #[test]
-/// Tests `to_string_utf16_le(4)` decodes `[0x41, 0x00, 0x42, 0x00]` to `"AB"`.
+/// Tests `to_string_utf16_le(4)` decodes `[0x41, 0x00, 0x42, 0x00]` to `"AB"`
 fn utf16_le_known_ab() {
     // "AB" in UTF-16 LE
     let mut input: &[u8] = &[0x41, 0x00, 0x42, 0x00];
@@ -11,7 +24,7 @@ fn utf16_le_known_ab() {
 }
 
 #[test]
-/// Tests `from_string_utf16_le("AB")` emits `[0x41, 0x00, 0x42, 0x00]`.
+/// Tests `from_string_utf16_le("AB")` emits `[0x41, 0x00, 0x42, 0x00]`
 fn utf16_le_encode_ab() {
     let mut encoded = Vec::new();
     from_string_utf16_le("AB", &mut encoded);
@@ -19,7 +32,7 @@ fn utf16_le_encode_ab() {
 }
 
 #[test]
-/// Tests UTF-16 LE ASCII string roundtrip.
+/// Tests UTF-16 LE ASCII string roundtrip
 fn utf16_le_roundtrip_ascii() {
     let text = "Hello";
     let mut encoded = Vec::new();
@@ -29,7 +42,7 @@ fn utf16_le_roundtrip_ascii() {
 }
 
 #[test]
-/// Tests UTF-16 LE empty-string encode produces empty bytes and decode produces empty string.
+/// Tests UTF-16 LE empty-string encode produces empty bytes and decode produces empty string
 fn utf16_le_empty_string() {
     let mut encoded = Vec::new();
     from_string_utf16_le("", &mut encoded);
@@ -39,7 +52,7 @@ fn utf16_le_empty_string() {
 }
 
 #[test]
-/// Tests `to_string_utf16_le(3)` errors on odd byte count.
+/// Tests `to_string_utf16_le(3)` errors on odd byte count
 fn utf16_le_odd_length_err() {
     // 3 bytes is odd - not a valid UTF-16 length
     let mut input: &[u8] = &[0x41, 0x00, 0x42];
@@ -48,7 +61,7 @@ fn utf16_le_odd_length_err() {
 }
 
 #[test]
-/// Tests UTF-16 LE surrogate-pair emoji roundtrip (U+1F600 encodes to 4 bytes).
+/// Tests UTF-16 LE surrogate-pair emoji roundtrip (U+1F600 encodes to 4 bytes)
 fn utf16_le_emoji_roundtrip() {
     // Emoji U+1F600 encodes as a surrogate pair in UTF-16 (4 bytes)
     let text = "\u{1F600}";
@@ -60,7 +73,7 @@ fn utf16_le_emoji_roundtrip() {
 }
 
 #[test]
-/// Tests UTF-16 LE roundtrip preserves Latin-1 extended Unicode characters.
+/// Tests UTF-16 LE roundtrip preserves Latin-1 extended Unicode characters
 fn utf16_le_unicode_roundtrip() {
     let text = "Héllo";
     let mut encoded = Vec::new();
@@ -71,7 +84,7 @@ fn utf16_le_unicode_roundtrip() {
 }
 
 #[test]
-/// Tests `to_string_utf16_be(4)` decodes `[0x00, 0x41, 0x00, 0x42]` to `"AB"`.
+/// Tests `to_string_utf16_be(4)` decodes `[0x00, 0x41, 0x00, 0x42]` to `"AB"`
 fn utf16_be_known_ab() {
     // "AB" in UTF-16 BE
     let mut input: &[u8] = &[0x00, 0x41, 0x00, 0x42];
@@ -80,7 +93,7 @@ fn utf16_be_known_ab() {
 }
 
 #[test]
-/// Tests `from_string_utf16_be("AB")` emits `[0x00, 0x41, 0x00, 0x42]`.
+/// Tests `from_string_utf16_be("AB")` emits `[0x00, 0x41, 0x00, 0x42]`
 fn utf16_be_encode_ab() {
     let mut encoded = Vec::new();
     from_string_utf16_be("AB", &mut encoded);
@@ -88,7 +101,7 @@ fn utf16_be_encode_ab() {
 }
 
 #[test]
-/// Tests UTF-16 BE ASCII string roundtrip.
+/// Tests UTF-16 BE ASCII string roundtrip
 fn utf16_be_roundtrip_ascii() {
     let text = "KLV";
     let mut encoded = Vec::new();
@@ -98,7 +111,7 @@ fn utf16_be_roundtrip_ascii() {
 }
 
 #[test]
-/// Tests UTF-16 BE empty-string encode produces empty bytes and decode produces empty string.
+/// Tests UTF-16 BE empty-string encode produces empty bytes and decode produces empty string
 fn utf16_be_empty_string() {
     let mut encoded = Vec::new();
     from_string_utf16_be("", &mut encoded);
@@ -108,7 +121,7 @@ fn utf16_be_empty_string() {
 }
 
 #[test]
-/// Tests `to_string_utf16_be(3)` errors on odd byte count.
+/// Tests `to_string_utf16_be(3)` errors on odd byte count
 fn utf16_be_odd_length_err() {
     let mut input: &[u8] = &[0x00, 0x41, 0x00];
     let result = to_string_utf16_be(3)(&mut input);
@@ -116,7 +129,7 @@ fn utf16_be_odd_length_err() {
 }
 
 #[test]
-/// Tests UTF-16 BE roundtrip preserves Latin-1 extended Unicode characters.
+/// Tests UTF-16 BE roundtrip preserves Latin-1 extended Unicode characters
 fn utf16_be_unicode_roundtrip() {
     let text = "Héllo";
     let mut encoded = Vec::new();
@@ -127,7 +140,7 @@ fn utf16_be_unicode_roundtrip() {
 }
 
 #[test]
-/// Tests that UTF-16 LE and BE encoders produce byte-reversed outputs for the same input.
+/// Tests that UTF-16 LE and BE encoders produce byte-reversed outputs for the same input
 fn utf16_le_vs_be_differ() {
     let text = "A";
     let mut le = Vec::new();
@@ -140,7 +153,7 @@ fn utf16_le_vs_be_differ() {
 }
 
 #[test]
-/// Tests that decoding LE-encoded bytes as BE produces incorrect output (mismatched endianness).
+/// Tests that decoding LE-encoded bytes as BE produces incorrect output (mismatched endianness)
 fn utf16_cross_decode_differs() {
     // "AB" encoded as LE, then decoded as BE gives wrong result
     let text = "AB";

@@ -1,3 +1,14 @@
+//! Basic fixed-width field decode and roundtrip tests for `#[derive(Klv)]`
+//!
+//! Tests the `BasicFixed` struct (four unsigned integer fields: `u8`, `u16`,
+//! `u32`, `u64`) with all-zero, all-max, typical, and reversed-order streams
+//! Covers `decode_value`, `encode_value` roundtrip, missing-required-field
+//! errors, and last-wins semantics when two encoded packets are concatenated
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
@@ -39,7 +50,7 @@ struct BasicFixed {
 }
 
 #[test]
-/// Verifies that a struct of fixed-width unsigned integer fields decodes from a well-formed KLV byte sequence.
+/// Verifies that a struct of fixed-width unsigned integer fields decodes from a well-formed KLV byte sequence
 fn decode_basic_fixed() {
     let data: &[u8] = &[
         0x01, 0x01, 0x42, 0x02, 0x02, 0x01, 0x02, 0x03, 0x04, 0x00, 0x01, 0x02, 0x03, 0x04, 0x08,
@@ -53,7 +64,7 @@ fn decode_basic_fixed() {
 }
 
 #[test]
-/// Ensures fixed-width integer fields decode correctly when every value is zero.
+/// Ensures fixed-width integer fields decode correctly when every value is zero
 fn decode_basic_fixed_all_zeros() {
     let data: &[u8] = &[
         0x01, 0x01, 0x00, 0x02, 0x02, 0x00, 0x00, 0x03, 0x04, 0x00, 0x00, 0x00, 0x00, 0x04, 0x08,
@@ -67,7 +78,7 @@ fn decode_basic_fixed_all_zeros() {
 }
 
 #[test]
-/// Ensures fixed-width integer fields decode correctly when every value is at its type maximum.
+/// Ensures fixed-width integer fields decode correctly when every value is at its type maximum
 fn decode_basic_fixed_max_values() {
     let data: &[u8] = &[
         0x01, 0x01, 0xFF, 0x02, 0x02, 0xFF, 0xFF, 0x03, 0x04, 0xFF, 0xFF, 0xFF, 0xFF, 0x04, 0x08,
@@ -81,7 +92,7 @@ fn decode_basic_fixed_max_values() {
 }
 
 #[test]
-/// Verifies that `encode_value` followed by `decode_value` reproduces the original fixed-field struct.
+/// Verifies that `encode_value` followed by `decode_value` reproduces the original fixed-field struct
 fn encode_value_roundtrip() {
     let packet = BasicFixed {
         byte_val: 0x42,
@@ -96,7 +107,7 @@ fn encode_value_roundtrip() {
 }
 
 #[test]
-/// Tests that fields arriving in reverse key order (04, 03, 02, 01) still populate the correct struct slots.
+/// Tests that fields arriving in reverse key order (04, 03, 02, 01) still populate the correct struct slots
 fn decode_fields_reversed_order() {
     let data: &[u8] = &[
         0x04, 0x08, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE, 0x03, 0x04, 0x00, 0x00, 0x00,
@@ -110,7 +121,7 @@ fn decode_fields_reversed_order() {
 }
 
 #[test]
-/// Tests that decoding returns an error when required fields are absent from the input.
+/// Tests that decoding returns an error when required fields are absent from the input
 fn decode_missing_required_field_fails() {
     let data: &[u8] = &[0x01, 0x01, 0x42, 0x02, 0x02, 0x01, 0x02];
     let result = BasicFixed::decode_value(&mut &data[..]);
@@ -118,7 +129,7 @@ fn decode_missing_required_field_fails() {
 }
 
 #[test]
-/// Tests last-wins semantics when two back-to-back frames are decoded as a single buffer without a sentinel/length wrapper, so duplicate keys from the second packet overwrite the first.
+/// Tests last-wins semantics when two back-to-back frames are decoded as a single buffer without a sentinel/length wrapper, so duplicate keys from the second packet overwrite the first
 fn decode_two_packets_back_to_back() {
     let p1 = BasicFixed {
         byte_val: 1,

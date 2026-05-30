@@ -7,6 +7,9 @@
 //! which threads a [`tinyklv::BreakType`] decision into the generated loop.
 //! These manual impls remain fully supported for cases the attribute does not
 //! cover, and pin the same outcomes the attribute produces.
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use super::types::*;
 use tinyklv::dec::binary as decb;
 use tinyklv::prelude::*;

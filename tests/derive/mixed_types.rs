@@ -1,3 +1,11 @@
+//! Mixed-type field tests for `#[derive(Klv)]`
+//!
+//! Tests the `Mixed` struct (a `u8` byte value, a `u32` integer, a `varlen`
+//! UTF-8 string, and an optional `u16`). Covers decode with all fields
+//! present, absent optional, reversed field order, missing required field,
+//! and full encode/decode roundtrip with and without the optional
+//!
+//! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
@@ -43,7 +51,7 @@ struct Mixed {
 }
 
 #[test]
-/// Tests decoding a struct mixing fixed-width integers, a variable-length string, and an optional field with all keys present.
+/// Tests decoding a struct mixing fixed-width integers, a variable-length string, and an optional field with all keys present
 fn decode_all_fields_present() {
     let name = b"KLV";
     let mut data = vec![
@@ -69,7 +77,7 @@ fn decode_all_fields_present() {
 }
 
 #[test]
-/// Verifies that in a mixed-type struct the optional field decodes to `None` when its key is absent.
+/// Verifies that in a mixed-type struct the optional field decodes to `None` when its key is absent
 fn decode_optional_absent() {
     let name = b"TEST";
     let mut data = vec![
@@ -94,7 +102,7 @@ fn decode_optional_absent() {
 }
 
 #[test]
-/// Tests encode/decode roundtrip for a struct mixing integers, a `String`, and a `Some` optional.
+/// Tests encode/decode roundtrip for a struct mixing integers, a `String`, and a `Some` optional
 fn roundtrip_mixed_types() {
     let original = Mixed {
         byte_val: 0xAB,

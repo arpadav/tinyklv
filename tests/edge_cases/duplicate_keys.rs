@@ -1,3 +1,15 @@
+//! Duplicate-key last-wins semantics tests
+//!
+//! Tests two structs (`SingleField` with one required `u16` and `TwoFields`
+//! with a required `u16` + optional `u32`). Verifies last-wins semantics when
+//! a key appears two or three times, idempotency when both values are equal,
+//! boundary maximum and zero as the last occurrence, and interleaved duplicates
+//! on two independent fields each resolving independently
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::Klv;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
@@ -40,7 +52,7 @@ struct TwoFields {
 }
 
 #[test]
-/// Tests that when a key appears twice, the second (last) decoded value wins on a required `u16` field.
+/// Tests that when a key appears twice, the second (last) decoded value wins on a required `u16` field
 fn duplicate_key_last_wins() {
     // Key 0x01 appears twice: first value 0x0001, second 0x0002.
     // Last successful decode wins: result = 2.
@@ -53,7 +65,7 @@ fn duplicate_key_last_wins() {
 }
 
 #[test]
-/// Tests that last-wins semantics hold across three consecutive occurrences of the same key.
+/// Tests that last-wins semantics hold across three consecutive occurrences of the same key
 fn duplicate_key_three_times_last_wins() {
     let data: &[u8] = &[
         0x01, 0x02, 0x00, 0x0A, // 10
@@ -65,7 +77,7 @@ fn duplicate_key_three_times_last_wins() {
 }
 
 #[test]
-/// Sanity check that a single occurrence of a key decodes normally when no duplicates are present.
+/// Sanity check that a single occurrence of a key decodes normally when no duplicates are present
 fn duplicate_key_single_occurrence_works_normally() {
     let data: &[u8] = &[0x01, 0x02, 0xAB, 0xCD];
     let result = SingleField::decode_value(&mut &data[..]).unwrap();
@@ -73,7 +85,7 @@ fn duplicate_key_single_occurrence_works_normally() {
 }
 
 #[test]
-/// Tests idempotency: repeating the same value yields that value regardless of last-wins ordering.
+/// Tests idempotency: repeating the same value yields that value regardless of last-wins ordering
 fn duplicate_key_same_value_both_times() {
     // Idempotent: same value repeated, result unchanged regardless of last-wins.
     let data: &[u8] = &[0x01, 0x02, 0xFF, 0xFF, 0x01, 0x02, 0xFF, 0xFF];
@@ -82,7 +94,7 @@ fn duplicate_key_same_value_both_times() {
 }
 
 #[test]
-/// Tests that duplicating the first key does not disturb decoding of a distinct second key.
+/// Tests that duplicating the first key does not disturb decoding of a distinct second key
 fn duplicate_of_first_field_other_field_unaffected() {
     // key 0x01 appears twice (last wins = 2), key 0x02 appears once.
     let data: &[u8] = &[
@@ -96,7 +108,7 @@ fn duplicate_of_first_field_other_field_unaffected() {
 }
 
 #[test]
-/// Tests that duplicating the second key does not disturb the already-decoded first key.
+/// Tests that duplicating the second key does not disturb the already-decoded first key
 fn duplicate_of_second_field_other_field_unaffected() {
     // key 0x02 appears twice, last wins = 2.
     let data: &[u8] = &[
@@ -110,7 +122,7 @@ fn duplicate_of_second_field_other_field_unaffected() {
 }
 
 #[test]
-/// Tests that interleaved duplicates of two distinct keys each resolve to their own last-occurrence value.
+/// Tests that interleaved duplicates of two distinct keys each resolve to their own last-occurrence value
 fn interleaved_duplicates_last_wins_for_each() {
     // Both fields duplicated and interleaved; last value for each key wins.
     let data: &[u8] = &[
@@ -125,7 +137,7 @@ fn interleaved_duplicates_last_wins_for_each() {
 }
 
 #[test]
-/// Tests last-wins when the final occurrence is the boundary maximum (`u16::MAX`).
+/// Tests last-wins when the final occurrence is the boundary maximum (`u16::MAX`)
 fn duplicate_key_max_value_last() {
     // Last occurrence is the max value.
     let data: &[u8] = &[
@@ -137,7 +149,7 @@ fn duplicate_key_max_value_last() {
 }
 
 #[test]
-/// Tests last-wins when the final occurrence is zero, overriding a prior non-zero value.
+/// Tests last-wins when the final occurrence is zero, overriding a prior non-zero value
 fn duplicate_key_zero_last() {
     // Last occurrence is zero.
     let data: &[u8] = &[

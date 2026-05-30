@@ -9,6 +9,9 @@
 //! Exercised on required fields, `Option<U>` fields (present/absent), and
 //! alongside `default` to confirm the default-populated path is NOT re-run
 //! through latebind
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::Klv;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
