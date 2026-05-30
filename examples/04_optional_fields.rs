@@ -1,19 +1,19 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 04 - optional fields.
+//! Example 04 - optional fields
 //!
 //! `Option<T>` on a struct field makes the corresponding KLV triple optional
 //! in the stream. On encode, `None` emits nothing; on decode, missing keys
 //! leave the field as `None` without raising an error. This lets a single
 //! struct describe heterogeneous telemetry from units with different sensor
-//! sets.
+//! sets
 //!
 //! Showcases:
 //! * `Option<T>` field wrapping around the same codecs as `T`
 //! * Frame shrinkage when optional fields are absent
 //! * Decode tolerating missing keys
 //!
-//! See also: book Tutorial 04.
+//! See also: book Tutorial 04
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders

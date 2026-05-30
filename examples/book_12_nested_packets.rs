@@ -1,6 +1,7 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
 //! Book tutorial 12 - nested KLV packets
+//! See `book/tutorial/12-nested-packets.md` for the full narrative
 //!
 //! Demonstrates composing an inner `GpsFix` sub-packet inside an outer
 //! `Heartbeat` frame. The inner type derives `Klv` without a sentinel so it
@@ -8,10 +9,6 @@
 //! references `GpsFix::decode_value` / `encode_value` directly in its `#[klv]`
 //! attribute. Both directions are asserted to round-trip correctly, and the
 //! inner type is also verified in isolation
-//!
-//! See `book/tutorial/12-nested-packets.md` for the full narrative.
-//!
-//! Author: aav
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders

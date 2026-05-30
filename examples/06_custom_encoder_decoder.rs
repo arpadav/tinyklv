@@ -1,6 +1,6 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 06 - hand-written encoder / decoder functions.
+//! Example 06 - hand-written encoder / decoder functions
 //!
 //! The built-in `dec::binary` / `enc::binary` helpers cover integers and
 //! floats in big/little endian. Whenever a field needs a domain-specific
@@ -14,7 +14,7 @@
 //! The `dec =` and `enc =` field attributes then reference them by path,
 //! exactly as they would reference a built-in. This example encodes GPS
 //! lat/lon as scaled `i32` values to save bandwidth while keeping the
-//! in-memory type as `f64`.
+//! in-memory type as `f64`
 //!
 //! Showcases:
 //! * Custom decode/encode fns with free-function signatures

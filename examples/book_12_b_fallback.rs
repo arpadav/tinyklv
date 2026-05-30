@@ -1,11 +1,19 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/12-default-fallback.md` for full example
+//! Book tutorial 12b - `trait_fallback`: auto-resolve codecs from type impls
+//! See `book/tutorial/12-default-fallback.md` for the full narrative
+//!
+//! When a type already implements `DecodeValue` and `EncodeValue`, the
+//! `trait_fallback` container attribute lets `#[klv(key = ...)]` fields omit
+//! `dec` and `enc` entirely - the derive resolves them from the trait impls
+//! automatically. `Option<T>` wrapping is also supported: a missing key leaves
+//! the field as `None`
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
 
 #[derive(Debug, PartialEq)]
+/// Two-byte device identifier whose codec comes from its own trait impls
 struct DeviceId(u16);
 impl DecodeValue<&[u8]> for DeviceId {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {

@@ -1,19 +1,19 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 03 - UTF-8 strings + variable-length fields.
+//! Example 03 - UTF-8 strings + variable-length fields
 //!
-//! Fixed-width fields use a plain `fn(&mut Stream) -> Result<T>` decoder.
+//! Fixed-width fields use a plain `fn(&mut Stream) -> Result<T>` decoder
 //! Variable-length fields (like strings) need the length to read a payload
 //! bounded by the preceding `len` bytes - tinyklv surfaces this with the
 //! `varlen = true` field attribute, which expects a length-parameterised
-//! decoder of the form `fn(usize) -> impl FnMut(&mut Stream) -> Result<T>`.
+//! decoder of the form `fn(usize) -> impl FnMut(&mut Stream) -> Result<T>`
 //!
 //! Showcases:
 //! * `varlen = true` for string payloads
 //! * Mixing fixed-width `be_u32` and variable-length UTF-8 on one struct
 //! * The split between `dec::binary` / `enc::binary` and `enc::string`
 //!
-//! See also: book Tutorial 03.
+//! See also: book Tutorial 03
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::dec::string as decs;   // string decoders

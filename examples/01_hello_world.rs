@@ -12,7 +12,7 @@
 //! * `EncodeFrame::encode_frame` emitting sentinel + length + KLV triples
 //! * `DecodeFrame::decode_frame` seeking the sentinel and rebuilding the struct
 //!
-//! See also: book Tutorial 01.
+//! See also: book Tutorial 01
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders

@@ -1,6 +1,13 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/07-val-lengths.md` for full example
+//! Book tutorial 07b - `varlen = true` for length-parameterised value decoders
+//! See `book/tutorial/07-val-lengths.md` for the full narrative
+//!
+//! Shows how to add a variable-length `String` field to an existing struct
+//! The `varlen = true` annotation tells the generated loop to pass the decoded
+//! length into `decs::to_string_utf8` so it reads exactly that many bytes -
+//! the standard fixed-width `fn(&mut Stream) -> Result<T>` signature cannot
+//! do this on its own
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::dec::string as decs;   // string decoders
@@ -16,19 +23,22 @@ use tinyklv::dec::string as decs;   // string decoders
     default(typ = u32, dec = decb::be_u32),
     allow_unimplemented_encode,
 )]
+/// Heartbeat extended with a variable-length `station_id` UTF-8 string field
 struct Heartbeat {
-    #[klv(key = 0x01)]  sequence:             u8,
-    #[klv(key = 0x02)]  temperature_centideg: u16,
-    #[klv(key = 0x03)]  battery_pct:          u8,
-    #[klv(key = 0x04)]  rssi_dbm:             u8,
-    #[klv(key = 0x05)]  uptime_s:             u32,
-    #[klv(key = 0x06)]  mode_flags:           u8,
+    #[klv(key = 0x01)]  sequence:             u8,     // monotonic frame counter
+    #[klv(key = 0x02)]  temperature_centideg: u16,    // temperature in 0.01 C units
+    #[klv(key = 0x03)]  battery_pct:          u8,     // battery charge 0..=100 %
+    #[klv(key = 0x04)]  rssi_dbm:             u8,     // receive signal strength
+    #[klv(key = 0x05)]  uptime_s:             u32,    // seconds since boot
+    #[klv(key = 0x06)]  mode_flags:           u8,     // bitmask of active flags
 
     #[klv(
         key = 0x07,
         dec = decs::to_string_utf8,
         varlen = true,
     )]
+    /// Variable-length UTF-8 station identifier; `varlen = true` threads the
+    /// decoded length into the string decoder
     station_id: String,
 }
 

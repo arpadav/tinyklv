@@ -1,6 +1,13 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/04-default-codec.md` for full example
+//! Book tutorial 04 - container-level `default(typ = ...)` codecs
+//! See `book/tutorial/04-default-codec.md` for the full narrative
+//!
+//! Demonstrates how to register type-wide decoders at the container level so
+//! that fields of those types only need a `key = ...` attribute. The
+//! `Heartbeat` here has six fields of three different primitive types; all six
+//! decoders are resolved from the container defaults rather than repeated on
+//! each field
 use tinyklv::prelude::*;            // Klv proc-macro, traits
 use tinyklv::dec::binary as decb;   // binary decoders
 
@@ -15,13 +22,14 @@ use tinyklv::dec::binary as decb;   // binary decoders
     default(typ = u32, dec = decb::be_u32),
     allow_unimplemented_encode,
 )]
+/// Six-field heartbeat whose codecs are all resolved from container defaults
 struct Heartbeat {
-    #[klv(key = 0x01)] sequence:             u8,
-    #[klv(key = 0x02)] temperature_centideg: u16,
-    #[klv(key = 0x03)] battery_pct:          u8,
-    #[klv(key = 0x04)] rssi_dbm:             u8,
-    #[klv(key = 0x05)] uptime_s:             u32,
-    #[klv(key = 0x06)] mode_flags:           u8,
+    #[klv(key = 0x01)] sequence:             u8,  // monotonic frame counter
+    #[klv(key = 0x02)] temperature_centideg: u16, // temperature in 0.01 C units
+    #[klv(key = 0x03)] battery_pct:          u8,  // battery charge 0..=100 %
+    #[klv(key = 0x04)] rssi_dbm:             u8,  // receive signal strength (raw byte)
+    #[klv(key = 0x05)] uptime_s:             u32, // seconds since boot
+    #[klv(key = 0x06)] mode_flags:           u8,  // bitmask of active mode flags
 }
 
 fn main() {

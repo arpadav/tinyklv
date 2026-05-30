@@ -1,13 +1,13 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 07 - `SeekSentinel` scanning past leading junk.
+//! Example 07 - `SeekSentinel` scanning past leading junk
 //!
 //! Real network streams arrive wrapped in UDP/IP headers, partial payloads
 //! from earlier frames, and general noise. `decode_frame` handles this by
 //! calling `SeekSentinel::seek_sentinel` internally, scanning forward until
 //! it finds the magic bytes, then reading the length and value region. This
 //! example plants obvious garbage before a valid frame and asserts that the
-//! decoder still recovers the struct unchanged.
+//! decoder still recovers the struct unchanged
 //!
 //! Showcases:
 //! * `decode_frame` skipping arbitrary prefix bytes

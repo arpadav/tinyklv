@@ -1,6 +1,13 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/02-out-of-order.md` for full example
+//! Book tutorial 02 - out-of-order key decoding
+//! See `book/tutorial/02-out-of-order.md` for the full narrative
+//!
+//! Shows that `DecodeValue` does not require keys to appear in declaration
+//! order. The same `Heartbeat` struct from tutorial 01 is decoded from a
+//! stream where the temperature key arrives before the sequence key - the
+//! generated loop collects them in any order and assembles the struct at the
+//! end
 use tinyklv::prelude::*;            // Klv and DecodeValue are already imported here
 use tinyklv::dec::binary as decb;   // binary decoders
 
@@ -10,17 +17,20 @@ use tinyklv::dec::binary as decb;   // binary decoders
     len(dec = decb::u8_as_usize),
     allow_unimplemented_encode,
 )]
+/// Minimal sensor heartbeat used to demonstrate out-of-order key tolerance
 struct Heartbeat {
     #[klv(
         key = 0x01,
         dec = decb::u8,
     )]
+    /// Monotonic frame counter
     sequence: u8,
 
     #[klv(
         key = 0x02,
         dec = decb::be_u16,
     )]
+    /// Temperature in 0.01 C units (big-endian u16)
     temperature_centideg: u16,
 }
 

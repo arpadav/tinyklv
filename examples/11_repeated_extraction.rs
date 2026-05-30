@@ -1,16 +1,16 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 11 - draining a concatenated stream of KLV frames.
+//! Example 11 - draining a concatenated stream of KLV frames
 //!
 //! Autonomous-vehicle and robotics pipelines frequently pack many framed
 //! records back-to-back into one UDP datagram or log file. Because each
 //! frame carries its own sentinel and outer length, `decode_frame` can be
-//! called repeatedly against a single slice to recover every record.
+//! called repeatedly against a single slice to recover every record
 //!
 //! The `DrainFrames::drain_frames` trait exists for the value-region form
 //! (repeats `decode_value` until EOF), but for sentinel-framed streams the
 //! idiomatic pattern is a small `while let Ok(...) = T::decode_frame(...)`
-//! loop - shown here.
+//! loop - shown here
 //!
 //! Showcases:
 //! * Concatenating N `encode_frame` outputs into one byte stream

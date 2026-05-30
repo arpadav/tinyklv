@@ -1,17 +1,16 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 16 - `latebind` post-decode hook, consuming and mutating forms.
+//! Example 16 - `latebind` post-decode hook, consuming and mutating forms
 //!
 //! The `latebind` field attribute runs a second pass on the decoded value
 //! immediately after the field's decoder returns. It has two spellings:
 //!
 //! * **Consuming**: `latebind = path` with signature `Fn(T) -> U`. The
 //!   decoder returns `T`, the latebind fn converts it to `U`, and the
-//!   struct field is declared as `U`.
-//!
+//!   struct field is declared as `U`
 //! * **Mutating**: `latebind = &mut path` with signature `Fn(&mut T)`. The
 //!   decoder returns `T` and the latebind fn mutates it in place. Useful
-//!   for injecting data from external context into a partial decode.
+//!   for injecting data from external context into a partial decode
 //!
 //! This example uses the consuming form to build a `Status` enum from a
 //! `u8`, and the mutating form to inject a Z coordinate is not part of
@@ -20,10 +19,10 @@
 //! Showcases:
 //! * `latebind = path` (consuming) `Fn(u8) -> Status`
 //! * `latebind = &mut path` (mutating) `Fn(&mut Coordinate)`
-//! * Encoding a field whose in-memory type differs from whats provided
+//! * Encoding a field whose in-memory type differs from what is provided
 //!   in the stream
 //!
-//! See also: book Tutorial 16.
+//! See also: book Tutorial 16
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -47,7 +46,7 @@ fn status_from_u8(v: u8) -> Status {
     }
 }
 
-/// Encode a `Status` back to its u8` discriminant
+/// Encode a `Status` back to its `u8` discriminant
 fn enc_status(s: &Status, out: &mut Vec<u8>) {
     let byte = match s {
         Status::Idle    => 0,
@@ -141,7 +140,7 @@ fn main() {
     // assert - the latebind promoted the decoded u8 into the Active variant
     assert_eq!(decoded.status, Status::Active);
 
-    // mutating form: Z is never pasrsed or re-injected on decode
+    // mutating form: Z is never parsed or re-injected on decode
 
     // build
     let tele = Telemetry {

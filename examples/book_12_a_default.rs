@@ -1,6 +1,14 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/12-default-fallback.md` for full example
+//! Book tutorial 12a - `Option<T>` fields and `default = expr` fallbacks
+//! See `book/tutorial/12-default-fallback.md` for the full narrative
+//!
+//! Shows two complementary mechanisms for handling absent keys on decode:
+//!
+//! * **`Option<T>`**: the field is `None` when the key is missing; encoding
+//!   a `None` emits no KLV triple, making the frame shorter
+//! * **`default = expr`**: the field takes a compile-time expression when the
+//!   key is absent; the field type is plain `T` (not `Option`)
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -11,12 +19,14 @@ use tinyklv::enc::binary as encb;   // binary encoders
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Heartbeat illustrating `Option<T>` absence and `default = expr` fallback
 struct Heartbeat {
     #[klv(
         key = 0x01,
         dec = decb::u8,
         enc = *encb::u8,
     )]
+    /// Monotonic frame counter
     sequence: u8,
 
     #[klv(

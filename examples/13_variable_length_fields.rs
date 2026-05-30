@@ -1,6 +1,6 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 13 - `varlen = true` for length-parameterised value decoders.
+//! Example 13 - `varlen = true` for length-parameterised value decoders
 //!
 //! A fixed-width value decoder has the signature
 //! `fn(&mut Stream) -> Result<T>` - it reads exactly as many bytes as the
@@ -15,7 +15,7 @@
 //! This example uses a sensor-log entry with a fixed-width `u32` timestamp
 //! and a variable-length UTF-8 annotation, then round-trips two payloads -
 //! a short one (single-byte length) and a long one (multi-byte length via
-//! BER) - so the length codec gets exercised in both regimes.
+//! BER) - so the length codec gets exercised in both regimes
 //!
 //! Showcases:
 //! * `varlen = true` on a `String` field

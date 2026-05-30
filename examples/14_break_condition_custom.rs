@@ -1,6 +1,6 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 14 - custom loop control via a hand-written `DecodeValue`.
+//! Example 14 - custom loop control via a hand-written `DecodeValue`
 //!
 //! Most decoders that need non-standard loop behaviour - silently skip a
 //! reserved/deprecated tag, stop on a terminator key, or abort on tamper
@@ -9,18 +9,18 @@
 //! lower-level escape hatch for cases the attribute does not cover: drop the
 //! derive on the decode side and write a manual `DecodeValue` impl that embeds
 //! the loop-control match directly. The encode side can still use
-//! `#[derive(Klv)]` on a mirror type.
+//! `#[derive(Klv)]` on a mirror type
 //!
 //! This example ships with a `SensorFrame` encoder (derived) and a
 //! `SensorReading` decoder (manual) that silently skips the reserved key
-//! `0xFE` so the loop can continue and find the real fields behind it.
+//! `0xFE` so the loop can continue and find the real fields behind it
 //!
 //! Showcases:
 //! * Hand-written `DecodeValue` impl living next to a derived encoder
 //! * `Skip` semantics: consume `len` bytes and continue the loop
 //! * Junk prefix bytes before the fields to stress the skip path
 //!
-//! See also: book Tutorial 14.
+//! See also: book Tutorial 14
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders

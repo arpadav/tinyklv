@@ -1,12 +1,15 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/05-custom-decoder.md` for full example
+//! Book tutorial 10 - `scale!`, `cast!`, and their encode counterparts
+//! See `book/tutorial/10-macros.md` for the full narrative
 //!
 //! Demonstrates `tinyklv::scale!`, `tinyklv::cast!`, and their encode
 //! counterparts used inline in `#[klv(...)]` attributes. Any macro
 //! that expands to a closure matching the decoder / encoder contract
 //! works in `dec = ...` / `enc = ...` - including container-level
-//! `default(typ = T, dec = ...)`.
+//! `default(typ = T, dec = ...)`. The example maps a `u16` wire range to
+//! floating-point heading and altitude values, and a `u16` wire type to a
+//! `u32` in-memory field via `cast!`
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -32,12 +35,14 @@ fn decode_altitude(
     key(dec = decb::u8, enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Telemetry packet using `scale!`, `cast!`, and offset macros for field codecs
 struct TelemetryPacket {
     #[klv(
         key = 0x01,
         dec = decb::u8,
         enc = *encb::u8,
     )]
+    /// Sensor node identifier
     node_id: u8,
 
     // scale! inline: be_u16 -> f64 heading in degrees
@@ -48,6 +53,7 @@ struct TelemetryPacket {
             encb::be_u16, f64, u16, HEADING_SCALE,
         ),
     )]
+    /// Heading in decimal degrees, mapped from a `u16` wire range via `scale!`
     heading_deg: f64,
 
     // named function for decode (scale + offset), scale_offset_enc! for encode
@@ -59,6 +65,7 @@ struct TelemetryPacket {
             ALTITUDE_SCALE, ALTITUDE_OFFSET,
         ),
     )]
+    /// Altitude in metres, mapped from a `u16` wire range with scale and offset
     altitude_m: f64,
 
     // cast! inline: be_u16 -> field u32
@@ -67,6 +74,7 @@ struct TelemetryPacket {
         dec = tinyklv::cast!(decb::be_u16, u32),
         enc = tinyklv::cast_enc!(encb::be_u16, u32, u16),
     )]
+    /// Sample counter; wire type is `u16`, in-memory type is `u32` via `cast!`
     sample_count: u32,
 
     // plain u8 for comparison - no macro needed
@@ -75,6 +83,7 @@ struct TelemetryPacket {
         dec = decb::u8,
         enc = *encb::u8,
     )]
+    /// Decode quality score (0..=100)
     quality: u8,
 }
 

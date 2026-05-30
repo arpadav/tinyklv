@@ -1,19 +1,19 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
-//! Example 12 - variant dispatch on a multiplexed stream.
+//! Example 12 - variant dispatch on a multiplexed stream
 //!
 //! Real telemetry buses carry several packet types mixed together. The
 //! canonical tinyklv pattern is: give each packet type its own sentinel,
 //! write a tiny peek-and-route dispatcher, and fold the results into a
 //! `Vec<Packet>` enum. The dispatcher advances one byte at a time past
-//! unknown prefixes so it can recover from inter-packet garbage.
+//! unknown prefixes so it can recover from inter-packet garbage
 //!
 //! Showcases:
 //! * Two `#[derive(Klv)]` structs with distinct sentinels
 //! * A hand-written dispatcher that peeks the next few bytes
 //! * Wrapping decoded frames in a plain Rust `enum`
 //!
-//! See also: book Tutorial 12.
+//! See also: book Tutorial 12
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders

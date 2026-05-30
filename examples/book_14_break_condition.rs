@@ -1,6 +1,7 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
 //! Book tutorial 14 - container `break_on` for loop control
+//! See `book/tutorial/14-break-condition.md` for the full narrative
 //!
 //! Demonstrates the `#[klv(break_on = ..)]` container attribute, which lets a
 //! derived decoder control its key-dispatch loop. The break expression is a
@@ -8,10 +9,6 @@
 //! shorthand for "stop on this key"). Here a reserved key (`0xFE`) is silently
 //! skipped, and a terminator key (`0xFF`) stops parsing before the junk bytes
 //! that follow. Both encode and decode come from the single derive
-//!
-//! See `book/tutorial/14-break-condition.md` for the full narrative.
-//!
-//! Author: aav
 use tinyklv::prelude::*;            // Klv proc-macro + traits + BreakType
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
