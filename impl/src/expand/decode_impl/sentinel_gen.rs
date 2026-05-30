@@ -71,19 +71,9 @@ pub(super) fn gen_sentinel_impl(
     let sentinel_seeker_static_name =
         quote::format_ident!("__TINYKLV_SEEKER_{}", name.to_string().to_uppercase());
     // --------------------------------------------------
-    // short-needle threshold: at/below this byte length we emit an inline
-    // `memchr`-first-byte + compare scan instead of the cached
-    // `memmem::Finder`. The inline scan has no `LazyLock` deref and no
-    // per-call searcher dispatch, so it is dramatically cheaper on the small
-    // one-shot buffers a framed decode sees, while staying SIMD-fast (memchr
-    // on the first byte) on large streaming buffers. For longer sentinels
-    // (e.g. 16-byte MISB universal labels) the `Finder`'s rare-byte heuristic
-    // is worth its setup, so those keep the cached finder.
+    // short sentinels (1..=SHORT_SENTINEL_MAX bytes) use inline memchr scan;
+    // longer sentinels use the cached memmem::Finder
     // --------------------------------------------------
-    // a byte-string sentinel of 1..=SHORT_SENTINEL_MAX bytes takes the inline path; everything
-    // else (longer byte strings, or a non-byte-string literal) keeps the cached `Finder`. The
-    // `1..=` lower bound is load-bearing: it keeps an empty sentinel off the inline path, whose
-    // first step indexes `__SENTINEL[0]`.
     let use_inline = matches!(
         sentinel,
         syn::Lit::ByteStr(b) if (1..=SHORT_SENTINEL_MAX).contains(&b.value().len())
