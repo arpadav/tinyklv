@@ -62,7 +62,7 @@ pub mod __export {
 ///
 /// Importing `tinyklv::prelude::*` brings into scope the [`Decoder`],
 /// [`Packet`], all codec traits ([`DecodeValue`], [`EncodeValue`],
-/// [`EncodeFrame`], [`DecodeFrame`], [`BreakCondition`], etc.), the
+/// [`EncodeFrame`], [`DecodeFrame`]), the [`BreakType`] loop-control enum, the
 /// [`Klv`] derive macro, and the winnow combinators and stream
 /// utilities that the derive-generated code depends on.
 pub mod prelude {
@@ -71,9 +71,8 @@ pub mod prelude {
     // --------------------------------------------------
     pub use crate::decoder::{Decoder, Packet};
     pub use crate::traits::{
-        BreakCondition as _, BreakConditionType, DecodeFrame as _, DecodePartial, DecodeValue,
-        DrainFrames as _, EncodeAs, EncodeFrame as _, EncodeValue, EncodedOutput as _,
-        IntoKlv as _, Partial, SeekSentinel as _,
+        BreakType, DecodeFrame as _, DecodePartial, DecodeValue, DrainFrames as _, EncodeAs,
+        EncodeFrame as _, EncodeValue, Partial, SeekSentinel as _,
     };
     pub use tinyklv_impl::Klv;
     // --------------------------------------------------
@@ -186,12 +185,13 @@ macro_rules! cast {
 ///
 /// ```rust
 /// let encoder = tinyklv::scale_enc!(tinyklv::codecs::binary::enc::be_u16, f64, u16, 3.0);
-/// let encoded = encoder(&3.0_f64);
+/// let mut encoded = Vec::new();
+/// encoder(&3.0_f64, &mut encoded);
 /// assert_eq!(encoded, vec![0x00, 0x01]);
 /// ```
 macro_rules! scale_enc {
     ($encoder:path, $precision:ty, $data:ty, $scale:tt $(,)*) => {
-        |input: &$precision| -> Vec<u8> { $encoder((*input / $scale) as $data) }
+        |input: &$precision, out: &mut Vec<u8>| $encoder((*input / $scale) as $data, out)
     };
 }
 
@@ -213,12 +213,13 @@ macro_rules! scale_enc {
 ///
 /// ```rust
 /// let encoder = tinyklv::cast_enc!(tinyklv::codecs::binary::enc::be_u16, f64, u16);
-/// let encoded = encoder(&1.0_f64);
+/// let mut encoded = Vec::new();
+/// encoder(&1.0_f64, &mut encoded);
 /// assert_eq!(encoded, vec![0x00, 0x01]);
 /// ```
 macro_rules! cast_enc {
     ($encoder:path, $precision:ty, $data:ty $(,)*) => {
-        |input: &$precision| -> Vec<u8> { $encoder(*input as $data) }
+        |input: &$precision, out: &mut Vec<u8>| $encoder(*input as $data, out)
     };
 }
 
@@ -244,13 +245,16 @@ macro_rules! cast_enc {
 ///
 /// ```rust
 /// let encoder = tinyklv::scale_offset_enc!(tinyklv::codecs::binary::enc::be_u16, f64, u16, 2.0, 10.0);
-/// let encoded = encoder(&14.0_f64);
+/// let mut encoded = Vec::new();
 /// // (14.0 - 10.0) / 2.0 = 2.0 as u16 = 2
+/// encoder(&14.0_f64, &mut encoded);
 /// assert_eq!(encoded, vec![0x00, 0x02]);
 /// ```
 macro_rules! scale_offset_enc {
     ($encoder:path, $precision:ty, $data:ty, $scale:tt, $offset:tt $(,)*) => {
-        |input: &$precision| -> Vec<u8> { $encoder(((*input - $offset) / $scale) as $data) }
+        |input: &$precision, out: &mut Vec<u8>| {
+            $encoder(((*input - $offset) / $scale) as $data, out)
+        }
     };
 }
 

@@ -24,7 +24,7 @@ struct BreakPacket {
 }
 
 #[test]
-/// Tests that the default `BreakCondition::Proceed` processes every key in the stream.
+/// Tests that the default (no `break_on`, i.e. `BreakType::Proceed`) processes every key in the stream.
 fn default_break_condition_proceeds_through_all_keys() {
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x2A, 0x02, 0x04, 0xDE, 0xAD, 0xBE, 0xEF];
     let result = BreakPacket::decode_value(&mut &data[..]).unwrap();

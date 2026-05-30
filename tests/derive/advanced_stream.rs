@@ -85,7 +85,8 @@ struct Alert {
 /// Used to hand-build streams that can intersperse unknown or corrupt keys
 /// between valid fields
 fn encode_coordinate_tlv(key: u8, coord: &Coordinate) -> Vec<u8> {
-    let val = Coordinate::encode_value(coord);
+    let mut val = Vec::new();
+    Coordinate::encode_value(coord, &mut val);
     let mut out = vec![key, val.len() as u8];
     out.extend(val);
     out
@@ -95,7 +96,8 @@ fn encode_coordinate_tlv(key: u8, coord: &Coordinate) -> Vec<u8> {
 ///
 /// Produces `[key, len, ...value]` using [`Color::encode_value`]
 fn encode_color_tlv(key: u8, color: &Color) -> Vec<u8> {
-    let val = Color::encode_value(color);
+    let mut val = Vec::new();
+    Color::encode_value(color, &mut val);
     let mut out = vec![key, val.len() as u8];
     out.extend(val);
     out
@@ -105,7 +107,8 @@ fn encode_color_tlv(key: u8, color: &Color) -> Vec<u8> {
 ///
 /// Produces `[key, len, ...value]` using [`Timestamp::encode_value`]
 fn encode_timestamp_tlv(key: u8, ts: &Timestamp) -> Vec<u8> {
-    let val = Timestamp::encode_value(ts);
+    let mut val = Vec::new();
+    Timestamp::encode_value(ts, &mut val);
     let mut out = vec![key, val.len() as u8];
     out.extend(val);
     out
@@ -224,10 +227,13 @@ fn auto_generate_10_packets() {
         })
         .collect();
 
-    let stream: Vec<u8> = waypoints
-        .iter()
-        .flat_map(tinyklv::EncodeFrame::encode_frame)
-        .collect();
+    let stream: Vec<u8> = {
+        let mut out = Vec::new();
+        for wp in &waypoints {
+            wp.encode_frame(&mut out);
+        }
+        out
+    };
 
     let mut slice = stream.as_slice();
     let mut decoded: Vec<Waypoint> = Vec::new();
@@ -313,8 +319,8 @@ fn auto_generate_mixed_types() {
     // Interleave: W A W A W A
     let mut stream: Vec<u8> = Vec::new();
     for i in 0..3 {
-        stream.extend(waypoints[i].encode_frame());
-        stream.extend(alerts[i].encode_frame());
+        waypoints[i].encode_frame(&mut stream);
+        alerts[i].encode_frame(&mut stream);
     }
 
     // Extract all 3 Waypoints via advancing cursor

@@ -80,7 +80,8 @@ fn main() {
     };
 
     // encode + decode - every optional appears in the frame
-    let enc_full = full.encode_frame();
+    let mut enc_full = Vec::new();
+    full.encode_frame(&mut enc_full);
     let dec_full = DroneTelemetry::decode_frame(
         &mut enc_full.as_slice(),
     ).unwrap();
@@ -96,7 +97,8 @@ fn main() {
     };
 
     // encode - absent fields emit zero bytes, so the partial frame is shorter
-    let enc_partial = partial.encode_frame();
+    let mut enc_partial = Vec::new();
+    partial.encode_frame(&mut enc_partial);
     assert!(
         enc_partial.len() < enc_full.len(),
         "absent fields must shrink the frame",

@@ -93,7 +93,8 @@ fn encode_ber_roundtrip() {
         word_field: 0x0100,
         dword_field: 0x0001_0203,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = BerPacket::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -106,7 +107,8 @@ fn encode_ber_roundtrip_all_zeros() {
         word_field: 0,
         dword_field: 0,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = BerPacket::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -138,7 +140,8 @@ struct BerLargePayload {
 fn encode_ber_large_length_roundtrip() {
     let s: String = "A".repeat(200);
     let original = BerLargePayload { payload: s };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     // BER length for 200: 0x81 0xC8 (long form: 1 extra byte, value 200)
     // Verify the length encoding byte is the long-form marker
     assert_eq!(

@@ -6,7 +6,8 @@ macro_rules! roundtrip_test {
             $(#[doc = $doc])*
             #[test]
             fn $name(val: $ty) {
-                let encoded = $enc(val);
+                let mut encoded = Vec::new();
+                $enc(val, &mut encoded);
                 let decoded = $dec(&mut encoded.as_slice()).unwrap();
                 prop_assert_eq!(val, decoded);
             }
@@ -20,7 +21,8 @@ macro_rules! roundtrip_float {
             $(#[doc = $doc])*
             #[test]
             fn $name(val: $ty) {
-                let encoded = $enc(val);
+                let mut encoded = Vec::new();
+                $enc(val, &mut encoded);
                 let decoded = $dec(&mut encoded.as_slice()).unwrap();
                 prop_assert_eq!(val.to_bits(), decoded.to_bits());
             }
@@ -121,56 +123,64 @@ proptest! {
         #[test]
 /// Property: `be_u16` always encodes to exactly `size_of::<u16>()` bytes.
     fn be_u16_encoding_length(val: u16) {
-        let encoded = tinyklv::enc::binary::be_u16(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::be_u16(val, &mut encoded);
         prop_assert_eq!(encoded.len(), std::mem::size_of::<u16>());
     }
 
         #[test]
 /// Property: `be_u32` always encodes to exactly `size_of::<u32>()` bytes.
     fn be_u32_encoding_length(val: u32) {
-        let encoded = tinyklv::enc::binary::be_u32(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::be_u32(val, &mut encoded);
         prop_assert_eq!(encoded.len(), std::mem::size_of::<u32>());
     }
 
         #[test]
 /// Property: `be_u64` always encodes to exactly `size_of::<u64>()` bytes.
     fn be_u64_encoding_length(val: u64) {
-        let encoded = tinyklv::enc::binary::be_u64(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::be_u64(val, &mut encoded);
         prop_assert_eq!(encoded.len(), std::mem::size_of::<u64>());
     }
 
         #[test]
 /// Property: `be_u128` always encodes to exactly `size_of::<u128>()` bytes.
     fn be_u128_encoding_length(val: u128) {
-        let encoded = tinyklv::enc::binary::be_u128(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::be_u128(val, &mut encoded);
         prop_assert_eq!(encoded.len(), std::mem::size_of::<u128>());
     }
 
         #[test]
 /// Property: `be_u16` output matches `u16::to_be_bytes`.
     fn be_u16_matches_to_be_bytes(val: u16) {
-        let encoded = tinyklv::enc::binary::be_u16(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::be_u16(val, &mut encoded);
         prop_assert_eq!(encoded, val.to_be_bytes().to_vec());
     }
 
         #[test]
 /// Property: `be_u32` output matches `u32::to_be_bytes`.
     fn be_u32_matches_to_be_bytes(val: u32) {
-        let encoded = tinyklv::enc::binary::be_u32(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::be_u32(val, &mut encoded);
         prop_assert_eq!(encoded, val.to_be_bytes().to_vec());
     }
 
         #[test]
 /// Property: `be_i32` output matches `i32::to_be_bytes`.
     fn be_i32_matches_to_be_bytes(val: i32) {
-        let encoded = tinyklv::enc::binary::be_i32(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::be_i32(val, &mut encoded);
         prop_assert_eq!(encoded, val.to_be_bytes().to_vec());
     }
 
         #[test]
 /// Property: `u8` encoder emits a single byte equal to the input value.
     fn u8_enc_single_byte(val: u8) {
-        let encoded = tinyklv::enc::binary::u8(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::u8(val, &mut encoded);
         prop_assert_eq!(encoded.len(), 1);
         prop_assert_eq!(encoded[0], val);
     }
@@ -178,7 +188,8 @@ proptest! {
         #[test]
 /// Property: `i8` encoder emits a single byte whose two's complement equals the input value.
     fn i8_enc_single_byte(val: i8) {
-        let encoded = tinyklv::enc::binary::i8(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::i8(val, &mut encoded);
         prop_assert_eq!(encoded.len(), 1);
         prop_assert_eq!(encoded[0] as i8, val);
     }

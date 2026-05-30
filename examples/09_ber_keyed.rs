@@ -65,7 +65,8 @@ fn main() {
     };
 
     // encode - bytes include BER keys of 1, 2, and 3 bytes respectively
-    let frame = original.encode_frame();
+    let mut frame = Vec::new();
+    original.encode_frame(&mut frame);
 
     // decode - round-trip through the BER codecs
     let decoded = ProcessControl::decode_frame(

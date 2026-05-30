@@ -65,7 +65,8 @@ fn main() {
     };
 
     // encode + decode - round-trip through the single-byte BER length path
-    let small_frame = small.encode_frame();
+    let mut small_frame = Vec::new();
+    small.encode_frame(&mut small_frame);
     let dec_small = SensorLog::decode_frame(
         &mut small_frame.as_slice(),
     ).unwrap();
@@ -78,7 +79,8 @@ fn main() {
     };
 
     // encode + decode - round-trip through the multi-byte BER length path
-    let large_frame = large.encode_frame();
+    let mut large_frame = Vec::new();
+    large.encode_frame(&mut large_frame);
     let dec_large = SensorLog::decode_frame(
         &mut large_frame.as_slice(),
     ).unwrap();

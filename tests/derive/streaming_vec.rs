@@ -64,7 +64,7 @@ fn parent_bytes(id: u8, readings: &[Reading]) -> Vec<u8> {
     // --------------------------------------------------
     let mut inner = Vec::new();
     for r in readings {
-        inner.extend(r.encode_value());
+        r.encode_value(&mut inner);
     }
     let mut body = vec![0x0F, 0x01, id];
     body.push(0x10);

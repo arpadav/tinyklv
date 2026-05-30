@@ -106,15 +106,15 @@ impl tinyklv::DecodeValue<&[u8]> for Flavor {
         }
     }
 }
-impl tinyklv::EncodeValue<Vec<u8>> for Flavor {
-    fn encode_value(&self) -> Vec<u8> {
+impl tinyklv::EncodeValue for Flavor {
+    fn encode_value(&self, out: &mut Vec<u8>) {
         let v = match self {
             Flavor::Vanilla => 0_u8,
             Flavor::Chocolate => 1,
             Flavor::Strawberry => 2,
             Flavor::Mint => 3,
         };
-        encb::u8(v)
+        encb::u8(v, out);
     }
 }
 
@@ -140,11 +140,10 @@ impl tinyklv::DecodeValue<&[u8]> for Calibration {
         Ok(Calibration { gain, offset })
     }
 }
-impl tinyklv::EncodeValue<Vec<u8>> for Calibration {
-    fn encode_value(&self) -> Vec<u8> {
-        let mut v = encb::be_f32(self.gain);
-        v.extend(encb::be_i16(self.offset));
-        v
+impl tinyklv::EncodeValue for Calibration {
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        encb::be_f32(self.gain, out);
+        encb::be_i16(self.offset, out);
     }
 }
 
@@ -255,9 +254,15 @@ fn default_type_color_and_priority() {
     };
     // Decode from hand-built stream
     let mut stream: Vec<u8> = Vec::new();
-    stream.extend(tlv(0x01, original.color.encode_value()));
-    stream.extend(tlv(0x02, original.priority.encode_value()));
-    stream.extend(tlv(0x03, original.velocity.encode_value()));
+    let mut color_v = Vec::new();
+    original.color.encode_value(&mut color_v);
+    stream.extend(tlv(0x01, color_v));
+    let mut priority_v = Vec::new();
+    original.priority.encode_value(&mut priority_v);
+    stream.extend(tlv(0x02, priority_v));
+    let mut velocity_v = Vec::new();
+    original.velocity.encode_value(&mut velocity_v);
+    stream.extend(tlv(0x03, velocity_v));
     let decoded = DefaultTyped::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(decoded, original, "container-default decode should match");
 }
@@ -274,7 +279,8 @@ fn default_type_roundtrip() {
             dz: -1,
         },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = DefaultTyped::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original, "roundtrip via container-level defaults");
 }
@@ -295,7 +301,9 @@ fn default_expr_color_enum_absent() {
 /// Tests that a present key overrides the `default = Color::Red` fallback at decode time.
 fn default_expr_color_enum_present() {
     // Stream has key 0x01 = Color::Blue - decoded value overrides default expression
-    let stream = tlv(0x01, Color::Blue.encode_value());
+    let mut blue_v = Vec::new();
+    Color::Blue.encode_value(&mut blue_v);
+    let stream = tlv(0x01, blue_v);
     let result = DefaultExprColor::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(
         result.color,
@@ -325,7 +333,9 @@ fn default_expr_timestamp_struct_present() {
         seconds: 1_700_000_000,
         nanos: 12_345,
     };
-    let stream = tlv(0x01, ts.encode_value());
+    let mut ts_v = Vec::new();
+    ts.encode_value(&mut ts_v);
+    let stream = tlv(0x01, ts_v);
     let result = DefaultExprTimestamp::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(
         result.timestamp, ts,
@@ -336,7 +346,9 @@ fn default_expr_timestamp_struct_present() {
 #[test]
 /// Verifies explicitly that the decoded value (`Color::Blue`) wins over the `default = Color::Red` fallback when both are available.
 fn default_expr_overridden_when_present() {
-    let stream = tlv(0x01, Color::Blue.encode_value());
+    let mut blue_v = Vec::new();
+    Color::Blue.encode_value(&mut blue_v);
+    let stream = tlv(0x01, blue_v);
     let result = DefaultExprColor::decode_value(&mut stream.as_slice()).unwrap();
     assert_ne!(
         result.color,
@@ -363,7 +375,9 @@ fn default_bare_primitive_u32_absent() {
 #[test]
 /// Tests bare `default` on a primitive field - present key overrides the `Default::default()` fallback.
 fn default_bare_primitive_u32_present() {
-    let stream = tlv(0x01, encb::be_u32(42));
+    let mut counter_v = Vec::new();
+    encb::be_u32(42, &mut counter_v);
+    let stream = tlv(0x01, counter_v);
     let result = DefaultBareU32::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(
         result.counter, 42,
@@ -395,7 +409,9 @@ fn default_bare_custom_struct_present() {
         gain: 3.15,
         offset: -42,
     };
-    let stream = tlv(0x01, cal.encode_value());
+    let mut cal_v = Vec::new();
+    cal.encode_value(&mut cal_v);
+    let stream = tlv(0x01, cal_v);
     let result = DefaultBareStruct::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(result.cal, cal, "present key overrides bare `default`");
 }
@@ -445,7 +461,9 @@ fn default_bare_option_wrapped_absent() {
 #[test]
 /// Tests that a struct field without `#[klv(...)]` resolves to `Default::default()` while other fields decode normally.
 fn non_klv_field_default() {
-    let stream = tlv(0x01, Color::Green.encode_value());
+    let mut green_v = Vec::new();
+    Color::Green.encode_value(&mut green_v);
+    let stream = tlv(0x01, green_v);
     let result = WithNonKlvField::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(
         result.color,
@@ -461,7 +479,9 @@ fn non_klv_field_default() {
 #[test]
 /// Tests that unknown keys in the stream do not perturb the default-valued non-KLV field.
 fn non_klv_field_unaffected_by_unknown_keys() {
-    let mut stream: Vec<u8> = tlv(0x01, Color::Alpha.encode_value());
+    let mut alpha_v = Vec::new();
+    Color::Alpha.encode_value(&mut alpha_v);
+    let mut stream: Vec<u8> = tlv(0x01, alpha_v);
     stream.extend_from_slice(&[0xFF, 0x02, 0xAB, 0xCD]);
 
     let result = WithNonKlvField::decode_value(&mut stream.as_slice()).unwrap();

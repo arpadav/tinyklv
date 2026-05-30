@@ -10,7 +10,7 @@
 //!   `decode_value`, or `p.try_into()` directly).
 //! * `Ok(Packet::Ready(t))` - only when the codegen takes a
 //!   conversion-on-give-up path (key bytes consumed but undecodable,
-//!   `take(len)` failed, or `BreakConditionType::Done` fired) AND the
+//!   `take(len)` failed, or `BreakType::Done` fired) AND the
 //!   partial finalises cleanly.
 //! * `Err(label)` - the same conversion-on-give-up path took, but
 //!   `Partial::finalize` returned a missing-required label.
@@ -42,7 +42,8 @@ struct Pair {
 /// explicitly via `try_into()`.
 fn decode_partial_complete_input_emits_needmore_with_full_partial() {
     let v = Pair { a: 3, b: 4 };
-    let encoded = v.encode_value();
+    let mut encoded = Vec::new();
+    v.encode_value(&mut encoded);
     let mut cursor: &[u8] = encoded.as_slice();
 
     let p = match Pair::decode_partial(&mut cursor) {

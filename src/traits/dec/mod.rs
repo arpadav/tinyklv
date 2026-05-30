@@ -7,14 +7,14 @@
 //!   support for incremental decode of a packet across multiple byte deliveries
 //! * [`SeekSentinel`] (re-exported from `sentinel`) - locate a packet boundary in a
 //!   continuous byte stream
-//! * [`BreakCondition`] / [`BreakConditionType`] (re-exported from `breakcond`) -
-//!   per-field loop control for the derive-generated decode loop
+//! * [`BreakType`] (re-exported from `breaktype`) - the loop-control outcome a container's
+//!   `#[klv(break_on = ..)]` expression yields for the derive-generated decode loop
 //!
 //! Author: aav
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
-mod breakcond;
+mod breaktype;
 mod frame;
 mod partial;
 mod sentinel;
@@ -23,7 +23,7 @@ mod sentinel;
 // re-exports
 // --------------------------------------------------
 pub use crate::prelude::*;
-pub use breakcond::*;
+pub use breaktype::*;
 pub use frame::*;
 pub use partial::*;
 pub use sentinel::*;
@@ -84,7 +84,22 @@ where
 {
     #[inline(always)]
     fn decode_value(input: &mut S) -> crate::Result<Self> {
-        let mut acc = Vec::new();
+        // --------------------------------------------------
+        // pre-size the accumulator. growing a `Vec` from empty reallocates several times over a
+        // short run (cap 0 -> 4 -> 8 -> ..), which measured as the *entire* gap between this path
+        // and a hand-written loop (~2.7x slower on an 8-element run); a single up-front allocation
+        // erases it. there can be at most `eof_offset()` elements, since every `decode_value`
+        // that pushes consumes >= 1 byte - but that bound is in *bytes*, so cap it by a fixed
+        // memory budget (divided by the element size) to keep a large/adversarial input from
+        // requesting an enormous allocation up front. capacity only; the decoded contents are
+        // byte-for-byte identical to growing from empty.
+        // --------------------------------------------------
+        const PREALLOC_BYTE_BUDGET: usize = 4096;
+        let per_elem = ::core::mem::size_of::<T>().max(1);
+        let cap = input
+            .eof_offset()
+            .min((PREALLOC_BYTE_BUDGET / per_elem).max(1));
+        let mut acc = Vec::with_capacity(cap);
         loop {
             let before = input.eof_offset();
             let cp = input.checkpoint();

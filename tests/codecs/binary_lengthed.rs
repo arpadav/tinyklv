@@ -182,44 +182,43 @@ fn le_u32_lengthed_single_byte() {
 #[test]
 /// Tests that `enc::be_u32_lengthed(4)` emits all 4 big-endian bytes of a u32.
 fn enc_be_u32_lengthed_exact() {
-    assert_eq!(
-        tinyklv::enc::binary::be_u32_lengthed(4)(0x0001E0FF_u32),
-        vec![0x00, 0x01, 0xE0, 0xFF]
-    );
+    let mut __v = Vec::new();
+    tinyklv::enc::binary::be_u32_lengthed(4)(0x0001E0FF_u32, &mut __v);
+    assert_eq!(__v, vec![0x00, 0x01, 0xE0, 0xFF]);
 }
 
 #[test]
 /// Tests that `enc::be_u32_lengthed(3)` strips the high zero byte from a u32 encoding.
 fn enc_be_u32_lengthed_truncate() {
     // len=3: strips high byte 0x00
-    assert_eq!(
-        tinyklv::enc::binary::be_u32_lengthed(3)(0x0001E0FF_u32),
-        vec![0x01, 0xE0, 0xFF]
-    );
+    let mut __v = Vec::new();
+    tinyklv::enc::binary::be_u32_lengthed(3)(0x0001E0FF_u32, &mut __v);
+    assert_eq!(__v, vec![0x01, 0xE0, 0xFF]);
 }
 
 #[test]
 /// Tests that `enc::be_u32_lengthed(5)` zero-pads a u32 encoding on the left.
 fn enc_be_u32_lengthed_pad() {
     // len=5: zero-pads left
-    assert_eq!(
-        tinyklv::enc::binary::be_u32_lengthed(5)(0x01E0FFFF_u32),
-        vec![0x00, 0x01, 0xE0, 0xFF, 0xFF]
-    );
+    let mut __v = Vec::new();
+    tinyklv::enc::binary::be_u32_lengthed(5)(0x01E0FFFF_u32, &mut __v);
+    assert_eq!(__v, vec![0x00, 0x01, 0xE0, 0xFF, 0xFF]);
 }
 
 #[test]
 /// Tests that `enc::le_u16_lengthed(5)` starts with the 2 LE bytes of the value.
 fn enc_le_u16_lengthed_truncate() {
     // len=5 but u16 is 2 bytes: result is 2 LE bytes + 3 zero-pads
-    let result = tinyklv::enc::binary::le_u16_lengthed(5)(480_u16);
+    let mut result = Vec::new();
+    tinyklv::enc::binary::le_u16_lengthed(5)(480_u16, &mut result);
     assert_eq!(&result[..2], &[0xE0, 0x01]);
 }
 
 #[test]
 /// Tests that `enc::le_u16_lengthed(1)` emits a single byte for a u16 value that fits in one byte.
 fn enc_le_u16_lengthed_single_byte() {
-    let result = tinyklv::enc::binary::le_u16_lengthed(1)(1_u16);
+    let mut result = Vec::new();
+    tinyklv::enc::binary::le_u16_lengthed(1)(1_u16, &mut result);
     assert_eq!(&result[..1], &[0x01]);
 }
 
@@ -237,6 +236,7 @@ fn be_u16_lengthed_zero_len() {
 #[test]
 /// Tests `enc::be_u16_lengthed(0)` produces an empty byte vector.
 fn enc_be_u16_lengthed_zero_len() {
-    let result = tinyklv::enc::binary::be_u16_lengthed(0)(0x1234_u16);
+    let mut result = Vec::new();
+    tinyklv::enc::binary::be_u16_lengthed(0)(0x1234_u16, &mut result);
     assert!(result.is_empty());
 }

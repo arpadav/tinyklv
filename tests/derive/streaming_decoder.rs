@@ -36,7 +36,9 @@ struct Sample {
 /// `sentinel + body_len + body` wire format used by all streaming tests
 fn encoded(a: u8, b: u8, c: u8) -> Vec<u8> {
     // framed form: sentinel + len + body
-    Sample { a, b, c }.encode_frame()
+    let mut out = Vec::new();
+    Sample { a, b, c }.encode_frame(&mut out);
+    out
 }
 
 #[test]
@@ -121,7 +123,7 @@ fn decoder_byte_by_byte_preserves_progress() {
     ];
     let mut blob = Vec::new();
     for p in &packets {
-        blob.extend(p.encode_frame());
+        p.encode_frame(&mut blob);
     }
     // --------------------------------------------------
     // feed one byte at a time; drain after each feed
@@ -191,7 +193,7 @@ fn decoder_irregular_chunks() {
         .collect();
     let mut blob = Vec::new();
     for p in &packets {
-        blob.extend(p.encode_frame());
+        p.encode_frame(&mut blob);
     }
     // --------------------------------------------------
     // feed in irregular chunk sizes; drain after each feed

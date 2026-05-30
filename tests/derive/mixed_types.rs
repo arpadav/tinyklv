@@ -102,7 +102,8 @@ fn roundtrip_mixed_types() {
         name: String::from("MISSION"),
         optional_short: Some(0x1234),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = Mixed::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, original);
 }
@@ -116,7 +117,8 @@ fn roundtrip_mixed_types_no_optional() {
         name: String::new(),
         optional_short: None,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = Mixed::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, original);
 }

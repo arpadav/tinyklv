@@ -77,7 +77,8 @@ fn nested_klv_derived_roundtrip() {
             lon: 2.3522,
         },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = Platform::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -99,7 +100,8 @@ fn nested_klv_derived_roundtrip_extreme_values() {
             lon: -180.0,
         },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = Platform::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -118,7 +120,8 @@ fn nested_klv_derived_roundtrip_zero_values() {
         },
         position: Coordinate { lat: 0.0, lon: 0.0 },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = Platform::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -142,8 +145,8 @@ struct Core {
     value: u32,
 }
 
-fn encode_core(v: &Core) -> Vec<u8> {
-    v.encode_value()
+fn encode_core(v: &Core, out: &mut Vec<u8>) {
+    v.encode_value(out);
 }
 
 #[derive(Klv, Debug, PartialEq)]
@@ -167,8 +170,8 @@ struct Module {
     color: Color,
 }
 
-fn encode_module(v: &Module) -> Vec<u8> {
-    v.encode_value()
+fn encode_module(v: &Module, out: &mut Vec<u8>) {
+    v.encode_value(out);
 }
 
 #[derive(Klv, Debug, PartialEq)]
@@ -205,7 +208,8 @@ fn nested_two_deep() {
             nanos: 500,
         },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = System::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -223,7 +227,8 @@ fn nested_two_deep_min_values() {
             nanos: 0,
         },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = System::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -241,7 +246,8 @@ fn nested_two_deep_max_values() {
             nanos: u16::MAX,
         },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = System::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -284,7 +290,8 @@ fn nested_optional_sensor_present() {
             indicator: Color::Alpha,
         }),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = PlatformOptional::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
     assert!(decoded.sensor.is_some());
@@ -297,7 +304,8 @@ fn nested_optional_sensor_absent() {
         id: 99,
         sensor: None,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = PlatformOptional::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
     assert!(decoded.sensor.is_none());
@@ -321,8 +329,10 @@ fn nested_optional_roundtrip_toggle() {
         sensor: None,
     };
 
-    let enc_with = with_sensor.encode_value();
-    let enc_without = without_sensor.encode_value();
+    let mut enc_with = Vec::new();
+    with_sensor.encode_value(&mut enc_with);
+    let mut enc_without = Vec::new();
+    without_sensor.encode_value(&mut enc_without);
 
     assert_ne!(enc_with, enc_without);
     assert_eq!(
@@ -360,8 +370,8 @@ struct StatusInner {
     priority: Priority,
 }
 
-fn encode_status_inner(v: &StatusInner) -> Vec<u8> {
-    v.encode_value()
+fn encode_status_inner(v: &StatusInner, out: &mut Vec<u8>) {
+    v.encode_value(out);
 }
 
 #[derive(Klv, Debug, PartialEq)]
@@ -399,7 +409,8 @@ fn nested_with_enum_field() {
             dz: 0,
         },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = StatusOuter::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -423,7 +434,8 @@ fn nested_with_enum_field_all_variants() {
                 dz: 3,
             },
         };
-        let encoded = original.encode_value();
+        let mut encoded = Vec::new();
+        original.encode_value(&mut encoded);
         let decoded = StatusOuter::decode_value(&mut encoded.as_slice()).unwrap();
         assert_eq!(decoded, original);
     }
@@ -443,7 +455,8 @@ fn nested_with_enum_field_extreme_velocity() {
             dz: 0,
         },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = StatusOuter::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }

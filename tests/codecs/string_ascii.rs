@@ -65,14 +65,17 @@ fn ascii_empty() {
 #[test]
 /// Tests `from_string_ascii` emits the raw ASCII bytes
 fn from_ascii_encode() {
-    assert_eq!(encs::from_string_ascii("HELLO"), b"HELLO".to_vec());
+    let mut __v = Vec::new();
+    encs::from_string_ascii("HELLO", &mut __v);
+    assert_eq!(__v, b"HELLO".to_vec());
 }
 
 #[test]
 /// Tests `to_string_ascii`/`from_string_ascii` roundtrip over a printable string
 fn ascii_roundtrip() {
     let original = "MISSION01";
-    let encoded = encs::from_string_ascii(original);
+    let mut encoded = Vec::new();
+    encs::from_string_ascii(original, &mut encoded);
     let decoded = decs::to_string_ascii(encoded.len())(&mut encoded.as_slice()).unwrap();
     assert_eq!(original, decoded);
 }

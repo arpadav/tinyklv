@@ -123,6 +123,22 @@ Options include {s}.",
     DuplicateSentinel,
 
     // --------------------------------------------------
+    // break_on
+    // --------------------------------------------------
+    #[error("\
+        Duplicate `{s}` attribute. Only one break condition per struct is supported.",
+        s = symbol::BREAK_ON,
+    )]
+    DuplicateBreakOn,
+
+    #[error("\
+        `{s}` expects either a key literal (e.g. `{s} = 0xFF`) or a function path \
+        (e.g. `{s} = my_break_fn`, where `fn(key, len) -> tinyklv::BreakType`).",
+        s = symbol::BREAK_ON,
+    )]
+    InvalidBreakOn,
+
+    // --------------------------------------------------
     // key / len
     // --------------------------------------------------
     #[error("\

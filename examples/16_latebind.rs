@@ -48,14 +48,14 @@ fn status_from_u8(v: u8) -> Status {
 }
 
 /// Encode a `Status` back to its u8` discriminant
-fn enc_status(s: &Status) -> Vec<u8> {
+fn enc_status(s: &Status, out: &mut Vec<u8>) {
     let byte = match s {
         Status::Idle    => 0,
         Status::Active  => 1,
         Status::Error   => 2,
         Status::Unknown => 0xFF,
     };
-    encb::u8(byte)
+    encb::u8(byte, out);
 }
 
 #[derive(Klv, Debug, PartialEq, Eq)]
@@ -97,10 +97,9 @@ fn dec_xy_z0(input: &mut &[u8]) -> tinyklv::Result<Coordinate> {
 }
 
 /// Encoder for X then Y (matches the decoder; Z is never transmitted)
-fn enc_xyz(c: &Coordinate) -> Vec<u8> {
-    let mut out = encb::be_f32(c.x);
-    out.extend(encb::be_f32(c.y));
-    out
+fn enc_xyz(c: &Coordinate, out: &mut Vec<u8>) {
+    encb::be_f32(c.x, out);
+    encb::be_f32(c.y, out);
 }
 
 /// Mutating-form latebind: inject the globally-known Z after decoding
@@ -133,7 +132,8 @@ fn main() {
     // build
     let device = Device { status: Status::Active };
     // encode
-    let frame = device.encode_frame();
+    let mut frame = Vec::new();
+    device.encode_frame(&mut frame);
     // decode
     let decoded = Device::decode_frame(
         &mut frame.as_slice(),
@@ -148,7 +148,8 @@ fn main() {
         position: Coordinate { x: 1.5, y: 2.5, z: 0.0 },
     };
     // encode - only X and Y are written
-    let frame = tele.encode_frame();
+    let mut frame = Vec::new();
+    tele.encode_frame(&mut frame);
     // decode - latebind mutates Z to GLOBAL_Z
     let decoded = Telemetry::decode_frame(
         &mut frame.as_slice(),

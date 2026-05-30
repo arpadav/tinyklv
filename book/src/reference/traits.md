@@ -219,30 +219,33 @@ Controls how the `&` sigil routes a field reference to an encoder.
 Documented in full at
 [Sigil coercion & `EncodeAs`](./sigil-coercion.md).
 
-## Control traits
+## Control: `break_on` and `BreakType`
 
-### `BreakCondition<S>`
+Loop control is a container attribute, not a trait. `#[klv(break_on = ..)]`
+wires a stop predicate into the derive-generated decode loop (shared by
+`decode_value`, `decode_frame`, and the streaming `decoder()`), consulted for
+each decoded `(key, len)`. It accepts either form:
 
 ```rust,ignore
-pub trait BreakCondition<S> {
-    fn break_condition<K, L>(
-        decoded_key: K,
-        decoded_len: L,
-    ) -> BreakConditionType;
-}
+// key literal: stop (Done) when a decoded key equals the literal
+#[klv(.., break_on = 0xFF)]
+
+// function: full control, returning any BreakType
+#[klv(.., break_on = classify)]
+fn classify(key: u8, len: usize) -> BreakType { /* ... */ }
 ```
 
-User-extensible stop predicate consulted inside the derive-generated
-`decode_value` loop for each decoded `(key, len)`. A blanket impl
-returning `Proceed` covers the common case. Override requires a manual
-`DecodeValue` impl - the blanket impl wins over a derived one. See
+A container with no `break_on` always proceeds (the prior default). See
 [Tutorial 14 - Break conditions](../tutorial/advanced/14-break-condition.md).
 
-`BreakConditionType` variants:
+`BreakType` variants:
 
 | Variant | Meaning |
 |---------|---------|
 | `Proceed` | Run the normal decode step for this key (default) |
 | `Skip` | Consume the value bytes, continue the loop |
 | `Done` | Stop looping, return accumulated fields |
-| `Abort(ContextError)` | Stop looping, return `Err` |
+| `Abort(&'static str)` | Stop looping, return `Err` labelled with the message |
+
+For loop control beyond what `break_on` expresses, hand-write a `DecodeValue`
+impl with the logic inline (see `examples/14_break_condition_custom.rs`).

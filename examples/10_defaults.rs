@@ -41,14 +41,14 @@ impl DecodeValue<&[u8]> for SignalStrength {
     }
 }
 
-impl EncodeValue<Vec<u8>> for SignalStrength {
-    fn encode_value(&self) -> Vec<u8> {
+impl EncodeValue for SignalStrength {
+    fn encode_value(&self, out: &mut Vec<u8>) {
         encb::u8(match self {
             SignalStrength::None      => 0,
             SignalStrength::Weak      => 1,
             SignalStrength::Good      => 2,
             SignalStrength::Excellent => 3,
-        })
+        }, out);
     }
 }
 
@@ -73,14 +73,14 @@ impl DecodeValue<&[u8]> for NetworkMode {
     }
 }
 
-impl EncodeValue<Vec<u8>> for NetworkMode {
-    fn encode_value(&self) -> Vec<u8> {
+impl EncodeValue for NetworkMode {
+    fn encode_value(&self, out: &mut Vec<u8>) {
         encb::u8(match self {
             NetworkMode::Offline   => 0,
             NetworkMode::WiFi      => 1,
             NetworkMode::Cellular  => 2,
             NetworkMode::Satellite => 3,
-        })
+        }, out);
     }
 }
 
@@ -135,7 +135,8 @@ fn main() {
     };
 
     // encode + decode - full round-trip through the container defaults
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = RadioConfig::decode_value(
         &mut encoded.as_slice(),
     ).unwrap();

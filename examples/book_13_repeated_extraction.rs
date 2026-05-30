@@ -59,10 +59,10 @@ fn main() {
     ];
 
     // concatenate the encoded frames into one buffer
-    let batch: Vec<u8> = original
-        .iter()
-        .flat_map(tinyklv::EncodeFrame::encode_frame)
-        .collect();
+    let mut batch: Vec<u8> = Vec::new();
+    for reading in &original {
+        reading.encode_frame(&mut batch);
+    }
 
     // peel them all off in one call - DrainFrames::drain_frames comes
     // from the prelude via the blanket impl for any T: DecodeFrame<S>

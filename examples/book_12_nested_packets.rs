@@ -106,7 +106,8 @@ fn main() {
 
     // encode - the GPS sub-packet occupies the value region of key 0x04 and
     // contains its own key/length/value triples inside
-    let frame = original.encode_frame();
+    let mut frame = Vec::new();
+    original.encode_frame(&mut frame);
 
     // decode - outer and inner are reconstructed in one call
     let decoded = Heartbeat::decode_frame(
@@ -116,7 +117,8 @@ fn main() {
 
     // the inner type can also be used on its own, which is how we assert it
     // round-trips independently of the outer frame
-    let inner_bytes = original.gps.encode_value();
+    let mut inner_bytes = Vec::new();
+    original.gps.encode_value(&mut inner_bytes);
     let inner_decoded = GpsFix::decode_value(
         &mut inner_bytes.as_slice(),
     ).unwrap();

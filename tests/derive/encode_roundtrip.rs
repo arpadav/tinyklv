@@ -65,7 +65,8 @@ fn all_numerics_roundtrip_typical() {
         i16_field: -1000,
         i32_field: -100_000,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = AllNumerics::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -81,7 +82,8 @@ fn all_numerics_roundtrip_zeros() {
         i16_field: 0,
         i32_field: 0,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = AllNumerics::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -97,7 +99,8 @@ fn all_numerics_roundtrip_max_values() {
         i16_field: i16::MAX,
         i32_field: i32::MAX,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = AllNumerics::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -113,7 +116,8 @@ fn all_numerics_roundtrip_min_signed() {
         i16_field: i16::MIN,
         i32_field: i32::MIN,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = AllNumerics::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -150,7 +154,8 @@ fn optional_some_roundtrip() {
         required: 0xABCD,
         optional: Some(0x1234),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithOptionalRoundtrip::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -162,7 +167,8 @@ fn optional_none_roundtrip() {
         required: 0xABCD,
         optional: None,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithOptionalRoundtrip::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -196,7 +202,8 @@ fn string_field_roundtrip_ascii() {
         id: 1,
         name: String::from("MISSION01"),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithStringRoundtrip::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -208,7 +215,8 @@ fn string_field_roundtrip_empty() {
         id: 0,
         name: String::new(),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithStringRoundtrip::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -220,7 +228,166 @@ fn string_field_roundtrip_unicode() {
         id: 42,
         name: String::from("Héllo 🌍"),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithStringRoundtrip::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
+}
+
+// --------------------------------------------------
+// writer append-semantics: the buffer-writing API must APPEND to `out`, never clear or
+// overwrite pre-existing bytes. this is the invariant the writer form introduces over the
+// old owned-return form, and it is what lets one buffer be reused across many records
+// --------------------------------------------------
+
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    sentinel = b"\x52\x53",
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+)]
+struct FramedRecord {
+    #[klv(key = 0x01, dec = decb::be_u16, enc = *encb::be_u16)]
+    a: u16,
+    #[klv(key = 0x02, dec = decb::be_u32, enc = *encb::be_u32)]
+    b: u32,
+}
+
+#[test]
+/// `encode_value` appends to a non-empty buffer: the pre-existing prefix is left intact and
+/// the encoded body follows it byte-for-byte (identical to encoding into a fresh buffer).
+fn encode_value_appends_to_nonempty_buffer() {
+    let rec = AllNumerics {
+        u8_field: 0xAB,
+        u16_field: 0x1234,
+        u32_field: 0xDEAD_BEEF,
+        u64_field: 0x0102_0304_0506_0708,
+        i16_field: -1000,
+        i32_field: -100_000,
+    };
+    let prefix: &[u8] = b"\xDE\xAD\xBE\xEF";
+    let mut fresh = Vec::new();
+    rec.encode_value(&mut fresh);
+
+    let mut prefilled = prefix.to_vec();
+    rec.encode_value(&mut prefilled);
+
+    assert!(prefilled.starts_with(prefix), "prefix was clobbered");
+    assert_eq!(
+        prefilled.strip_prefix(prefix),
+        Some(fresh.as_slice()),
+        "appended body differs from a fresh-buffer encode",
+    );
+}
+
+#[test]
+/// `encode_frame` appends to a non-empty buffer (same invariant as `encode_value`), and the
+/// frame written into the fresh buffer still decodes back to the original record.
+fn encode_frame_appends_to_nonempty_buffer() {
+    let rec = FramedRecord {
+        a: 0x1234,
+        b: 0xDEAD_BEEF,
+    };
+    let prefix: &[u8] = b"\x99\x88";
+    let mut fresh = Vec::new();
+    rec.encode_frame(&mut fresh);
+
+    let mut prefilled = prefix.to_vec();
+    rec.encode_frame(&mut prefilled);
+
+    assert!(prefilled.starts_with(prefix), "prefix was clobbered");
+    assert_eq!(prefilled.strip_prefix(prefix), Some(fresh.as_slice()));
+
+    let decoded = FramedRecord::decode_frame(&mut fresh.as_slice()).unwrap();
+    assert_eq!(decoded, rec);
+}
+
+#[test]
+/// Leaf and BER encoders append into an existing buffer rather than replacing its contents.
+fn leaf_and_ber_encoders_append() {
+    let mut buf = b"\x01\x02".to_vec();
+    encb::be_u32(0xCAFE_BABE, &mut buf);
+    tinyklv::codecs::ber::enc::ber_length(200_u64, &mut buf);
+    assert_eq!(
+        buf,
+        // existing prefix, then be_u32, then BER long-form length (200 >= 128)
+        vec![0x01, 0x02, 0xCA, 0xFE, 0xBA, 0xBE, 0x80 | 1, 200],
+    );
+}
+
+#[test]
+#[should_panic(expected = "exceeds the 1-byte KLV length prefix")]
+/// A variable-width field whose encoded body is longer than the (1-byte) length prefix can
+/// represent must abort loudly: a silently-wrapped length (`300 as u8 == 44`) would emit a
+/// mis-framed, undecodable packet. Guards the back-patch path against length-prefix overflow.
+fn oversized_field_aborts_rather_than_corrupting() {
+    let original = WithStringRoundtrip {
+        id: 7,
+        name: "x".repeat(300),
+    };
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
+}
+
+#[test]
+/// The one-shot direct `decode_value` rewinds a truncated trailing triple, leaving the cursor
+/// exactly where the streaming path's `reset` would. Without that rewind, an embedded
+/// `Vec<T>::decode_value` (which reads the residual cursor to continue) would observe the trailing
+/// byte already consumed. Decodes the complete fields, then asserts the lone trailing key byte
+/// remains unconsumed.
+fn decode_value_rewinds_truncated_trailing_triple() {
+    let original = AllNumerics {
+        u8_field: 0xAB,
+        u16_field: 0x1234,
+        u32_field: 0xDEAD_BEEF,
+        u64_field: 0x0102_0304_0506_0708,
+        i16_field: -1000,
+        i32_field: -100_000,
+    };
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
+    // append an incomplete trailing triple: a key byte with no length/value after it
+    encoded.push(0xFE);
+
+    let mut input: &[u8] = &encoded;
+    let decoded = AllNumerics::decode_value(&mut input).unwrap();
+    assert_eq!(decoded, original);
+    // the incomplete triple was rewound, so its lone key byte is left for a surrounding parser
+    assert_eq!(
+        input,
+        &[0xFE],
+        "truncated trailing triple should be rewound, not consumed"
+    );
+}
+
+#[test]
+/// Companion to the trailing-triple test, covering the *other* one-shot rewind site: a complete
+/// key+len whose declared value body overruns the remaining bytes. The decoder must rewind the
+/// whole `key,len,partial-value` triple (not just up to the value) so a surrounding parser sees the
+/// triple intact. Uses an optional trailing field so `finalize` still succeeds on the required one.
+fn decode_value_rewinds_truncated_value_body() {
+    // required field present in full: key 0x01, len 4, be_u32 0x0000_ABCD
+    let mut encoded = vec![0x01, 0x04, 0x00, 0x00, 0xAB, 0xCD];
+    let prefix_len = encoded.len();
+    // optional field 0x02 declares a 4-byte value but only 2 bytes follow (truncated mid-value)
+    let truncated_triple = [0x02_u8, 0x04, 0xDE, 0xAD];
+    encoded.extend_from_slice(&truncated_triple);
+
+    let mut input: &[u8] = &encoded;
+    let decoded = WithOptionalRoundtrip::decode_value(&mut input).unwrap();
+    // the complete required field decoded; the truncated optional stayed `None`
+    assert_eq!(
+        decoded,
+        WithOptionalRoundtrip {
+            required: 0xABCD,
+            optional: None,
+        }
+    );
+    // the entire truncated triple (key+len+partial value) was rewound, not partially consumed
+    assert_eq!(
+        input,
+        &encoded[prefix_len..],
+        "truncated value body should rewind the whole triple"
+    );
 }

@@ -84,7 +84,7 @@ fn wrap_with_noise(
     }
 
     // the real frame
-    chunk.extend_from_slice(&reading.encode_frame());
+    reading.encode_frame(&mut chunk);
 
     // optional trailing decoy
     if rng.random_bool(0.5) {

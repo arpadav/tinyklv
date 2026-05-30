@@ -60,7 +60,8 @@ fn main() {
         sequence: 42,
         temperature_centideg: 2350,
     };
-    let frame = original.encode_frame();
+    let mut frame = Vec::new();
+    original.encode_frame(&mut frame);
     let decoded = Heartbeat::decode_frame(
         &mut frame.as_slice()
     ).unwrap();

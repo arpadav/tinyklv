@@ -88,7 +88,8 @@ fn main() {
     };
 
     // encode -> decode roundtrip
-    let frame = pkt.encode_frame();
+    let mut frame = Vec::new();
+    pkt.encode_frame(&mut frame);
 
     // junk before sentinel, then the frame
     let mut data: Vec<u8> = vec![

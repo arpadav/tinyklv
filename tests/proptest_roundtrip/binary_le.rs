@@ -6,7 +6,8 @@ macro_rules! roundtrip_test {
             $(#[doc = $doc])*
             #[test]
             fn $name(val: $ty) {
-                let encoded = $enc(val);
+                let mut encoded = Vec::new();
+                $enc(val, &mut encoded);
                 let decoded = $dec(&mut encoded.as_slice()).unwrap();
                 prop_assert_eq!(val, decoded);
             }
@@ -20,7 +21,8 @@ macro_rules! roundtrip_float {
             $(#[doc = $doc])*
             #[test]
             fn $name(val: $ty) {
-                let encoded = $enc(val);
+                let mut encoded = Vec::new();
+                $enc(val, &mut encoded);
                 let decoded = $dec(&mut encoded.as_slice()).unwrap();
                 prop_assert_eq!(val.to_bits(), decoded.to_bits());
             }
@@ -103,32 +105,40 @@ proptest! {
         #[test]
 /// Property: LE and BE u16 encodings have equal length for all values.
     fn le_be_same_length_u16(val: u16) {
-        let be = tinyklv::enc::binary::be_u16(val);
-        let le = tinyklv::enc::binary::le_u16(val);
+        let mut be = Vec::new();
+        tinyklv::enc::binary::be_u16(val, &mut be);
+        let mut le = Vec::new();
+        tinyklv::enc::binary::le_u16(val, &mut le);
         prop_assert_eq!(be.len(), le.len());
     }
 
         #[test]
 /// Property: LE and BE u32 encodings have equal length for all values.
     fn le_be_same_length_u32(val: u32) {
-        let be = tinyklv::enc::binary::be_u32(val);
-        let le = tinyklv::enc::binary::le_u32(val);
+        let mut be = Vec::new();
+        tinyklv::enc::binary::be_u32(val, &mut be);
+        let mut le = Vec::new();
+        tinyklv::enc::binary::le_u32(val, &mut le);
         prop_assert_eq!(be.len(), le.len());
     }
 
         #[test]
 /// Property: LE and BE u64 encodings have equal length for all values.
     fn le_be_same_length_u64(val: u64) {
-        let be = tinyklv::enc::binary::be_u64(val);
-        let le = tinyklv::enc::binary::le_u64(val);
+        let mut be = Vec::new();
+        tinyklv::enc::binary::be_u64(val, &mut be);
+        let mut le = Vec::new();
+        tinyklv::enc::binary::le_u64(val, &mut le);
         prop_assert_eq!(be.len(), le.len());
     }
 
         #[test]
 /// Property: for any u16, the LE encoding is the byte-reverse of the BE encoding.
     fn le_is_reverse_of_be_u16(val: u16) {
-        let be = tinyklv::enc::binary::be_u16(val);
-        let mut le = tinyklv::enc::binary::le_u16(val);
+        let mut be = Vec::new();
+        tinyklv::enc::binary::be_u16(val, &mut be);
+        let mut le = Vec::new();
+        tinyklv::enc::binary::le_u16(val, &mut le);
         le.reverse();
         prop_assert_eq!(be, le);
     }
@@ -136,8 +146,10 @@ proptest! {
         #[test]
 /// Property: for any u32, the LE encoding is the byte-reverse of the BE encoding.
     fn le_is_reverse_of_be_u32(val: u32) {
-        let be = tinyklv::enc::binary::be_u32(val);
-        let mut le = tinyklv::enc::binary::le_u32(val);
+        let mut be = Vec::new();
+        tinyklv::enc::binary::be_u32(val, &mut be);
+        let mut le = Vec::new();
+        tinyklv::enc::binary::le_u32(val, &mut le);
         le.reverse();
         prop_assert_eq!(be, le);
     }
@@ -145,14 +157,16 @@ proptest! {
         #[test]
 /// Property: `le_u16` output matches `u16::to_le_bytes`.
     fn le_u16_matches_to_le_bytes(val: u16) {
-        let encoded = tinyklv::enc::binary::le_u16(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::le_u16(val, &mut encoded);
         prop_assert_eq!(encoded, val.to_le_bytes().to_vec());
     }
 
         #[test]
 /// Property: `le_u32` output matches `u32::to_le_bytes`.
     fn le_u32_matches_to_le_bytes(val: u32) {
-        let encoded = tinyklv::enc::binary::le_u32(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::le_u32(val, &mut encoded);
         prop_assert_eq!(encoded, val.to_le_bytes().to_vec());
     }
 }

@@ -19,10 +19,11 @@ struct SimpleRecord {
 }
 
 fn build_multi_record(values: &[u16]) -> Vec<u8> {
-    values
-        .iter()
-        .flat_map(|&v| SimpleRecord { value: v }.encode_frame())
-        .collect()
+    let mut out = Vec::new();
+    for &v in values {
+        SimpleRecord { value: v }.encode_frame(&mut out);
+    }
+    out
 }
 
 #[test]

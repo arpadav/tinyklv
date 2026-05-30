@@ -34,14 +34,17 @@
 /// use tinyklv::codecs::ber::enc::ber_length;
 ///
 /// // short form: value < 128
-/// assert_eq!(ber_length(47_u64), vec![47]);
+/// let mut short = Vec::new();
+/// ber_length(47_u64, &mut short);
+/// assert_eq!(short, vec![47]);
 ///
 /// // long form: value >= 128
-/// assert_eq!(ber_length(201_u64), vec![128 + 1, 201]);
+/// let mut long = Vec::new();
+/// ber_length(201_u64, &mut long);
+/// assert_eq!(long, vec![128 + 1, 201]);
 /// ```
-#[must_use]
-pub fn ber_length<T: super::OfBerCommon>(input: T) -> Vec<u8> {
-    super::BerLength::<T>::encode_value(input)
+pub fn ber_length<T: super::OfBerCommon>(input: T, out: &mut Vec<u8>) {
+    super::BerLength::<T>::encode_value(input, out);
 }
 
 /// Encodes a value as BER-OID variable-length bytes, returning the encoded bytes
@@ -64,9 +67,10 @@ pub fn ber_length<T: super::OfBerCommon>(input: T) -> Vec<u8> {
 /// ```rust
 /// use tinyklv::codecs::ber::enc::ber_oid;
 ///
-/// assert_eq!(ber_oid(23298_u64), vec![129, 182, 2]);
+/// let mut out = Vec::new();
+/// ber_oid(23298_u64, &mut out);
+/// assert_eq!(out, vec![129, 182, 2]);
 /// ```
-#[must_use]
-pub fn ber_oid<T: super::OfBerCommon>(input: T) -> Vec<u8> {
-    super::BerOid::<T>::encode_value(input)
+pub fn ber_oid<T: super::OfBerCommon>(input: T, out: &mut Vec<u8>) {
+    super::BerOid::<T>::encode_value(input, out);
 }

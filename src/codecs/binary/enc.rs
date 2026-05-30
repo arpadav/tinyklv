@@ -1,8 +1,9 @@
 //! Binary encode codecs for KLV data
 //!
 //! Provides encoders for converting Rust primitive types into raw byte slices
-//! suitable for KLV value fields. All encoders return `Vec<u8>` and are
-//! compatible with the `#[klv(enc = ...)]` derive macro attribute
+//! suitable for KLV value fields. All encoders append into a caller-owned
+//! `&mut Vec<u8>` and are compatible with the `#[klv(enc = ...)]` derive macro
+//! attribute
 //!
 //! Includes:
 //! * Native-endian, big-endian, and little-endian encoders for all standard
@@ -21,22 +22,20 @@ macro_rules! encode_native {
         pastey::paste! {
             #[doc = $doc_native]
             #[inline(always)]
-            #[must_use]
-            pub fn[<$ty>](input: $ty) -> Vec<u8> {
+            pub fn[<$ty>](input: $ty, out: &mut Vec<u8>) {
                 #[cfg(target_endian = "big")]
-                { input.to_be_bytes().to_vec() }
+                { out.extend_from_slice(&input.to_be_bytes()); }
                 #[cfg(target_endian = "little")]
-                { input.to_le_bytes().to_vec() }
+                { out.extend_from_slice(&input.to_le_bytes()); }
             }
 
             #[doc = $doc_from_usize]
             #[inline(always)]
-            #[must_use]
-            pub fn[<$ty _from_usize>](input: usize) -> Vec<u8> {
+            pub fn[<$ty _from_usize>](input: usize, out: &mut Vec<u8>) {
                 #[cfg(target_endian = "big")]
-                { (input as $ty).to_be_bytes().to_vec() }
+                { out.extend_from_slice(&(input as $ty).to_be_bytes()); }
                 #[cfg(target_endian = "little")]
-                { (input as $ty).to_le_bytes().to_vec() }
+                { out.extend_from_slice(&(input as $ty).to_le_bytes()); }
             }
         }
     };
@@ -51,30 +50,26 @@ macro_rules! encode_endian {
         pastey::paste! {
             #[doc = $doc_be]
             #[inline(always)]
-            #[must_use]
-            pub fn[<be_ $ty>](input: $ty) -> Vec<u8> {
-                input.to_be_bytes().to_vec()
+            pub fn[<be_ $ty>](input: $ty, out: &mut Vec<u8>) {
+                out.extend_from_slice(&input.to_be_bytes());
             }
 
             #[doc = $doc_be_usize]
             #[inline(always)]
-            #[must_use]
-            pub fn[<be_ $ty _from_usize>](input: usize) -> Vec<u8> {
-                (input as $ty).to_be_bytes().to_vec()
+            pub fn[<be_ $ty _from_usize>](input: usize, out: &mut Vec<u8>) {
+                out.extend_from_slice(&(input as $ty).to_be_bytes());
             }
 
             #[doc = $doc_le]
             #[inline(always)]
-            #[must_use]
-            pub fn[<le_ $ty>](input: $ty) -> Vec<u8> {
-                input.to_le_bytes().to_vec()
+            pub fn[<le_ $ty>](input: $ty, out: &mut Vec<u8>) {
+                out.extend_from_slice(&input.to_le_bytes());
             }
 
             #[doc = $doc_le_usize]
             #[inline(always)]
-            #[must_use]
-            pub fn[<le_ $ty _from_usize>](input: usize) -> Vec<u8> {
-                (input as $ty).to_le_bytes().to_vec()
+            pub fn[<le_ $ty _from_usize>](input: usize, out: &mut Vec<u8>) {
+                out.extend_from_slice(&(input as $ty).to_le_bytes());
             }
         }
     };
@@ -89,31 +84,44 @@ macro_rules! encode_lengthed {
         pastey::paste! {
             #[doc = $doc_be_lengthed]
             #[inline(always)]
-            #[must_use]
             #[allow(
                 clippy::indexing_slicing,
-                reason = "start = bytes.len().saturating_sub(len) is always <= bytes.len(), so \
-                  bytes[start..] is in-bounds"
+                reason = "start = bytes.len().saturating_sub(len) is always <= bytes.len(), so bytes[start..] is in-bounds"
             )]
-            pub fn[<be_ $ty _lengthed>](len: usize) -> impl Fn($ty) -> Vec<u8> {
-                move |input: $ty| {
+            pub fn[<be_ $ty _lengthed>](len: usize) -> impl Fn($ty, &mut Vec<u8>) {
+                move |input: $ty, out: &mut Vec<u8>| {
+                    // --------------------------------------------------
+                    // keep the low-order `len` bytes (or all, if len exceeds the width),
+                    // then left-pad with zeros to reach `len` - leading zeros first, value
+                    // second, so the write is a single append-only pass (no front-splice)
+                    // --------------------------------------------------
                     let bytes = input.to_be_bytes();
                     let start = bytes.len().saturating_sub(len);
-                    let mut result = Vec::with_capacity(len);
-                    result.extend_from_slice(&bytes[start..]);
-                    result.splice(0..0, std::iter::repeat(0).take(len - result.len()));
-                    result
+                    let kept = &bytes[start..];
+                    let pad = len.saturating_sub(kept.len());
+                    out.extend(std::iter::repeat_n(0u8, pad));
+                    out.extend_from_slice(kept);
                 }
             }
 
             #[doc = $doc_le_lengthed]
             #[inline(always)]
-            #[must_use]
-            pub fn[<le_ $ty _lengthed>](len: usize) -> impl Fn($ty) -> Vec<u8> {
-                move |input: $ty| {
-                    let mut v = input.to_le_bytes().to_vec();
-                    v.resize(len, 0);
-                    v
+            #[allow(
+                clippy::indexing_slicing,
+                reason = "take = bytes.len().min(len) is always <= bytes.len(), so bytes[..take] is in-bounds"
+            )]
+            pub fn[<le_ $ty _lengthed>](len: usize) -> impl Fn($ty, &mut Vec<u8>) {
+                move |input: $ty, out: &mut Vec<u8>| {
+                    // --------------------------------------------------
+                    // keep the low-order `len` bytes (or all, if len exceeds the width),
+                    // then right-pad with zeros to reach `len` - value first, trailing
+                    // (high-order) zeros second, mirroring the be path
+                    // --------------------------------------------------
+                    let bytes = input.to_le_bytes();
+                    let take = bytes.len().min(len);
+                    out.extend_from_slice(&bytes[..take]);
+                    let pad = len.saturating_sub(take);
+                    out.extend(std::iter::repeat_n(0u8, pad));
                 }
             }
         }
@@ -127,7 +135,7 @@ encode_native!(
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::u8(42_u8);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::u8(42_u8, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<u8>());
 ```",
     "Encodes a `usize` value as a [`prim@u8`] using native-endian byte order.
@@ -135,7 +143,7 @@ assert_eq!(encoded.len(), std::mem::size_of::<u8>());
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::u8_from_usize(42_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::u8_from_usize(42_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<u8>());
 ```"
 );
@@ -148,9 +156,9 @@ encode_lengthed!(
 
 ```
 let encode = tinyklv::codecs::binary::enc::be_u8_lengthed(1);
-assert_eq!(encode(0x01_u8), vec![0x01]);
+{ let mut v = Vec::new(); encode(0x01_u8, &mut v); assert_eq!(v, vec![0x01]); }
 let padded = tinyklv::codecs::binary::enc::be_u8_lengthed(3);
-assert_eq!(padded(0x01_u8), vec![0x00, 0x00, 0x01]);
+{ let mut v = Vec::new(); padded(0x01_u8, &mut v); assert_eq!(v, vec![0x00, 0x00, 0x01]); }
 ```",
     "Encodes a [`prim@u8`] as little-endian bytes, truncated or zero-padded to `len` bytes.
 
@@ -158,9 +166,9 @@ assert_eq!(padded(0x01_u8), vec![0x00, 0x00, 0x01]);
 
 ```
 let encode = tinyklv::codecs::binary::enc::le_u8_lengthed(1);
-assert_eq!(encode(0x01_u8), vec![0x01]);
+{ let mut v = Vec::new(); encode(0x01_u8, &mut v); assert_eq!(v, vec![0x01]); }
 let padded = tinyklv::codecs::binary::enc::le_u8_lengthed(3);
-assert_eq!(padded(0x01_u8), vec![0x01, 0x00, 0x00]);
+{ let mut v = Vec::new(); padded(0x01_u8, &mut v); assert_eq!(v, vec![0x01, 0x00, 0x00]); }
 ```"
 );
 
@@ -171,7 +179,7 @@ encode_native!(
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::u16(42_u16);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::u16(42_u16, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<u16>());
 ```",
     "Encodes a `usize` value as a [`prim@u16`] using native-endian byte order.
@@ -179,7 +187,7 @@ assert_eq!(encoded.len(), std::mem::size_of::<u16>());
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::u16_from_usize(42_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::u16_from_usize(42_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<u16>());
 ```"
 );
@@ -191,28 +199,28 @@ encode_endian!(
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::be_u16(0x0102_u16), vec![0x01, 0x02]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_u16(0x0102_u16, &mut v); assert_eq!(v, vec![0x01, 0x02]); }
 ```",
     "Encodes a [`prim@u16`] value using little-endian byte order.
 
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::le_u16(0x0102_u16), vec![0x02, 0x01]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_u16(0x0102_u16, &mut v); assert_eq!(v, vec![0x02, 0x01]); }
 ```",
     "Encodes a `usize` value as a [`prim@u16`] using big-endian byte order.
 
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::be_u16_from_usize(0x0102_usize), vec![0x01, 0x02]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_u16_from_usize(0x0102_usize, &mut v); assert_eq!(v, vec![0x01, 0x02]); }
 ```",
     "Encodes a `usize` value as a [`prim@u16`] using little-endian byte order.
 
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::le_u16_from_usize(0x0102_usize), vec![0x02, 0x01]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_u16_from_usize(0x0102_usize, &mut v); assert_eq!(v, vec![0x02, 0x01]); }
 ```"
 );
 
@@ -224,9 +232,9 @@ encode_lengthed!(
 
 ```
 let encode = tinyklv::codecs::binary::enc::be_u16_lengthed(2);
-assert_eq!(encode(0x0102_u16), vec![0x01, 0x02]);
+{ let mut v = Vec::new(); encode(0x0102_u16, &mut v); assert_eq!(v, vec![0x01, 0x02]); }
 let truncated = tinyklv::codecs::binary::enc::be_u16_lengthed(1);
-assert_eq!(truncated(0x0102_u16), vec![0x02]);
+{ let mut v = Vec::new(); truncated(0x0102_u16, &mut v); assert_eq!(v, vec![0x02]); }
 ```",
     "Encodes a [`prim@u16`] as little-endian bytes, truncated or zero-padded to `len` bytes.
 
@@ -234,9 +242,9 @@ assert_eq!(truncated(0x0102_u16), vec![0x02]);
 
 ```
 let encode = tinyklv::codecs::binary::enc::le_u16_lengthed(2);
-assert_eq!(encode(0x0102_u16), vec![0x02, 0x01]);
+{ let mut v = Vec::new(); encode(0x0102_u16, &mut v); assert_eq!(v, vec![0x02, 0x01]); }
 let padded = tinyklv::codecs::binary::enc::le_u16_lengthed(3);
-assert_eq!(padded(0x0102_u16), vec![0x02, 0x01, 0x00]);
+{ let mut v = Vec::new(); padded(0x0102_u16, &mut v); assert_eq!(v, vec![0x02, 0x01, 0x00]); }
 ```"
 );
 
@@ -247,7 +255,7 @@ encode_native!(
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::u32(42_u32);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::u32(42_u32, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<u32>());
 ```",
     "Encodes a `usize` value as a [`prim@u32`] using native-endian byte order.
@@ -255,7 +263,7 @@ assert_eq!(encoded.len(), std::mem::size_of::<u32>());
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::u32_from_usize(42_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::u32_from_usize(42_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<u32>());
 ```"
 );
@@ -267,28 +275,28 @@ encode_endian!(
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::be_u32(0x01020304_u32), vec![0x01, 0x02, 0x03, 0x04]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_u32(0x01020304_u32, &mut v); assert_eq!(v, vec![0x01, 0x02, 0x03, 0x04]); }
 ```",
     "Encodes a [`prim@u32`] value using little-endian byte order.
 
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::le_u32(0x01020304_u32), vec![0x04, 0x03, 0x02, 0x01]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_u32(0x01020304_u32, &mut v); assert_eq!(v, vec![0x04, 0x03, 0x02, 0x01]); }
 ```",
     "Encodes a `usize` value as a [`prim@u32`] using big-endian byte order.
 
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::be_u32_from_usize(0x0102_usize), vec![0x00, 0x00, 0x01, 0x02]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_u32_from_usize(0x0102_usize, &mut v); assert_eq!(v, vec![0x00, 0x00, 0x01, 0x02]); }
 ```",
     "Encodes a `usize` value as a [`prim@u32`] using little-endian byte order.
 
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::le_u32_from_usize(0x0102_usize), vec![0x02, 0x01, 0x00, 0x00]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_u32_from_usize(0x0102_usize, &mut v); assert_eq!(v, vec![0x02, 0x01, 0x00, 0x00]); }
 ```"
 );
 
@@ -300,9 +308,9 @@ encode_lengthed!(
 
 ```
 let encode = tinyklv::codecs::binary::enc::be_u32_lengthed(4);
-assert_eq!(encode(0x01020304_u32), vec![0x01, 0x02, 0x03, 0x04]);
+{ let mut v = Vec::new(); encode(0x01020304_u32, &mut v); assert_eq!(v, vec![0x01, 0x02, 0x03, 0x04]); }
 let truncated = tinyklv::codecs::binary::enc::be_u32_lengthed(2);
-assert_eq!(truncated(0x01020304_u32), vec![0x03, 0x04]);
+{ let mut v = Vec::new(); truncated(0x01020304_u32, &mut v); assert_eq!(v, vec![0x03, 0x04]); }
 ```",
     "Encodes a [`prim@u32`] as little-endian bytes, truncated or zero-padded to `len` bytes.
 
@@ -310,9 +318,9 @@ assert_eq!(truncated(0x01020304_u32), vec![0x03, 0x04]);
 
 ```
 let encode = tinyklv::codecs::binary::enc::le_u32_lengthed(4);
-assert_eq!(encode(0x01020304_u32), vec![0x04, 0x03, 0x02, 0x01]);
+{ let mut v = Vec::new(); encode(0x01020304_u32, &mut v); assert_eq!(v, vec![0x04, 0x03, 0x02, 0x01]); }
 let padded = tinyklv::codecs::binary::enc::le_u32_lengthed(5);
-assert_eq!(padded(0x01020304_u32), vec![0x04, 0x03, 0x02, 0x01, 0x00]);
+{ let mut v = Vec::new(); padded(0x01020304_u32, &mut v); assert_eq!(v, vec![0x04, 0x03, 0x02, 0x01, 0x00]); }
 ```"
 );
 
@@ -323,7 +331,7 @@ encode_native!(
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::u64(42_u64);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::u64(42_u64, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<u64>());
 ```",
     "Encodes a `usize` value as a [`prim@u64`] using native-endian byte order.
@@ -331,7 +339,7 @@ assert_eq!(encoded.len(), std::mem::size_of::<u64>());
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::u64_from_usize(42_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::u64_from_usize(42_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<u64>());
 ```"
 );
@@ -343,40 +351,28 @@ encode_endian!(
 # Example
 
 ```
-assert_eq!(
-    tinyklv::codecs::binary::enc::be_u64(0x0102030405060708_u64),
-    vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08],
-);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_u64(0x0102030405060708_u64, &mut v); assert_eq!(v, vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]); }
 ```",
     "Encodes a [`prim@u64`] value using little-endian byte order.
 
 # Example
 
 ```
-assert_eq!(
-    tinyklv::codecs::binary::enc::le_u64(0x0102030405060708_u64),
-    vec![0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01],
-);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_u64(0x0102030405060708_u64, &mut v); assert_eq!(v, vec![0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01]); }
 ```",
     "Encodes a `usize` value as a [`prim@u64`] using big-endian byte order.
 
 # Example
 
 ```
-assert_eq!(
-    tinyklv::codecs::binary::enc::be_u64_from_usize(0x0102_usize),
-    vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02],
-);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_u64_from_usize(0x0102_usize, &mut v); assert_eq!(v, vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02]); }
 ```",
     "Encodes a `usize` value as a [`prim@u64`] using little-endian byte order.
 
 # Example
 
 ```
-assert_eq!(
-    tinyklv::codecs::binary::enc::le_u64_from_usize(0x0102_usize),
-    vec![0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_u64_from_usize(0x0102_usize, &mut v); assert_eq!(v, vec![0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); }
 ```"
 );
 
@@ -388,12 +384,9 @@ encode_lengthed!(
 
 ```
 let encode = tinyklv::codecs::binary::enc::be_u64_lengthed(8);
-assert_eq!(
-    encode(0x0102030405060708_u64),
-    vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08],
-);
+{ let mut v = Vec::new(); encode(0x0102030405060708_u64, &mut v); assert_eq!(v, vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]); }
 let truncated = tinyklv::codecs::binary::enc::be_u64_lengthed(2);
-assert_eq!(truncated(0x0102030405060708_u64), vec![0x07, 0x08]);
+{ let mut v = Vec::new(); truncated(0x0102030405060708_u64, &mut v); assert_eq!(v, vec![0x07, 0x08]); }
 ```",
     "Encodes a [`prim@u64`] as little-endian bytes, truncated or zero-padded to `len` bytes.
 
@@ -401,15 +394,9 @@ assert_eq!(truncated(0x0102030405060708_u64), vec![0x07, 0x08]);
 
 ```
 let encode = tinyklv::codecs::binary::enc::le_u64_lengthed(8);
-assert_eq!(
-    encode(0x0102030405060708_u64),
-    vec![0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01],
-);
+{ let mut v = Vec::new(); encode(0x0102030405060708_u64, &mut v); assert_eq!(v, vec![0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01]); }
 let padded = tinyklv::codecs::binary::enc::le_u64_lengthed(10);
-assert_eq!(
-    padded(0x0102030405060708_u64),
-    vec![0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00, 0x00],
-);
+{ let mut v = Vec::new(); padded(0x0102030405060708_u64, &mut v); assert_eq!(v, vec![0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00, 0x00]); }
 ```"
 );
 
@@ -420,7 +407,7 @@ encode_native!(
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::u128(42_u128);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::u128(42_u128, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<u128>());
 ```",
     "Encodes a `usize` value as a [`prim@u128`] using native-endian byte order.
@@ -428,7 +415,7 @@ assert_eq!(encoded.len(), std::mem::size_of::<u128>());
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::u128_from_usize(42_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::u128_from_usize(42_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<u128>());
 ```"
 );
@@ -440,7 +427,7 @@ encode_endian!(
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::be_u128(1_u128);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_u128(1_u128, &mut v); v };
 assert_eq!(encoded[15], 0x01);
 assert_eq!(encoded[0], 0x00);
 ```",
@@ -449,7 +436,7 @@ assert_eq!(encoded[0], 0x00);
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::le_u128(1_u128);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_u128(1_u128, &mut v); v };
 assert_eq!(encoded[0], 0x01);
 assert_eq!(encoded[15], 0x00);
 ```",
@@ -458,7 +445,7 @@ assert_eq!(encoded[15], 0x00);
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::be_u128_from_usize(1_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_u128_from_usize(1_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<u128>());
 assert_eq!(encoded[15], 0x01);
 ```",
@@ -467,7 +454,7 @@ assert_eq!(encoded[15], 0x01);
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::le_u128_from_usize(1_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_u128_from_usize(1_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<u128>());
 assert_eq!(encoded[0], 0x01);
 ```"
@@ -481,9 +468,9 @@ encode_lengthed!(
 
 ```
 let encode = tinyklv::codecs::binary::enc::be_u128_lengthed(2);
-assert_eq!(encode(0x0102_u128), vec![0x01, 0x02]);
+{ let mut v = Vec::new(); encode(0x0102_u128, &mut v); assert_eq!(v, vec![0x01, 0x02]); }
 let truncated = tinyklv::codecs::binary::enc::be_u128_lengthed(1);
-assert_eq!(truncated(0x0102_u128), vec![0x02]);
+{ let mut v = Vec::new(); truncated(0x0102_u128, &mut v); assert_eq!(v, vec![0x02]); }
 ```",
     "Encodes a [`prim@u128`] as little-endian bytes, truncated or zero-padded to `len` bytes.
 
@@ -491,9 +478,9 @@ assert_eq!(truncated(0x0102_u128), vec![0x02]);
 
 ```
 let encode = tinyklv::codecs::binary::enc::le_u128_lengthed(2);
-assert_eq!(encode(0x0102_u128), vec![0x02, 0x01]);
+{ let mut v = Vec::new(); encode(0x0102_u128, &mut v); assert_eq!(v, vec![0x02, 0x01]); }
 let padded = tinyklv::codecs::binary::enc::le_u128_lengthed(3);
-assert_eq!(padded(0x0102_u128), vec![0x02, 0x01, 0x00]);
+{ let mut v = Vec::new(); padded(0x0102_u128, &mut v); assert_eq!(v, vec![0x02, 0x01, 0x00]); }
 ```"
 );
 
@@ -504,7 +491,7 @@ encode_native!(
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::i8(42_i8);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::i8(42_i8, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<i8>());
 ```",
     "Encodes a `usize` value as an [`prim@i8`] using native-endian byte order.
@@ -512,7 +499,7 @@ assert_eq!(encoded.len(), std::mem::size_of::<i8>());
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::i8_from_usize(42_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::i8_from_usize(42_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<i8>());
 ```"
 );
@@ -525,9 +512,9 @@ encode_lengthed!(
 
 ```
 let encode = tinyklv::codecs::binary::enc::be_i8_lengthed(1);
-assert_eq!(encode(0x01_i8), vec![0x01]);
+{ let mut v = Vec::new(); encode(0x01_i8, &mut v); assert_eq!(v, vec![0x01]); }
 let padded = tinyklv::codecs::binary::enc::be_i8_lengthed(3);
-assert_eq!(padded(0x01_i8), vec![0x00, 0x00, 0x01]);
+{ let mut v = Vec::new(); padded(0x01_i8, &mut v); assert_eq!(v, vec![0x00, 0x00, 0x01]); }
 ```",
     "Encodes an [`prim@i8`] as little-endian bytes, truncated or zero-padded to `len` bytes.
 
@@ -535,9 +522,9 @@ assert_eq!(padded(0x01_i8), vec![0x00, 0x00, 0x01]);
 
 ```
 let encode = tinyklv::codecs::binary::enc::le_i8_lengthed(1);
-assert_eq!(encode(0x01_i8), vec![0x01]);
+{ let mut v = Vec::new(); encode(0x01_i8, &mut v); assert_eq!(v, vec![0x01]); }
 let padded = tinyklv::codecs::binary::enc::le_i8_lengthed(3);
-assert_eq!(padded(0x01_i8), vec![0x01, 0x00, 0x00]);
+{ let mut v = Vec::new(); padded(0x01_i8, &mut v); assert_eq!(v, vec![0x01, 0x00, 0x00]); }
 ```"
 );
 
@@ -548,7 +535,7 @@ encode_native!(
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::i16(42_i16);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::i16(42_i16, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<i16>());
 ```",
     "Encodes a `usize` value as an [`prim@i16`] using native-endian byte order.
@@ -556,7 +543,7 @@ assert_eq!(encoded.len(), std::mem::size_of::<i16>());
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::i16_from_usize(42_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::i16_from_usize(42_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<i16>());
 ```"
 );
@@ -568,28 +555,28 @@ encode_endian!(
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::be_i16(0x0102_i16), vec![0x01, 0x02]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_i16(0x0102_i16, &mut v); assert_eq!(v, vec![0x01, 0x02]); }
 ```",
     "Encodes an [`prim@i16`] value using little-endian byte order.
 
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::le_i16(0x0102_i16), vec![0x02, 0x01]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_i16(0x0102_i16, &mut v); assert_eq!(v, vec![0x02, 0x01]); }
 ```",
     "Encodes a `usize` value as an [`prim@i16`] using big-endian byte order.
 
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::be_i16_from_usize(0x0102_usize), vec![0x01, 0x02]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_i16_from_usize(0x0102_usize, &mut v); assert_eq!(v, vec![0x01, 0x02]); }
 ```",
     "Encodes a `usize` value as an [`prim@i16`] using little-endian byte order.
 
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::le_i16_from_usize(0x0102_usize), vec![0x02, 0x01]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_i16_from_usize(0x0102_usize, &mut v); assert_eq!(v, vec![0x02, 0x01]); }
 ```"
 );
 
@@ -601,9 +588,9 @@ encode_lengthed!(
 
 ```
 let encode = tinyklv::codecs::binary::enc::be_i16_lengthed(2);
-assert_eq!(encode(0x0102_i16), vec![0x01, 0x02]);
+{ let mut v = Vec::new(); encode(0x0102_i16, &mut v); assert_eq!(v, vec![0x01, 0x02]); }
 let truncated = tinyklv::codecs::binary::enc::be_i16_lengthed(1);
-assert_eq!(truncated(0x0102_i16), vec![0x02]);
+{ let mut v = Vec::new(); truncated(0x0102_i16, &mut v); assert_eq!(v, vec![0x02]); }
 ```",
     "Encodes an [`prim@i16`] as little-endian bytes, truncated or zero-padded to `len` bytes.
 
@@ -611,9 +598,9 @@ assert_eq!(truncated(0x0102_i16), vec![0x02]);
 
 ```
 let encode = tinyklv::codecs::binary::enc::le_i16_lengthed(2);
-assert_eq!(encode(0x0102_i16), vec![0x02, 0x01]);
+{ let mut v = Vec::new(); encode(0x0102_i16, &mut v); assert_eq!(v, vec![0x02, 0x01]); }
 let padded = tinyklv::codecs::binary::enc::le_i16_lengthed(3);
-assert_eq!(padded(0x0102_i16), vec![0x02, 0x01, 0x00]);
+{ let mut v = Vec::new(); padded(0x0102_i16, &mut v); assert_eq!(v, vec![0x02, 0x01, 0x00]); }
 ```"
 );
 
@@ -624,7 +611,7 @@ encode_native!(
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::i32(42_i32);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::i32(42_i32, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<i32>());
 ```",
     "Encodes a `usize` value as an [`prim@i32`] using native-endian byte order.
@@ -632,7 +619,7 @@ assert_eq!(encoded.len(), std::mem::size_of::<i32>());
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::i32_from_usize(42_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::i32_from_usize(42_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<i32>());
 ```"
 );
@@ -644,28 +631,28 @@ encode_endian!(
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::be_i32(0x01020304_i32), vec![0x01, 0x02, 0x03, 0x04]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_i32(0x01020304_i32, &mut v); assert_eq!(v, vec![0x01, 0x02, 0x03, 0x04]); }
 ```",
     "Encodes an [`prim@i32`] value using little-endian byte order.
 
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::le_i32(0x01020304_i32), vec![0x04, 0x03, 0x02, 0x01]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_i32(0x01020304_i32, &mut v); assert_eq!(v, vec![0x04, 0x03, 0x02, 0x01]); }
 ```",
     "Encodes a `usize` value as an [`prim@i32`] using big-endian byte order.
 
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::be_i32_from_usize(0x0102_usize), vec![0x00, 0x00, 0x01, 0x02]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_i32_from_usize(0x0102_usize, &mut v); assert_eq!(v, vec![0x00, 0x00, 0x01, 0x02]); }
 ```",
     "Encodes a `usize` value as an [`prim@i32`] using little-endian byte order.
 
 # Example
 
 ```
-assert_eq!(tinyklv::codecs::binary::enc::le_i32_from_usize(0x0102_usize), vec![0x02, 0x01, 0x00, 0x00]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_i32_from_usize(0x0102_usize, &mut v); assert_eq!(v, vec![0x02, 0x01, 0x00, 0x00]); }
 ```"
 );
 
@@ -677,9 +664,9 @@ encode_lengthed!(
 
 ```
 let encode = tinyklv::codecs::binary::enc::be_i32_lengthed(4);
-assert_eq!(encode(0x01020304_i32), vec![0x01, 0x02, 0x03, 0x04]);
+{ let mut v = Vec::new(); encode(0x01020304_i32, &mut v); assert_eq!(v, vec![0x01, 0x02, 0x03, 0x04]); }
 let truncated = tinyklv::codecs::binary::enc::be_i32_lengthed(2);
-assert_eq!(truncated(0x01020304_i32), vec![0x03, 0x04]);
+{ let mut v = Vec::new(); truncated(0x01020304_i32, &mut v); assert_eq!(v, vec![0x03, 0x04]); }
 ```",
     "Encodes an [`prim@i32`] as little-endian bytes, truncated or zero-padded to `len` bytes.
 
@@ -687,9 +674,9 @@ assert_eq!(truncated(0x01020304_i32), vec![0x03, 0x04]);
 
 ```
 let encode = tinyklv::codecs::binary::enc::le_i32_lengthed(4);
-assert_eq!(encode(0x01020304_i32), vec![0x04, 0x03, 0x02, 0x01]);
+{ let mut v = Vec::new(); encode(0x01020304_i32, &mut v); assert_eq!(v, vec![0x04, 0x03, 0x02, 0x01]); }
 let padded = tinyklv::codecs::binary::enc::le_i32_lengthed(5);
-assert_eq!(padded(0x01020304_i32), vec![0x04, 0x03, 0x02, 0x01, 0x00]);
+{ let mut v = Vec::new(); padded(0x01020304_i32, &mut v); assert_eq!(v, vec![0x04, 0x03, 0x02, 0x01, 0x00]); }
 ```"
 );
 
@@ -700,7 +687,7 @@ encode_native!(
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::i64(42_i64);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::i64(42_i64, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<i64>());
 ```",
     "Encodes a `usize` value as an [`prim@i64`] using native-endian byte order.
@@ -708,7 +695,7 @@ assert_eq!(encoded.len(), std::mem::size_of::<i64>());
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::i64_from_usize(42_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::i64_from_usize(42_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<i64>());
 ```"
 );
@@ -720,40 +707,28 @@ encode_endian!(
 # Example
 
 ```
-assert_eq!(
-    tinyklv::codecs::binary::enc::be_i64(0x0102030405060708_i64),
-    vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08],
-);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_i64(0x0102030405060708_i64, &mut v); assert_eq!(v, vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]); }
 ```",
     "Encodes an [`prim@i64`] value using little-endian byte order.
 
 # Example
 
 ```
-assert_eq!(
-    tinyklv::codecs::binary::enc::le_i64(0x0102030405060708_i64),
-    vec![0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01],
-);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_i64(0x0102030405060708_i64, &mut v); assert_eq!(v, vec![0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01]); }
 ```",
     "Encodes a `usize` value as an [`prim@i64`] using big-endian byte order.
 
 # Example
 
 ```
-assert_eq!(
-    tinyklv::codecs::binary::enc::be_i64_from_usize(0x0102_usize),
-    vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02],
-);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_i64_from_usize(0x0102_usize, &mut v); assert_eq!(v, vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02]); }
 ```",
     "Encodes a `usize` value as an [`prim@i64`] using little-endian byte order.
 
 # Example
 
 ```
-assert_eq!(
-    tinyklv::codecs::binary::enc::le_i64_from_usize(0x0102_usize),
-    vec![0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_i64_from_usize(0x0102_usize, &mut v); assert_eq!(v, vec![0x02, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); }
 ```"
 );
 
@@ -765,12 +740,9 @@ encode_lengthed!(
 
 ```
 let encode = tinyklv::codecs::binary::enc::be_i64_lengthed(8);
-assert_eq!(
-    encode(0x0102030405060708_i64),
-    vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08],
-);
+{ let mut v = Vec::new(); encode(0x0102030405060708_i64, &mut v); assert_eq!(v, vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]); }
 let truncated = tinyklv::codecs::binary::enc::be_i64_lengthed(2);
-assert_eq!(truncated(0x0102030405060708_i64), vec![0x07, 0x08]);
+{ let mut v = Vec::new(); truncated(0x0102030405060708_i64, &mut v); assert_eq!(v, vec![0x07, 0x08]); }
 ```",
     "Encodes an [`prim@i64`] as little-endian bytes, truncated or zero-padded to `len` bytes.
 
@@ -778,15 +750,9 @@ assert_eq!(truncated(0x0102030405060708_i64), vec![0x07, 0x08]);
 
 ```
 let encode = tinyklv::codecs::binary::enc::le_i64_lengthed(8);
-assert_eq!(
-    encode(0x0102030405060708_i64),
-    vec![0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01],
-);
+{ let mut v = Vec::new(); encode(0x0102030405060708_i64, &mut v); assert_eq!(v, vec![0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01]); }
 let padded = tinyklv::codecs::binary::enc::le_i64_lengthed(10);
-assert_eq!(
-    padded(0x0102030405060708_i64),
-    vec![0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00, 0x00],
-);
+{ let mut v = Vec::new(); padded(0x0102030405060708_i64, &mut v); assert_eq!(v, vec![0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01, 0x00, 0x00]); }
 ```"
 );
 
@@ -797,7 +763,7 @@ encode_native!(
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::i128(42_i128);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::i128(42_i128, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<i128>());
 ```",
     "Encodes a `usize` value as an [`prim@i128`] using native-endian byte order.
@@ -805,7 +771,7 @@ assert_eq!(encoded.len(), std::mem::size_of::<i128>());
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::i128_from_usize(42_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::i128_from_usize(42_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<i128>());
 ```"
 );
@@ -817,7 +783,7 @@ encode_endian!(
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::be_i128(1_i128);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_i128(1_i128, &mut v); v };
 assert_eq!(encoded[15], 0x01);
 assert_eq!(encoded[0], 0x00);
 ```",
@@ -826,7 +792,7 @@ assert_eq!(encoded[0], 0x00);
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::le_i128(1_i128);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_i128(1_i128, &mut v); v };
 assert_eq!(encoded[0], 0x01);
 assert_eq!(encoded[15], 0x00);
 ```",
@@ -835,7 +801,7 @@ assert_eq!(encoded[15], 0x00);
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::be_i128_from_usize(1_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_i128_from_usize(1_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<i128>());
 assert_eq!(encoded[15], 0x01);
 ```",
@@ -844,7 +810,7 @@ assert_eq!(encoded[15], 0x01);
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::le_i128_from_usize(1_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_i128_from_usize(1_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<i128>());
 assert_eq!(encoded[0], 0x01);
 ```"
@@ -858,9 +824,9 @@ encode_lengthed!(
 
 ```
 let encode = tinyklv::codecs::binary::enc::be_i128_lengthed(2);
-assert_eq!(encode(0x0102_i128), vec![0x01, 0x02]);
+{ let mut v = Vec::new(); encode(0x0102_i128, &mut v); assert_eq!(v, vec![0x01, 0x02]); }
 let truncated = tinyklv::codecs::binary::enc::be_i128_lengthed(1);
-assert_eq!(truncated(0x0102_i128), vec![0x02]);
+{ let mut v = Vec::new(); truncated(0x0102_i128, &mut v); assert_eq!(v, vec![0x02]); }
 ```",
     "Encodes an [`prim@i128`] as little-endian bytes, truncated or zero-padded to `len` bytes.
 
@@ -868,9 +834,9 @@ assert_eq!(truncated(0x0102_i128), vec![0x02]);
 
 ```
 let encode = tinyklv::codecs::binary::enc::le_i128_lengthed(2);
-assert_eq!(encode(0x0102_i128), vec![0x02, 0x01]);
+{ let mut v = Vec::new(); encode(0x0102_i128, &mut v); assert_eq!(v, vec![0x02, 0x01]); }
 let padded = tinyklv::codecs::binary::enc::le_i128_lengthed(3);
-assert_eq!(padded(0x0102_i128), vec![0x02, 0x01, 0x00]);
+{ let mut v = Vec::new(); padded(0x0102_i128, &mut v); assert_eq!(v, vec![0x02, 0x01, 0x00]); }
 ```"
 );
 
@@ -881,7 +847,7 @@ encode_native!(
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::f32(1.0_f32);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::f32(1.0_f32, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<f32>());
 ```",
     "Encodes a `usize` value as an [`prim@f32`] using native-endian byte order.
@@ -889,7 +855,7 @@ assert_eq!(encoded.len(), std::mem::size_of::<f32>());
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::f32_from_usize(1_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::f32_from_usize(1_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<f32>());
 ```"
 );
@@ -902,7 +868,7 @@ encode_endian!(
 
 ```
 // 1.0_f32 in IEEE 754 big-endian: 0x3F800000
-assert_eq!(tinyklv::codecs::binary::enc::be_f32(1.0_f32), vec![0x3F, 0x80, 0x00, 0x00]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_f32(1.0_f32, &mut v); assert_eq!(v, vec![0x3F, 0x80, 0x00, 0x00]); }
 ```",
     "Encodes an [`prim@f32`] value using little-endian byte order.
 
@@ -910,14 +876,14 @@ assert_eq!(tinyklv::codecs::binary::enc::be_f32(1.0_f32), vec![0x3F, 0x80, 0x00,
 
 ```
 // 1.0_f32 in IEEE 754 little-endian: 0x0000803F
-assert_eq!(tinyklv::codecs::binary::enc::le_f32(1.0_f32), vec![0x00, 0x00, 0x80, 0x3F]);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_f32(1.0_f32, &mut v); assert_eq!(v, vec![0x00, 0x00, 0x80, 0x3F]); }
 ```",
     "Encodes a `usize` value as an [`prim@f32`] using big-endian byte order.
 
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::be_f32_from_usize(1_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_f32_from_usize(1_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<f32>());
 ```",
     "Encodes a `usize` value as an [`prim@f32`] using little-endian byte order.
@@ -925,7 +891,7 @@ assert_eq!(encoded.len(), std::mem::size_of::<f32>());
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::le_f32_from_usize(1_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_f32_from_usize(1_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<f32>());
 ```"
 );
@@ -939,9 +905,9 @@ encode_lengthed!(
 ```
 // 1.0_f32 in IEEE 754 big-endian: 0x3F800000
 let encode = tinyklv::codecs::binary::enc::be_f32_lengthed(4);
-assert_eq!(encode(1.0_f32), vec![0x3F, 0x80, 0x00, 0x00]);
+{ let mut v = Vec::new(); encode(1.0_f32, &mut v); assert_eq!(v, vec![0x3F, 0x80, 0x00, 0x00]); }
 let truncated = tinyklv::codecs::binary::enc::be_f32_lengthed(2);
-assert_eq!(truncated(1.0_f32), vec![0x00, 0x00]);
+{ let mut v = Vec::new(); truncated(1.0_f32, &mut v); assert_eq!(v, vec![0x00, 0x00]); }
 ```",
     "Encodes an [`prim@f32`] as little-endian bytes, truncated or zero-padded to `len` bytes.
 
@@ -950,9 +916,9 @@ assert_eq!(truncated(1.0_f32), vec![0x00, 0x00]);
 ```
 // 1.0_f32 in IEEE 754 little-endian: 0x0000803F
 let encode = tinyklv::codecs::binary::enc::le_f32_lengthed(4);
-assert_eq!(encode(1.0_f32), vec![0x00, 0x00, 0x80, 0x3F]);
+{ let mut v = Vec::new(); encode(1.0_f32, &mut v); assert_eq!(v, vec![0x00, 0x00, 0x80, 0x3F]); }
 let padded = tinyklv::codecs::binary::enc::le_f32_lengthed(5);
-assert_eq!(padded(1.0_f32), vec![0x00, 0x00, 0x80, 0x3F, 0x00]);
+{ let mut v = Vec::new(); padded(1.0_f32, &mut v); assert_eq!(v, vec![0x00, 0x00, 0x80, 0x3F, 0x00]); }
 ```"
 );
 
@@ -963,7 +929,7 @@ encode_native!(
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::f64(1.0_f64);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::f64(1.0_f64, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<f64>());
 ```",
     "Encodes a `usize` value as an [`prim@f64`] using native-endian byte order.
@@ -971,7 +937,7 @@ assert_eq!(encoded.len(), std::mem::size_of::<f64>());
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::f64_from_usize(1_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::f64_from_usize(1_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<f64>());
 ```"
 );
@@ -984,10 +950,7 @@ encode_endian!(
 
 ```
 // 1.0_f64 in IEEE 754 big-endian: 0x3FF0000000000000
-assert_eq!(
-    tinyklv::codecs::binary::enc::be_f64(1.0_f64),
-    vec![0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_f64(1.0_f64, &mut v); assert_eq!(v, vec![0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); }
 ```",
     "Encodes an [`prim@f64`] value using little-endian byte order.
 
@@ -995,17 +958,14 @@ assert_eq!(
 
 ```
 // 1.0_f64 in IEEE 754 little-endian: 0x000000000000F03F
-assert_eq!(
-    tinyklv::codecs::binary::enc::le_f64(1.0_f64),
-    vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F],
-);
+{ let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_f64(1.0_f64, &mut v); assert_eq!(v, vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F]); }
 ```",
     "Encodes a `usize` value as an [`prim@f64`] using big-endian byte order.
 
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::be_f64_from_usize(1_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::be_f64_from_usize(1_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<f64>());
 ```",
     "Encodes a `usize` value as an [`prim@f64`] using little-endian byte order.
@@ -1013,7 +973,7 @@ assert_eq!(encoded.len(), std::mem::size_of::<f64>());
 # Example
 
 ```
-let encoded = tinyklv::codecs::binary::enc::le_f64_from_usize(1_usize);
+let encoded = { let mut v = Vec::new(); tinyklv::codecs::binary::enc::le_f64_from_usize(1_usize, &mut v); v };
 assert_eq!(encoded.len(), std::mem::size_of::<f64>());
 ```"
 );
@@ -1027,12 +987,9 @@ encode_lengthed!(
 ```
 // 1.0_f64 in IEEE 754 big-endian: 0x3FF0000000000000
 let encode = tinyklv::codecs::binary::enc::be_f64_lengthed(8);
-assert_eq!(
-    encode(1.0_f64),
-    vec![0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-);
+{ let mut v = Vec::new(); encode(1.0_f64, &mut v); assert_eq!(v, vec![0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]); }
 let truncated = tinyklv::codecs::binary::enc::be_f64_lengthed(2);
-assert_eq!(truncated(1.0_f64), vec![0x00, 0x00]);
+{ let mut v = Vec::new(); truncated(1.0_f64, &mut v); assert_eq!(v, vec![0x00, 0x00]); }
 ```",
     "Encodes an [`prim@f64`] as little-endian bytes, truncated or zero-padded to `len` bytes.
 
@@ -1041,21 +998,99 @@ assert_eq!(truncated(1.0_f64), vec![0x00, 0x00]);
 ```
 // 1.0_f64 in IEEE 754 little-endian: 0x000000000000F03F
 let encode = tinyklv::codecs::binary::enc::le_f64_lengthed(8);
-assert_eq!(
-    encode(1.0_f64),
-    vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F],
-);
+{ let mut v = Vec::new(); encode(1.0_f64, &mut v); assert_eq!(v, vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F]); }
 let padded = tinyklv::codecs::binary::enc::le_f64_lengthed(10);
-assert_eq!(
-    padded(1.0_f64),
-    vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F, 0x00, 0x00],
-);
+{ let mut v = Vec::new(); padded(1.0_f64, &mut v); assert_eq!(v, vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F, 0x00, 0x00]); }
 ```"
 );
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+
+    // The encoders in `super` are writers (`fn(input, &mut Vec<u8>)`), but the
+    // tests below were written against the older owned-bytes API where each
+    // encoder returned a `Vec<u8>`. These shadowing adapters wrap the writer
+    // API back into `Vec`-returning functions so every call site below stays
+    // byte-identical: each adapter allocates a fresh buffer, runs the writer,
+    // and returns the buffer.
+    macro_rules! vec_adapter {
+        ($name:ident, $ty:ty) => {
+            fn $name(input: $ty) -> Vec<u8> {
+                let mut out = Vec::new();
+                super::$name(input, &mut out);
+                out
+            }
+        };
+    }
+    macro_rules! vec_adapter_lengthed {
+        ($name:ident, $ty:ty) => {
+            fn $name(len: usize) -> impl Fn($ty) -> Vec<u8> {
+                move |input: $ty| {
+                    let mut out = Vec::new();
+                    super::$name(len)(input, &mut out);
+                    out
+                }
+            }
+        };
+    }
+
+    vec_adapter!(u8, u8);
+    vec_adapter!(u16, u16);
+    vec_adapter!(be_u16, u16);
+    vec_adapter!(le_u16, u16);
+    vec_adapter!(u32, u32);
+    vec_adapter!(be_u32, u32);
+    vec_adapter!(le_u32, u32);
+    vec_adapter!(u64, u64);
+    vec_adapter!(be_u64, u64);
+    vec_adapter!(le_u64, u64);
+    vec_adapter!(u128, u128);
+    vec_adapter!(be_u128, u128);
+    vec_adapter!(le_u128, u128);
+    vec_adapter!(i8, i8);
+    vec_adapter!(i16, i16);
+    vec_adapter!(be_i16, i16);
+    vec_adapter!(le_i16, i16);
+    vec_adapter!(i32, i32);
+    vec_adapter!(be_i32, i32);
+    vec_adapter!(le_i32, i32);
+    vec_adapter!(i64, i64);
+    vec_adapter!(be_i64, i64);
+    vec_adapter!(le_i64, i64);
+    vec_adapter!(i128, i128);
+    vec_adapter!(be_i128, i128);
+    vec_adapter!(le_i128, i128);
+    vec_adapter!(f32, f32);
+    vec_adapter!(be_f32, f32);
+    vec_adapter!(le_f32, f32);
+    vec_adapter!(f64, f64);
+    vec_adapter!(be_f64, f64);
+    vec_adapter!(le_f64, f64);
+
+    vec_adapter_lengthed!(be_u8_lengthed, u8);
+    vec_adapter_lengthed!(le_u8_lengthed, u8);
+    vec_adapter_lengthed!(be_u16_lengthed, u16);
+    vec_adapter_lengthed!(le_u16_lengthed, u16);
+    vec_adapter_lengthed!(be_u32_lengthed, u32);
+    vec_adapter_lengthed!(le_u32_lengthed, u32);
+    vec_adapter_lengthed!(be_u64_lengthed, u64);
+    vec_adapter_lengthed!(le_u64_lengthed, u64);
+    vec_adapter_lengthed!(be_u128_lengthed, u128);
+    vec_adapter_lengthed!(le_u128_lengthed, u128);
+    vec_adapter_lengthed!(be_i8_lengthed, i8);
+    vec_adapter_lengthed!(le_i8_lengthed, i8);
+    vec_adapter_lengthed!(be_i16_lengthed, i16);
+    vec_adapter_lengthed!(le_i16_lengthed, i16);
+    vec_adapter_lengthed!(be_i32_lengthed, i32);
+    vec_adapter_lengthed!(le_i32_lengthed, i32);
+    vec_adapter_lengthed!(be_i64_lengthed, i64);
+    vec_adapter_lengthed!(le_i64_lengthed, i64);
+    vec_adapter_lengthed!(be_i128_lengthed, i128);
+    vec_adapter_lengthed!(le_i128_lengthed, i128);
+    vec_adapter_lengthed!(be_f32_lengthed, f32);
+    vec_adapter_lengthed!(le_f32_lengthed, f32);
+    vec_adapter_lengthed!(be_f64_lengthed, f64);
+    vec_adapter_lengthed!(le_f64_lengthed, f64);
 
     #[test]
     /// Tests known-good outputs of the lengthed BE/LE encoders (`be_u32_lengthed`, `le_u16_lengthed`, `le_u32_lengthed`, `le_u64_lengthed`, `be_u64_lengthed`) across truncate and pad cases.

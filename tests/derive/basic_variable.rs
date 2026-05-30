@@ -54,7 +54,8 @@ fn encode_with_string_roundtrip() {
         id: 1234,
         name: String::from("MISSION01"),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithString::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, original);
 }

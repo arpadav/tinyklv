@@ -5,7 +5,8 @@ proptest! {
         #[test]
 /// must always succeed and produce the original string
     fn utf8_strict_roundtrip(s in "\\PC{0,100}") {
-        let encoded = tinyklv::codecs::string::enc::from_string_utf8(&s);
+        let mut encoded = Vec::new();
+        tinyklv::codecs::string::enc::from_string_utf8(&s, &mut encoded);
         let decoded = tinyklv::dec::string::to_string_utf8_strict(encoded.len())(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(s, decoded);
     }
@@ -14,7 +15,8 @@ proptest! {
         #[test]
 /// original string (since the input is already valid UTF-8)
     fn utf8_lossy_roundtrip(s in "\\PC{0,100}") {
-        let encoded = tinyklv::codecs::string::enc::from_string_utf8(&s);
+        let mut encoded = Vec::new();
+        tinyklv::codecs::string::enc::from_string_utf8(&s, &mut encoded);
         let decoded = tinyklv::dec::string::to_string_utf8(encoded.len())(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(s, decoded);
     }
@@ -22,7 +24,8 @@ proptest! {
         #[test]
 /// Encoding preserves byte length: len(enc(s)) == s.len() for UTF-8
     fn utf8_encoded_len_equals_byte_len(s in "\\PC{0,100}") {
-        let encoded = tinyklv::codecs::string::enc::from_string_utf8(&s);
+        let mut encoded = Vec::new();
+        tinyklv::codecs::string::enc::from_string_utf8(&s, &mut encoded);
         prop_assert_eq!(encoded.len(), s.len());
     }
 
@@ -30,7 +33,8 @@ proptest! {
 /// Empty string roundtrip
     fn utf8_empty_roundtrip(_: ()) {
         let s = "";
-        let encoded = tinyklv::codecs::string::enc::from_string_utf8(s);
+        let mut encoded = Vec::new();
+        tinyklv::codecs::string::enc::from_string_utf8(s, &mut encoded);
         prop_assert!(encoded.is_empty());
         let decoded = tinyklv::dec::string::to_string_utf8_strict(0)(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(s, decoded.as_str());
@@ -42,7 +46,8 @@ proptest! {
         #[test]
 /// lossless encode/decode; ASCII-range input guarantees no surrogates
     fn utf16_le_ascii_roundtrip(s in "[\\x20-\\x7e]{0,50}") {
-        let encoded = tinyklv::codecs::string::enc::from_string_utf16_le(&s);
+        let mut encoded = Vec::new();
+        tinyklv::codecs::string::enc::from_string_utf16_le(&s, &mut encoded);
         // encoded.len() is always even for valid UTF-16
         prop_assert_eq!(encoded.len() % 2, 0);
         let decoded = tinyklv::dec::string::to_string_utf16_le(encoded.len())(&mut encoded.as_slice()).unwrap();
@@ -52,7 +57,8 @@ proptest! {
         #[test]
 /// UTF-16 LE encoding produces exactly 2 * utf16_len bytes
     fn utf16_le_byte_length(s in "[\\x20-\\x7e]{0,50}") {
-        let encoded = tinyklv::codecs::string::enc::from_string_utf16_le(&s);
+        let mut encoded = Vec::new();
+        tinyklv::codecs::string::enc::from_string_utf16_le(&s, &mut encoded);
         let utf16_len: usize = s.encode_utf16().count();
         prop_assert_eq!(encoded.len(), utf16_len * 2);
     }
@@ -72,7 +78,8 @@ proptest! {
         #[test]
 /// UTF-16 BE roundtrip over ASCII-safe strings
     fn utf16_be_ascii_roundtrip(s in "[\\x20-\\x7e]{0,50}") {
-        let encoded = tinyklv::codecs::string::enc::from_string_utf16_be(&s);
+        let mut encoded = Vec::new();
+        tinyklv::codecs::string::enc::from_string_utf16_be(&s, &mut encoded);
         prop_assert_eq!(encoded.len() % 2, 0);
         let decoded = tinyklv::dec::string::to_string_utf16_be(encoded.len())(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(s, decoded);
@@ -81,8 +88,10 @@ proptest! {
         #[test]
 /// UTF-16 BE and LE encodings of the same string have equal byte length
     fn utf16_be_le_same_byte_length(s in "[\\x20-\\x7e]{0,50}") {
-        let be = tinyklv::codecs::string::enc::from_string_utf16_be(&s);
-        let le = tinyklv::codecs::string::enc::from_string_utf16_le(&s);
+        let mut be = Vec::new();
+        tinyklv::codecs::string::enc::from_string_utf16_be(&s, &mut be);
+        let mut le = Vec::new();
+        tinyklv::codecs::string::enc::from_string_utf16_le(&s, &mut le);
         prop_assert_eq!(be.len(), le.len());
     }
 

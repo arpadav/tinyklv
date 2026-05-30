@@ -37,8 +37,9 @@ struct PacketB {
 fn build_stream(a_val: u16, b_val: u32) -> Vec<u8> {
     let a = PacketA { value: a_val };
     let b = PacketB { value: b_val };
-    let mut stream = a.encode_frame();
-    stream.extend(b.encode_frame());
+    let mut stream = Vec::new();
+    a.encode_frame(&mut stream);
+    b.encode_frame(&mut stream);
     stream
 }
 
@@ -71,6 +72,7 @@ fn both_packets_independent() {
 #[test]
 /// Tests that extracting `PacketB` fails when the stream contains only `PacketA` bytes, since `PacketB`'s sentinel is absent.
 fn packet_a_missing_sentinel_fails() {
-    let a_only = PacketA { value: 1 }.encode_frame();
+    let mut a_only = Vec::new();
+    PacketA { value: 1 }.encode_frame(&mut a_only);
     assert!(PacketB::decode_frame(&mut a_only.as_slice()).is_err());
 }

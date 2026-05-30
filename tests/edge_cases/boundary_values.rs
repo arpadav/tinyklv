@@ -10,7 +10,8 @@ macro_rules! boundary_roundtrip {
         #[test]
         fn $name() {
             for val in [$($val as $ty),+] {
-                let encoded = $enc(val);
+                let mut encoded = Vec::new();
+                $enc(val, &mut encoded);
                 let decoded = $dec(&mut encoded.as_slice()).unwrap();
                 assert_eq!(val, decoded, "boundary roundtrip failed for value {:?}", val);
             }
@@ -111,7 +112,8 @@ boundary_roundtrip!(
 #[test]
 /// Tests BER length roundtrip at the lower boundary value `0`.
 fn ber_length_boundary_0() {
-    let encoded = encber::ber_length(0_u64);
+    let mut encoded = Vec::new();
+    encber::ber_length(0_u64, &mut encoded);
     let decoded = decber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, 0_usize);
 }
@@ -119,7 +121,8 @@ fn ber_length_boundary_0() {
 #[test]
 /// Tests BER length roundtrip at the short-form upper boundary `127` (1-byte encoding).
 fn ber_length_boundary_127() {
-    let encoded = encber::ber_length(127_u64);
+    let mut encoded = Vec::new();
+    encber::ber_length(127_u64, &mut encoded);
     assert_eq!(encoded.len(), 1, "127 must encode as short form (1 byte)");
     let decoded = decber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, 127_usize);
@@ -128,7 +131,8 @@ fn ber_length_boundary_127() {
 #[test]
 /// Tests BER length roundtrip at `128`, the first long-form value (encoding must exceed 1 byte).
 fn ber_length_boundary_128() {
-    let encoded = encber::ber_length(128_u64);
+    let mut encoded = Vec::new();
+    encber::ber_length(128_u64, &mut encoded);
     assert!(encoded.len() > 1, "128 must encode as long form (> 1 byte)");
     let decoded = decber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, 128_usize);
@@ -137,7 +141,8 @@ fn ber_length_boundary_128() {
 #[test]
 /// Tests BER length roundtrip at `255`, a common 1-extra-byte long-form boundary.
 fn ber_length_boundary_255() {
-    let encoded = encber::ber_length(255_u64);
+    let mut encoded = Vec::new();
+    encber::ber_length(255_u64, &mut encoded);
     let decoded = decber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, 255_usize);
 }
@@ -145,7 +150,8 @@ fn ber_length_boundary_255() {
 #[test]
 /// Tests BER length roundtrip at `256`, the first value requiring 2 long-form bytes.
 fn ber_length_boundary_256() {
-    let encoded = encber::ber_length(256_u64);
+    let mut encoded = Vec::new();
+    encber::ber_length(256_u64, &mut encoded);
     let decoded = decber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, 256_usize);
 }
@@ -153,7 +159,8 @@ fn ber_length_boundary_256() {
 #[test]
 /// Tests BER length roundtrip at the upper boundary `u32::MAX`.
 fn ber_length_boundary_u32_max() {
-    let encoded = encber::ber_length(u32::MAX);
+    let mut encoded = Vec::new();
+    encber::ber_length(u32::MAX, &mut encoded);
     let decoded = decber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, u32::MAX as usize);
 }
@@ -198,7 +205,8 @@ fn be_f32_boundaries() {
         f32::EPSILON.to_bits(),
     ] {
         let val = f32::from_bits(bits);
-        let encoded = encb::be_f32(val);
+        let mut encoded = Vec::new();
+        encb::be_f32(val, &mut encoded);
         let decoded = decb::be_f32(&mut encoded.as_slice()).unwrap();
         assert_eq!(decoded.to_bits(), bits);
     }
@@ -208,7 +216,8 @@ fn be_f32_boundaries() {
 /// Tests `be_f32` bit-exact roundtrip for positive and negative infinity.
 fn be_f32_infinity_roundtrip() {
     for val in [f32::INFINITY, f32::NEG_INFINITY] {
-        let encoded = encb::be_f32(val);
+        let mut encoded = Vec::new();
+        encb::be_f32(val, &mut encoded);
         let decoded = decb::be_f32(&mut encoded.as_slice()).unwrap();
         assert_eq!(decoded.to_bits(), val.to_bits());
     }
@@ -220,7 +229,8 @@ fn be_f32_nan_roundtrip_via_bits() {
     // NaN != NaN, so compare bit patterns directly
     let bits = f32::NAN.to_bits();
     let val = f32::from_bits(bits);
-    let encoded = encb::be_f32(val);
+    let mut encoded = Vec::new();
+    encb::be_f32(val, &mut encoded);
     let decoded = decb::be_f32(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded.to_bits(), bits);
 }
@@ -229,7 +239,8 @@ fn be_f32_nan_roundtrip_via_bits() {
 /// Tests `be_f32` bit-exact roundtrip of negative zero (`-0.0`).
 fn be_f32_neg_zero_roundtrip() {
     let bits = (-0.0_f32).to_bits();
-    let encoded = encb::be_f32(f32::from_bits(bits));
+    let mut encoded = Vec::new();
+    encb::be_f32(f32::from_bits(bits), &mut encoded);
     let decoded = decb::be_f32(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded.to_bits(), bits);
 }
@@ -247,7 +258,8 @@ fn be_f64_boundaries() {
         f64::EPSILON.to_bits(),
     ] {
         let val = f64::from_bits(bits);
-        let encoded = encb::be_f64(val);
+        let mut encoded = Vec::new();
+        encb::be_f64(val, &mut encoded);
         let decoded = decb::be_f64(&mut encoded.as_slice()).unwrap();
         assert_eq!(decoded.to_bits(), bits);
     }
@@ -257,7 +269,8 @@ fn be_f64_boundaries() {
 /// Tests `be_f64` bit-exact roundtrip for positive and negative infinity.
 fn be_f64_infinity_roundtrip() {
     for val in [f64::INFINITY, f64::NEG_INFINITY] {
-        let encoded = encb::be_f64(val);
+        let mut encoded = Vec::new();
+        encb::be_f64(val, &mut encoded);
         let decoded = decb::be_f64(&mut encoded.as_slice()).unwrap();
         assert_eq!(decoded.to_bits(), val.to_bits());
     }
@@ -267,7 +280,8 @@ fn be_f64_infinity_roundtrip() {
 /// Tests `be_f64` NaN roundtrip compared by bit pattern (since `NaN != NaN`).
 fn be_f64_nan_roundtrip_via_bits() {
     let bits = f64::NAN.to_bits();
-    let encoded = encb::be_f64(f64::from_bits(bits));
+    let mut encoded = Vec::new();
+    encb::be_f64(f64::from_bits(bits), &mut encoded);
     let decoded = decb::be_f64(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded.to_bits(), bits);
 }
@@ -276,7 +290,8 @@ fn be_f64_nan_roundtrip_via_bits() {
 /// Tests `be_f64` bit-exact roundtrip of negative zero (`-0.0`).
 fn be_f64_neg_zero_roundtrip() {
     let bits = (-0.0_f64).to_bits();
-    let encoded = encb::be_f64(f64::from_bits(bits));
+    let mut encoded = Vec::new();
+    encb::be_f64(f64::from_bits(bits), &mut encoded);
     let decoded = decb::be_f64(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded.to_bits(), bits);
 }
@@ -294,7 +309,8 @@ fn le_f32_boundaries() {
         (-0.0_f32).to_bits(),
     ] {
         let val = f32::from_bits(bits);
-        let encoded = encb::le_f32(val);
+        let mut encoded = Vec::new();
+        encb::le_f32(val, &mut encoded);
         let decoded = decb::le_f32(&mut encoded.as_slice()).unwrap();
         assert_eq!(decoded.to_bits(), bits);
     }
@@ -313,7 +329,8 @@ fn le_f64_boundaries() {
         (-0.0_f64).to_bits(),
     ] {
         let val = f64::from_bits(bits);
-        let encoded = encb::le_f64(val);
+        let mut encoded = Vec::new();
+        encb::le_f64(val, &mut encoded);
         let decoded = decb::le_f64(&mut encoded.as_slice()).unwrap();
         assert_eq!(decoded.to_bits(), bits);
     }

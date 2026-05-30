@@ -103,7 +103,8 @@ fn main() {
 
     // encode - the engine occupies the value region of key 0x03, containing
     // its own nested KLV triples
-    let frame = original.encode_frame();
+    let mut frame = Vec::new();
+    original.encode_frame(&mut frame);
 
     // decode - outer and inner are reconstructed in one call
     let decoded = VehicleStatus::decode_frame(
@@ -116,7 +117,8 @@ fn main() {
     assert_eq!(decoded.engine, original.engine);
 
     // the inner type can be used on its own without the outer frame
-    let inner_bytes = original.engine.encode_value();
+    let mut inner_bytes = Vec::new();
+    original.engine.encode_value(&mut inner_bytes);
     let inner_decoded = EngineHealth::decode_value(
         &mut inner_bytes.as_slice(),
     ).unwrap();

@@ -22,14 +22,14 @@ impl Mode {
         }
     }
 }
-impl EncodeValue<Vec<u8>> for Mode {
+impl EncodeValue for Mode {
     /// Encoder takes `&Mode`; field attribute uses `enc = Mode::encode_value` (no sigil)
-    fn encode_value(&self) -> Vec<u8> {
+    fn encode_value(&self, out: &mut Vec<u8>) {
         encb::u8(match self {
             Mode::Idle   => 0,
             Mode::Active => 1,
             Mode::Error  => 2,
-        })
+        }, out);
     }
 }
 
@@ -81,7 +81,8 @@ fn main() {
     };
 
     // encode_frame: sentinel + body-length + KLV triples
-    let frame = original.encode_frame();
+    let mut frame = Vec::new();
+    original.encode_frame(&mut frame);
 
     // the same bytes, laid out by hand; proves the derive and your mental
     // model agree before we stop hand-writing streams from Tutorial 10 on

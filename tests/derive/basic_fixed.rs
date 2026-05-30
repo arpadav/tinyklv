@@ -89,7 +89,8 @@ fn encode_value_roundtrip() {
         int_val: 0x00010203,
         long_val: 0x0001020304050607,
     };
-    let encoded = packet.encode_value();
+    let mut encoded = Vec::new();
+    packet.encode_value(&mut encoded);
     let decoded = BasicFixed::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, packet);
 }
@@ -131,13 +132,16 @@ fn decode_two_packets_back_to_back() {
         int_val: 7,
         long_val: 8,
     };
-    let mut stream = p1.encode_value();
-    stream.extend(p2.encode_value());
+    let mut stream = Vec::new();
+    p1.encode_value(&mut stream);
+    p2.encode_value(&mut stream);
     let r_full = BasicFixed::decode_value(&mut &stream[..]).unwrap();
     // Last-wins: p2 values overwrite p1 values when reading the whole stream
     assert_eq!(r_full, p2);
     // Decoding only p2's slice yields p2
-    let offset = p1.encode_value().len();
+    let mut p1_buf = Vec::new();
+    p1.encode_value(&mut p1_buf);
+    let offset = p1_buf.len();
     let r2 = BasicFixed::decode_value(&mut &stream[offset..]).unwrap();
     assert_eq!(r2, p2);
 }

@@ -98,7 +98,8 @@ fn mixed_var_fixed_roundtrip() {
         },
         label: String::from("Paris"),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = MixedVarFixed::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -161,7 +162,8 @@ fn var_sensor_array() {
         color: Color::Blue,
         readings: readings.clone(),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = VarSensorArray::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded.color, Color::Blue);
     assert_eq!(decoded.readings.len(), 3);

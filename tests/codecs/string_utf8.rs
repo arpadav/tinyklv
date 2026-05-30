@@ -20,7 +20,8 @@ fn utf8_decode_mission01() {
 #[test]
 /// Tests that `from_string_utf8("AF-101")` encodes to the expected ASCII byte sequence.
 fn utf8_encode_af101() {
-    let encoded = from_string_utf8("AF-101");
+    let mut encoded = Vec::new();
+    from_string_utf8("AF-101", &mut encoded);
     assert_eq!(encoded, vec![0x41, 0x46, 0x2D, 0x31, 0x30, 0x31]);
 }
 
@@ -28,7 +29,8 @@ fn utf8_encode_af101() {
 /// Tests ASCII string encode/decode roundtrip.
 fn utf8_ascii_roundtrip() {
     let text = "Hello, World!";
-    let encoded = from_string_utf8(text);
+    let mut encoded = Vec::new();
+    from_string_utf8(text, &mut encoded);
     let decoded = to_string_utf8(encoded.len())(&mut encoded.as_slice()).unwrap();
     assert_eq!(text, decoded);
 }
@@ -37,7 +39,8 @@ fn utf8_ascii_roundtrip() {
 /// Tests UTF-8 roundtrip preserves Latin-1 extended characters (`"Héllo"`).
 fn utf8_unicode_roundtrip() {
     let text = "Héllo";
-    let encoded = from_string_utf8(text);
+    let mut encoded = Vec::new();
+    from_string_utf8(text, &mut encoded);
     let decoded = to_string_utf8(encoded.len())(&mut encoded.as_slice()).unwrap();
     assert_eq!(text, decoded);
 }
@@ -46,7 +49,8 @@ fn utf8_unicode_roundtrip() {
 /// Tests UTF-8 roundtrip preserves CJK characters (`"你好世界"`).
 fn utf8_cjk_roundtrip() {
     let text = "你好世界";
-    let encoded = from_string_utf8(text);
+    let mut encoded = Vec::new();
+    from_string_utf8(text, &mut encoded);
     let decoded = to_string_utf8(encoded.len())(&mut encoded.as_slice()).unwrap();
     assert_eq!(text, decoded);
 }
@@ -55,7 +59,8 @@ fn utf8_cjk_roundtrip() {
 /// Tests UTF-8 roundtrip preserves 4-byte emoji sequences.
 fn utf8_emoji_roundtrip() {
     let text = "Hello 🌍";
-    let encoded = from_string_utf8(text);
+    let mut encoded = Vec::new();
+    from_string_utf8(text, &mut encoded);
     let decoded = to_string_utf8(encoded.len())(&mut encoded.as_slice()).unwrap();
     assert_eq!(text, decoded);
 }
@@ -71,7 +76,8 @@ fn utf8_empty_string_decode() {
 #[test]
 /// Tests that `from_string_utf8("")` produces an empty byte vector.
 fn utf8_empty_string_encode() {
-    let encoded = from_string_utf8("");
+    let mut encoded = Vec::new();
+    from_string_utf8("", &mut encoded);
     assert!(encoded.is_empty());
 }
 

@@ -51,7 +51,8 @@ fn main() {
     };
 
     // encode - the clean KLV frame, sentinel-prefixed
-    let clean_frame = original.encode_frame();
+    let mut clean_frame = Vec::new();
+    original.encode_frame(&mut clean_frame);
 
     // prepend noise + zeros the seeker must skip
     let mut noisy_buffer: Vec<u8> = Vec::new();

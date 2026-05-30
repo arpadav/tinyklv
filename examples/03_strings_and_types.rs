@@ -67,7 +67,8 @@ fn main() {
 
     // encode - emits three KLV triples, the last two with a length prefix
     // computed from the UTF-8 byte length of the string
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
 
     // decode - rebuilds the struct from the KLV triples
     let decoded = StationRegistration::decode_value(

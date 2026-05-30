@@ -29,7 +29,9 @@ use tinyklv::dec::binary as decb;
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use criterion::{BenchmarkGroup, Criterion, criterion_group, criterion_main, measurement::WallTime};
+use criterion::{
+    BenchmarkGroup, Criterion, criterion_group, criterion_main, measurement::WallTime,
+};
 use std::{hint::black_box, time::Duration};
 use winnow::{Parser, token::take};
 
@@ -115,14 +117,21 @@ fn bench_arm<T>(
 /// * `$shipped` - Path to the shipped big-endian decoder (e.g. `decb::be_u32`)
 macro_rules! bench_ty {
     ($group:expr, $fixture:expr, $ty:ty, $n:literal, $shipped:path) => {{
-        bench_arm::<$ty>($group, concat!("shipped_", stringify!($ty)), $fixture, $n, $shipped);
+        bench_arm::<$ty>(
+            $group,
+            concat!("shipped_", stringify!($ty)),
+            $fixture,
+            $n,
+            $shipped,
+        );
         bench_arm::<$ty>(
             $group,
             concat!("checked_", stringify!($ty)),
             $fixture,
             $n,
             |input: &mut &[u8]| {
-                let bytes = take::<usize, &[u8], winnow::error::ContextError>($n).parse_next(input)?;
+                let bytes =
+                    take::<usize, &[u8], winnow::error::ContextError>($n).parse_next(input)?;
                 let array = <[u8; $n]>::try_from(bytes).expect("take(N) yields exactly N bytes");
                 Ok(<$ty>::from_be_bytes(array))
             },

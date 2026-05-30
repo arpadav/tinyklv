@@ -1,24 +1,130 @@
 //! Code generation for `DecodePartial` and `ResumePartial` trait implementations
 //!
-//! Provides two entry points consumed by [`super::gen_decode_impl`]:
+//! Provides three entry points consumed by [`super::gen_decode_impl`]:
 //!
 //! * [`gen_decode_partial_impl`] - emits the `DecodePartial` impl, which
 //!   allocates a default partial struct and delegates to `ResumePartial`
 //! * [`gen_resume_partial_impl`] - emits the `ResumePartial` impl, which
-//!   contains the main streaming decode loop: key/len parsing, break-condition
-//!   dispatch, value slicing, and per-field partial accumulation
+//!   contains the streaming decode loop (resumable across `feed` chunks via
+//!   `Packet::NeedMore`): key/len parsing, break-condition dispatch, value
+//!   slicing, and per-field partial accumulation
+//! * [`gen_decode_value`] - emits the one-shot `DecodeValue` impl: the
+//!   same per-field arms and `finalize`, but a single linear pass with no
+//!   resume/`Packet` machinery (used by `decode_value`/`decode_frame`)
+//!
+//! [`gen_resume_partial_impl`] and [`gen_decode_value`] differ only in their truncation/abort
+//! handling; everything *inside* an iteration is produced once by [`gen_decode_loop_parts`] so the
+//! two drivers cannot drift apart
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use super::{constants, key_match_gen};
-use crate::ast::{attr::MainContainer, types};
+use crate::ast::{
+    attr::{MainContainer, container::break_on::BreakOnSpec},
+    types,
+};
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use quote::quote;
+
+/// Per-iteration loop ingredients shared by both decode drivers
+///
+/// The streaming [`gen_resume_partial_impl`] loop and the one-shot [`gen_decode_value`] loop differ
+/// only in how they handle truncation and abort (one suspends via `Packet::NeedMore`, the other
+/// rewinds and breaks). Everything *inside* an iteration - the key-dispatch arms, the optional debug
+/// logging, and the `deny_unknown_keys` clippy allowance - is identical and produced once in
+/// [`gen_decode_loop_parts`], so the two paths cannot diverge
+struct DecodeLoopParts {
+    /// Per-field `match key { .. }` arms routing each key to its decoder (see [`key_match_gen::gen_items_match`])
+    items_match: proc_macro2::TokenStream,
+
+    /// Optional `logger!("key: .., len: ..")` call emitted after the key/len parse when `debug` is set
+    debug_key_val: proc_macro2::TokenStream,
+
+    /// Optional `#[allow(clippy::manual_range_patterns)]` for the generated key alternation, emitted only when the unknown-key gate is present (i.e. `deny_unknown_keys` is set)
+    pre_check_clippy_allow: proc_macro2::TokenStream,
+
+    /// Whether the container set `deny_unknown_keys`; each path builds its own (differently-typed) gate from this flag
+    deny_unknown_keys: bool,
+
+    /// The per-iteration break-condition scrutinee (a [`tinyklv::BreakType`] expression) the loop
+    /// matches on. Built from the container's `#[klv(break_on = ..)]`: a bare `BreakType::Proceed`
+    /// when absent, a key-equality check yielding `Done` for a literal, or a `path(key, len)` call
+    /// for a function. Computed once so both loops branch identically
+    break_decision: proc_macro2::TokenStream,
+}
+
+/// Builds the [`DecodeLoopParts`] shared by the streaming and one-shot decode loops
+///
+/// # Arguments
+///
+/// * `input` - The parsed container, providing field data and the `debug` / `deny_unknown_keys` attributes
+/// * `stream` - The stream type, used to qualify the per-field `DecodeValue` fallback calls
+///
+/// # Returns
+///
+/// The [`DecodeLoopParts`] consumed by both [`gen_resume_partial_impl`] and [`gen_decode_value`]
+fn gen_decode_loop_parts(input: &MainContainer, stream: &syn::Type) -> DecodeLoopParts {
+    // --------------------------------------------------
+    // container attributes
+    // --------------------------------------------------
+    let debug_on = input.attrs.debug.is_some();
+    let deny_unknown_keys = input.attrs.deny_unknown_keys.is_some();
+    // --------------------------------------------------
+    // per-field key-dispatch arms (single source of truth across both drivers)
+    // --------------------------------------------------
+    let items_match = key_match_gen::gen_items_match(&input.data, stream, debug_on);
+    // --------------------------------------------------
+    // debug statement after key/len parse
+    // --------------------------------------------------
+    let debug_key_val = if debug_on {
+        let logger = constants::logger();
+        quote! { #logger ("key: {}, len: {}", key, len); }
+    } else {
+        quote! {}
+    };
+    // --------------------------------------------------
+    // clippy allowance for the generated key alternation, emitted only when a gate exists
+    // --------------------------------------------------
+    let pre_check_clippy_allow = if deny_unknown_keys {
+        quote! {
+            #[allow(
+                clippy::manual_range_patterns,
+                reason = "the matches!(key, K1 | K2 | ...) pattern is generated by the macro and cannot be avoided. this lint appears when keys are consecutive",
+            )]
+        }
+    } else {
+        quote! {}
+    };
+    // --------------------------------------------------
+    // break-condition scrutinee from `#[klv(break_on = ..)]`:
+    // * absent   -> always proceed (the match collapses; identical to having no break check)
+    // * literal  -> stop when the decoded key equals the literal (concrete `key`, no trait needed)
+    // * function -> call the user's `fn(key, len) -> BreakType` directly with the concrete pair
+    // --------------------------------------------------
+    let break_decision = match input.attrs.break_on.as_ref() {
+        None => quote! { ::tinyklv::BreakType::Proceed },
+        Some(BreakOnSpec::Literal(lit)) => quote! {
+            if key == #lit {
+                ::tinyklv::BreakType::Done
+            } else {
+                ::tinyklv::BreakType::Proceed
+            }
+        },
+        Some(BreakOnSpec::Func(path)) => quote! { #path(key, len) },
+    };
+    DecodeLoopParts {
+        items_match,
+        debug_key_val,
+        pre_check_clippy_allow,
+        deny_unknown_keys,
+        break_decision,
+    }
+}
 
 /// Generates the `DecodePartial` trait implementation for a container
 ///
@@ -81,7 +187,7 @@ pub(super) fn gen_decode_partial_impl(
 /// 1. Checks for EOF and surfaces a `NeedMore` if no bytes are available
 /// 2. Parses the key, distinguishing zero-consumed truncation from key malformation
 /// 3. Parses the length; on failure rewinds and surfaces `NeedMore`
-/// 4. Dispatches to `break_condition`, handling `Proceed`, `Skip`, `Done`, and `Abort`
+/// 4. Evaluates the container's `break_on` decision, handling `Proceed`, `Skip`, `Done`, and `Abort`
 /// 5. Optionally checks the parsed key against the known-key set when `deny_unknown_keys` is set
 /// 6. Slices the value bytes and dispatches to per-field decoders via the generated `match` arms
 /// 7. When the loop exits (`Done`), calls `Partial::finalize` and returns `Ready` or an error label
@@ -111,36 +217,20 @@ pub(super) fn gen_resume_partial_impl(
     // --------------------------------------------------
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     // --------------------------------------------------
-    // container attributes
+    // per-iteration ingredients shared verbatim with the one-shot path
     // --------------------------------------------------
-    let debug_on = input.attrs.debug.is_some();
-    let deny_unknown_keys = input.attrs.deny_unknown_keys.is_some();
+    let DecodeLoopParts {
+        items_match,
+        debug_key_val,
+        pre_check_clippy_allow,
+        deny_unknown_keys,
+        break_decision,
+    } = gen_decode_loop_parts(input, stream);
     // --------------------------------------------------
-    // * field assignment during decode
-    // * known-keys precheck - only if deny_unknown_keys is enabled
+    // streaming unknown-key gate: returns the `&'static str` label `resume_partial` propagates
     // --------------------------------------------------
-    let items_match = key_match_gen::gen_items_match(&input.data, stream, debug_on);
-    let (pre_check_gate, pre_check_clippy_allow) = if deny_unknown_keys {
-        (
-            key_match_gen::gen_known_keys_check(name, &input.data),
-            quote! {
-                #[allow(
-                    clippy::manual_range_patterns,
-                    reason = "the matches!(key, K1 | K2 | ...) pattern is generated by the macro and cannot be avoided. this lint appears when keys are consecutive",
-                )]
-            },
-        )
-    } else {
-        (quote! {}, quote! {})
-    };
-    // --------------------------------------------------
-    // debug statement after key/len parse
-    // --------------------------------------------------
-    let debug_key_val = if debug_on {
-        let logger = constants::logger();
-        quote! {
-            #logger ("key: {}, len: {}", key, len);
-        }
+    let pre_check_gate = if deny_unknown_keys {
+        key_match_gen::gen_known_keys_check(name, &input.data)
     } else {
         quote! {}
     };
@@ -244,9 +334,9 @@ pub(super) fn gen_resume_partial_impl(
                         }
                     };
 
-                    match Self::break_condition(key, len) {
-                        ::tinyklv::BreakConditionType::Proceed => (),
-                        ::tinyklv::BreakConditionType::Skip => {
+                    match #break_decision {
+                        ::tinyklv::BreakType::Proceed => (),
+                        ::tinyklv::BreakType::Skip => {
                             // --------------------------------------------------
                             // not enough bytes for the value being
                             // skipped: rewind so the next iteration
@@ -270,27 +360,19 @@ pub(super) fn gen_resume_partial_impl(
                             >(len).parse_next(input);
                             continue;
                         }
-                        ::tinyklv::BreakConditionType::Done => break,
-                        ::tinyklv::BreakConditionType::Abort(_) => {
+                        ::tinyklv::BreakType::Done => break,
+                        ::tinyklv::BreakType::Abort(__msg) => {
                             // --------------------------------------------------
-                            // user-signalled abort. the abort's own
-                            // ContextError is not preserved here - the
-                            // codegen returns a static label and the
-                            // Decoder wraps it with real input
-                            // context. carrying the user's
-                            // ContextError through the &'static str
-                            // boundary is left as a follow-up.
+                            // user-signalled fatal abort. `BreakType::Abort` is documented to
+                            // *guarantee* an `Err` with no partially-decoded value surfaced, so
+                            // error unconditionally here - matching the one-shot `decode_value`
+                            // path (we do NOT attempt finalize). the abort's static message rides
+                            // out on the `&'static str` boundary; the Decoder wraps it with real
+                            // input context.
                             // --------------------------------------------------
-                            return match <#partial_name #ty_generics as ::tinyklv::traits::Partial>::finalize(__acc) {
-                                Ok(v) => ::core::result::Result::Ok(
-                                    ::tinyklv::decoder::Packet::Ready(v)
-                                ),
-                                Err(_) => ::core::result::Result::Err(
-                                    "break_condition::abort"
-                                ),
-                            };
+                            return ::core::result::Result::Err(__msg);
                         }
-                        // future `BreakConditionType` variants behave as `Proceed`
+                        // future `BreakType` variants behave as `Proceed`
                         _ => (),
                     }
                     #debug_key_val
@@ -336,7 +418,7 @@ pub(super) fn gen_resume_partial_impl(
                     }
                 }
                 // --------------------------------------------------
-                // BreakConditionType::Done dropped us out of the loop.
+                // BreakType::Done dropped us out of the loop.
                 // attempt finalize on whatever the partial holds.
                 // success -> Ready; required-field failure -> propagate
                 // the &'static str label outward (the Decoder will
@@ -347,6 +429,188 @@ pub(super) fn gen_resume_partial_impl(
                         ::tinyklv::decoder::Packet::Ready(v)
                     ),
                     Err(label) => ::core::result::Result::Err(label),
+                }
+            }
+        }
+    }
+}
+
+/// Generates the one-shot direct [`tinyklv::traits::DecodeValue`] implementation for a container
+///
+/// `decode_value`/`decode_frame` are one-shot entry points: the caller already holds the complete
+/// value body, so they do NOT need the streaming `resume_partial` machinery (per-iteration
+/// `checkpoint`/`reset`, `Packet::NeedMore`, resumable accumulator). This emits a single linear pass
+/// over the input into a stack-local partial accumulator, then `Partial::finalize` - the same
+/// per-field arms and finalize the streaming path uses, but without the resume bookkeeping.
+///
+/// Truncation (a key/len/value that runs short) or a `Done`/`Abort` break-condition simply stops the
+/// loop and finalizes whatever was accumulated, exactly mirroring the streaming path's
+/// `NeedMore -> finalize` success semantics. The streaming `decoder()` / `feed` path is unaffected
+///
+/// # Arguments
+///
+/// * `input` - The parsed container, providing field data and container attributes
+/// * `name` - The container ident the impl is generated for
+/// * `partial_name` - The associated partial-packet struct ident (the stack accumulator type)
+/// * `stream` - The stream type parameterising the impl
+/// * `key_decoder` - Token expression used to decode each TLV key from the stream
+/// * `len_decoder` - Token expression used to decode each TLV length from the stream
+///
+/// # Returns
+///
+/// A [`proc_macro2::TokenStream`] containing the complete one-shot `DecodeValue` impl block
+pub(super) fn gen_decode_value(
+    input: &MainContainer,
+    name: &syn::Ident,
+    partial_name: &syn::Ident,
+    stream: &syn::Type,
+    key_decoder: &types::XcoderType,
+    len_decoder: &types::XcoderType,
+) -> proc_macro2::TokenStream {
+    // --------------------------------------------------
+    // split generics
+    // --------------------------------------------------
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    // --------------------------------------------------
+    // per-iteration ingredients shared verbatim with the streaming path
+    // --------------------------------------------------
+    let DecodeLoopParts {
+        items_match,
+        debug_key_val,
+        pre_check_clippy_allow,
+        deny_unknown_keys,
+        break_decision,
+    } = gen_decode_loop_parts(input, stream);
+    // --------------------------------------------------
+    // one-shot unknown-key gate: same key pattern as the streaming path, but returns a
+    // `ContextError` via `labeled_error` (this fn returns `winnow::Result`, not the streaming
+    // path's `Result<_, &'static str>`)
+    // --------------------------------------------------
+    let pre_check_gate = if deny_unknown_keys {
+        let pattern = key_match_gen::gen_known_keys_pattern(&input.data);
+        let message = key_match_gen::gen_unknown_key_message(name);
+        quote! {
+            if !matches!(key, #pattern) {
+                return ::core::result::Result::Err(::tinyklv::__export::labeled_error(
+                    input,
+                    &checkpoint,
+                    #message,
+                ));
+            }
+        }
+    } else {
+        quote! {}
+    };
+    // --------------------------------------------------
+    // return the direct DecodeValue impl
+    // --------------------------------------------------
+    quote! {
+        #[doc(hidden)]
+        #[automatically_derived]
+        #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::DecodeValue`] for [`", stringify!(#stream), "`].")]
+        impl #impl_generics ::tinyklv::traits::DecodeValue<#stream> for #name #ty_generics #where_clause {
+            #pre_check_clippy_allow
+            #[inline]
+            fn decode_value(input: &mut #stream) -> ::tinyklv::__export::winnow::Result<Self> {
+                let checkpoint = input.checkpoint();
+                let mut __acc = <#partial_name #ty_generics as ::core::default::Default>::default();
+                loop {
+                    // --------------------------------------------------
+                    // clean end of the value body: stop and finalize
+                    // --------------------------------------------------
+                    if input.eof_offset() == 0 {
+                        break;
+                    }
+                    // --------------------------------------------------
+                    // checkpoint the iteration start so a truncated trailing triple is rewound
+                    // before finalize - leaving the cursor exactly where the streaming path's
+                    // `reset` + `NeedMore` would, so `Vec<T>::decode_value` and other cursor-reading
+                    // callers observe identical residual input
+                    // --------------------------------------------------
+                    let checkpoint_inner = input.checkpoint();
+                    // --------------------------------------------------
+                    // key/len: a short read means a truncated body. one-shot decode has no more
+                    // bytes coming, so rewind to the triple start and finalize what we have (the
+                    // streaming path's `reset` + `NeedMore` -> finalize), rather than resuming
+                    // --------------------------------------------------
+                    let key = match #key_decoder.parse_next(input) {
+                        ::core::result::Result::Ok(k) => k,
+                        ::core::result::Result::Err(_) => {
+                            input.reset(&checkpoint_inner);
+                            break;
+                        }
+                    };
+                    let len = match #len_decoder.parse_next(input) {
+                        ::core::result::Result::Ok(l) => l,
+                        ::core::result::Result::Err(_) => {
+                            input.reset(&checkpoint_inner);
+                            break;
+                        }
+                    };
+                    match #break_decision {
+                        ::tinyklv::BreakType::Proceed => (),
+                        ::tinyklv::BreakType::Skip => {
+                            if input.eof_offset() < len {
+                                input.reset(&checkpoint_inner);
+                                break;
+                            }
+                            let _ = ::tinyklv::__export::winnow::token::take::<
+                                usize,
+                                #stream,
+                                ::tinyklv::__export::winnow::error::ContextError,
+                            >(len).parse_next(input);
+                            continue;
+                        }
+                        ::tinyklv::BreakType::Done => break,
+                        // `Abort` is documented to *guarantee* an `Err` with no partially-decoded
+                        // value surfaced; honor that contract here rather than finalizing what was
+                        // accumulated (the streaming `resume_partial` path errors identically). the
+                        // user's static message is labelled with the current input position.
+                        ::tinyklv::BreakType::Abort(__msg) => {
+                            return ::core::result::Result::Err(::tinyklv::__export::labeled_error(
+                                input,
+                                &checkpoint,
+                                __msg,
+                            ));
+                        }
+                        // future `BreakType` variants behave as `Proceed`
+                        _ => (),
+                    }
+                    #debug_key_val
+                    #pre_check_gate
+                    if input.eof_offset() < len {
+                        input.reset(&checkpoint_inner);
+                        break;
+                    }
+                    // --------------------------------------------------
+                    // take the value sub-slice once; the per-field arms decode directly out of it.
+                    // pre-checked above, so the take cannot fail in practice
+                    // --------------------------------------------------
+                    let mut subinput: <#stream as ::tinyklv::__export::winnow::stream::Stream>::Slice = match ::tinyklv::__export::winnow::token::take::<
+                        usize,
+                        #stream,
+                        ::tinyklv::__export::winnow::error::ContextError,
+                    >(len).parse_next(input) {
+                        ::core::result::Result::Ok(s) => s,
+                        ::core::result::Result::Err(_) => {
+                            input.reset(&checkpoint_inner);
+                            break;
+                        }
+                    };
+                    match key {
+                        #items_match
+                        _ => (),
+                    }
+                }
+                // --------------------------------------------------
+                // construct the final struct (defaults + required-field checks live in `finalize`,
+                // the single source of truth shared with the streaming path)
+                // --------------------------------------------------
+                match <#partial_name #ty_generics as ::tinyklv::traits::Partial>::finalize(__acc) {
+                    ::core::result::Result::Ok(v) => ::core::result::Result::Ok(v),
+                    ::core::result::Result::Err(label) => ::core::result::Result::Err(
+                        ::tinyklv::__export::labeled_error(input, &checkpoint, label),
+                    ),
                 }
             }
         }

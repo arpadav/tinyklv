@@ -118,15 +118,15 @@ fn main() {
     // encode - concatenate four frames with three bytes of garbage spliced
     // between the first Nav and the first Weather to exercise the dispatcher
     let mut stream: Vec<u8> = Vec::new();
-    stream.extend(nav1.encode_frame());
+    nav1.encode_frame(&mut stream);
     // inter-packet garbage (not a sentinel prefix):
     stream.extend_from_slice(&[
         // three noise bytes:
             0xDE, 0xAD, 0xFF,
     ]);
-    stream.extend(wx1.encode_frame());
-    stream.extend(nav2.encode_frame());
-    stream.extend(wx2.encode_frame());
+    wx1.encode_frame(&mut stream);
+    nav2.encode_frame(&mut stream);
+    wx2.encode_frame(&mut stream);
 
     // decode - drain by peek-and-dispatch until the slice is empty
     let mut slice = stream.as_slice();

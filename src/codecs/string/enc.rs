@@ -30,12 +30,12 @@
 /// ```
 /// use tinyklv::codecs::string::enc::from_string_utf8;
 ///
-/// let encoded = from_string_utf8("AF-101");
+/// let mut encoded = Vec::new();
+/// from_string_utf8("AF-101", &mut encoded);
 /// assert_eq!(encoded, vec![0x41, 0x46, 0x2D, 0x31, 0x30, 0x31]);
 /// ```
-#[must_use]
-pub fn from_string_utf8(input: &str) -> Vec<u8> {
-    input.as_bytes().to_vec()
+pub fn from_string_utf8(input: &str, out: &mut Vec<u8>) {
+    out.extend_from_slice(input.as_bytes());
 }
 
 /// Encodes a string as UTF-16 little-endian bytes.
@@ -49,17 +49,18 @@ pub fn from_string_utf8(input: &str) -> Vec<u8> {
 /// ```
 /// use tinyklv::codecs::string::enc::from_string_utf16_le;
 ///
-/// let encoded = from_string_utf16_le("AB");
+/// let mut encoded = Vec::new();
+/// from_string_utf16_le("AB", &mut encoded);
 /// // 'A' = 0x0041 LE -> [0x41, 0x00], 'B' = 0x0042 LE -> [0x42, 0x00]
 /// assert_eq!(encoded, vec![0x41, 0x00, 0x42, 0x00]);
 ///
 /// // emoji U+1F600 produces a surrogate pair
-/// let emoji = from_string_utf16_le("\u{1F600}");
+/// let mut emoji = Vec::new();
+/// from_string_utf16_le("\u{1F600}", &mut emoji);
 /// assert_eq!(emoji.len(), 4); // 2 code units × 2 bytes
 /// ```
-#[must_use]
-pub fn from_string_utf16_le(input: &str) -> Vec<u8> {
-    input.encode_utf16().flat_map(u16::to_le_bytes).collect()
+pub fn from_string_utf16_le(input: &str, out: &mut Vec<u8>) {
+    out.extend(input.encode_utf16().flat_map(u16::to_le_bytes));
 }
 
 /// Encodes a string as UTF-16 big-endian bytes.
@@ -73,13 +74,13 @@ pub fn from_string_utf16_le(input: &str) -> Vec<u8> {
 /// ```
 /// use tinyklv::codecs::string::enc::from_string_utf16_be;
 ///
-/// let encoded = from_string_utf16_be("AB");
+/// let mut encoded = Vec::new();
+/// from_string_utf16_be("AB", &mut encoded);
 /// // 'A' = 0x0041 BE -> [0x00, 0x41], 'B' = 0x0042 BE -> [0x00, 0x42]
 /// assert_eq!(encoded, vec![0x00, 0x41, 0x00, 0x42]);
 /// ```
-#[must_use]
-pub fn from_string_utf16_be(input: &str) -> Vec<u8> {
-    input.encode_utf16().flat_map(u16::to_be_bytes).collect()
+pub fn from_string_utf16_be(input: &str, out: &mut Vec<u8>) {
+    out.extend(input.encode_utf16().flat_map(u16::to_be_bytes));
 }
 
 /// Equivalent to [`from_string_utf8`] for ASCII input.
@@ -92,13 +93,13 @@ pub fn from_string_utf16_be(input: &str) -> Vec<u8> {
 /// ```
 /// use tinyklv::codecs::string::enc::from_string_ascii;
 ///
-/// let encoded = from_string_ascii("HELLO");
+/// let mut encoded = Vec::new();
+/// from_string_ascii("HELLO", &mut encoded);
 /// assert_eq!(encoded, b"HELLO".to_vec());
 /// ```
 #[cfg(feature = "ascii")]
-#[must_use]
-pub fn from_string_ascii(input: &str) -> Vec<u8> {
-    input.as_bytes().to_vec()
+pub fn from_string_ascii(input: &str, out: &mut Vec<u8>) {
+    out.extend_from_slice(input.as_bytes());
 }
 
 /// Generates a base-10 integer/float encoder
@@ -107,10 +108,12 @@ macro_rules! ascii_display {
         pastey::paste! {
             #[cfg(feature = "ascii")]
             #[inline(always)]
-            #[must_use]
             #[doc = concat!("Encodes a [`", stringify!($ty), "`] as its base-10 ASCII text.")]
-            pub fn [<$ty>](input: $ty) -> Vec<u8> {
-                input.to_string().into_bytes()
+            pub fn [<$ty>](input: $ty, out: &mut Vec<u8>) {
+                // write the formatted digits straight into `out`; `Vec<u8>: io::Write`
+                // never errors, so the formatting never allocates an intermediate `String`
+                use std::io::Write as _;
+                let _ = write!(out, "{input}");
             }
         }
     };
@@ -122,10 +125,12 @@ macro_rules! ascii_hex {
         pastey::paste! {
             #[cfg(feature = "ascii")]
             #[inline(always)]
-            #[must_use]
             #[doc = concat!("Encodes a [`", stringify!($ty), "`] as lower-case base-16 ASCII text.")]
-            pub fn [<hex_ $ty>](input: $ty) -> Vec<u8> {
-                format!("{input:x}").into_bytes()
+            pub fn [<hex_ $ty>](input: $ty, out: &mut Vec<u8>) {
+                // format hex digits straight into `out`; `Vec<u8>: io::Write` never errors,
+                // so this never allocates an intermediate `String`
+                use std::io::Write as _;
+                let _ = write!(out, "{input:x}");
             }
         }
     };

@@ -47,6 +47,11 @@ pub(crate) const STREAM: Symbol = Symbol("stream");
 pub(crate) const DEFAULT: Symbol = Symbol("default");
 /// The `sentinel` sub-attribute identifier
 pub(crate) const SENTINEL: Symbol = Symbol("sentinel");
+/// The `break_on` container sub-attribute identifier
+///
+/// Accepts either a key literal (a decoded key equal to it stops the loop -
+/// [`tinyklv::BreakType::Done`]) or a function path `fn(key, len) -> BreakType`
+pub(crate) const BREAK_ON: Symbol = Symbol("break_on");
 /// The field-level `default` sub-attribute identifier
 ///
 /// Note: the container-level `default(..)` uses the same keyword [`DEFAULT`]
@@ -82,6 +87,7 @@ pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
     STREAM,
     DEFAULT,
     SENTINEL,
+    BREAK_ON,
     DENY_UNKNOWN_KEYS,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,
@@ -96,7 +102,7 @@ pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols =
     Symbols(&[TYPE, ENCODER, DECODER, VARIABLE_LENGTH]);
 
 /// Container-level name-value symbols (e.g. `stream = ..`)
-pub(crate) static CONT_NV_SYMBOLS: Symbols = Symbols(&[STREAM, SENTINEL]);
+pub(crate) static CONT_NV_SYMBOLS: Symbols = Symbols(&[STREAM, SENTINEL, BREAK_ON]);
 
 /// All valid field-level symbols accepted by the `#[klv(..)]` attribute
 pub(crate) static FIELD_SYMBOLS: Symbols = Symbols(&[
@@ -138,6 +144,7 @@ const KNOWN: &[Symbol] = &[
     STREAM,
     DEFAULT,
     SENTINEL,
+    BREAK_ON,
     DEFAULT_VALUE,
     VARIABLE_LENGTH,
     LATEBIND,

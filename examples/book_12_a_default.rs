@@ -58,7 +58,8 @@ fn main() {
         signal_dbm:  Some(-54),
         battery_pct: 87,
     };
-    let full_bytes = full.encode_value();
+    let mut full_bytes = Vec::new();
+    full.encode_value(&mut full_bytes);
     let full_decoded = Heartbeat::decode_value(
         &mut full_bytes.as_slice(),
     ).unwrap();
@@ -67,5 +68,7 @@ fn main() {
     // when signal_dbm is None the encoded bytes are strictly shorter -
     // a `None` field emits no KLV triple
     let thin = Heartbeat { signal_dbm: None, ..full };
-    assert!(thin.encode_value().len() < full_bytes.len());
+    let mut thin_bytes = Vec::new();
+    thin.encode_value(&mut thin_bytes);
+    assert!(thin_bytes.len() < full_bytes.len());
 }

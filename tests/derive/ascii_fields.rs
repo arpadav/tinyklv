@@ -56,7 +56,8 @@ fn ascii_telemetry_roundtrip() {
         flags: 0xABCD,
         callsign: String::from("FALCON"),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = AsciiTelemetry::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }

@@ -114,9 +114,10 @@ fn main() {
         Heartbeat { sequence: 2, temperature_centideg: 2310, uptime_s: 20 },
         Heartbeat { sequence: 3, temperature_centideg: 2340, uptime_s: 30 },
     ];
-    let buf: Vec<u8> = want.iter()
-        .flat_map(tinyklv::EncodeFrame::encode_frame)
-        .collect();
+    let mut buf: Vec<u8> = Vec::new();
+    for hb in &want {
+        hb.encode_frame(&mut buf);
+    }
 
     let mut dec = Heartbeat::decoder();
     let got: Vec<Heartbeat> = dec.consume(buf.chunks(3)).collect();

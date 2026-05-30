@@ -74,10 +74,10 @@ fn main() {
 
     // encode - every waypoint becomes its own sentinel-prefixed frame,
     // and the results are concatenated into one byte stream
-    let stream: Vec<u8> = waypoints
-        .iter()
-        .flat_map(tinyklv::EncodeFrame::encode_frame)
-        .collect();
+    let mut stream: Vec<u8> = Vec::new();
+    for wp in &waypoints {
+        tinyklv::EncodeFrame::encode_frame(wp, &mut stream);
+    }
 
     // decode - drain the stream one frame at a time until EOF
     let mut slice = stream.as_slice();

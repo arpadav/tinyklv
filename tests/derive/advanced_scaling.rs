@@ -201,10 +201,12 @@ struct RequiredSuite {
     material: Material,
 }
 
-fn push_tlv(data: &mut Vec<u8>, key: u8, value: Vec<u8>) {
+fn push_tlv(data: &mut Vec<u8>, key: u8, value: impl FnOnce(&mut Vec<u8>)) {
+    let mut buf = Vec::new();
+    value(&mut buf);
     data.push(key);
-    data.push(value.len() as u8);
-    data.extend(value);
+    data.push(buf.len() as u8);
+    data.extend(buf);
 }
 
 fn telemetry_fixture() -> TelemetryPacket {
@@ -277,31 +279,31 @@ fn required_suite_fixture() -> RequiredSuite {
 
 fn build_telemetry_bytes(p: &TelemetryPacket) -> Vec<u8> {
     let mut data = vec![];
-    push_tlv(&mut data, 0x01, encb::be_u16(p.id));
-    push_tlv(&mut data, 0x02, p.timestamp.encode_value());
-    push_tlv(&mut data, 0x03, p.position.encode_value());
-    push_tlv(&mut data, 0x04, encb::be_f32(p.altitude));
-    push_tlv(&mut data, 0x05, p.velocity.encode_value());
-    push_tlv(&mut data, 0x06, p.attitude.encode_value());
-    push_tlv(&mut data, 0x07, p.color.encode_value());
-    push_tlv(&mut data, 0x08, p.priority.encode_value());
-    push_tlv(&mut data, 0x09, p.material.encode_value());
-    push_tlv(&mut data, 0x0A, p.status.encode_value());
-    push_tlv(&mut data, 0x0B, p.mode.encode_value());
-    push_tlv(&mut data, 0x0C, encb::u8(p.battery));
+    push_tlv(&mut data, 0x01, |__b| encb::be_u16(p.id, __b));
+    push_tlv(&mut data, 0x02, |__b| p.timestamp.encode_value(__b));
+    push_tlv(&mut data, 0x03, |__b| p.position.encode_value(__b));
+    push_tlv(&mut data, 0x04, |__b| encb::be_f32(p.altitude, __b));
+    push_tlv(&mut data, 0x05, |__b| p.velocity.encode_value(__b));
+    push_tlv(&mut data, 0x06, |__b| p.attitude.encode_value(__b));
+    push_tlv(&mut data, 0x07, |__b| p.color.encode_value(__b));
+    push_tlv(&mut data, 0x08, |__b| p.priority.encode_value(__b));
+    push_tlv(&mut data, 0x09, |__b| p.material.encode_value(__b));
+    push_tlv(&mut data, 0x0A, |__b| p.status.encode_value(__b));
+    push_tlv(&mut data, 0x0B, |__b| p.mode.encode_value(__b));
+    push_tlv(&mut data, 0x0C, |__b| encb::u8(p.battery, __b));
     data
 }
 
 fn build_required_bytes(s: &RequiredSuite) -> Vec<u8> {
     let mut data = vec![];
-    push_tlv(&mut data, 0x01, s.color.encode_value());
-    push_tlv(&mut data, 0x02, s.priority.encode_value());
-    push_tlv(&mut data, 0x03, s.velocity.encode_value());
-    push_tlv(&mut data, 0x04, s.attitude.encode_value());
-    push_tlv(&mut data, 0x05, s.timestamp.encode_value());
-    push_tlv(&mut data, 0x06, s.coordinate.encode_value());
-    push_tlv(&mut data, 0x07, s.status.encode_value());
-    push_tlv(&mut data, 0x08, s.material.encode_value());
+    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
+    push_tlv(&mut data, 0x02, |__b| s.priority.encode_value(__b));
+    push_tlv(&mut data, 0x03, |__b| s.velocity.encode_value(__b));
+    push_tlv(&mut data, 0x04, |__b| s.attitude.encode_value(__b));
+    push_tlv(&mut data, 0x05, |__b| s.timestamp.encode_value(__b));
+    push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
+    push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
+    push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
     data
 }
 
@@ -329,7 +331,8 @@ fn large_struct_decode() {
 /// Tests full encode/decode roundtrip for the 12-field telemetry packet.
 fn large_struct_roundtrip() {
     let original = telemetry_fixture();
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = TelemetryPacket::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -363,14 +366,14 @@ fn all_optional_8_all_present() {
     let material = Material::Steel;
 
     let mut data = vec![];
-    push_tlv(&mut data, 0x01, color.encode_value());
-    push_tlv(&mut data, 0x02, priority.encode_value());
-    push_tlv(&mut data, 0x03, velocity.encode_value());
-    push_tlv(&mut data, 0x04, attitude.encode_value());
-    push_tlv(&mut data, 0x05, timestamp.encode_value());
-    push_tlv(&mut data, 0x06, coordinate.encode_value());
-    push_tlv(&mut data, 0x07, status.encode_value());
-    push_tlv(&mut data, 0x08, material.encode_value());
+    push_tlv(&mut data, 0x01, |__b| color.encode_value(__b));
+    push_tlv(&mut data, 0x02, |__b| priority.encode_value(__b));
+    push_tlv(&mut data, 0x03, |__b| velocity.encode_value(__b));
+    push_tlv(&mut data, 0x04, |__b| attitude.encode_value(__b));
+    push_tlv(&mut data, 0x05, |__b| timestamp.encode_value(__b));
+    push_tlv(&mut data, 0x06, |__b| coordinate.encode_value(__b));
+    push_tlv(&mut data, 0x07, |__b| status.encode_value(__b));
+    push_tlv(&mut data, 0x08, |__b| material.encode_value(__b));
 
     let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.color, Some(color));
@@ -402,7 +405,7 @@ fn all_optional_8_all_absent() {
 fn all_optional_each_alone_color() {
     let val = Color::Alpha;
     let mut data = vec![];
-    push_tlv(&mut data, 0x01, val.encode_value());
+    push_tlv(&mut data, 0x01, |__b| val.encode_value(__b));
     let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.color, Some(val));
     assert_eq!(result.priority, None);
@@ -419,7 +422,7 @@ fn all_optional_each_alone_color() {
 fn all_optional_each_alone_priority() {
     let val = Priority::Low;
     let mut data = vec![];
-    push_tlv(&mut data, 0x02, val.encode_value());
+    push_tlv(&mut data, 0x02, |__b| val.encode_value(__b));
     let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.color, None);
     assert_eq!(result.priority, Some(val));
@@ -440,7 +443,7 @@ fn all_optional_each_alone_velocity() {
         dz: 0,
     };
     let mut data = vec![];
-    push_tlv(&mut data, 0x03, val.encode_value());
+    push_tlv(&mut data, 0x03, |__b| val.encode_value(__b));
     let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.color, None);
     assert_eq!(result.priority, None);
@@ -461,7 +464,7 @@ fn all_optional_each_alone_attitude() {
         yaw: 3.0_f32,
     };
     let mut data = vec![];
-    push_tlv(&mut data, 0x04, val.encode_value());
+    push_tlv(&mut data, 0x04, |__b| val.encode_value(__b));
     let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.color, None);
     assert_eq!(result.priority, None);
@@ -481,7 +484,7 @@ fn all_optional_each_alone_timestamp() {
         nanos: 1,
     };
     let mut data = vec![];
-    push_tlv(&mut data, 0x05, val.encode_value());
+    push_tlv(&mut data, 0x05, |__b| val.encode_value(__b));
     let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.color, None);
     assert_eq!(result.priority, None);
@@ -501,7 +504,7 @@ fn all_optional_each_alone_coordinate() {
         lon: -0.1278,
     };
     let mut data = vec![];
-    push_tlv(&mut data, 0x06, val.encode_value());
+    push_tlv(&mut data, 0x06, |__b| val.encode_value(__b));
     let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.color, None);
     assert_eq!(result.priority, None);
@@ -523,7 +526,7 @@ fn all_optional_each_alone_status() {
         mode: 31,
     };
     let mut data = vec![];
-    push_tlv(&mut data, 0x07, val.encode_value());
+    push_tlv(&mut data, 0x07, |__b| val.encode_value(__b));
     let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.color, None);
     assert_eq!(result.priority, None);
@@ -540,7 +543,7 @@ fn all_optional_each_alone_status() {
 fn all_optional_each_alone_material() {
     let val = Material::Ceramic;
     let mut data = vec![];
-    push_tlv(&mut data, 0x08, val.encode_value());
+    push_tlv(&mut data, 0x08, |__b| val.encode_value(__b));
     let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
     assert_eq!(result.color, None);
     assert_eq!(result.priority, None);
@@ -575,13 +578,13 @@ fn all_required_each_missing_color() {
     let s = required_suite_fixture();
     let mut data = vec![];
     // omit key 0x01 (color)
-    push_tlv(&mut data, 0x02, s.priority.encode_value());
-    push_tlv(&mut data, 0x03, s.velocity.encode_value());
-    push_tlv(&mut data, 0x04, s.attitude.encode_value());
-    push_tlv(&mut data, 0x05, s.timestamp.encode_value());
-    push_tlv(&mut data, 0x06, s.coordinate.encode_value());
-    push_tlv(&mut data, 0x07, s.status.encode_value());
-    push_tlv(&mut data, 0x08, s.material.encode_value());
+    push_tlv(&mut data, 0x02, |__b| s.priority.encode_value(__b));
+    push_tlv(&mut data, 0x03, |__b| s.velocity.encode_value(__b));
+    push_tlv(&mut data, 0x04, |__b| s.attitude.encode_value(__b));
+    push_tlv(&mut data, 0x05, |__b| s.timestamp.encode_value(__b));
+    push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
+    push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
+    push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
     assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
 }
 
@@ -590,14 +593,14 @@ fn all_required_each_missing_color() {
 fn all_required_each_missing_priority() {
     let s = required_suite_fixture();
     let mut data = vec![];
-    push_tlv(&mut data, 0x01, s.color.encode_value());
+    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
     // omit key 0x02 (priority)
-    push_tlv(&mut data, 0x03, s.velocity.encode_value());
-    push_tlv(&mut data, 0x04, s.attitude.encode_value());
-    push_tlv(&mut data, 0x05, s.timestamp.encode_value());
-    push_tlv(&mut data, 0x06, s.coordinate.encode_value());
-    push_tlv(&mut data, 0x07, s.status.encode_value());
-    push_tlv(&mut data, 0x08, s.material.encode_value());
+    push_tlv(&mut data, 0x03, |__b| s.velocity.encode_value(__b));
+    push_tlv(&mut data, 0x04, |__b| s.attitude.encode_value(__b));
+    push_tlv(&mut data, 0x05, |__b| s.timestamp.encode_value(__b));
+    push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
+    push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
+    push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
     assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
 }
 
@@ -606,14 +609,14 @@ fn all_required_each_missing_priority() {
 fn all_required_each_missing_velocity() {
     let s = required_suite_fixture();
     let mut data = vec![];
-    push_tlv(&mut data, 0x01, s.color.encode_value());
-    push_tlv(&mut data, 0x02, s.priority.encode_value());
+    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
+    push_tlv(&mut data, 0x02, |__b| s.priority.encode_value(__b));
     // omit key 0x03 (velocity)
-    push_tlv(&mut data, 0x04, s.attitude.encode_value());
-    push_tlv(&mut data, 0x05, s.timestamp.encode_value());
-    push_tlv(&mut data, 0x06, s.coordinate.encode_value());
-    push_tlv(&mut data, 0x07, s.status.encode_value());
-    push_tlv(&mut data, 0x08, s.material.encode_value());
+    push_tlv(&mut data, 0x04, |__b| s.attitude.encode_value(__b));
+    push_tlv(&mut data, 0x05, |__b| s.timestamp.encode_value(__b));
+    push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
+    push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
+    push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
     assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
 }
 
@@ -622,14 +625,14 @@ fn all_required_each_missing_velocity() {
 fn all_required_each_missing_attitude() {
     let s = required_suite_fixture();
     let mut data = vec![];
-    push_tlv(&mut data, 0x01, s.color.encode_value());
-    push_tlv(&mut data, 0x02, s.priority.encode_value());
-    push_tlv(&mut data, 0x03, s.velocity.encode_value());
+    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
+    push_tlv(&mut data, 0x02, |__b| s.priority.encode_value(__b));
+    push_tlv(&mut data, 0x03, |__b| s.velocity.encode_value(__b));
     // omit key 0x04 (attitude)
-    push_tlv(&mut data, 0x05, s.timestamp.encode_value());
-    push_tlv(&mut data, 0x06, s.coordinate.encode_value());
-    push_tlv(&mut data, 0x07, s.status.encode_value());
-    push_tlv(&mut data, 0x08, s.material.encode_value());
+    push_tlv(&mut data, 0x05, |__b| s.timestamp.encode_value(__b));
+    push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
+    push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
+    push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
     assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
 }
 
@@ -638,14 +641,14 @@ fn all_required_each_missing_attitude() {
 fn all_required_each_missing_timestamp() {
     let s = required_suite_fixture();
     let mut data = vec![];
-    push_tlv(&mut data, 0x01, s.color.encode_value());
-    push_tlv(&mut data, 0x02, s.priority.encode_value());
-    push_tlv(&mut data, 0x03, s.velocity.encode_value());
-    push_tlv(&mut data, 0x04, s.attitude.encode_value());
+    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
+    push_tlv(&mut data, 0x02, |__b| s.priority.encode_value(__b));
+    push_tlv(&mut data, 0x03, |__b| s.velocity.encode_value(__b));
+    push_tlv(&mut data, 0x04, |__b| s.attitude.encode_value(__b));
     // omit key 0x05 (timestamp)
-    push_tlv(&mut data, 0x06, s.coordinate.encode_value());
-    push_tlv(&mut data, 0x07, s.status.encode_value());
-    push_tlv(&mut data, 0x08, s.material.encode_value());
+    push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
+    push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
+    push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
     assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
 }
 
@@ -654,14 +657,14 @@ fn all_required_each_missing_timestamp() {
 fn all_required_each_missing_coordinate() {
     let s = required_suite_fixture();
     let mut data = vec![];
-    push_tlv(&mut data, 0x01, s.color.encode_value());
-    push_tlv(&mut data, 0x02, s.priority.encode_value());
-    push_tlv(&mut data, 0x03, s.velocity.encode_value());
-    push_tlv(&mut data, 0x04, s.attitude.encode_value());
-    push_tlv(&mut data, 0x05, s.timestamp.encode_value());
+    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
+    push_tlv(&mut data, 0x02, |__b| s.priority.encode_value(__b));
+    push_tlv(&mut data, 0x03, |__b| s.velocity.encode_value(__b));
+    push_tlv(&mut data, 0x04, |__b| s.attitude.encode_value(__b));
+    push_tlv(&mut data, 0x05, |__b| s.timestamp.encode_value(__b));
     // omit key 0x06 (coordinate)
-    push_tlv(&mut data, 0x07, s.status.encode_value());
-    push_tlv(&mut data, 0x08, s.material.encode_value());
+    push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
+    push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
     assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
 }
 
@@ -670,14 +673,14 @@ fn all_required_each_missing_coordinate() {
 fn all_required_each_missing_status() {
     let s = required_suite_fixture();
     let mut data = vec![];
-    push_tlv(&mut data, 0x01, s.color.encode_value());
-    push_tlv(&mut data, 0x02, s.priority.encode_value());
-    push_tlv(&mut data, 0x03, s.velocity.encode_value());
-    push_tlv(&mut data, 0x04, s.attitude.encode_value());
-    push_tlv(&mut data, 0x05, s.timestamp.encode_value());
-    push_tlv(&mut data, 0x06, s.coordinate.encode_value());
+    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
+    push_tlv(&mut data, 0x02, |__b| s.priority.encode_value(__b));
+    push_tlv(&mut data, 0x03, |__b| s.velocity.encode_value(__b));
+    push_tlv(&mut data, 0x04, |__b| s.attitude.encode_value(__b));
+    push_tlv(&mut data, 0x05, |__b| s.timestamp.encode_value(__b));
+    push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
     // omit key 0x07 (status)
-    push_tlv(&mut data, 0x08, s.material.encode_value());
+    push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
     assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
 }
 
@@ -686,13 +689,13 @@ fn all_required_each_missing_status() {
 fn all_required_each_missing_material() {
     let s = required_suite_fixture();
     let mut data = vec![];
-    push_tlv(&mut data, 0x01, s.color.encode_value());
-    push_tlv(&mut data, 0x02, s.priority.encode_value());
-    push_tlv(&mut data, 0x03, s.velocity.encode_value());
-    push_tlv(&mut data, 0x04, s.attitude.encode_value());
-    push_tlv(&mut data, 0x05, s.timestamp.encode_value());
-    push_tlv(&mut data, 0x06, s.coordinate.encode_value());
-    push_tlv(&mut data, 0x07, s.status.encode_value());
+    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
+    push_tlv(&mut data, 0x02, |__b| s.priority.encode_value(__b));
+    push_tlv(&mut data, 0x03, |__b| s.velocity.encode_value(__b));
+    push_tlv(&mut data, 0x04, |__b| s.attitude.encode_value(__b));
+    push_tlv(&mut data, 0x05, |__b| s.timestamp.encode_value(__b));
+    push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
+    push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
     // omit key 0x08 (material)
     assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
 }

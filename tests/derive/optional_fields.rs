@@ -90,7 +90,8 @@ fn encode_all_fields_roundtrip() {
         opt_num: Some(0xBEEF),
         opt_str: Some(String::from("test")),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithOptionals::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, original);
 }
@@ -103,7 +104,8 @@ fn encode_none_optionals_roundtrip() {
         opt_num: None,
         opt_str: None,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithOptionals::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, original);
 }

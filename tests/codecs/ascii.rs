@@ -141,42 +141,53 @@ fn run_alphanumeric_rejects_symbol() {
 #[test]
 /// Tests unsigned integer ASCII encoding
 fn uint_encode() {
-    assert_eq!(enca::u32(42), b"42".to_vec());
+    let mut v = Vec::new();
+    enca::u32(42, &mut v);
+    assert_eq!(v, b"42".to_vec());
 }
 
 #[test]
 /// Tests signed integer ASCII encoding preserves the sign
 fn int_encode() {
-    assert_eq!(enca::i32(-5), b"-5".to_vec());
+    let mut v = Vec::new();
+    enca::i32(-5, &mut v);
+    assert_eq!(v, b"-5".to_vec());
 }
 
 #[test]
 /// Tests floating-point ASCII encoding emits canonical text
 fn float_encode() {
-    assert_eq!(enca::f64(123.5), b"123.5".to_vec());
+    let mut v = Vec::new();
+    enca::f64(123.5, &mut v);
+    assert_eq!(v, b"123.5".to_vec());
 }
 
 #[test]
 /// Tests hexadecimal ASCII encoding emits lower-case digits
 fn hex_encode() {
-    assert_eq!(enca::hex_u16(0xABCD), b"abcd".to_vec());
+    let mut v = Vec::new();
+    enca::hex_u16(0xABCD, &mut v);
+    assert_eq!(v, b"abcd".to_vec());
 }
 
 #[test]
 /// Tests encode/decode roundtrip for unsigned, signed, float, and hex codecs
 fn roundtrip_all() {
     for val in [0_u64, 1, 42, 1_000_000, u64::MAX] {
-        let encoded = enca::u64(val);
+        let mut encoded = Vec::new();
+        enca::u64(val, &mut encoded);
         let decoded = deca::u64(encoded.len())(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded, "uint roundtrip failed for {val}");
     }
     for val in [i64::MIN, -1, 0, 1, i64::MAX] {
-        let encoded = enca::i64(val);
+        let mut encoded = Vec::new();
+        enca::i64(val, &mut encoded);
         let decoded = deca::i64(encoded.len())(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded, "int roundtrip failed for {val}");
     }
     for val in [0_u32, 0xF, 0xABCD, u32::MAX] {
-        let encoded = enca::hex_u32(val);
+        let mut encoded = Vec::new();
+        enca::hex_u32(val, &mut encoded);
         let decoded = deca::hex_u32(encoded.len())(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded, "hex roundtrip failed for {val}");
     }

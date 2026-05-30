@@ -74,21 +74,24 @@ fn be_u64_lengthed_zero_returns_zero() {
 #[test]
 /// Tests that `enc::binary::be_u16_lengthed(0)` produces an empty byte vector regardless of value
 fn enc_be_u16_lengthed_zero_produces_empty() {
-    let result = encb::be_u16_lengthed(0)(0x1234_u16);
+    let mut result = Vec::new();
+    encb::be_u16_lengthed(0)(0x1234_u16, &mut result);
     assert!(result.is_empty());
 }
 
 #[test]
 /// Tests that `enc::binary::le_u32_lengthed(0)` produces an empty byte vector regardless of value
 fn enc_le_u32_lengthed_zero_produces_empty() {
-    let result = encb::le_u32_lengthed(0)(0xDEADBEEF_u32);
+    let mut result = Vec::new();
+    encb::le_u32_lengthed(0)(0xDEADBEEF_u32, &mut result);
     assert!(result.is_empty());
 }
 
 #[test]
 /// Tests that `enc::binary::be_u64_lengthed(0)` produces an empty byte vector regardless of value
 fn enc_be_u64_lengthed_zero_produces_empty() {
-    let result = encb::be_u64_lengthed(0)(u64::MAX);
+    let mut result = Vec::new();
+    encb::be_u64_lengthed(0)(u64::MAX, &mut result);
     assert!(result.is_empty());
 }
 

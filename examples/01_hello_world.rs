@@ -51,7 +51,8 @@ fn main() {
     };
 
     // encode - prepends the sentinel + 1-byte length, then KLV triples
-    let frame = original.encode_frame();
+    let mut frame = Vec::new();
+    original.encode_frame(&mut frame);
 
     // decode - seeks the sentinel, reads the length, decodes the value region
     let decoded = Heartbeat::decode_frame(

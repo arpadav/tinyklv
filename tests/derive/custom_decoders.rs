@@ -6,8 +6,8 @@ fn decode_u16_add_one(input: &mut &[u8]) -> tinyklv::Result<u16> {
     decb::be_u16(input).map(|v| v + 1)
 }
 
-fn encode_u16_sub_one(input: &u16) -> Vec<u8> {
-    encb::be_u16(input.wrapping_sub(1))
+fn encode_u16_sub_one(input: &u16, out: &mut Vec<u8>) {
+    encb::be_u16(input.wrapping_sub(1), out);
 }
 
 #[derive(Klv, Debug, PartialEq)]
@@ -49,7 +49,8 @@ fn custom_encoder_applies_inverse_transform() {
         adjusted: 101,
         plain: 7,
     };
-    let encoded = packet.encode_value();
+    let mut encoded = Vec::new();
+    packet.encode_value(&mut encoded);
     let decoded = CustomDecoders::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, packet);
 }
@@ -62,7 +63,8 @@ fn custom_encoder_decode_roundtrip() {
             adjusted: adj,
             plain: 0,
         };
-        let encoded = packet.encode_value();
+        let mut encoded = Vec::new();
+        packet.encode_value(&mut encoded);
         let decoded = CustomDecoders::decode_value(&mut encoded.as_slice()).unwrap();
         assert_eq!(decoded.adjusted, adj);
     }
@@ -73,8 +75,8 @@ impl Transformer {
     fn decode_scaled(input: &mut &[u8]) -> tinyklv::Result<f32> {
         decb::be_u16(input).map(|v| v as f32 / 100.0)
     }
-    fn encode_scaled(input: &f32) -> Vec<u8> {
-        encb::be_u16((input * 100.0) as u16)
+    fn encode_scaled(input: &f32, out: &mut Vec<u8>) {
+        encb::be_u16((input * 100.0) as u16, out);
     }
 }
 
@@ -108,7 +110,8 @@ fn method_encoder_roundtrip() {
     let packet = WithMethodDecoder {
         scaled_value: 12.34,
     };
-    let encoded = packet.encode_value();
+    let mut encoded = Vec::new();
+    packet.encode_value(&mut encoded);
     let decoded = WithMethodDecoder::decode_value(&mut encoded.as_slice()).unwrap();
     assert!((decoded.scaled_value - packet.scaled_value).abs() < 0.01);
 }

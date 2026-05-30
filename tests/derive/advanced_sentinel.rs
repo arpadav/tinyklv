@@ -144,7 +144,8 @@ fn make_status() -> StatusPacket {
 /// Tests that a sentinel-framed `NavPacket` carrying four domain types roundtrips through `encode_frame`/`decode_frame`.
 fn sentinel_complex_roundtrip() {
     let original = make_nav();
-    let encoded = original.encode_frame();
+    let mut encoded = Vec::new();
+    original.encode_frame(&mut encoded);
     let decoded = NavPacket::decode_frame(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -152,7 +153,8 @@ fn sentinel_complex_roundtrip() {
 #[test]
 /// Verifies that `encode_frame` prepends the configured sentinel bytes (`0xBEEF`) at the start of the output.
 fn sentinel_encode_prefix() {
-    let encoded = make_nav().encode_frame();
+    let mut encoded = Vec::new();
+    make_nav().encode_frame(&mut encoded);
     assert_eq!(
         &encoded[0..2],
         b"\xBE\xEF",
@@ -167,9 +169,10 @@ fn multi_type_extract() {
     let weather = make_weather();
     let status = make_status();
 
-    let mut stream: Vec<u8> = nav.encode_frame();
-    stream.extend(weather.encode_frame());
-    stream.extend(status.encode_frame());
+    let mut stream: Vec<u8> = Vec::new();
+    nav.encode_frame(&mut stream);
+    weather.encode_frame(&mut stream);
+    status.encode_frame(&mut stream);
 
     let decoded_nav = NavPacket::decode_frame(&mut stream.as_slice()).unwrap();
     let decoded_weather = WeatherPacket::decode_frame(&mut stream.as_slice()).unwrap();
@@ -202,10 +205,10 @@ fn multi_packet_garbage() {
     };
 
     let mut stream: Vec<u8> = vec![0xDE, 0xAD, 0xFF, 0xFF];
-    stream.extend(nav1.encode_frame());
+    nav1.encode_frame(&mut stream);
     // partial near-miss: 0xBE 0xEE is not the sentinel
     stream.extend_from_slice(&[0xBE, 0xEE, 0x00]);
-    stream.extend(nav2.encode_frame());
+    nav2.encode_frame(&mut stream);
 
     let mut slice = stream.as_slice();
     let first = NavPacket::decode_frame(&mut slice).unwrap();
@@ -219,7 +222,8 @@ fn multi_packet_garbage() {
 /// Tests that `decode_frame` errors when the expected sentinel is absent from the stream or the stream is empty.
 fn sentinel_not_found() {
     // Stream contains only a WeatherPacket - NavPacket sentinel 0xBEEF absent
-    let weather_bytes = make_weather().encode_frame();
+    let mut weather_bytes = Vec::new();
+    make_weather().encode_frame(&mut weather_bytes);
     assert!(
         NavPacket::decode_frame(&mut weather_bytes.as_slice()).is_err(),
         "should fail: 0xBEEF sentinel not present in WeatherPacket stream"
@@ -262,10 +266,11 @@ fn interleaved_extract() {
         },
     };
 
-    let mut stream: Vec<u8> = nav1.encode_frame();
-    stream.extend(weather1.encode_frame());
-    stream.extend(nav2.encode_frame());
-    stream.extend(weather2.encode_frame());
+    let mut stream: Vec<u8> = Vec::new();
+    nav1.encode_frame(&mut stream);
+    weather1.encode_frame(&mut stream);
+    nav2.encode_frame(&mut stream);
+    weather2.encode_frame(&mut stream);
 
     // Extract both NavPackets from one cursor
     let mut nav_slice = stream.as_slice();

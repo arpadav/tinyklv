@@ -88,7 +88,8 @@ fn tagged_roundtrip_marker_a() {
         counter: 0xDEADBEEF,
         _phantom: PhantomData,
     };
-    let encoded = original.encode_frame();
+    let mut encoded = Vec::new();
+    original.encode_frame(&mut encoded);
     let decoded = Tagged::<MarkerA>::decode_frame(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -101,7 +102,8 @@ fn tagged_roundtrip_marker_b() {
         counter: 0x02030405,
         _phantom: PhantomData,
     };
-    let encoded = original.encode_frame();
+    let mut encoded = Vec::new();
+    original.encode_frame(&mut encoded);
     let decoded = Tagged::<MarkerB>::decode_frame(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -114,7 +116,8 @@ fn tagged_distinct_marker_types_have_separate_impls() {
         counter: 0x56789ABC,
         _phantom: PhantomData,
     };
-    let bytes = a.encode_frame();
+    let mut bytes = Vec::new();
+    a.encode_frame(&mut bytes);
     let decoded_a = Tagged::<MarkerA>::decode_frame(&mut bytes.as_slice()).unwrap();
     let decoded_b = Tagged::<MarkerB>::decode_frame(&mut bytes.as_slice()).unwrap();
     assert_eq!(decoded_a.id, decoded_b.id);
@@ -128,7 +131,8 @@ fn bounded_where_clause_roundtrip() {
         value: 0xCAFE,
         _phantom: PhantomData,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = Bounded::<u64>::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -142,7 +146,8 @@ fn two_params_roundtrip() {
         _t: PhantomData,
         _u: PhantomData,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = TwoParams::<MarkerA, MarkerB>::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }

@@ -12,9 +12,9 @@ impl DecodeValue<&[u8]> for DeviceId {
         Ok(DeviceId(decb::be_u16(input)?))
     }
 }
-impl EncodeValue<Vec<u8>> for DeviceId {
-    fn encode_value(&self) -> Vec<u8> {
-        encb::be_u16(self.0)
+impl EncodeValue for DeviceId {
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        encb::be_u16(self.0, out);
     }
 }
 
@@ -41,7 +41,8 @@ fn main() {
         id:     DeviceId(0xBEEF),
         opt_id: Some(DeviceId(42)),
     };
-    let full_bytes = full.encode_value();
+    let mut full_bytes = Vec::new();
+    full.encode_value(&mut full_bytes);
     let full_decoded = Reading::decode_value(
         &mut full_bytes.as_slice(),
     ).unwrap();

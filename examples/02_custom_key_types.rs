@@ -98,9 +98,9 @@ fn main() {
     let b = SoilSensorBeU16Key { node_id, moisture_ppb };
     let c = SoilSensorLeU16Key { node_id, moisture_ppb };
 
-    let enc_a = a.encode_value();
-    let enc_b = b.encode_value();
-    let enc_c = c.encode_value();
+    let mut enc_a = Vec::new(); a.encode_value(&mut enc_a);
+    let mut enc_b = Vec::new(); b.encode_value(&mut enc_b);
+    let mut enc_c = Vec::new(); c.encode_value(&mut enc_c);
 
     // decode - each uses its own container key codec
     let dec_a = SoilSensorU8Key::decode_value(

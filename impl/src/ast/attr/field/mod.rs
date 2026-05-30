@@ -6,7 +6,7 @@
 //! applied here when a field does not carry its own explicit encoder/decoder
 //! The `trait_fallback` opt-in is also resolved at this stage, injecting
 //! placeholder paths that the expand phase replaces with fully-qualified
-//! `<T as EncodeValue<..>>::encode_value` / `<T as DecodeValue<..>>::decode_value` calls
+//! `<T as EncodeValue>::encode_value` / `<T as DecodeValue<..>>::decode_value` calls
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -254,7 +254,7 @@ impl Field {
             && field_xcoder.enc.is_none()
         {
             // placeholder path - replaced at emit time in `encode_impl.rs`
-            // by a fully-qualified `<T as EncodeValue<Vec<u8>>>::encode_value`
+            // by a fully-qualified `<T as EncodeValue>::encode_value`
             // call. `syn::Path` cannot represent the qualified form directly
             // (qself lives on `TypePath`/`ExprPath`), so a marker flag plus
             // a never-emitted placeholder keeps the type signature clean

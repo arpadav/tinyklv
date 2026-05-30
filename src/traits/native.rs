@@ -42,13 +42,14 @@ impl DecodeValue<&[u8]> for DateTime<Utc> {
         Ok(DateTime::from_timestamp_nanos(decb::be_i64(input)?))
     }
 }
-impl EncodeValue<Vec<u8>> for DateTime<Utc> {
-    fn encode_value(&self) -> Vec<u8> {
+impl EncodeValue for DateTime<Utc> {
+    fn encode_value(&self, out: &mut Vec<u8>) {
         // infallible for the bounded timestamps `RngSample` emits (well inside the i64-ns range)
         encb::be_i64(
             self.timestamp_nanos_opt()
                 .expect("timestamp within i64-ns range"),
-        )
+            out,
+        );
     }
 }
 
@@ -59,9 +60,9 @@ impl DecodeValue<&[u8]> for NaiveDate {
         NaiveDate::from_num_days_from_ce_opt(days).ok_or_else(|| ContextError::from_input(input))
     }
 }
-impl EncodeValue<Vec<u8>> for NaiveDate {
-    fn encode_value(&self) -> Vec<u8> {
-        encb::be_i32(self.num_days_from_ce())
+impl EncodeValue for NaiveDate {
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        encb::be_i32(self.num_days_from_ce(), out);
     }
 }
 
@@ -73,9 +74,9 @@ impl DecodeValue<&[u8]> for NaiveTime {
             .ok_or(ContextError::from_input(input))
     }
 }
-impl EncodeValue<Vec<u8>> for NaiveTime {
-    fn encode_value(&self) -> Vec<u8> {
-        encb::be_u32(self.num_seconds_from_midnight())
+impl EncodeValue for NaiveTime {
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        encb::be_u32(self.num_seconds_from_midnight(), out);
     }
 }
 
@@ -85,10 +86,10 @@ impl DecodeValue<&[u8]> for Duration {
         Ok(Duration::from_nanos(decb::be_u64(input)?))
     }
 }
-impl EncodeValue<Vec<u8>> for Duration {
-    fn encode_value(&self) -> Vec<u8> {
+impl EncodeValue for Duration {
+    fn encode_value(&self, out: &mut Vec<u8>) {
         // lossless: any `Duration::from_nanos(u64)` has `as_nanos() <= u64::MAX`
-        encb::be_u64(self.as_nanos() as u64)
+        encb::be_u64(self.as_nanos() as u64, out);
     }
 }
 
@@ -98,9 +99,9 @@ impl DecodeValue<&[u8]> for Ipv4Addr {
         Ok(Ipv4Addr::from(decb::be_u32(input)?))
     }
 }
-impl EncodeValue<Vec<u8>> for Ipv4Addr {
-    fn encode_value(&self) -> Vec<u8> {
-        encb::be_u32(u32::from(*self))
+impl EncodeValue for Ipv4Addr {
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        encb::be_u32(u32::from(*self), out);
     }
 }
 
@@ -110,9 +111,9 @@ impl DecodeValue<&[u8]> for Ipv6Addr {
         Ok(Ipv6Addr::from(decb::be_u128(input)?))
     }
 }
-impl EncodeValue<Vec<u8>> for Ipv6Addr {
-    fn encode_value(&self) -> Vec<u8> {
-        encb::be_u128(u128::from(*self))
+impl EncodeValue for Ipv6Addr {
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        encb::be_u128(u128::from(*self), out);
     }
 }
 
@@ -123,9 +124,9 @@ impl DecodeValue<&[u8]> for char {
         char::try_from(scalar).map_err(|_| ContextError::from_input(input))
     }
 }
-impl EncodeValue<Vec<u8>> for char {
-    fn encode_value(&self) -> Vec<u8> {
-        encb::be_u32(u32::from(*self))
+impl EncodeValue for char {
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        encb::be_u32(u32::from(*self), out);
     }
 }
 
@@ -135,9 +136,9 @@ impl DecodeValue<&[u8]> for NonZeroU32 {
         NonZeroU32::new(decb::be_u32(input)?).ok_or_else(|| ContextError::from_input(input))
     }
 }
-impl EncodeValue<Vec<u8>> for NonZeroU32 {
-    fn encode_value(&self) -> Vec<u8> {
-        encb::be_u32(self.get())
+impl EncodeValue for NonZeroU32 {
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        encb::be_u32(self.get(), out);
     }
 }
 
@@ -147,8 +148,8 @@ impl DecodeValue<&[u8]> for bool {
         Ok(decb::u8(input)? != 0)
     }
 }
-impl EncodeValue<Vec<u8>> for bool {
-    fn encode_value(&self) -> Vec<u8> {
-        encb::u8(u8::from(*self))
+impl EncodeValue for bool {
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        encb::u8(u8::from(*self), out);
     }
 }

@@ -20,7 +20,8 @@ proptest! {
     /// Canonical-form roundtrip for unsigned integers: decode(encode(n)) == n
     #[test]
     fn uint_canonical_roundtrip(val in any::<u64>()) {
-        let encoded = enca::u64(val);
+        let mut encoded = Vec::new();
+        enca::u64(val, &mut encoded);
         let decoded = deca::u64(encoded.len())(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(val, decoded);
     }
@@ -28,7 +29,8 @@ proptest! {
     /// Canonical-form roundtrip for signed integers, including negatives
     #[test]
     fn int_canonical_roundtrip(val in any::<i64>()) {
-        let encoded = enca::i64(val);
+        let mut encoded = Vec::new();
+        enca::i64(val, &mut encoded);
         let decoded = deca::i64(encoded.len())(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(val, decoded);
     }
@@ -36,7 +38,8 @@ proptest! {
     /// Canonical-form roundtrip for hexadecimal unsigned integers
     #[test]
     fn hex_canonical_roundtrip(val in any::<u128>()) {
-        let encoded = enca::hex_u128(val);
+        let mut encoded = Vec::new();
+        enca::hex_u128(val, &mut encoded);
         let decoded = deca::hex_u128(encoded.len())(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(val, decoded);
     }
@@ -44,7 +47,8 @@ proptest! {
     /// Canonical-form roundtrip for floats over a moderate finite range
     #[test]
     fn float_canonical_roundtrip(val in -1.0e6_f64..1.0e6) {
-        let encoded = enca::f64(val);
+        let mut encoded = Vec::new();
+        enca::f64(val, &mut encoded);
         let decoded = deca::f64(encoded.len())(&mut encoded.as_slice()).unwrap();
         prop_assert_eq!(val, decoded);
     }

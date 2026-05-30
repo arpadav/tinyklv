@@ -15,7 +15,9 @@
 // local
 // --------------------------------------------------
 use super::{Decoder, Packet};
-use crate::traits::{DecodePartial, Partial, PartialIterator, ResumePartial, SeekSentinel};
+use crate::traits::{
+    DecodePartial, DecodeValue, Partial, PartialIterator, ResumePartial, SeekSentinel,
+};
 
 // --------------------------------------------------
 // external
@@ -176,8 +178,10 @@ where
 impl<P, T> PartialIterator<P> for Decoder<P, &[u8]>
 where
     P: Partial<Final = T> + Default,
-    for<'a> T:
-        DecodePartial<&'a [u8], Partial = P> + ResumePartial<&'a [u8]> + SeekSentinel<&'a [u8]>,
+    for<'a> T: DecodePartial<&'a [u8], Partial = P>
+        + ResumePartial<&'a [u8]>
+        + DecodeValue<&'a [u8]>
+        + SeekSentinel<&'a [u8]>,
 {
     /// Resumes decoding a packet that was previously interrupted with [`crate::decoder::Packet::NeedMore`]
     ///
@@ -276,10 +280,8 @@ where
             return Err(DecodeIterError::Eof);
         }
         // --------------------------------------------------
-        // live bytes are `pending()`; `start` pins the pre-seek
-        // head so the error slice reads the bytes this call consumed
+        // live bytes are `pending()`
         // --------------------------------------------------
-        let start = self.buf.head();
         let mut cursor: &[u8] = self.buf.pending();
         let before = cursor.len();
         // --------------------------------------------------
@@ -294,30 +296,25 @@ where
             Ok(b) => b,
             Err(_) => return Err(DecodeIterError::NeedMore),
         };
-        let mut body_cursor: &[u8] = body;
-        let packet = T::decode_partial(&mut body_cursor);
         // --------------------------------------------------
-        // get consumed + outcome
+        // `seek_sentinel` closes with `take(packet_len)`, so `body` is a COMPLETE,
+        // length-delimited frame - there is nothing left to resume. decode it with the fast
+        // one-shot `decode_value` (the flattened path) straight into the value, rather than the
+        // streaming `decode_partial` -> `resume_partial` Partial machinery. the resumable path is
+        // reserved for `next_resume`, where a packet genuinely straddles a buffer boundary.
+        // `decode_value` already finalizes at end-of-body (the old `NeedMore -> finalize`
+        // best-effort), so the decoded value is identical - just without the Partial overhead.
+        // --------------------------------------------------
+        let mut body_cursor: &[u8] = body;
+        let outcome = T::decode_value(&mut body_cursor);
+        // --------------------------------------------------
+        // consumed = framing + body; advance past it (O(1); no front drain) regardless of outcome
         // --------------------------------------------------
         let consumed = before - cursor.len();
-        let result = packet.map_err(|label| {
-            let ce = label_to_context_error!(self.buf.consumed_slice(start, consumed), label);
-            DecodeIterError::Malformed(ce)
-        });
-        // --------------------------------------------------
-        // advance past consumed bytes (O(1); no front drain)
-        // --------------------------------------------------
         self.buf.advance(consumed);
         // --------------------------------------------------
-        // coerce and return
+        // `decode_value` already returns a positioned `ContextError`; surface it as `Malformed`
         // --------------------------------------------------
-        match result {
-            Ok(Packet::Ready(pkt)) => Ok(pkt),
-            Ok(Packet::NeedMore(p)) => p.finalize().map_err(|label| {
-                let ce = label_to_context_error!(self.buf.consumed_slice(start, consumed), label);
-                DecodeIterError::Malformed(ce)
-            }),
-            Err(e) => Err(e),
-        }
+        outcome.map_err(DecodeIterError::Malformed)
     }
 }

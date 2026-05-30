@@ -24,27 +24,25 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 /// `None` sigil target: takes `&T`
-fn enc_u8_ref(v: &u8) -> Vec<u8> {
-    encb::u8(*v)
+fn enc_u8_ref(v: &u8, out: &mut Vec<u8>) {
+    encb::u8(*v, out);
 }
 
 /// `&` sigil target for a primitive: takes owned `u16` (Copy, zero-cost)
-fn enc_u16_owned(v: u16) -> Vec<u8> {
-    encb::be_u16(v)
+fn enc_u16_owned(v: u16, out: &mut Vec<u8>) {
+    encb::be_u16(v, out);
 }
 
 /// `&` sigil target for `String` via `EncodeAs` -> `&str`
-fn enc_str_ref(s: &str) -> Vec<u8> {
-    let mut out = encb::u8_from_usize(s.len());
+fn enc_str_ref(s: &str, out: &mut Vec<u8>) {
+    encb::u8_from_usize(s.len(), out);
     out.extend_from_slice(s.as_bytes());
-    out
 }
 
 /// `&` sigil target for `Vec<u8>` via `EncodeAs` -> `&[u8]`
-fn enc_bytes_ref(b: &[u8]) -> Vec<u8> {
-    let mut out = encb::u8_from_usize(b.len());
+fn enc_bytes_ref(b: &[u8], out: &mut Vec<u8>) {
+    encb::u8_from_usize(b.len(), out);
     out.extend_from_slice(b);
-    out
 }
 
 /// `None` sigil decode counterpart for length-prefixed strings
@@ -122,7 +120,8 @@ fn all_sigils_roundtrip() {
         label: String::from("sigil"),
         blob: vec![0xDE, 0xAD, 0xBE, 0xEF],
     };
-    let bytes = original.encode_frame();
+    let mut bytes = Vec::new();
+    original.encode_frame(&mut bytes);
     let mut slice = bytes.as_slice();
     let decoded = AllSigils::decode_frame(&mut slice).expect("decode_frame");
     assert_eq!(original, decoded);
@@ -182,7 +181,8 @@ fn all_sigils_optional_all_present() {
         label: Some(String::from("hi")),
         blob: Some(vec![1, 2, 3]),
     };
-    let bytes = original.encode_frame();
+    let mut bytes = Vec::new();
+    original.encode_frame(&mut bytes);
     let mut slice = bytes.as_slice();
     let decoded = AllSigilsOptional::decode_frame(&mut slice).expect("decode_frame");
     assert_eq!(original, decoded);
@@ -198,7 +198,8 @@ fn all_sigils_optional_all_absent() {
         label: None,
         blob: None,
     };
-    let bytes = original.encode_frame();
+    let mut bytes = Vec::new();
+    original.encode_frame(&mut bytes);
     let mut slice = bytes.as_slice();
     let decoded = AllSigilsOptional::decode_frame(&mut slice).expect("decode_frame");
     assert_eq!(original, decoded);
@@ -214,22 +215,22 @@ fn all_sigils_optional_partial() {
         label: Some(String::from("partial")),
         blob: None,
     };
-    let bytes = original.encode_frame();
+    let mut bytes = Vec::new();
+    original.encode_frame(&mut bytes);
     let mut slice = bytes.as_slice();
     let decoded = AllSigilsOptional::decode_frame(&mut slice).expect("decode_frame");
     assert_eq!(original, decoded);
 }
 
 /// `&` sigil target for `Box<u32>` / `Rc<u32>` via `EncodeAs` -> `&u32`
-fn enc_inner_u32_ref(v: &u32) -> Vec<u8> {
-    encb::be_u32(*v)
+fn enc_inner_u32_ref(v: &u32, out: &mut Vec<u8>) {
+    encb::be_u32(*v, out);
 }
 
 /// `&` sigil target for `Arc<str>` via `EncodeAs` -> `&str`, length-prefixed
-fn enc_inner_str_ref(s: &str) -> Vec<u8> {
-    let mut out = encb::u8_from_usize(s.len());
+fn enc_inner_str_ref(s: &str, out: &mut Vec<u8>) {
+    encb::u8_from_usize(s.len(), out);
     out.extend_from_slice(s.as_bytes());
-    out
 }
 
 /// Decode a big-endian `u32` and box it, for use as `dec =` on a `Box<u32>` field
@@ -286,7 +287,8 @@ fn smart_pointer_sigils_roundtrip() {
         counted: Rc::new(0x11223344),
         shared: Arc::from("arc"),
     };
-    let bytes = original.encode_frame();
+    let mut bytes = Vec::new();
+    original.encode_frame(&mut bytes);
     let mut slice = bytes.as_slice();
     let decoded = SmartPointerSigils::decode_frame(&mut slice).expect("decode_frame");
     assert_eq!(original, decoded);
@@ -346,7 +348,8 @@ fn sigil_mixture_roundtrip() {
         col: Color::Green,
         label: String::from("mix"),
     };
-    let bytes = original.encode_frame();
+    let mut bytes = Vec::new();
+    original.encode_frame(&mut bytes);
     let mut slice = bytes.as_slice();
     let decoded = SigilMixture::decode_frame(&mut slice).expect("decode_frame");
     assert_eq!(original, decoded);

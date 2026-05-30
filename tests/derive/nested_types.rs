@@ -14,11 +14,10 @@ impl tinyklv::DecodeValue<&[u8]> for Point {
         Ok(Point { x, y })
     }
 }
-impl tinyklv::EncodeValue<Vec<u8>> for Point {
-    fn encode_value(&self) -> Vec<u8> {
-        let mut v = encb::be_i16(self.x);
-        v.extend(encb::be_i16(self.y));
-        v
+impl tinyklv::EncodeValue for Point {
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        encb::be_i16(self.x, out);
+        encb::be_i16(self.y, out);
     }
 }
 
@@ -62,7 +61,8 @@ fn encode_nested_type_roundtrip() {
         id: 99,
         location: Point { x: 100, y: -200 },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithNestedType::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -74,7 +74,8 @@ fn nested_type_origin_point() {
         id: 0,
         location: Point { x: 0, y: 0 },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithNestedType::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -89,7 +90,8 @@ fn nested_type_extreme_coordinates() {
             y: i16::MAX,
         },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithNestedType::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }

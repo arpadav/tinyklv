@@ -56,10 +56,12 @@ fn main() {
     };
 
     // encode - value bytes contain only the field KLV triples
-    let value_bytes = original.encode_value();
+    let mut value_bytes = Vec::new();
+    original.encode_value(&mut value_bytes);
 
     // encode - frame bytes wrap the value region in sentinel + outer length
-    let frame_bytes = original.encode_frame();
+    let mut frame_bytes = Vec::new();
+    original.encode_frame(&mut frame_bytes);
 
     // the framed form must be strictly larger (sentinel + outer length)
     assert!(

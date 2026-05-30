@@ -173,13 +173,13 @@ struct MixedShape {
 // --------------------------------------------------
 
 /// Encoder that takes Priority by value - tests autoref-deref dispatch
-fn encode_priority_owned(v: Priority) -> Vec<u8> {
-    v.encode_value()
+fn encode_priority_owned(v: Priority, out: &mut Vec<u8>) {
+    v.encode_value(out);
 }
 
 /// Encoder that takes Color by value
-fn encode_color_owned(v: Color) -> Vec<u8> {
-    v.encode_value()
+fn encode_color_owned(v: Color, out: &mut Vec<u8>) {
+    v.encode_value(out);
 }
 
 #[derive(Klv, Debug, PartialEq, Clone)]
@@ -264,8 +264,9 @@ fn duplicate_6field_last_wins() {
     let a = make_six_field_a();
     let b = make_six_field_b();
 
-    let mut stream = a.encode_value();
-    stream.extend(b.encode_value());
+    let mut stream = Vec::new();
+    a.encode_value(&mut stream);
+    b.encode_value(&mut stream);
 
     let decoded = SixField::decode_value(&mut stream.as_slice()).unwrap();
 
@@ -287,7 +288,8 @@ fn encode_skips_none() {
         coordinate: Some(Coordinate { lat: 1.0, lon: 2.0 }),
     };
 
-    let encoded = val.encode_value();
+    let mut encoded = Vec::new();
+    val.encode_value(&mut encoded);
 
     // Color: key(1) + len(1) + 2 bytes = 4
     // Coordinate: key(1) + len(1) + 16 bytes = 18
@@ -321,7 +323,8 @@ fn roundtrip_identity_all_required() {
             nanos: 7,
         },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = AllRequired::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -337,7 +340,8 @@ fn roundtrip_identity_all_optional_some() {
             dz: 0,
         }),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = AllOptional::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -353,7 +357,8 @@ fn roundtrip_identity_mixed_shape() {
             yaw: 0.3,
         }),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = MixedShape::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -365,7 +370,8 @@ fn roundtrip_identity_mixed_shape_none() {
         priority: Priority::High,
         attitude: None,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = MixedShape::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -377,7 +383,8 @@ fn roundtrip_owned_encoder() {
         priority: Priority::Critical,
         color: Color::Blue,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = OwnedEncoderStruct::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }

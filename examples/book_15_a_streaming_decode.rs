@@ -57,7 +57,9 @@ fn main() {
         // junk / zeros before the first sentinel
         0xDE, 0xAD, 0x00, 0x00, 0xFF, 0x00,
     ];
-    buf.extend(want.iter().flat_map(tinyklv::EncodeFrame::encode_frame));
+    for hb in &want {
+        hb.encode_frame(&mut buf);
+    }
 
     // Pattern 1: feed the whole stream into `::decoder()`, then drain with
     // IntoIterator on &mut Decoder.
@@ -89,7 +91,8 @@ fn main() {
     // body boundaries and manages the in-flight partial explicitly.
     {
         let original = want.first().unwrap().clone();
-        let body = original.encode_value();
+        let mut body = Vec::new();
+        original.encode_value(&mut body);
         let (first, second_half) = body.split_at(5);
 
         let mut first_half: &[u8] = first;

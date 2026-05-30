@@ -60,7 +60,8 @@ fn roundtrip_with_default() {
         with_default: 999,
         without_default: 0xDEAD_BEEF,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithDefault::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, original);
 }

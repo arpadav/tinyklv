@@ -1,13 +1,12 @@
-//! Custom `BreakCondition` trait tests
+//! Manual loop-control tests (the hand-written escape hatch)
 //!
-//! Tests `Done`, `Abort`, and `Skip` break conditions via manual `Decode`
-//! implementations. The blanket `impl<T: Decode<S>> BreakCondition<S> for T`
-//! provides the default `Proceed` return, but the default method signature
-//! `fn break_condition<K, L>(key: K, len: L)` carries no trait bounds on K
-//! or L, making it impossible to inspect the key inside an override without
-//! a concrete type. The idiomatic pattern is therefore to embed the break
-//! logic directly in the manual `Decode` loop using the concrete `u8` key
-//! value, which is exactly what the derive macro expansion does.
+//! Tests `Done`, `Abort`, and `Skip` loop control via manual `DecodeValue`
+//! implementations that embed the break logic directly in the loop. This is
+//! the low-level escape hatch; the derive-level mechanism is the
+//! `#[klv(break_on = ..)]` container attribute (covered in `break_on_attr.rs`),
+//! which threads a [`tinyklv::BreakType`] decision into the generated loop.
+//! These manual impls remain fully supported for cases the attribute does not
+//! cover, and pin the same outcomes the attribute produces.
 use super::types::*;
 use tinyklv::dec::binary as decb;
 use tinyklv::prelude::*;

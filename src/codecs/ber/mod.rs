@@ -91,7 +91,9 @@ impl<T> OfBerCommon for T where
 /// use tinyklv::prelude::*;
 /// use tinyklv::codecs::ber::BerLength;
 ///
-/// assert_eq!(vec![128 + 3, 129, 182, 2], BerLength::new(8_500_738_u32).encode_value());
+/// let mut v = Vec::new();
+/// BerLength::new(8_500_738_u32).encode_value(&mut v);
+/// assert_eq!(vec![128 + 3, 129, 182, 2], v);
 /// assert_eq!(BerLength::new(8_500_738_u32), BerLength::decode_value(&mut &vec![128 + 3, 129, 182, 2][..]).unwrap());
 /// ```
 pub enum BerLength<T: OfBerCommon> {
@@ -171,12 +173,15 @@ impl<T: OfBerCommon> BerLength<T> {
     /// ```rust
     /// use tinyklv::codecs::ber::BerLength;
     ///
-    /// assert_eq!(BerLength::encode_value(47_u64), vec![47]);
-    /// assert_eq!(BerLength::encode_value(201_u64), vec![128 + 1, 201]);
+    /// let mut v = Vec::new();
+    /// BerLength::encode_value(47_u64, &mut v);
+    /// assert_eq!(v, vec![47]);
+    /// let mut v = Vec::new();
+    /// BerLength::encode_value(201_u64, &mut v);
+    /// assert_eq!(v, vec![128 + 1, 201]);
     /// ```
-    #[must_use]
-    pub fn encode_value(len: T) -> Vec<u8> {
-        Self::new(len).encode_value()
+    pub fn encode_value(len: T, out: &mut Vec<u8>) {
+        crate::EncodeValue::encode_value(&Self::new(len), out);
     }
 
     /// Returns the wrapped length value as a [`u128`], regardless of which BER form was used
@@ -192,8 +197,8 @@ impl<T: OfBerCommon> BerLength<T> {
     }
 }
 /// [`BerLength`] implementation of [`EncodeValue`]
-impl<T: OfBerCommon> crate::EncodeValue<Vec<u8>> for BerLength<T> {
-    /// Encode a [`BerLength`] into a [`Vec<u8>`]
+impl<T: OfBerCommon> crate::EncodeValue for BerLength<T> {
+    /// Appends the BER-encoded length bytes of this [`BerLength`] to `out`
     ///
     /// # Example
     ///
@@ -201,24 +206,26 @@ impl<T: OfBerCommon> crate::EncodeValue<Vec<u8>> for BerLength<T> {
     /// use tinyklv::prelude::*;
     /// use tinyklv::codecs::ber::BerLength;
     ///
-    /// let value0 = BerLength::new(47_u64);
-    /// let value1 = BerLength::new(201_u64);
-    /// let value2 = BerLength::new(123891829038102_u64);
+    /// let mut buf = Vec::new();
+    /// BerLength::new(47_u64).encode_value(&mut buf);
+    /// assert_eq!(buf, vec![47]);
     ///
-    /// assert_eq!(value0.encode_value(), vec![47]);
-    /// assert_eq!(value1.encode_value(), vec![128 + 1, 201]);
-    /// assert_eq!(value2.encode_value(), vec![128 + 6, 112, 173, 208, 117, 220, 22]);
+    /// let mut buf = Vec::new();
+    /// BerLength::new(201_u64).encode_value(&mut buf);
+    /// assert_eq!(buf, vec![128 + 1, 201]);
     ///
-    /// // Can also directly encode:
-    /// let value0_encoded = BerLength::encode_value(47_u64);
-    /// let value1_encoded = BerLength::encode_value(201_u64);
+    /// let mut buf = Vec::new();
+    /// BerLength::new(123891829038102_u64).encode_value(&mut buf);
+    /// assert_eq!(buf, vec![128 + 6, 112, 173, 208, 117, 220, 22]);
     ///
-    /// assert_eq!(value0_encoded, vec![47]);
-    /// assert_eq!(value1_encoded, vec![128 + 1, 201]);
+    /// // the static entry point appends the same bytes:
+    /// let mut buf = Vec::new();
+    /// BerLength::encode_value(201_u64, &mut buf);
+    /// assert_eq!(buf, vec![128 + 1, 201]);
     /// ```
-    fn encode_value(&self) -> Vec<u8> {
+    fn encode_value(&self, out: &mut Vec<u8>) {
         match self {
-            BerLength::Short(len) => vec![*len],
+            BerLength::Short(len) => out.push(*len),
             BerLength::Long(len) => {
                 // --------------------------------------------------
                 // Edge case: If the length fits within a single byte, use the Short form.
@@ -230,29 +237,23 @@ impl<T: OfBerCommon> crate::EncodeValue<Vec<u8>> for BerLength<T> {
                         clippy::expect_used,
                         reason = "this should never panic, due to trait bounds"
                     )]
-                    return vec![len.to_u8().expect("if unsigned int is less than 128, then it can always fit into u8, why did this panic?")];
+                    out.push(len.to_u8().expect("if unsigned int is less than 128, then it can always fit into u8, why did this panic?"));
+                    return;
                 }
                 // --------------------------------------------------
-                // skip leading zeroes
+                // count significant big-endian bytes (leading zeros stripped), iterator-only
+                // so the prefix byte can be written before the value bytes - no temp Vec, no
+                // index-slicing
                 // --------------------------------------------------
-                let mut encoded = len
-                    .to_be_bytes()
-                    .as_ref()
-                    .iter()
-                    .skip_while(|&&b| b == 0)
-                    .copied()
-                    .collect::<Vec<u8>>();
+                let be = len.to_be_bytes();
+                let bytes = be.as_ref();
+                let leading_zeros = bytes.iter().take_while(|&&b| b == 0).count();
+                let significant = bytes.len() - leading_zeros;
                 // --------------------------------------------------
-                // prefix byte with MSB set to 1, followed by the length
+                // prefix byte with MSB set to 1, followed by the significant length bytes
                 // --------------------------------------------------
-                let prefix = 0b1000_0000 | (encoded.len() as u8);
-                // --------------------------------------------------
-                // prepend the prefix byte and return
-                // --------------------------------------------------
-                let mut result = Vec::with_capacity(encoded.len() + 1);
-                result.push(prefix);
-                result.append(&mut encoded);
-                result
+                out.push(0b1000_0000 | (significant as u8));
+                out.extend(bytes.iter().skip(leading_zeros).copied());
             }
         }
     }
@@ -356,7 +357,9 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerLength<T> {
 /// use tinyklv::prelude::*;
 /// use tinyklv::codecs::ber::BerOid;
 ///
-/// assert_eq!(vec![129, 182, 2], BerOid::encode_value(23298_u64));
+/// let mut v = Vec::new();
+/// BerOid::encode_value(23298_u64, &mut v);
+/// assert_eq!(vec![129, 182, 2], v);
 /// assert_eq!(23298_u64, BerOid::decode_value(&mut &vec![129, 182, 2][..]).unwrap().value());
 /// ```
 pub struct BerOid<T: OfBerCommon> {
@@ -413,16 +416,17 @@ impl<T: OfBerCommon> BerOid<T> {
     /// ```rust
     /// use tinyklv::codecs::ber::BerOid;
     ///
-    /// assert_eq!(BerOid::encode_value(23298_u64), vec![129, 182, 2]);
+    /// let mut v = Vec::new();
+    /// BerOid::encode_value(23298_u64, &mut v);
+    /// assert_eq!(v, vec![129, 182, 2]);
     /// ```
-    #[must_use]
-    pub fn encode_value(value: T) -> Vec<u8> {
-        Self::new(value).encode_value()
+    pub fn encode_value(value: T, out: &mut Vec<u8>) {
+        crate::EncodeValue::encode_value(&Self::new(value), out);
     }
 }
 /// [`BerOid`] implementation of [`crate::traits::EncodeValue`]
-impl<T: OfBerCommon> crate::EncodeValue<Vec<u8>> for BerOid<T> {
-    /// Encode a [`BerOid`] into a [`Vec<u8>`]
+impl<T: OfBerCommon> crate::EncodeValue for BerOid<T> {
+    /// Appends the BER-OID-encoded bytes of this [`BerOid`] to `out`
     ///
     /// # Example
     ///
@@ -430,14 +434,20 @@ impl<T: OfBerCommon> crate::EncodeValue<Vec<u8>> for BerOid<T> {
     /// use tinyklv::prelude::*;
     /// use tinyklv::codecs::ber::BerOid;
     ///
-    /// assert_eq!(vec![129, 182, 2], BerOid::encode_value(23298_u64));
+    /// let mut buf = Vec::new();
+    /// BerOid::new(23298_u64).encode_value(&mut buf);
+    /// assert_eq!(buf, vec![129, 182, 2]);
     /// ```
     ///
     /// Please use [`crate::codecs::ber::enc::ber_oid`] instead for
     /// all parsing needs. This struct is meant to be used as a development
     /// tool for encoding values to BER format.
-    fn encode_value(&self) -> Vec<u8> {
-        let mut output = Vec::new();
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        // --------------------------------------------------
+        // emit 7-bit groups least-significant first, then reverse just the bytes we
+        // appended so the most-significant group leads (matching the prior collect+reverse)
+        // --------------------------------------------------
+        let start = out.len();
         let mut value = self.value.as_();
         let mut first_byte = true;
         while value > 0 {
@@ -448,13 +458,14 @@ impl<T: OfBerCommon> crate::EncodeValue<Vec<u8>> for BerOid<T> {
             value >>= 7;
             if first_byte {
                 first_byte = false;
-                output.push(byte);
+                out.push(byte);
             } else {
-                output.push(byte | 0x80);
+                out.push(byte | 0x80);
             }
         }
-        output.reverse();
-        output
+        if let Some(written) = out.get_mut(start..) {
+            written.reverse();
+        }
     }
 }
 /// [`BerOid`] implementation of [`crate::traits::DecodeValue`]

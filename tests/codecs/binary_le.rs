@@ -9,7 +9,8 @@ fn u8_known_value() {
 /// Tests `u8` encode/`u8` decode roundtrip across boundary values.
 fn u8_roundtrip() {
     for val in [0_u8, 1, 127, 128, 255] {
-        let encoded = tinyklv::enc::binary::u8(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::u8(val, &mut encoded);
         let decoded = tinyklv::dec::binary::u8(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded);
     }
@@ -27,14 +28,17 @@ fn le_u16_known_value() {
 /// Tests `le_u16` encoder emits low byte first for `0x0102`.
 fn le_u16_encode() {
     // 0x0102 in LE: low byte 0x02 first
-    assert_eq!(tinyklv::enc::binary::le_u16(0x0102_u16), vec![0x02, 0x01]);
+    let mut encoded = Vec::new();
+    tinyklv::enc::binary::le_u16(0x0102_u16, &mut encoded);
+    assert_eq!(encoded, vec![0x02, 0x01]);
 }
 
 #[test]
 /// Tests `le_u16` encode/decode roundtrip for `0xABCD`.
 fn le_u16_roundtrip() {
     let val = 0xABCD_u16;
-    let encoded = tinyklv::enc::binary::le_u16(val);
+    let mut encoded = Vec::new();
+    tinyklv::enc::binary::le_u16(val, &mut encoded);
     let decoded = tinyklv::dec::binary::le_u16(&mut encoded.as_slice()).unwrap();
     assert_eq!(val, decoded);
 }
@@ -57,7 +61,8 @@ fn le_u16_max() {
 /// Tests `le_u16` encoder emits little-endian byte order (low byte first).
 fn le_u16_byte_order() {
     // 0x0102 LE: low byte [0x02] comes first
-    let encoded = tinyklv::enc::binary::le_u16(0x0102_u16);
+    let mut encoded = Vec::new();
+    tinyklv::enc::binary::le_u16(0x0102_u16, &mut encoded);
     assert_eq!(encoded, vec![0x02, 0x01]);
 }
 
@@ -73,7 +78,8 @@ fn le_u32_known_value() {
 /// Tests `le_u32` encode/decode roundtrip across boundary values.
 fn le_u32_roundtrip() {
     for val in [0_u32, 1, u32::MAX / 2, u32::MAX] {
-        let encoded = tinyklv::enc::binary::le_u32(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::le_u32(val, &mut encoded);
         let decoded = tinyklv::dec::binary::le_u32(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded);
     }
@@ -82,7 +88,8 @@ fn le_u32_roundtrip() {
 #[test]
 /// Tests `le_u32` emits bytes in little-endian order.
 fn le_u32_byte_order() {
-    let encoded = tinyklv::enc::binary::le_u32(0x01020304_u32);
+    let mut encoded = Vec::new();
+    tinyklv::enc::binary::le_u32(0x01020304_u32, &mut encoded);
     assert_eq!(encoded, vec![0x04, 0x03, 0x02, 0x01]);
 }
 
@@ -90,7 +97,8 @@ fn le_u32_byte_order() {
 /// Tests `le_u64` encode/decode roundtrip across boundary values.
 fn le_u64_roundtrip() {
     for val in [0_u64, 1, u64::MAX / 2, u64::MAX] {
-        let encoded = tinyklv::enc::binary::le_u64(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::le_u64(val, &mut encoded);
         let decoded = tinyklv::dec::binary::le_u64(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded);
     }
@@ -100,7 +108,8 @@ fn le_u64_roundtrip() {
 /// Tests `le_u128` encode/decode roundtrip across boundary values.
 fn le_u128_roundtrip() {
     for val in [0_u128, 1, u128::MAX / 2, u128::MAX] {
-        let encoded = tinyklv::enc::binary::le_u128(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::le_u128(val, &mut encoded);
         let decoded = tinyklv::dec::binary::le_u128(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded);
     }
@@ -110,7 +119,8 @@ fn le_u128_roundtrip() {
 /// Tests `i8` encode/decode roundtrip across signed boundary values.
 fn i8_roundtrip() {
     for val in [i8::MIN, -1_i8, 0, 1, i8::MAX] {
-        let encoded = tinyklv::enc::binary::i8(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::i8(val, &mut encoded);
         let decoded = tinyklv::dec::binary::i8(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded);
     }
@@ -128,7 +138,8 @@ fn le_i16_known_value() {
 /// Tests `le_i16` encode/decode roundtrip across signed boundary values.
 fn le_i16_roundtrip() {
     for val in [i16::MIN, -1_i16, 0, 1, i16::MAX] {
-        let encoded = tinyklv::enc::binary::le_i16(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::le_i16(val, &mut encoded);
         let decoded = tinyklv::dec::binary::le_i16(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded);
     }
@@ -138,7 +149,8 @@ fn le_i16_roundtrip() {
 /// Tests `le_i32` encode/decode roundtrip across signed boundary values.
 fn le_i32_roundtrip() {
     for val in [i32::MIN, -1_i32, 0, 1, i32::MAX] {
-        let encoded = tinyklv::enc::binary::le_i32(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::le_i32(val, &mut encoded);
         let decoded = tinyklv::dec::binary::le_i32(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded);
     }
@@ -148,7 +160,8 @@ fn le_i32_roundtrip() {
 /// Tests `le_i64` encode/decode roundtrip across signed boundary values.
 fn le_i64_roundtrip() {
     for val in [i64::MIN, -1_i64, 0, 1, i64::MAX] {
-        let encoded = tinyklv::enc::binary::le_i64(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::le_i64(val, &mut encoded);
         let decoded = tinyklv::dec::binary::le_i64(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded);
     }
@@ -158,7 +171,8 @@ fn le_i64_roundtrip() {
 /// Tests `le_i128` encode/decode roundtrip across signed boundary values.
 fn le_i128_roundtrip() {
     for val in [i128::MIN, -1_i128, 0, 1, i128::MAX] {
-        let encoded = tinyklv::enc::binary::le_i128(val);
+        let mut encoded = Vec::new();
+        tinyklv::enc::binary::le_i128(val, &mut encoded);
         let decoded = tinyklv::dec::binary::le_i128(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded);
     }
@@ -167,7 +181,8 @@ fn le_i128_roundtrip() {
 #[test]
 /// Tests `le_f32` encode/decode roundtrip preserves `0.0`.
 fn le_f32_zero() {
-    let encoded = tinyklv::enc::binary::le_f32(0.0_f32);
+    let mut encoded = Vec::new();
+    tinyklv::enc::binary::le_f32(0.0_f32, &mut encoded);
     let decoded = tinyklv::dec::binary::le_f32(&mut encoded.as_slice()).unwrap();
     assert_eq!(0.0_f32, decoded);
 }
@@ -176,7 +191,8 @@ fn le_f32_zero() {
 /// Tests `le_f32` encode/decode preserves the exact bit pattern of `E`.
 fn le_f32_roundtrip_known() {
     let val = std::f32::consts::E;
-    let encoded = tinyklv::enc::binary::le_f32(val);
+    let mut encoded = Vec::new();
+    tinyklv::enc::binary::le_f32(val, &mut encoded);
     let decoded = tinyklv::dec::binary::le_f32(&mut encoded.as_slice()).unwrap();
     assert_eq!(val.to_bits(), decoded.to_bits());
 }
@@ -184,7 +200,8 @@ fn le_f32_roundtrip_known() {
 #[test]
 /// Tests `le_f32` encode/decode preserves positive infinity.
 fn le_f32_infinity() {
-    let encoded = tinyklv::enc::binary::le_f32(f32::INFINITY);
+    let mut encoded = Vec::new();
+    tinyklv::enc::binary::le_f32(f32::INFINITY, &mut encoded);
     let decoded = tinyklv::dec::binary::le_f32(&mut encoded.as_slice()).unwrap();
     assert!(decoded.is_infinite() && decoded.is_sign_positive());
 }
@@ -192,7 +209,8 @@ fn le_f32_infinity() {
 #[test]
 /// Tests `le_f32` encode/decode produces a NaN when fed a NaN.
 fn le_f32_nan() {
-    let encoded = tinyklv::enc::binary::le_f32(f32::NAN);
+    let mut encoded = Vec::new();
+    tinyklv::enc::binary::le_f32(f32::NAN, &mut encoded);
     let decoded = tinyklv::dec::binary::le_f32(&mut encoded.as_slice()).unwrap();
     assert!(decoded.is_nan());
 }
@@ -200,7 +218,8 @@ fn le_f32_nan() {
 #[test]
 /// Tests `le_f64` encode/decode roundtrip preserves `0.0`.
 fn le_f64_zero() {
-    let encoded = tinyklv::enc::binary::le_f64(0.0_f64);
+    let mut encoded = Vec::new();
+    tinyklv::enc::binary::le_f64(0.0_f64, &mut encoded);
     let decoded = tinyklv::dec::binary::le_f64(&mut encoded.as_slice()).unwrap();
     assert_eq!(0.0_f64, decoded);
 }
@@ -209,7 +228,8 @@ fn le_f64_zero() {
 /// Tests `le_f64` encode/decode preserves the exact bit pattern of `E`.
 fn le_f64_roundtrip_known() {
     let val = std::f64::consts::E;
-    let encoded = tinyklv::enc::binary::le_f64(val);
+    let mut encoded = Vec::new();
+    tinyklv::enc::binary::le_f64(val, &mut encoded);
     let decoded = tinyklv::dec::binary::le_f64(&mut encoded.as_slice()).unwrap();
     assert_eq!(val.to_bits(), decoded.to_bits());
 }
@@ -217,7 +237,8 @@ fn le_f64_roundtrip_known() {
 #[test]
 /// Tests `le_f64` encode/decode produces a NaN when fed a NaN.
 fn le_f64_nan() {
-    let encoded = tinyklv::enc::binary::le_f64(f64::NAN);
+    let mut encoded = Vec::new();
+    tinyklv::enc::binary::le_f64(f64::NAN, &mut encoded);
     let decoded = tinyklv::dec::binary::le_f64(&mut encoded.as_slice()).unwrap();
     assert!(decoded.is_nan());
 }
@@ -226,8 +247,10 @@ fn le_f64_nan() {
 /// Tests that BE and LE `u16` encoders produce byte-reversed outputs for the same value.
 fn be_vs_le_u16_differ() {
     let val = 0x0102_u16;
-    let be = tinyklv::enc::binary::be_u16(val);
-    let le = tinyklv::enc::binary::le_u16(val);
+    let mut be = Vec::new();
+    tinyklv::enc::binary::be_u16(val, &mut be);
+    let mut le = Vec::new();
+    tinyklv::enc::binary::le_u16(val, &mut le);
     assert_eq!(be, vec![0x01, 0x02]);
     assert_eq!(le, vec![0x02, 0x01]);
 }
@@ -236,8 +259,10 @@ fn be_vs_le_u16_differ() {
 /// Tests that BE and LE `u32` encoders produce byte-reversed outputs for the same value.
 fn be_vs_le_u32_differ() {
     let val = 0x01020304_u32;
-    let be = tinyklv::enc::binary::be_u32(val);
-    let le = tinyklv::enc::binary::le_u32(val);
+    let mut be = Vec::new();
+    tinyklv::enc::binary::be_u32(val, &mut be);
+    let mut le = Vec::new();
+    tinyklv::enc::binary::le_u32(val, &mut le);
     assert_eq!(be, vec![0x01, 0x02, 0x03, 0x04]);
     assert_eq!(le, vec![0x04, 0x03, 0x02, 0x01]);
 }

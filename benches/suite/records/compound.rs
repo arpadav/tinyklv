@@ -53,8 +53,14 @@ pub(crate) struct Compound {
     #[klv(key = 0x08)]
     pub(crate) mode: u8,
 
-    #[klv(key = 0x09, enc = Reading::pack)]
+    #[klv(key = 0x09, enc = pack_readings)]
     pub(crate) sensors: Vec<Reading>,
+}
+
+/// Writer-API adapter around [`Reading::pack`]: packs `readings` into a byte run and
+/// appends it to `out`, matching the new encoder signature `fn(&[Reading], &mut Vec<u8>)`.
+fn pack_readings(readings: &[Reading], out: &mut Vec<u8>) {
+    out.extend_from_slice(&Reading::pack(readings));
 }
 
 /// [`Compound`] implementation of [`RngSample`]

@@ -75,7 +75,8 @@ fn encode_prepends_sentinel() {
         id: 100,
         name: String::from("AB"),
     };
-    let encoded = packet.encode_frame();
+    let mut encoded = Vec::new();
+    packet.encode_frame(&mut encoded);
     assert_eq!(&encoded[..2], b"\xAA\xBB", "encode() must prepend sentinel");
 }
 
@@ -86,7 +87,8 @@ fn extract_roundtrip() {
         id: 999,
         name: String::from("TEST"),
     };
-    let encoded = original.encode_frame();
+    let mut encoded = Vec::new();
+    original.encode_frame(&mut encoded);
     let decoded = SentinelPacket::decode_frame(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -160,7 +162,8 @@ fn finder_path_seek_skips_false_first_byte() {
 /// Finder-path roundtrip, confirming the long-sentinel branch encodes + decodes consistently.
 fn finder_path_roundtrip() {
     let original = LongSentinelPacket { id: 0xBEEF };
-    let encoded = original.encode_frame();
+    let mut encoded = Vec::new();
+    original.encode_frame(&mut encoded);
     assert_eq!(&encoded[..5], b"\xAA\xBB\xCC\xDD\xEE");
     let decoded = LongSentinelPacket::decode_frame(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);

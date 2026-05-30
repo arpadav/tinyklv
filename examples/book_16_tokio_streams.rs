@@ -41,7 +41,8 @@ fn make_chunks(packets: &[Heartbeat]) -> Vec<Vec<u8>> {
     // junk / zeros before the first sentinel - the decoder skips them
     chunks.push(vec![0xDE, 0xAD, 0x00, 0x00, 0xFF, 0x00]);
     for p in packets {
-        let frame = p.encode_frame();
+        let mut frame = Vec::new();
+        p.encode_frame(&mut frame);
         let (head, tail) = frame.split_at(frame.len() / 2);
         chunks.push(head.to_vec());
         chunks.push(tail.to_vec());
