@@ -9,7 +9,7 @@
 //! | `DecodeValue<S>`   | `EncodeValue`      | Value only     |
 //! | `SeekSentinel<S>`  | *(sentinel bytes)* | KLV framing    |
 //! | `DecodeFrame<S>`   | `EncodeFrame`      | Full pipeline  |
-//! | *(`break_on` attr → [`BreakType`])* | *(none)* | Loop control   |
+//! | *(`break_on` attr -> [`BreakType`])* | *(none)* | Loop control   |
 //! | `DrainFrames`   | *(none)*           | Batching       |
 //!
 //! **Why decode has more traits**: Decode must seek through a byte stream,

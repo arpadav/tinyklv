@@ -566,7 +566,7 @@ fn fixed_len_width(len_encoder: &types::SiguledXcoder) -> Option<usize> {
 /// Recognizes only the endianness-prefixed binary primitive writers (`be_u32`, `le_i16`, `be_f64`, …),
 /// whose output width is a compile-time constant. Bare names (`u8`, `u32`) are deliberately *not*
 /// matched: they collide with the ASCII text encoders (`codecs::string::enc::u32`, which writes a
-/// variable-length decimal), and `*_lengthed` is a variable-width closure factory — those, and every
+/// variable-length decimal), and `*_lengthed` is a variable-width closure factory - those, and every
 /// custom/nested encoder, take the always-correct back-patch path instead.
 ///
 /// Detection is by name, so the returned width is a *contract*: the named encoder must append

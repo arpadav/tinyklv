@@ -46,7 +46,7 @@ about HOW the benchmarks were run, and offload that information to benches/READM
 ## Tried and rejected / current approach (don't re-walk)
 
 - **`Vec<T>::decode_value` pre-sizes** with a memory-bounded `with_capacity` hint. Starting from an
-  empty `Vec` (cap 0→4→8…) was ~2.7x slower on small runs (a probe; the *entire* gap vs a hand loop).
+  empty `Vec` (cap 0->4->8…) was ~2.7x slower on small runs (a probe; the *entire* gap vs a hand loop).
   Do not revert to `Vec::new`. (`src/traits/dec/mod.rs`)
 - **The `Vec<T>` per-element `checkpoint`/`eof` loop stays.** The reset is load-bearing for the
   zero-consumed-rewind contract; the measured cost was the missing capacity, not the loop. Removing
@@ -85,7 +85,7 @@ from it for README todos 1 & 3. The durable, decision-relevant nuggets:
 - **`manual` is the floor, `tlv_parser` the ceiling.** The spread is allocation + abstraction depth;
   `tlv_parser` is ~15-50x slow because it builds an owned BER tree then looks up fields by string
   path. tinyklv sits just above `manual` and below everything else.
-- **Reading the bench numbers:** encode timings include the domain-value→message map (protobuf) /
-  struct→bytes (tinyklv), by design; protobuf native `timestamp`/`elapsed` use WKT sub-messages while
+- **Reading the bench numbers:** encode timings include the domain-value->message map (protobuf) /
+  struct->bytes (tinyklv), by design; protobuf native `timestamp`/`elapsed` use WKT sub-messages while
   micropb/quick use raw ints, so encode is not a same-wire comparison; framing adds a small ~constant
   per call; these are micro-benchmarks where allocation dominates because per-call work is tiny.
