@@ -35,13 +35,19 @@ name = "proptest_roundtrip"
 path = "tests/proptest_roundtrip/main.rs"
 
 [dependencies]
+# --------------------------------------------------
+# external
+# --------------------------------------------------
 chrono = { version = "0.4.44", optional = true }
 memchr = "2.8.0"
 num-traits = "0.2.19"
 pastey = "0.2.3"
-tinyklv-impl = { path = "impl", version = "0.1.2" }
 tracing = { version = "0.1.44", optional = true }
 winnow = { version = "1.0.2", features = ["binary", "parser", "simd"] }
+# --------------------------------------------------
+# workspace
+# --------------------------------------------------
+tinyklv-impl = { path = "impl", version = "0.1.2" }
 
 [dev-dependencies]
 criterion = "^0.8"
@@ -80,10 +86,9 @@ harness = false
 [features]
 default = []
 ascii = ["winnow/ascii"]
-# native-type DecodeValue/EncodeValue impls (chrono/std) used by the benchmark suite
-bench = ["chrono"]
 full = ["ascii", "chrono"]
 tracing = ["dep:tracing", "tinyklv-impl/tracing"]
+bench = ["chrono"] # for benchmarking
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

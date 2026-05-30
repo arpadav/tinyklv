@@ -1,3 +1,14 @@
+//! Raw parsed accumulator for a single field's `#[klv(..)]` settings
+//!
+//! Defines [`FieldXcoder`], which accumulates every recognized sub-attribute
+//! from one `#[klv(..)]` annotation on a struct field: the key literal, the
+//! optional encoder and decoder, the variable-length flag, the `latebind`
+//! post-decode step, and field-level `default`. The [`From<&syn::MetaList>`]
+//! impl drives the actual `parse_nested_meta` parse; duplicate-field errors
+//! are stored in `FieldXcoder::errors` so the caller can forward them to
+//! the [`crate::Ctxt`] accumulator
+//!
+//! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
@@ -21,7 +32,7 @@ pub(crate) struct FieldXcoder {
     /// Whether the decoder requires a variable length input
     pub varlen: Option<syn::LitBool>,
     /// Post-decode conversion or in-place mutation (`latebind = path` or
-    /// `latebind = &mut path`). `None` means no post-decode step.
+    /// `latebind = &mut path`). `None` means no post-decode step
     pub latebind: Option<LatebindXcoder>,
     /// syn errors
     pub errors: Option<syn::Error>,
@@ -36,9 +47,17 @@ pub(crate) struct FieldXcoder {
     /// rather than supplied by the user or a container `default(..)` match
     pub fallback_dec: bool,
 }
-/// [`FieldXcoder`] implementation of [`TryFrom`] for [`syn::MetaList`]
+/// [`FieldXcoder`] implementation of [`From`] for [`syn::MetaList`]
+///
+/// Parses the nested meta arguments from a field-level `#[klv(key = .., enc =
+/// .., dec = .., varlen = .., latebind = .., default = ..)]` attribute list
+/// into a [`FieldXcoder`]
+///
+/// Duplicate-field errors and unknown-field errors are stored in
+/// `FieldXcoder::errors` rather than returned directly, so that the caller
+/// ([`super::super::Field::from_ast`]) can forward all diagnostics to the
+/// [`crate::Ctxt`] accumulator in one pass before aborting
 impl From<&syn::MetaList> for FieldXcoder {
-    // type Error = syn::Error;
     fn from(input: &syn::MetaList) -> Self {
         // --------------------------------------------------
         // init

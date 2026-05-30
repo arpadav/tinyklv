@@ -16,7 +16,7 @@ pub use tinyklv_impl::*;
 pub use traits::*;
 
 #[doc(hidden)]
-/// Internal re-exports used during proc-macro expansion.
+/// Internal re-exports used during proc-macro expansion
 /// Not part of the public API - may change without notice
 pub mod __export {
     #[cfg(feature = "chrono")]
@@ -25,15 +25,15 @@ pub mod __export {
     pub use winnow;
 
     /// Builds a [`winnow::error::ContextError`] anchored at `input` carrying a
-    /// single [`winnow::error::StrContext::Label`].
+    /// single [`winnow::error::StrContext::Label`]
     ///
     /// Shared construction path for single-label errors that cannot be
     /// expressed through a parser combinator (precondition failures and
     /// derive-generated decoders); multi-context sites build their error
     /// inline. Keeps manual error construction uniform with the hand-written
-    /// codecs.
+    /// codecs
     ///
-    /// Not part of the public API - may change without notice.
+    /// Not part of the public API - may change without notice
     ///
     /// # Arguments
     ///
@@ -64,7 +64,7 @@ pub mod __export {
 /// [`Packet`], all codec traits ([`DecodeValue`], [`EncodeValue`],
 /// [`EncodeFrame`], [`DecodeFrame`]), the [`BreakType`] loop-control enum, the
 /// [`Klv`] derive macro, and the winnow combinators and stream
-/// utilities that the derive-generated code depends on.
+/// utilities that the derive-generated code depends on
 pub mod prelude {
     // --------------------------------------------------
     // local
@@ -85,7 +85,7 @@ pub mod prelude {
 ///
 /// Equivalent to `Result<T, winnow::error::ContextError>`. All decoder
 /// functions in `tinyklv` return this type so that they compose directly
-/// with winnow combinators without extra type annotations.
+/// with winnow combinators without extra type annotations
 pub type Result<T> = winnow::Result<T>;
 
 #[macro_export]
@@ -93,10 +93,10 @@ pub type Result<T> = winnow::Result<T>;
 ///
 /// Applies `(parser(input)? as $precision) * $scale`, casting the raw decoded
 /// integer to the target floating-point type before multiplying. The result is
-/// a closure compatible with `#[klv(dec = ...)]`.
+/// a closure compatible with `#[klv(dec = ...)]`
 ///
 /// Typical use: a raw integer encodes a physical quantity at a known LSB
-/// resolution (e.g. `360.0 / 65535.0` degrees per count).
+/// resolution (e.g. `360.0 / 65535.0` degrees per count)
 ///
 /// # Usage
 ///
@@ -134,10 +134,10 @@ macro_rules! scale {
 ///
 /// Applies `parser(input)? as $precision`, which performs a lossless or
 /// narrowing numeric cast depending on the types involved. The result is
-/// a closure compatible with `#[klv(dec = ...)]`.
+/// a closure compatible with `#[klv(dec = ...)]`
 ///
 /// Use this when the raw decoded integer already represents the desired
-/// value without any unit conversion. For scaled values, use [`scale!`].
+/// value without any unit conversion. For scaled values, use [`scale!`]
 ///
 /// # Usage
 ///
@@ -171,7 +171,7 @@ macro_rules! cast {
 /// Encodes a floating-point field by dividing by a scale factor, casting to the wire type, then encoding
 ///
 /// Applies `encoder((*input / $scale) as $data)`, which is the exact inverse
-/// of [`scale!`]. The result is a closure compatible with `#[klv(enc = ...)]`.
+/// of [`scale!`]. The result is a closure compatible with `#[klv(enc = ...)]`
 ///
 /// Can be used directly in a `#[klv(enc = ...)]` attribute
 ///
@@ -199,7 +199,7 @@ macro_rules! scale_enc {
 /// Encodes a field by casting to the wire type and encoding, without applying any scale factor
 ///
 /// Applies `encoder(*input as $data)`, which is the direct inverse of
-/// [`cast!`]. The result is a closure compatible with `#[klv(enc = ...)]`.
+/// [`cast!`]. The result is a closure compatible with `#[klv(enc = ...)]`
 ///
 /// Can be used directly in a `#[klv(enc = ...)]` attribute
 ///
@@ -230,10 +230,10 @@ macro_rules! cast_enc {
 /// real-world values that are mapped to a data range via
 /// `data_value = (real_value - offset) / scale`. This is the encode-side
 /// counterpart to a decode pipeline that uses [`scale!`] combined with a
-/// manual offset addition.
+/// manual offset addition
 ///
 /// Useful for fields that map a real-value range to a data-value range
-/// via `data_value = (real_value - offset) / scale`.
+/// via `data_value = (real_value - offset) / scale`
 ///
 /// # Usage
 ///

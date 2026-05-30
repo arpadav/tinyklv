@@ -65,14 +65,12 @@ pub(crate) fn gen_decode_impl(
     // --------------------------------------------------
     let name = &input.ident;
     let partial_name = constants::create_partial_name(name);
-
     // --------------------------------------------------
     // default stream -> &[u8]
     // --------------------------------------------------
     let stream = input.attrs.stream.clone().unwrap_or(helpers::u8_slice());
     let lifetime = constants::create_lifetime();
     let stream_lifetimed = helpers::insert_lifetime(&stream, lifetime.clone());
-
     // --------------------------------------------------
     // seek implementation
     // --------------------------------------------------
@@ -91,10 +89,7 @@ pub(crate) fn gen_decode_impl(
     };
 
     // --------------------------------------------------
-    // * the init sequence at beginning of decode, partial struct definition
-    // * impl Partial for partial struct, which converts
-    //   the partial packet -> final struct
-    // * impl TryFrom<partial struct> for final struct
+    // partial struct def, Partial impl, TryFrom impl
     // --------------------------------------------------
     let partial_struct_def = partial_gen::gen_partial_struct(
         name,
@@ -108,7 +103,7 @@ pub(crate) fn gen_decode_impl(
     let try_from_partial_struct_impl =
         partial_gen::gen_try_from_partial_impl(name, &partial_name, input.generics);
     // --------------------------------------------------
-    // partial implementations
+    // DecodePartial and ResumePartial impls
     // --------------------------------------------------
     let decode_partial_impl =
         decode_partial_gen::gen_decode_partial_impl(name, &partial_name, &stream, input.generics);
@@ -121,7 +116,7 @@ pub(crate) fn gen_decode_impl(
         len_decoder,
     );
     // --------------------------------------------------
-    // main decoder functions
+    // decoder() constructor and DecodeValue impl
     // --------------------------------------------------
     let decoder_fn_impl = gen_decoder_fn(
         name,
@@ -139,7 +134,7 @@ pub(crate) fn gen_decode_impl(
         len_decoder,
     );
     // --------------------------------------------------
-    // return em all
+    // assemble and return all impls
     // --------------------------------------------------
     quote! {
         #seek_if_sentinel
@@ -183,7 +178,7 @@ fn gen_decoder_fn(
     // --------------------------------------------------
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     // --------------------------------------------------
-    // return
+    // emit decoder() inherent method
     // --------------------------------------------------
     quote! {
         #[automatically_derived]

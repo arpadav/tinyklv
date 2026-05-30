@@ -1,8 +1,8 @@
 //! String encode codecs for KLV data
 //!
 //! Provides encoders for converting Rust string types and numeric values
-//! into raw byte slices suitable for KLV value fields. All encoders return
-//! `Vec<u8>` and are compatible with the `#[klv(enc = ...)]` derive macro attribute.
+//! into raw bytes for KLV value fields. All encoders append into a caller-owned
+//! `&mut Vec<u8>` and are compatible with the `#[klv(enc = ...)]` derive macro attribute
 //!
 //! Includes:
 //! * UTF-8 encoder (`from_string_utf8`)
@@ -11,19 +11,19 @@
 //! * ASCII-encoded value encoders: base-10 text for all integer and float
 //!   primitive types, and base-16 hex text (`hex_*`) for unsigned integers
 //!
-//! The decode counterparts live in [`crate::codecs::string::dec`].
+//! The decode counterparts live in [`crate::codecs::string::dec`]
 //!
 //! Author: aav
 
-/// Encodes a string as UTF-8 bytes.
+/// Encodes a string as UTF-8 bytes
 ///
 /// **Roundtrip warning**: If the original data was decoded with [`to_string_utf8`](crate::codecs::string::dec::to_string_utf8)
 /// (which uses `from_utf8_lossy`), invalid UTF-8 bytes are replaced with U+FFFD
 /// during decode. Re-encoding produces different (longer) bytes. Use
-/// [`to_string_utf8_strict`](crate::codecs::string::dec::to_string_utf8_strict) on the decode side for lossless roundtrip.
+/// [`to_string_utf8_strict`](crate::codecs::string::dec::to_string_utf8_strict) on the decode side for lossless roundtrip
 ///
 /// Note: encoding from `&str` is inherently strict (Rust `&str` is always valid
-/// UTF-8), so no separate `from_string_utf8_strict` encoder is needed.
+/// UTF-8), so no separate `from_string_utf8_strict` encoder is needed
 ///
 /// # Example
 ///
@@ -38,11 +38,11 @@ pub fn from_string_utf8(input: &str, out: &mut Vec<u8>) {
     out.extend_from_slice(input.as_bytes());
 }
 
-/// Encodes a string as UTF-16 little-endian bytes.
+/// Encodes a string as UTF-16 little-endian bytes
 ///
 /// **Endianness warning**: Using the wrong endianness variant will silently
 /// produce corrupted string data. Verify the endianness of your KLV stream
-/// before selecting a variant.
+/// before selecting a variant
 ///
 /// # Example
 ///
@@ -63,11 +63,11 @@ pub fn from_string_utf16_le(input: &str, out: &mut Vec<u8>) {
     out.extend(input.encode_utf16().flat_map(u16::to_le_bytes));
 }
 
-/// Encodes a string as UTF-16 big-endian bytes.
+/// Encodes a string as UTF-16 big-endian bytes
 ///
 /// **Endianness warning**: Using the wrong endianness variant will silently
 /// produce corrupted string data. Verify the endianness of your KLV stream
-/// before selecting a variant.
+/// before selecting a variant
 ///
 /// # Example
 ///
@@ -83,10 +83,10 @@ pub fn from_string_utf16_be(input: &str, out: &mut Vec<u8>) {
     out.extend(input.encode_utf16().flat_map(u16::to_be_bytes));
 }
 
-/// Equivalent to [`from_string_utf8`] for ASCII input.
+/// Equivalent to [`from_string_utf8`] for ASCII input
 ///
 /// Both exist for API symmetry with the decode side, which has separate
-/// `to_string_utf8` and `to_string_ascii` functions.
+/// `to_string_utf8` and `to_string_ascii` functions
 ///
 /// # Example
 ///

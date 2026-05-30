@@ -1,3 +1,21 @@
+//! Proc-macro implementation crate for `#[derive(Klv)]`
+//!
+//! Drives the full derive pipeline for the [`tinyklv`] crate's `Klv` derive
+//! macro. When a struct is annotated with `#[derive(Klv)]` and the appropriate
+//! `#[klv(..)]` attribute, this crate:
+//!
+//! 1. Parses the derive input and all `#[klv(..)]` attributes into an AST
+//!    representation (`ast` module)
+//! 2. Accumulates diagnostics via [`Ctxt`] and emits compile errors for any
+//!    invalid or missing annotations
+//! 3. Conditionally generates `Encode`/`EncodeValue`/`EncodeFrame` and
+//!    `Decode`/`DecodeValue`/`DecodeFrame` implementations depending on
+//!    which fields carry encoders and decoders (`expand` module)
+//!
+//! This crate is an implementation detail of `tinyklv` and is not intended to
+//! be used directly
+//!
+//! Author: aav
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
@@ -8,26 +26,40 @@ mod ctxt;
 mod expand;
 
 // --------------------------------------------------
+// local
+// --------------------------------------------------
+use crate::ast::symbol;
+use crate::ctxt::Ctxt;
+
+// --------------------------------------------------
 // external
 // --------------------------------------------------
 use syn::{DeriveInput, parse_macro_input};
 use thiserror::Error;
 
 // --------------------------------------------------
-// re-exports
-// --------------------------------------------------
-use crate::ast::symbol;
-use crate::ctxt::Ctxt;
-
-// --------------------------------------------------
 // constants
 // --------------------------------------------------
+/// The crate name referenced in user-facing error messages
 const CRATE_NAME: &str = "tinyklv";
+
+/// The derive macro name referenced in user-facing error messages (e.g. `#[derive(Klv)]`)
 const DERIVE_NAME: &str = "Klv";
+
+/// The attribute name used on containers and fields (e.g. `#[klv(..)]`)
 const ATTR_NAME: &str = "klv";
 
+/// Entry point for the `#[derive(Klv)]` proc-macro
+///
+/// Parses the annotated struct into a [`syn::DeriveInput`], delegates the full
+/// AST parsing and code-generation pipeline to [`expand::derive`], and converts
+/// any [`syn::Error`] diagnostics into compile errors via
+/// [`syn::Error::into_compile_error`]
+///
+/// The generated implementations depend on which `#[klv(..)]` attributes are
+/// present: containers without an encoder on every field produce no encode impl,
+/// and similarly for decoders
 #[proc_macro_derive(Klv, attributes(klv))]
-/// [`tinyklv`](crate) proc-macro
 pub fn klv_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     expand::derive(&input)
@@ -35,8 +67,14 @@ pub fn klv_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         .into()
 }
 
+/// All diagnostic errors that the `#[derive(Klv)]` proc-macro can emit
+///
+/// Each variant corresponds to one class of user mistake in the `#[klv(..)]`
+/// annotation or the shape of the annotated struct. Variants are formatted via
+/// [`thiserror::Error`] and displayed directly in compiler diagnostics. The
+/// [`crate::err!`] macro converts a variant into a [`std::borrow::Cow<str>`]
+/// suitable for passing to [`crate::Ctxt::error_spanned_by`]
 #[derive(Debug, Error)]
-/// [`tinyklv`](crate) proc-macro errors
 enum Error {
     // --------------------------------------------------
     // container parsing
@@ -378,6 +416,12 @@ supply an explicit `{d}` or remove `{v}`.",
 }
 /// [`Error`] implementation
 impl Error {
+    /// Converts this error to an owned [`std::borrow::Cow<str>`]
+    ///
+    /// Formats the error via its [`std::fmt::Display`] impl (provided by
+    /// [`thiserror`]) and wraps it in [`std::borrow::Cow::Owned`]. The result
+    /// is passed to [`crate::Ctxt::error_spanned_by`] so the diagnostic message
+    /// is attached to the correct source span
     fn as_str(&self) -> std::borrow::Cow<'_, str> {
         std::borrow::Cow::Owned(self.to_string())
     }

@@ -17,17 +17,17 @@ mod xcoder;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use crate::Ctxt;
 use crate::ast::attr::container::default::DefaultXcoder;
+use crate::ast::types::{
+    DefaultValue, LatebindXcoder, SiguledXcoder, XcoderLike, XcoderSigil, XcoderType,
+};
+use crate::symbol;
 use xcoder::FieldXcoder;
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use crate::Ctxt;
-use crate::ast::types::{
-    DefaultValue, LatebindXcoder, SiguledXcoder, XcoderLike, XcoderSigil, XcoderType,
-};
-use crate::symbol;
 use quote::ToTokens;
 use std::collections::HashMap;
 

@@ -2,7 +2,7 @@
 //!
 //! Provides parsers for converting raw byte slices into Rust primitive types
 //! and variable-length integer encodings. All parsers are compatible with the
-//! [`winnow`] streaming parser framework and accept `&mut &[u8]` input.
+//! [`winnow`] streaming parser framework and accept `&mut &[u8]` input
 //!
 //! Includes:
 //! * Big-endian, little-endian, and native-endian numeric decoders for all
@@ -11,7 +11,7 @@
 //!   byte slices via truncation or zero-padding
 //! * `usize` wrapper variants for length-field parsing
 //!
-//! String decoders live in [`crate::codecs::string::dec`].
+//! String decoders live in [`crate::codecs::string::dec`]
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -25,13 +25,8 @@ use crate::prelude::*;
 use winnow::token::take;
 
 macro_rules! wrap {
-    // narrow integer decoders (<= 16 bits: u8/i8/u16/i16): unchecked byte-array conversion. A
-    // microbench (`benches/int_decode.rs`) showed `*bytes.as_ptr().cast::<[u8; N]>()` beats the
-    // checked `try_from(..).expect(..)` only at these small widths, so the `unsafe` read is inlined
-    // here at the `take(N)` site that proves the length. Wider integers (u32/u64/.. , i32/i64/..)
-    // and all floats use the `(checked ..)` arm below - the unchecked cast did not win past 16 bits
-    // and regressed `f32`, so they keep the checked `try_from` (whose length check is provably
-    // unreachable on a `take(N)` result, so LLVM folds it to a bare load).
+    // narrow integer decoders (<= 16 bits): unchecked cast wins; wider integers and floats use the
+    // `(checked ..)` arm where the checked `try_from` length check is unreachable after `take(N)`
     ($ty:ty) => { pastey::paste! {
         #[inline] // not always inline: take(N)+from_be_bytes folds to a load+bswap; the optimizer inlines it regardless, so forcing it only risks bloat in downstream callers
         #[doc = concat!(" Big-endian decoder for `", stringify!($ty), "`: takes `size_of::<", stringify!($ty), ">()` bytes and `from_be_bytes`")]
@@ -55,6 +50,7 @@ macro_rules! wrap {
             let array = unsafe { *bytes.as_ptr().cast::<[u8; N]>() };
             Ok($ty::from_be_bytes(array))
         }
+
         #[inline] // not always inline: take(N)+from_le_bytes folds to a load; the optimizer inlines it regardless, so forcing it only risks bloat in downstream callers
         #[doc = concat!(" Little-endian decoder for `", stringify!($ty), "`: takes `size_of::<", stringify!($ty), ">()` bytes and `from_le_bytes`")]
         #[doc = ""]
@@ -77,10 +73,9 @@ macro_rules! wrap {
             Ok($ty::from_le_bytes(array))
         }
     }};
-    // wide integer (> 16 bits) and float decoders: checked byte-array conversion. The unchecked
-    // cast that wins at <= 16 bits did not win for wider integers and regressed `f32` in the
-    // microbench, so these keep the lowest-level checked `<[u8; N]>::try_from(..)` (whose length
-    // check is provably unreachable on a `take(N)` result, so LLVM folds it to a bare load).
+
+    // wide integer (> 16 bits) and float decoders: checked `try_from`; length check is unreachable
+    // after `take(N)`, so LLVM folds it to a bare load
     (checked $ty:ty) => { pastey::paste! {
         #[inline] // not always inline: take(N)+from_be_bytes folds to a load+bswap; the optimizer inlines it regardless, so forcing it only risks bloat in downstream callers
         #[doc = concat!(" Big-endian decoder for `", stringify!($ty), "`: takes `size_of::<", stringify!($ty), ">()` bytes and `from_be_bytes`")]
@@ -102,6 +97,7 @@ macro_rules! wrap {
             let array = <[u8; N]>::try_from(bytes).expect("take(N) yields exactly N bytes");
             Ok($ty::from_be_bytes(array))
         }
+
         #[inline] // not always inline: take(N)+from_le_bytes folds to a load; the optimizer inlines it regardless, so forcing it only risks bloat in downstream callers
         #[doc = concat!(" Little-endian decoder for `", stringify!($ty), "`: takes `size_of::<", stringify!($ty), ">()` bytes and `from_le_bytes`")]
         #[doc = ""]
@@ -140,6 +136,7 @@ macro_rules! wrap_native {
             winnow::binary::$ty(winnow::binary::Endianness::Native).parse_next(input)
         }
     }};
+
     (simple $ty:ty) => { pastey::paste! {
         #[inline] // not always inline: thin winnow::binary delegation; the optimizer inlines the small wrapper, no need to force it across crate boundaries
         #[doc = concat!(" Wrapper for [`winnow::binary::", stringify!($ty), "`] with implied native-endianness generics `<&[prim@u8], winnow::error::ContextError>`")]
@@ -198,6 +195,7 @@ macro_rules! as_usize {
         pub fn [<$parser _as_usize>](input: &mut &[u8]) -> winnow::Result<usize> {
             $parser(input).map(|val| val as usize)
         }
+
         #[inline] // not always inline: trivial `.map(|v| v as usize)` over a leaf decoder; the optimizer inlines it
         #[doc = concat!(" [`usize`] wrapper for [`winnow::binary::be_", stringify!($parser), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
@@ -213,6 +211,7 @@ macro_rules! as_usize {
         pub fn [<be_ $parser _as_usize>](input: &mut &[u8]) -> winnow::Result<usize> {
             [<be_ $parser>](input).map(|val| val as usize)
         }
+
         #[inline] // not always inline: trivial `.map(|v| v as usize)` over a leaf decoder; the optimizer inlines it
         #[doc = concat!(" [`usize`] wrapper for [`winnow::binary::le_", stringify!($parser), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
@@ -263,6 +262,7 @@ macro_rules! lengthed_be {
     }};
     ($type:ty, $len:expr) => { lengthed_be!($type, $len, ""); };
 }
+
 macro_rules! lengthed_le {
     ($type:ty, $precision_len:expr, $doc:literal) => { pastey::paste! {
         #[inline] // not always inline: returns a closure whose body branches and copies into a pad buffer; let the cost model decide (in-crate LTO inlines it regardless)

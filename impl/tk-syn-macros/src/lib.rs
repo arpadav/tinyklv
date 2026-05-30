@@ -1,3 +1,20 @@
+//! Utility macros and parser helpers for `syn`-based proc-macro attribute parsing
+//!
+//! Provides two procedural-macro utilities:
+//!
+//! * [`handle_unique_nested_meta_values!`] - a declarative macro that drives a
+//!   [`syn::MetaList::parse_nested_meta`] loop, routing each entry to a
+//!   typed parser function and enforcing uniqueness (no duplicate keys)
+//! * [`create_parser!`] - a declarative macro that generates a
+//!   `pub(crate) fn` with the `Option<syn::Result<T>>` protocol expected by
+//!   `handle_unique_nested_meta_values!`
+//!
+//! The [`parse_pnm`] and [`parse_nv`] top-level functions are convenience
+//! parsers that return closures for one-off use inside the macro. The
+//! [`helpers`] module holds the named counterparts used when a stable function
+//! pointer is needed (e.g. inside `create_parser!`-generated functions)
+//!
+//! Author: aav
 // --------------------------------------------------
 // external
 // --------------------------------------------------
@@ -6,7 +23,7 @@ use syn::parse::Parser;
 
 #[macro_export]
 /// Macro for handling values within a [`syn::MetaList::parse_nested_meta`] iterator. See the example at the bottom
-/// for a working verbose use-case.
+/// for a working verbose use-case
 ///
 /// # Syntax
 ///
@@ -460,8 +477,21 @@ macro_rules! create_parser {
     };
 }
 
-/// A quick parser of [`syn::meta::ParseNestedMeta`], where the [`syn::meta::ParseNestedMeta::path`] is checked
-/// against a [`str`] and it's [`syn::meta::ParseNestedMeta::value`] is parsed as-is into type `T`.
+/// Returns a closure that parses a value of type `T` from a
+/// [`syn::meta::ParseNestedMeta`] when the path matches `name`
+///
+/// The returned closure checks whether the nested meta path is the given
+/// identifier. If not, returns `None` (letting the caller try the next parser)
+/// If it matches, parses the `= <value>` side as `T` and returns
+/// `Some(Ok(T))` on success or `Some(Err(..))` on a parse error
+///
+/// This is the closure form used inline in
+/// [`handle_unique_nested_meta_values!`]. Use [`helpers::parse_pnm`] when
+/// a stable function pointer is needed (e.g. inside [`create_parser!`])
+///
+/// # Arguments
+///
+/// * `name` - The attribute keyword to match against the meta path ident
 pub fn parse_pnm<T: syn::parse::Parse>(
     name: &str,
 ) -> impl Fn(&syn::meta::ParseNestedMeta) -> Option<Result<T, syn::Error>> + use<'_, T> {
@@ -474,8 +504,20 @@ pub fn parse_pnm<T: syn::parse::Parse>(
     }
 }
 
-/// A quick parser of [`syn::MetaNameValue`], where the [`syn::MetaNameValue::path`] is checked
-/// against a [`str`] and it's [`syn::MetaNameValue::value`] is parsed as-is into type `T`.
+/// Returns a closure that parses a value of type `T` from a
+/// [`syn::MetaNameValue`] when the path matches `name`
+///
+/// The returned closure checks whether the name-value path is the given
+/// identifier. If not, returns `None`. If it matches, converts the value
+/// expression to a token stream and parses it as `T`, returning
+/// `Some(Ok(T))` on success or `Some(Err(..))` on a parse error
+///
+/// This is the closure form for inline use. Use [`helpers::parse_nv`] when
+/// a stable function pointer is needed (e.g. inside [`create_parser!`])
+///
+/// # Arguments
+///
+/// * `name` - The attribute keyword to match against the name-value path ident
 pub fn parse_nv<T: syn::parse::Parse>(
     name: &str,
 ) -> impl Fn(&syn::MetaNameValue) -> Option<Result<T, syn::Error>> + use<'_, T> {
@@ -485,12 +527,31 @@ pub fn parse_nv<T: syn::parse::Parse>(
     }
 }
 
-/// Helper functions for macro calls
+/// Named parser helpers for use inside [`create_parser!`]-generated functions
+///
+/// These functions have stable names (unlike the closures returned by the
+/// top-level [`parse_pnm`] and [`parse_nv`]). [`create_parser!`] references
+/// them via the `(crate)` path variant when generating parsers that need a
+/// direct function reference rather than a closure
 pub mod helpers {
     use super::*;
 
+    /// Parses the `= <value>` side of a [`syn::meta::ParseNestedMeta`] as type `T`
+    ///
+    /// Calls [`syn::meta::ParseNestedMeta::value`] to obtain the value stream,
+    /// then parses it as `T`. Returns an error if no `=` token is present or
+    /// if parsing `T` fails. This function is referenced by [`create_parser!`]
+    /// when generating `pnm`-style parsers
+    ///
+    /// # Arguments
+    ///
+    /// * `pnm` - The nested meta entry whose value is to be parsed
+    ///
+    /// # Returns
+    ///
+    /// `Ok(T)` on success, or a [`syn::Error`] if the value is absent or
+    /// cannot be parsed as `T`
     #[inline(always)]
-    /// A parser of [`syn::meta::ParseNestedMeta`], where the [`syn::meta::ParseNestedMeta::value`] is parsed as-is into type `T`.
     pub fn parse_pnm<T>(pnm: &syn::meta::ParseNestedMeta) -> syn::Result<T>
     where
         T: syn::parse::Parse,
@@ -498,8 +559,21 @@ pub mod helpers {
         pnm.value().and_then(|v| v.parse())
     }
 
+    /// Parses the value expression of a [`syn::MetaNameValue`] as type `T`
+    ///
+    /// Converts the value expression to a token stream via
+    /// [`quote::ToTokens::to_token_stream`] and parses it as `T`. Returns an
+    /// error if the token stream cannot be parsed as `T`. This function is
+    /// referenced by [`create_parser!`] when generating `nv`-style parsers
+    ///
+    /// # Arguments
+    ///
+    /// * `nv` - The name-value meta entry whose value is to be parsed
+    ///
+    /// # Returns
+    ///
+    /// `Ok(T)` on success, or a [`syn::Error`] if the value cannot be parsed as `T`
     #[inline(always)]
-    /// A parser of [`syn::MetaNameValue`], where the [`syn::MetaNameValue::value`] is parsed as-is into type `T`.
     pub fn parse_nv<T>(nv: &syn::MetaNameValue) -> syn::Result<T>
     where
         T: syn::parse::Parse,

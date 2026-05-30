@@ -91,9 +91,7 @@ macro_rules! encode_lengthed {
             pub fn[<be_ $ty _lengthed>](len: usize) -> impl Fn($ty, &mut Vec<u8>) {
                 move |input: $ty, out: &mut Vec<u8>| {
                     // --------------------------------------------------
-                    // keep the low-order `len` bytes (or all, if len exceeds the width),
-                    // then left-pad with zeros to reach `len` - leading zeros first, value
-                    // second, so the write is a single append-only pass (no front-splice)
+                    // keep the low-order `len` bytes; zero-pad high bytes to reach `len`
                     // --------------------------------------------------
                     let bytes = input.to_be_bytes();
                     let start = bytes.len().saturating_sub(len);
@@ -113,9 +111,7 @@ macro_rules! encode_lengthed {
             pub fn[<le_ $ty _lengthed>](len: usize) -> impl Fn($ty, &mut Vec<u8>) {
                 move |input: $ty, out: &mut Vec<u8>| {
                     // --------------------------------------------------
-                    // keep the low-order `len` bytes (or all, if len exceeds the width),
-                    // then right-pad with zeros to reach `len` - value first, trailing
-                    // (high-order) zeros second, mirroring the be path
+                    // keep the low-order `len` bytes; zero-pad trailing bytes to reach `len`
                     // --------------------------------------------------
                     let bytes = input.to_le_bytes();
                     let take = bytes.len().min(len);
@@ -1007,12 +1003,8 @@ let padded = tinyklv::codecs::binary::enc::le_f64_lengthed(10);
 #[cfg(test)]
 mod tests {
 
-    // The encoders in `super` are writers (`fn(input, &mut Vec<u8>)`), but the
-    // tests below were written against the older owned-bytes API where each
-    // encoder returned a `Vec<u8>`. These shadowing adapters wrap the writer
-    // API back into `Vec`-returning functions so every call site below stays
-    // byte-identical: each adapter allocates a fresh buffer, runs the writer,
-    // and returns the buffer.
+    // Adapters wrapping the `super` writers (`fn(input, &mut Vec<u8>)`) as
+    // `Vec`-returning fns, so the assertions below can compare by value.
     macro_rules! vec_adapter {
         ($name:ident, $ty:ty) => {
             fn $name(input: $ty) -> Vec<u8> {
@@ -1093,7 +1085,7 @@ mod tests {
     vec_adapter_lengthed!(le_f64_lengthed, f64);
 
     #[test]
-    /// Tests known-good outputs of the lengthed BE/LE encoders (`be_u32_lengthed`, `le_u16_lengthed`, `le_u32_lengthed`, `le_u64_lengthed`, `be_u64_lengthed`) across truncate and pad cases.
+    /// Tests known-good outputs of the lengthed BE/LE encoders (`be_u32_lengthed`, `le_u16_lengthed`, `le_u32_lengthed`, `le_u64_lengthed`, `be_u64_lengthed`) across truncate and pad cases
     fn test_some() {
         let output1 = vec![0x00, 0x01, 0xE0, 0xFF, 0xFF];
         let output2 = vec![0x00, 0x01, 0xE0, 0xFF];
@@ -1146,7 +1138,7 @@ mod tests {
     use rand_distr::Distribution;
 
     #[test]
-    /// Randomized roundtrip test: encodes then decodes random values across every numeric type (u8/u16/u32/u64/u128, i8/i16/i32/i64/i128, f32/f64) using native/BE/LE and their lengthed variants, asserting equality.
+    /// Randomized roundtrip test: encodes then decodes random values across every numeric type (u8/u16/u32/u64/u128, i8/i16/i32/i64/i128, f32/f64) using native/BE/LE and their lengthed variants, asserting equality
     fn randoms() {
         const TRIALS: usize = 10;
 

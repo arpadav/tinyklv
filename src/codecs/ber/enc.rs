@@ -3,30 +3,27 @@
 //! Free-function wrappers around [`crate::codecs::ber::BerLength`] and
 //! [`crate::codecs::ber::BerOid`] that expose a flat function signature
 //! compatible with `#[klv(enc = ...)]` attributes. Use these anywhere a
-//! `fn(T) -> Vec<u8>` encoder is required.
+//! `fn(T, &mut Vec<u8>)` writer-style encoder is required
 //!
-//! The decode counterparts live in [`crate::codecs::ber::dec`].
+//! The decode counterparts live in [`crate::codecs::ber::dec`]
 //!
 //! Author: aav
 
-/// Encodes a value as a BER-encoded length, returning the encoded bytes
+/// Encodes a value as a BER-encoded length, appending the bytes to `out`
 ///
 /// Generic over `T: OfBerCommon`, which covers `u8`..=`u128`. Values less
 /// than 128 are encoded in short form (1 byte); larger values use long form
 /// where the first byte carries `0x80 | num_bytes`, followed by the value's
-/// significant bytes in big-endian order, leading zeros stripped.
+/// significant bytes in big-endian order, leading zeros stripped
 ///
 /// The decode counterpart ([`super::dec::ber_length`]) erases the type to
 /// [`usize`]. Use [`crate::codecs::ber::BerLength`] directly for a
-/// type-preserving roundtrip that preserves the full `T` precision.
+/// type-preserving roundtrip that preserves the full `T` precision
 ///
 /// # Arguments
 ///
 /// * `input` - The unsigned integer length to encode
-///
-/// # Returns
-///
-/// A [`Vec<u8>`] containing the BER-encoded representation of the length
+/// * `out` - The buffer the BER-encoded length bytes are appended to
 ///
 /// # Example
 ///
@@ -47,20 +44,17 @@ pub fn ber_length<T: super::OfBerCommon>(input: T, out: &mut Vec<u8>) {
     super::BerLength::<T>::encode_value(input, out);
 }
 
-/// Encodes a value as BER-OID variable-length bytes, returning the encoded bytes
+/// Encodes a value as BER-OID variable-length bytes, appending them to `out`
 ///
 /// Each 7 bits of the input value occupy one output byte, with the most
 /// significant group first. All bytes except the last have their MSB set to 1
 /// (continuation); the last byte has MSB 0 (terminator). A value of 0 encodes
-/// to a single zero byte.
+/// to a single zero byte
 ///
 /// # Arguments
 ///
 /// * `input` - The unsigned integer value to encode as a BER-OID
-///
-/// # Returns
-///
-/// A [`Vec<u8>`] containing the BER-OID-encoded representation of the value
+/// * `out` - The buffer the BER-OID-encoded bytes are appended to
 ///
 /// # Example
 ///

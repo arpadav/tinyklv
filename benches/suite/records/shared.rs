@@ -11,10 +11,10 @@
 // --------------------------------------------------
 use tinyklv::{dec::binary as decb, enc::binary as encb, prelude::*};
 
-#[derive(Debug, PartialEq, Clone, Copy)]
 /// A fixed 5-byte raw record: a `kind` tag plus a big-endian `f32`. Packed back-to-back
 /// into the length-delimited `sensors` field; the byte-packing is shared by serde_klv,
 /// tlv_parser, and the manual approach.
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) struct Reading {
     pub(crate) kind: u8,
     pub(crate) value: f32,
@@ -85,7 +85,7 @@ impl Reading {
     }
 }
 
-/// [`Reading`] implementation of [`tinyklv::DecodeValue`] for [`&[u8]`]
+/// [`Reading`] implementation of [`tinyklv::DecodeValue`] for [`[u8]`]
 impl tinyklv::DecodeValue<&[u8]> for Reading {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
         // --------------------------------------------------
@@ -100,7 +100,11 @@ impl tinyklv::DecodeValue<&[u8]> for Reading {
     }
 }
 
-/// Nested coordinate sub-packet.
+/// Nested GPS coordinate sub-packet: latitude and longitude as big-endian `f64` values
+///
+/// Used by both [`super::Compound`] (via nested KLV key `0x02`) and [`super::Rich`] (same
+/// layout). Each field is encoded with the `be_f64` codec under key `0x01` and `0x02`
+/// respectively; the whole sub-packet is length-delimited inside the parent frame
 #[derive(tinyklv::Klv, Debug, PartialEq, Clone, Copy)]
 #[klv(
     stream = &[u8],

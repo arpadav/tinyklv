@@ -94,7 +94,7 @@ pub fn to_string_utf8_strict(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result
 ///
 /// **Endianness warning**: Using the wrong endianness variant will silently
 /// produce corrupted string data. Verify the endianness of your KLV stream
-/// before selecting a variant.
+/// before selecting a variant
 ///
 /// # Example
 ///
@@ -137,7 +137,7 @@ pub fn to_string_utf16_le(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<St
 ///
 /// **Endianness warning**: Using the wrong endianness variant will silently
 /// produce corrupted string data. Verify the endianness of your KLV stream
-/// before selecting a variant.
+/// before selecting a variant
 ///
 /// # Example
 ///

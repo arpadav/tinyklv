@@ -2,18 +2,18 @@
 //!
 //! Provides the [`BerLength`] and [`BerOid`] types along with the sealed
 //! [`OfBerCommon`] trait that constrains their type parameter to the
-//! fixed-width unsigned integers (`u8`..=`u128`).
+//! unsigned integers `u8`..=`u128` and `usize`
 //!
 //! BER length encoding is used in the KLV "L" field. Short form encodes
 //! lengths 0..=127 in a single byte. Long form encodes larger lengths as
-//! `0x80 | num_bytes` followed by `num_bytes` big-endian bytes.
+//! `0x80 | num_bytes` followed by `num_bytes` big-endian bytes
 //!
 //! BER-OID encoding is used for the KLV "K" (key) field. Each value is
 //! packed 7 bits per byte, MSB-first, with the MSB of each byte indicating
-//! whether more bytes follow (continuation = 1, terminator = 0).
+//! whether more bytes follow (continuation = 1, terminator = 0)
 //!
 //! Free-function wrappers for direct use in `#[klv(...)]` attributes are
-//! in [`dec`] and [`enc`].
+//! in [`dec`] and [`enc`]
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -48,10 +48,10 @@ mod private {
     impl Sealed for usize {}
 }
 
-/// The set of unsigned integer types usable as a BER length or BER-OID value.
+/// The set of unsigned integer types usable as a BER length or BER-OID value
 ///
-/// This is a sealed trait: it is blanket-implemented for the fixed-width
-/// unsigned integers (`u8`..=`u128`) and cannot be implemented downstream
+/// This is a sealed trait: it is blanket-implemented for the unsigned
+/// integers `u8`..=`u128` and `usize`, and cannot be implemented downstream
 pub trait OfBerCommon:
     Copy
     + ToBytes
@@ -78,7 +78,7 @@ impl<T> OfBerCommon for T where
 }
 
 #[derive(Debug, PartialEq)]
-/// Enum representing Basic-Encoding-Rules (BER) Length Encoding.
+/// Enum representing Basic-Encoding-Rules (BER) Length Encoding
 ///
 /// Maximum precision: [`u128`]
 ///
@@ -111,7 +111,7 @@ impl<T: OfBerCommon> BerLength<T> {
     fn can_be_short(val: &T) -> bool {
         #![allow(
             clippy::expect_used,
-            reason = "this should never panic, due to trait bounds"
+            reason = "converting 128 -> u{8,16,32,64,128} should always be permissible, why did this panic?"
         )]
         val < &T::from_u8(0x80).expect(
             "converting 128 -> u{8,16,32,64,128} should always be permissible, why did this panic?",
@@ -123,7 +123,7 @@ impl<T: OfBerCommon> BerLength<T> {
     /// Inspects `len` against the short-form threshold (< 128). Values that fit
     /// in short form are stored as [`BerLength::Short`]; all others as
     /// [`BerLength::Long`]. This is the canonical constructor used by both
-    /// [`BerLength::encode_value`] and the [`crate::traits::EncodeValue`] impl.
+    /// [`BerLength::encode_value`] and the [`crate::traits::EncodeValue`] impl
     ///
     /// # Arguments
     ///
@@ -149,7 +149,12 @@ impl<T: OfBerCommon> BerLength<T> {
     /// which is always representable as `u8`
     pub fn new(len: T) -> Self {
         if Self::can_be_short(&len) {
-            BerLength::Short(len.to_u8().expect("if unsigned int is less than 128, then it can always fit into u8, why did this panic?"))
+            #[allow(
+                clippy::expect_used,
+                reason = "if unsigned int is less than 128, then it can always fit into u8, why did this panic?"
+            )]
+            let short = len.to_u8().expect("if unsigned int is less than 128, then it can always fit into u8, why did this panic?");
+            BerLength::Short(short)
         } else {
             BerLength::Long(len)
         }
@@ -158,15 +163,12 @@ impl<T: OfBerCommon> BerLength<T> {
     /// Convenience static entry point: constructs a [`BerLength`] and immediately encodes it
     ///
     /// Equivalent to `BerLength::new(len).encode_value()`. Useful when you need
-    /// the encoded bytes without retaining the wrapper struct.
+    /// the encoded bytes without retaining the wrapper struct
     ///
     /// # Arguments
     ///
     /// * `len` - The length value to encode
-    ///
-    /// # Returns
-    ///
-    /// A [`Vec<u8>`] containing the BER-encoded length
+    /// * `out` - The buffer the BER-encoded length bytes are appended to
     ///
     /// # Example
     ///
@@ -186,9 +188,9 @@ impl<T: OfBerCommon> BerLength<T> {
 
     /// Returns the wrapped length value as a [`u128`], regardless of which BER form was used
     ///
-    /// Both `Short` and `Long` variants are widened to [`u128`] without loss.
+    /// Both `Short` and `Long` variants are widened to [`u128`] without loss
     /// Used by [`crate::codecs::ber::dec::ber_length`] to produce a
-    /// uniform [`usize`] for `take(len)` calls.
+    /// uniform [`usize`] for `take(len)` calls
     pub fn as_u128(&self) -> u128 {
         match self {
             BerLength::Short(len) => *len as u128,
@@ -228,22 +230,18 @@ impl<T: OfBerCommon> crate::EncodeValue for BerLength<T> {
             BerLength::Short(len) => out.push(*len),
             BerLength::Long(len) => {
                 // --------------------------------------------------
-                // Edge case: If the length fits within a single byte, use the Short form.
-                // --------------------------------------------------
-                // This should never happen: upon creation, length is checked to be < 128
+                // unreachable: new() routes values < 128 to Short; defensive re-check
                 // --------------------------------------------------
                 if Self::can_be_short(len) {
                     #[allow(
                         clippy::expect_used,
-                        reason = "this should never panic, due to trait bounds"
+                        reason = "if unsigned int is less than 128, then it can always fit into u8, why did this panic?"
                     )]
                     out.push(len.to_u8().expect("if unsigned int is less than 128, then it can always fit into u8, why did this panic?"));
                     return;
                 }
                 // --------------------------------------------------
-                // count significant big-endian bytes (leading zeros stripped), iterator-only
-                // so the prefix byte can be written before the value bytes - no temp Vec, no
-                // index-slicing
+                // count significant big-endian bytes (strip leading zeros)
                 // --------------------------------------------------
                 let be = len.to_be_bytes();
                 let bytes = be.as_ref();
@@ -301,8 +299,8 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerLength<T> {
         // ensure there are enough bytes in the stream
         // --------------------------------------------------
         // since 1 was taken from input, this should be
-        // `input.len() + 1 < num_bytes + 1`
-        // but can be shortened
+        // `input.len() + 1 < num_bytes + 1`, which can
+        // be simplified to below:
         // --------------------------------------------------
         if input.len() < num_bytes {
             return Err(winnow::error::ContextError::from_input(input)
@@ -344,7 +342,7 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerLength<T> {
 }
 
 #[derive(Debug, PartialEq)]
-/// Struct representing Basic Encoding Rules (BER) Object Identifier (OID) encoding.
+/// Struct representing Basic Encoding Rules (BER) Object Identifier (OID) encoding
 ///
 /// Maximum precision: [`u128`]
 ///
@@ -371,7 +369,7 @@ impl<T: OfBerCommon> BerOid<T> {
     ///
     /// This is the canonical constructor used by both [`BerOid::encode_value`]
     /// and the [`crate::traits::DecodeValue`] impl. The value is stored
-    /// verbatim; no encoding happens at construction time.
+    /// verbatim; no encoding happens at construction time
     ///
     /// # Arguments
     ///
@@ -392,7 +390,7 @@ impl<T: OfBerCommon> BerOid<T> {
     /// Returns the wrapped OID value by copy
     ///
     /// Since `T: OfBerCommon` implies `Copy`, this returns the value without
-    /// moving or cloning.
+    /// moving or cloning
     #[must_use]
     pub fn value(&self) -> T {
         self.value
@@ -401,15 +399,12 @@ impl<T: OfBerCommon> BerOid<T> {
     /// Convenience static entry point: wraps a value in [`BerOid`] and immediately encodes it
     ///
     /// Equivalent to `BerOid::new(value).encode_value()`. Useful when you need
-    /// the BER-OID bytes without retaining the wrapper struct.
+    /// the BER-OID bytes without retaining the wrapper struct
     ///
     /// # Arguments
     ///
     /// * `value` - The unsigned integer value to encode
-    ///
-    /// # Returns
-    ///
-    /// A [`Vec<u8>`] containing the BER-OID-encoded representation of the value
+    /// * `out` - The buffer the BER-OID-encoded bytes are appended to
     ///
     /// # Example
     ///
@@ -440,12 +435,12 @@ impl<T: OfBerCommon> crate::EncodeValue for BerOid<T> {
     /// ```
     ///
     /// Please use [`crate::codecs::ber::enc::ber_oid`] instead for
-    /// all parsing needs. This struct is meant to be used as a development
-    /// tool for encoding values to BER format.
+    /// all encoding needs. This struct is meant to be used as a development
+    /// tool for encoding values to BER format
     fn encode_value(&self, out: &mut Vec<u8>) {
         // --------------------------------------------------
-        // emit 7-bit groups least-significant first, then reverse just the bytes we
-        // appended so the most-significant group leads (matching the prior collect+reverse)
+        // emit 7-bit groups least-significant first, then reverse just the
+        // appended bytes so the most-significant group leads
         // --------------------------------------------------
         let start = out.len();
         let mut value = self.value.as_();
@@ -483,7 +478,7 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerOid<T> {
     ///
     /// Please use [`crate::codecs::ber::dec::ber_oid`] instead for
     /// all parsing needs. This struct is meant to be used as a development
-    /// tool for parsing BER encoded values.
+    /// tool for parsing BER encoded values
     fn decode_value(input: &mut &[u8]) -> crate::Result<Self> {
         let checkpoint = input.checkpoint();
         // --------------------------------------------------
@@ -532,8 +527,8 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerOid<T> {
 /// Consumes exactly one byte from the input and returns it as a 1-element slice
 ///
 /// Used at the start of both [`BerLength`] and (implicitly) the BER-OID decoder
-/// to read the first framing byte before branching on short vs long form.
-/// Returns an error if the stream is empty.
+/// to read the first framing byte before branching on short vs long form
+/// Returns an error if the stream is empty
 fn take_one<'s>(input: &mut &'s [u8]) -> crate::Result<&'s [u8]> {
     take(1usize).parse_next(input)
 }
@@ -553,7 +548,7 @@ fn msb_is_set(b: u8) -> bool {
 /// Each byte is shifted into the accumulator from the right: the first byte
 /// becomes the most significant. Called from [`BerLength`]'s decoder after the
 /// long-form prefix byte has already been consumed and its `num_bytes` field
-/// extracted. Returns an error if fewer than `num_bytes` remain in the stream.
+/// extracted. Returns an error if fewer than `num_bytes` remain in the stream
 fn parse_length_u128(input: &mut &[u8], num_bytes: usize) -> crate::Result<u128> {
     take(num_bytes)
         .map(|bytes: &[u8]| {

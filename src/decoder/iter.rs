@@ -203,27 +203,21 @@ where
             return Err(DecodeIterError::Eof);
         }
         // --------------------------------------------------
-        // take the in-flight partial. the iterator only
-        // dispatches here in resume mode, so it is normally
-        // `Some`; a direct trait-method call without one falls
-        // back to a default partial (decode from scratch) rather
-        // than panicking - hence `unwrap_or_default`
+        // take the in-flight partial; fall back to default if called without one
         // --------------------------------------------------
         let partial = self.partial.take().unwrap_or_default();
         // --------------------------------------------------
-        // get outcome, and how much consumed. the live bytes
-        // are `pending()`; `start` pins the pre-decode head so
-        // the error slice reads the bytes this call consumed
+        // pin the pre-decode head; borrow the live byte slice
         // --------------------------------------------------
         let start = self.buf.head();
         let mut cursor: &[u8] = self.buf.pending();
         let before = cursor.len();
         // --------------------------------------------------
-        // re-seed the partial into the resume entry
+        // resume the partial decode
         // --------------------------------------------------
         let packet = <T as ResumePartial<&[u8]>>::resume_partial(&mut cursor, partial);
         // --------------------------------------------------
-        // get consumed + outcome
+        // compute consumed bytes and map the error
         // --------------------------------------------------
         let consumed = before - cursor.len();
         let result = packet.map_err(|label| {
@@ -280,40 +274,29 @@ where
             return Err(DecodeIterError::Eof);
         }
         // --------------------------------------------------
-        // live bytes are `pending()`
+        // borrow the live byte slice
         // --------------------------------------------------
         let mut cursor: &[u8] = self.buf.pending();
         let before = cursor.len();
         // --------------------------------------------------
-        // seek sentinel, get body cursor. a seek miss means the
-        // sentinel has not arrived in the buffer yet - that is
-        // `NeedMore`, not `Malformed`: there is no notion of a
-        // corrupt sentinel (pre-sentinel bytes are simply skipped),
-        // so the bytes are retained for a later `feed` and the head
-        // is left unadvanced (honouring the `NeedMore` contract)
+        // seek sentinel; a miss means sentinel not yet in buffer - retain bytes for later feed
         // --------------------------------------------------
         let body = match T::seek_sentinel(&mut cursor) {
             Ok(b) => b,
             Err(_) => return Err(DecodeIterError::NeedMore),
         };
         // --------------------------------------------------
-        // `seek_sentinel` closes with `take(packet_len)`, so `body` is a COMPLETE,
-        // length-delimited frame - there is nothing left to resume. decode it with the fast
-        // one-shot `decode_value` (the flattened path) straight into the value, rather than the
-        // streaming `decode_partial` -> `resume_partial` Partial machinery. the resumable path is
-        // reserved for `next_resume`, where a packet genuinely straddles a buffer boundary.
-        // `decode_value` already finalizes at end-of-body (the old `NeedMore -> finalize`
-        // best-effort), so the decoded value is identical - just without the Partial overhead.
+        // body is a complete length-delimited frame; decode it one-shot
         // --------------------------------------------------
         let mut body_cursor: &[u8] = body;
         let outcome = T::decode_value(&mut body_cursor);
         // --------------------------------------------------
-        // consumed = framing + body; advance past it (O(1); no front drain) regardless of outcome
+        // advance past framing + body regardless of outcome
         // --------------------------------------------------
         let consumed = before - cursor.len();
         self.buf.advance(consumed);
         // --------------------------------------------------
-        // `decode_value` already returns a positioned `ContextError`; surface it as `Malformed`
+        // surface decode error as malformed
         // --------------------------------------------------
         outcome.map_err(DecodeIterError::Malformed)
     }

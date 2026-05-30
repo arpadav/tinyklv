@@ -1,10 +1,10 @@
-//! Encode traits for KLV field values, key-length-value framing, and output types
+//! Encode traits for KLV field values and key-length-value framing
 //!
 //! Core encode-side traits:
 //! * [`EncodeValue`] - appends the encoded value portion of a KLV triple to a caller-owned buffer
 //! * [`EncodeFrame`] - appends a full key-length-value byte sequence to a caller-owned buffer
 //!
-//! Decode counterparts live in [`crate::traits::dec`].
+//! Decode counterparts live in [`crate::traits::dec`]
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -12,13 +12,13 @@
 // --------------------------------------------------
 pub use super::*;
 
-/// Appends the encoded value portion of a KLV field to a caller-owned [`Vec<u8>`].
+/// Appends the encoded value portion of a KLV field to a caller-owned [`Vec<u8>`]
 ///
 /// Decode counterpart: [`DecodeValue`](crate::traits::DecodeValue)
 ///
 /// Trait for encoding ***data only*** by appending its bytes to an output buffer. Writing
 /// into a caller-owned buffer (rather than returning a fresh allocation) lets one buffer be
-/// reused across many records and lets a field's value be written without a per-field heap alloc.
+/// reused across many records and lets a field's value be written without a per-field heap alloc
 ///
 /// ```text
 ///                                  This is what is encoded
@@ -136,7 +136,7 @@ pub trait EncodeValue {
     ///
     /// Writes **only** the value bytes (no key or length prefix) to the end of the
     /// caller-owned buffer, growing it as needed. Use [`EncodeFrame::encode_frame`]
-    /// to write a complete key-length-value triple instead.
+    /// to write a complete key-length-value triple instead
     ///
     /// # Arguments
     ///
@@ -144,11 +144,11 @@ pub trait EncodeValue {
     fn encode_value(&self, out: &mut Vec<u8>);
 }
 
-/// Full KLV encode pipeline: prepends key and length to [`EncodeValue`] output.
+/// Full KLV encode pipeline: prepends key and length to [`EncodeValue`] output
 ///
 /// Decode counterpart: [`DecodeFrame`](crate::traits::DecodeFrame)
 ///
-/// Trait for encoding data to its full key-length-value representation.
+/// Trait for encoding data to its full key-length-value representation
 ///
 /// ```text
 ///                 This is what is encoded
@@ -163,9 +163,9 @@ pub trait EncodeValue {
 ///
 /// 1. Encode the struct/value
 ///
-/// This can be done by implementing the [`EncodeValue`] trait.
+/// This can be done by implementing the [`EncodeValue`] trait
 ///
-/// 2. Prepend the encoded value with its key/recognition sentinel and length to convert the struct/value into its key-length-value representation.
+/// 2. Prepend the encoded value with its key/recognition sentinel and length to convert the struct/value into its key-length-value representation
 ///
 /// Then, youre done: now you can produce the key-length-value representation of your struct with the following snippet:
 ///
@@ -285,7 +285,7 @@ pub trait EncodeFrame {
     ///
     /// Writes a full key-length-value triple to the end of the caller-owned buffer in
     /// one pass. The derive macro generates this implementation when both `key` and
-    /// `len` encoders are provided in the `#[klv(...)]` attribute.
+    /// `len` encoders are provided in the `#[klv(...)]` attribute
     ///
     /// # Arguments
     ///

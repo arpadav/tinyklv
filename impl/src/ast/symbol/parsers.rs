@@ -1,3 +1,19 @@
+//! Symbol-specific parser functions for `#[klv(..)]` attribute values
+//!
+//! Contains the two "maybe-litstr" helper parsers shared by all generated
+//! xcoder parsers, plus the [`create_parser!`]-generated parser functions for
+//! every recognized `#[klv(..)]` keyword. Each generated function follows the
+//! `Option<syn::Result<T>>` protocol expected by
+//! [`tk_syn_macros::handle_unique_nested_meta_values!`]:
+//!
+//! * `None` - the keyword was not matched (this entry is not for this parser)
+//! * `Some(Ok(T))` - keyword matched and value parsed successfully
+//! * `Some(Err(e))` - keyword matched but value was malformed
+//!
+//! The `parse_pnm_default_value` function is hand-written because the bare
+//! `default` form (no `=` token) cannot be expressed via the macro
+//!
+//! Author: aav
 // --------------------------------------------------
 // external
 // --------------------------------------------------
@@ -9,15 +25,22 @@ use tk_syn_macros::create_parser;
 use crate::ast::types::*;
 use crate::symbol::*;
 
-/// Attempts to parse a type `T` from a [`syn::meta::ParseNestedMeta`]
+/// Parses a value of type `T` from a [`syn::meta::ParseNestedMeta`], accepting
+/// the value either as raw tokens or wrapped in a [`syn::LitStr`]
 ///
-/// If the type `T` can be surrounded with quotes (e.g. parse the contents
-/// within the quotes of a [`syn::LitStr`], rather than trying to parse the
-/// [`syn::LitStr`] as a type `T`), set `maybe_litstr` to `true`.
+/// First attempts to parse the value stream as a [`syn::LitStr`]; if that
+/// succeeds, re-parses the string contents as `T` (allowing `enc = "my::path"`
+/// in addition to `enc = my::path`). If the value is not a string literal,
+/// falls back to parsing the raw token stream directly as `T`
 ///
-/// Otherwise, set `maybe_litstr` to `false`. (This is usually the case for
-/// parsing literals, since you don't want to parse the contents within quotes
-/// as a lit, instead, just parse the lit itself.)
+/// # Arguments
+///
+/// * `input` - The nested meta entry whose value is to be parsed
+///
+/// # Returns
+///
+/// `Ok(T)` on a successful parse, or a [`syn::Error`] if the value is present
+/// but cannot be parsed as `T` in either form
 fn pnm_parse_maybestr<T: syn::parse::Parse>(input: &syn::meta::ParseNestedMeta) -> syn::Result<T> {
     match input.value() {
         Ok(value) => match value.parse::<syn::LitStr>() {
@@ -28,15 +51,21 @@ fn pnm_parse_maybestr<T: syn::parse::Parse>(input: &syn::meta::ParseNestedMeta) 
     }
 }
 
-/// Attempts to parse a type `T` from a [`syn::MetaNameValue`]
+/// Parses a value of type `T` from a [`syn::MetaNameValue`], accepting
+/// the value either as raw tokens or wrapped in a [`syn::LitStr`]
 ///
-/// If the type `T` can be surrounded with quotes (e.g. parse the contents
-/// within the quotes of a [`syn::LitStr`], rather than trying to parse the
-/// [`syn::LitStr`] as a type `T`), set `maybe_litstr` to `true`.
+/// First attempts to parse the value expression as a [`syn::LitStr`]; if that
+/// succeeds, re-parses the string contents as `T`. Otherwise falls back to
+/// parsing the raw token stream of the value expression directly as `T`
 ///
-/// Otherwise, set `maybe_litstr` to `false`. (This is usually the case for
-/// parsing literals, since you don't want to parse the contents within quotes
-/// as a lit, instead, just parse the lit itself.)
+/// # Arguments
+///
+/// * `input` - The name-value meta entry whose value is to be parsed
+///
+/// # Returns
+///
+/// `Ok(T)` on a successful parse, or a [`syn::Error`] if the value cannot
+/// be parsed as `T` in either form
 fn nv_parse_maybestr<T: syn::parse::Parse>(input: &syn::MetaNameValue) -> syn::Result<T> {
     let value_tokens = input.value.to_token_stream();
     match syn::parse2::<syn::LitStr>(value_tokens.clone()) {
