@@ -19,7 +19,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{constants, key_match_gen};
+use super::key_match_gen;
 use crate::ast::{
     attr::{MainContainer, container::break_on::BreakOnSpec},
     types,
@@ -43,8 +43,12 @@ struct DecodeLoopParts {
     pre_check_clippy_allow: proc_macro2::TokenStream,
     /// Whether the container set `deny_unknown_keys`
     deny_unknown_keys: bool,
-    /// Per-iteration break-condition scrutinee built from `#[klv(break_on = ..)]`
-    break_decision: proc_macro2::TokenStream,
+    /// Per-iteration break-condition scrutinee, present iff `#[klv(break_on = ..)]` was declared
+    ///
+    /// `None` means no break codegen is emitted at all; the break-handling helpers return an empty
+    /// stream. Carrying the decision inside the `Option` keeps "has a break" and "the decision" from
+    /// desyncing
+    break_decision: Option<proc_macro2::TokenStream>,
 }
 
 /// Builds the [`DecodeLoopParts`] shared by the streaming and one-shot decode loops
@@ -71,7 +75,7 @@ fn gen_decode_loop_parts(input: &MainContainer, stream: &syn::Type) -> DecodeLoo
     // debug statement after key/len parse
     // --------------------------------------------------
     let debug_key_val = if debug_on {
-        let logger = constants::logger();
+        let logger = crate::expand::logger::debug_logger();
         quote! { #logger ("key: {}, len: {}", key, len); }
     } else {
         quote! {}
@@ -91,27 +95,138 @@ fn gen_decode_loop_parts(input: &MainContainer, stream: &syn::Type) -> DecodeLoo
     };
     // --------------------------------------------------
     // break-condition scrutinee from `#[klv(break_on = ..)]`:
-    // * absent   -> always proceed (the match collapses; identical to having no break check)
+    // * absent   -> `None`: no break codegen at all; the loop only ever proceeds
     // * literal  -> stop when the decoded key equals the literal (concrete `key`, no trait needed)
     // * function -> call the user's `fn(key, len) -> BreakType` directly with the concrete pair
     // --------------------------------------------------
-    let break_decision = match input.attrs.break_on.as_ref() {
-        None => quote! { ::tinyklv::BreakType::Proceed },
-        Some(BreakOnSpec::Literal(lit)) => quote! {
+    let break_decision = input.attrs.break_on.as_ref().map(|spec| match spec {
+        BreakOnSpec::Literal(lit) => quote! {
             if key == #lit {
                 ::tinyklv::BreakType::Done
             } else {
                 ::tinyklv::BreakType::Proceed
             }
         },
-        Some(BreakOnSpec::Func(path)) => quote! { #path(key, len) },
-    };
+        BreakOnSpec::Func(path) => quote! { #path(key, len) },
+    });
     DecodeLoopParts {
         items_match,
         debug_key_val,
         pre_check_clippy_allow,
         deny_unknown_keys,
         break_decision,
+    }
+}
+
+/// Emits the streaming-driver break handling, or nothing when `break_on` is unset
+///
+/// When `break_decision` is `Some`, returns the full `match break_decision { .. }` for the
+/// `resume_partial` loop (where `Skip`/truncation rewind and surface `NeedMore`, and `Abort` errors
+/// unconditionally). When `None`, returns an empty stream so the loop carries no break codegen at
+/// all - the `Proceed`-only match it would otherwise collapse to is never emitted
+///
+/// # Arguments
+///
+/// * `break_decision` - the per-iteration break scrutinee, present iff `#[klv(break_on = ..)]` was set
+/// * `stream` - the stream type, used to qualify the `take` that skips a value
+///
+/// # Returns
+///
+/// The break-handling token stream, or an empty stream when `break_on` is unset
+fn gen_streaming_break_match(
+    break_decision: Option<&proc_macro2::TokenStream>,
+    stream: &syn::Type,
+) -> proc_macro2::TokenStream {
+    let Some(break_decision) = break_decision else {
+        return quote! {};
+    };
+    quote! {
+        match #break_decision {
+            ::tinyklv::BreakType::Proceed => (),
+            ::tinyklv::BreakType::Skip => {
+                // --------------------------------------------------
+                // not enough bytes for the value being skipped: rewind and NeedMore
+                // --------------------------------------------------
+                if input.eof_offset() < len {
+                    input.reset(&checkpoint_inner);
+                    return ::core::result::Result::Ok(
+                        ::tinyklv::decoder::Packet::NeedMore(__acc)
+                    );
+                }
+                // --------------------------------------------------
+                // pre-checked above; `take` should never fail here
+                // --------------------------------------------------
+                let _ = ::tinyklv::__export::winnow::token::take::<
+                    usize,
+                    #stream,
+                    ::tinyklv::__export::winnow::error::ContextError,
+                >(len).parse_next(input);
+                continue;
+            }
+            ::tinyklv::BreakType::Done => break,
+            ::tinyklv::BreakType::Abort(__msg) => {
+                // --------------------------------------------------
+                // fatal abort: error unconditionally, no finalize
+                // --------------------------------------------------
+                return ::core::result::Result::Err(__msg);
+            }
+            // future `BreakType` variants behave as `Proceed`
+            _ => (),
+        }
+    }
+}
+
+/// Emits the one-shot-driver break handling, or nothing when `break_on` is unset
+///
+/// When `break_decision` is `Some`, returns the full `match break_decision { .. }` for the direct
+/// `decode_value` loop (where `Skip`/truncation `break` out of the loop and `Abort` returns a
+/// labeled error). When `None`, returns an empty stream so no break codegen is emitted
+///
+/// # Arguments
+///
+/// * `break_decision` - the per-iteration break scrutinee, present iff `#[klv(break_on = ..)]` was set
+/// * `stream` - the stream type, used to qualify the `take` that skips a value
+///
+/// # Returns
+///
+/// The break-handling token stream, or an empty stream when `break_on` is unset
+fn gen_oneshot_break_match(
+    break_decision: Option<&proc_macro2::TokenStream>,
+    stream: &syn::Type,
+) -> proc_macro2::TokenStream {
+    let Some(break_decision) = break_decision else {
+        return quote! {};
+    };
+    quote! {
+        match #break_decision {
+            ::tinyklv::BreakType::Proceed => (),
+            ::tinyklv::BreakType::Skip => {
+                if input.eof_offset() < len {
+                    input.reset(&checkpoint_inner);
+                    break;
+                }
+                let _ = ::tinyklv::__export::winnow::token::take::<
+                    usize,
+                    #stream,
+                    ::tinyklv::__export::winnow::error::ContextError,
+                >(len).parse_next(input);
+                continue;
+            }
+            ::tinyklv::BreakType::Done => break,
+            // `Abort` is documented to *guarantee* an `Err` with no partially-decoded
+            // value surfaced; honor that contract here rather than finalizing what was
+            // accumulated (the streaming `resume_partial` path errors identically). the
+            // user's static message is labelled with the current input position.
+            ::tinyklv::BreakType::Abort(__msg) => {
+                return ::core::result::Result::Err(::tinyklv::__export::labeled_error(
+                    input,
+                    &checkpoint,
+                    __msg,
+                ));
+            }
+            // future `BreakType` variants behave as `Proceed`
+            _ => (),
+        }
     }
 }
 
@@ -223,6 +338,10 @@ pub(super) fn gen_resume_partial_impl(
         quote! {}
     };
     // --------------------------------------------------
+    // break handling: the full match only when `break_on` is set, else nothing
+    // --------------------------------------------------
+    let break_match = gen_streaming_break_match(break_decision.as_ref(), stream);
+    // --------------------------------------------------
     // emit ResumePartial impl
     // --------------------------------------------------
     quote! {
@@ -257,7 +376,7 @@ pub(super) fn gen_resume_partial_impl(
                     // bytes-consumed key fail = malformation; len fail = truncation (NeedMore)
                     // --------------------------------------------------
                     let __key_offset_before = input.eof_offset();
-                    let Ok(key) = #key_decoder.parse_next(input) else {
+                    let ::core::result::Result::Ok(key) = #key_decoder.parse_next(input) else {
                         let __consumed = __key_offset_before - input.eof_offset();
                         input.reset(&checkpoint_inner);
                         if __consumed == 0 {
@@ -276,8 +395,8 @@ pub(super) fn gen_resume_partial_impl(
                     };
 
                     let len = match #len_decoder.parse_next(input) {
-                        Ok(l) => l,
-                        Err(_) => {
+                        ::core::result::Result::Ok(l) => l,
+                        ::core::result::Result::Err(_) => {
                             // --------------------------------------------------
                             // len short: truncation, rewind and surface NeedMore
                             // --------------------------------------------------
@@ -288,38 +407,7 @@ pub(super) fn gen_resume_partial_impl(
                         }
                     };
 
-                    match #break_decision {
-                        ::tinyklv::BreakType::Proceed => (),
-                        ::tinyklv::BreakType::Skip => {
-                            // --------------------------------------------------
-                            // not enough bytes for the value being skipped: rewind and NeedMore
-                            // --------------------------------------------------
-                            if input.eof_offset() < len {
-                                input.reset(&checkpoint_inner);
-                                return ::core::result::Result::Ok(
-                                    ::tinyklv::decoder::Packet::NeedMore(__acc)
-                                );
-                            }
-                            // --------------------------------------------------
-                            // pre-checked above; `take` should never fail here
-                            // --------------------------------------------------
-                            let _ = ::tinyklv::__export::winnow::token::take::<
-                                usize,
-                                #stream,
-                                ::tinyklv::__export::winnow::error::ContextError,
-                            >(len).parse_next(input);
-                            continue;
-                        }
-                        ::tinyklv::BreakType::Done => break,
-                        ::tinyklv::BreakType::Abort(__msg) => {
-                            // --------------------------------------------------
-                            // fatal abort: error unconditionally, no finalize
-                            // --------------------------------------------------
-                            return ::core::result::Result::Err(__msg);
-                        }
-                        // future `BreakType` variants behave as `Proceed`
-                        _ => (),
-                    }
+                    #break_match
                     #debug_key_val
                     #pre_check_gate
                     if input.eof_offset() < len {
@@ -340,12 +428,12 @@ pub(super) fn gen_resume_partial_impl(
                         #stream,
                         ::tinyklv::__export::winnow::error::ContextError,
                     >(len).parse_next(input) {
-                        Ok(s) => s,
-                        Err(_) => return match <#partial_name #ty_generics as ::tinyklv::traits::Partial>::finalize(__acc) {
-                            Ok(v) => ::core::result::Result::Ok(
+                        ::core::result::Result::Ok(s) => s,
+                        ::core::result::Result::Err(_) => return match <#partial_name #ty_generics as ::tinyklv::traits::Partial>::finalize(__acc) {
+                            ::core::result::Result::Ok(v) => ::core::result::Result::Ok(
                                 ::tinyklv::decoder::Packet::Ready(v)
                             ),
-                            Err(label) => ::core::result::Result::Err(label),
+                            ::core::result::Result::Err(label) => ::core::result::Result::Err(label),
                         },
                     };
                     // --------------------------------------------------
@@ -360,10 +448,10 @@ pub(super) fn gen_resume_partial_impl(
                 // BreakType::Done: finalize partial; Ready or propagate label
                 // --------------------------------------------------
                 match <#partial_name #ty_generics as ::tinyklv::traits::Partial>::finalize(__acc) {
-                    Ok(v) => ::core::result::Result::Ok(
+                    ::core::result::Result::Ok(v) => ::core::result::Result::Ok(
                         ::tinyklv::decoder::Packet::Ready(v)
                     ),
-                    Err(label) => ::core::result::Result::Err(label),
+                    ::core::result::Result::Err(label) => ::core::result::Result::Err(label),
                 }
             }
         }
@@ -435,6 +523,10 @@ pub(super) fn gen_decode_value(
         quote! {}
     };
     // --------------------------------------------------
+    // break handling: the full match only when `break_on` is set, else nothing
+    // --------------------------------------------------
+    let break_match = gen_oneshot_break_match(break_decision.as_ref(), stream);
+    // --------------------------------------------------
     // emit direct DecodeValue impl
     // --------------------------------------------------
     quote! {
@@ -474,35 +566,7 @@ pub(super) fn gen_decode_value(
                         input.reset(&checkpoint_inner);
                         break;
                     };
-                    match #break_decision {
-                        ::tinyklv::BreakType::Proceed => (),
-                        ::tinyklv::BreakType::Skip => {
-                            if input.eof_offset() < len {
-                                input.reset(&checkpoint_inner);
-                                break;
-                            }
-                            let _ = ::tinyklv::__export::winnow::token::take::<
-                                usize,
-                                #stream,
-                                ::tinyklv::__export::winnow::error::ContextError,
-                            >(len).parse_next(input);
-                            continue;
-                        }
-                        ::tinyklv::BreakType::Done => break,
-                        // `Abort` is documented to *guarantee* an `Err` with no partially-decoded
-                        // value surfaced; honor that contract here rather than finalizing what was
-                        // accumulated (the streaming `resume_partial` path errors identically). the
-                        // user's static message is labelled with the current input position.
-                        ::tinyklv::BreakType::Abort(__msg) => {
-                            return ::core::result::Result::Err(::tinyklv::__export::labeled_error(
-                                input,
-                                &checkpoint,
-                                __msg,
-                            ));
-                        }
-                        // future `BreakType` variants behave as `Proceed`
-                        _ => (),
-                    }
+                    #break_match
                     #debug_key_val
                     #pre_check_gate
                     if input.eof_offset() < len {

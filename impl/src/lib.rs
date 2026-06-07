@@ -205,11 +205,12 @@ Options include {s}.",
 
     #[error("\
         Unknown field `{0}` in {k}/{l}.
-Expected `{e} = <..>` or `{d} = <..>`.",
+Expected `{e} = <..>`, `{d} = <..>`, or `{s} = <..>`.",
         k = symbol::KEY,
         l = symbol::LENGTH,
         e = symbol::ENCODER,
         d = symbol::DECODER,
+        s = symbol::SIZE,
     )]
     UnknownKeyLenField(String),
 
@@ -228,6 +229,14 @@ Expected `{e} = <..>` or `{d} = <..>`.",
         l = symbol::LENGTH,
     )]
     DuplicateDecoderInKeyLen,
+
+    #[error("\
+        Duplicate `{s}` field. Only one {s} per {k}/{l} is allowed.",
+        s = symbol::SIZE,
+        k = symbol::KEY,
+        l = symbol::LENGTH,
+    )]
+    DuplicateSizeInKeyLen,
 
     #[error("\
         Missing required `{e}` field for `{0}`.
@@ -296,10 +305,10 @@ To add ways to decode said type, they must be done on a field-by-field basis and
     DuplicateDecoderInDefault(String),
 
     #[error("\
-        Duplicate `{s}` field. Only required once, defaults to `false`.",
-        s = symbol::VARIABLE_LENGTH,
+        Duplicate `{s}` field. Only one {s} per default is allowed.",
+        s = symbol::SIZE,
     )]
-    DuplicateVariableLengthInDefault,
+    DuplicateSizeInDefault,
 
     #[error("\
         Duplicate '{1}' found for `{d}({t} = {0})`. Only one default {1} is allowed per type.",
@@ -346,10 +355,27 @@ Currently only one key per field is supported.",
     DuplicateDecoderInField,
 
     #[error("\
-        Duplicate `{s}` field. Only required once, will default to `false`.",
-        s = symbol::VARIABLE_LENGTH,
+        Duplicate `{s}` field. Only one {s} per field is allowed.",
+        s = symbol::SIZE,
     )]
-    DuplicateVariableLengthInField,
+    DuplicateSizeInField,
+
+    #[error("\
+        Unknown `{s}` sub-attribute: `{0}`.
+Expected {sf}.",
+        s = symbol::SIZE,
+        sf = symbol::SIZE_FIELDS,
+    )]
+    UnknownSizeField(String),
+
+    #[error("\
+        Conflicting `{s}` byte count. `{e}` and `{h}` are mutually exclusive - a `{s}` is either an \
+exact width or a soft capacity estimate, not both.",
+        s = symbol::SIZE,
+        e = symbol::EXACT,
+        h = symbol::HINT,
+    )]
+    SizeExactHintConflict,
 
     #[error("\
         Duplicate `{s}` field.",
@@ -406,13 +432,13 @@ Otherwise, you can:
     UnimplementedDecode(String, String),
 
     #[error("\
-Field `{0}: {1}` has `{v} = true` but no `{d} = ..` was set.
+Field `{0}: {1}` has `{s}(var)` but no `{d} = ..` was set.
 The trait fallback (`<{1} as ::tinyklv::DecodeValue<..>>::decode_value`) has no length argument - \
-supply an explicit `{d}` or remove `{v}`.",
-        v = symbol::VARIABLE_LENGTH,
+supply an explicit `{d}` or change the `{s}`.",
+        s = symbol::SIZE,
         d = symbol::DECODER,
     )]
-    VarlenFallbackRequiresExplicitDec(String, String),
+    SizeVarFallbackRequiresExplicitDec(String, String),
 }
 /// [`Error`] implementation
 impl Error {

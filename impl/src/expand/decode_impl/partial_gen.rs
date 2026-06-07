@@ -323,10 +323,8 @@ pub(super) fn gen_partial_impl(
         quote! {}
     } else {
         let names = elem_name_type_without_klv.iter().map(|(n, _)| n.clone());
-        let types = elem_name_type_without_klv
-            .iter()
-            .map(|(_, ty)| helpers::type2fish(ty));
-        quote! { #(#names: #types::default(),)* }
+        let types = elem_name_type_without_klv.iter().map(|(_, ty)| ty);
+        quote! { #(#names: <#types as ::core::default::Default>::default(),)* }
     };
     // --------------------------------------------------
     // emit Partial impl

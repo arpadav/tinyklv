@@ -104,7 +104,7 @@ pub(super) fn gen_sentinel_impl(
             };
             match __found {
                 ::core::option::Option::Some(position) => *input = &input[position + #sentinel_len_static_name..],
-                ::core::option::Option::None => return Err(::tinyklv::__export::labeled_error(
+                ::core::option::Option::None => return ::core::result::Result::Err(::tinyklv::__export::labeled_error(
                     input,
                     &checkpoint,
                     concat!("Unable to find recognition sentinel for `", stringify!(#name), "` packet"),
@@ -114,8 +114,8 @@ pub(super) fn gen_sentinel_impl(
     } else {
         quote! {
             match #sentinel_seeker_static_name.find(&input) {
-                Some(position) => *input = &input[position + #sentinel_len_static_name..],
-                None => return Err(::tinyklv::__export::labeled_error(
+                ::core::option::Option::Some(position) => *input = &input[position + #sentinel_len_static_name..],
+                ::core::option::Option::None => return ::core::result::Result::Err(::tinyklv::__export::labeled_error(
                     input,
                     &checkpoint,
                     concat!("Unable to find recognition sentinel for `", stringify!(#name), "` packet"),

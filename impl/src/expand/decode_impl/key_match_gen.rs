@@ -11,9 +11,9 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::constants;
 use super::helpers;
 use crate::ast::attr::MainField;
+use crate::ast::attr::size::SizeSpec;
 
 // --------------------------------------------------
 // external
@@ -183,10 +183,11 @@ pub(super) fn gen_items_match(
                 quote! { #dec }
             };
             // --------------------------------------------------
-            // varlen - changes fn signature
+            // size - a `var` size makes the decoder take the runtime `len`; a reserve-only size or
+            // an omitted one reads without it (defaults to no `len` arg)
             // --------------------------------------------------
-            let varlen = attrs.var.as_ref().is_some_and(|v| v.value); // <-- defaults to false
-            let optional_len_arg = if varlen {
+            let takes_len = attrs.size.is_some_and(SizeSpec::takes_len);
+            let optional_len_arg = if takes_len {
                 quote! { (len) }
             } else {
                 quote! {}
@@ -215,7 +216,7 @@ pub(super) fn gen_items_match(
             // field assignment with optional logging
             // --------------------------------------------------
             if debug {
-                let logger = constants::logger();
+                let logger = crate::expand::logger::debug_logger();
                 quote! {
                     #key => {
                         let val = #dec_tokens #optional_len_arg (&mut subinput);
