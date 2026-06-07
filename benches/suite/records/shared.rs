@@ -100,6 +100,21 @@ impl tinyklv::DecodeValue<&[u8]> for Reading {
     }
 }
 
+/// [`Reading`] implementation of [`tinyklv::EncodeValue`] for `[u8]`
+///
+/// Encode twin of the hand-written [`DecodeValue`](tinyklv::DecodeValue) above: writes the fixed
+/// 5-byte `kind` (1) + big-endian `f32` value (4). Self-delimiting (fixed width), so a
+/// `Vec<Reading>` round-trips through the blanket `EncodeValue`/`DecodeValue for Vec<T>` with no
+/// custom encoder. Byte-for-byte identical to one element of [`Reading::pack`] (which is retained
+/// for the serde_klv / tlv_parser / manual approaches that need an owned-`Vec` return)
+impl tinyklv::EncodeValue for Reading {
+    #[inline]
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        out.push(self.kind);
+        out.extend_from_slice(&self.value.to_be_bytes());
+    }
+}
+
 /// Nested GPS coordinate sub-packet: latitude and longitude as big-endian `f64` values
 ///
 /// Used by both [`super::Compound`] (via nested KLV key `0x02`) and [`super::Rich`] (same
@@ -108,9 +123,9 @@ impl tinyklv::DecodeValue<&[u8]> for Reading {
 #[derive(tinyklv::Klv, Debug, PartialEq, Clone, Copy)]
 #[klv(
     stream = &[u8],
-    key(dec = decb::u8, enc = encb::u8),
-    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-    default(typ = f64, dec = decb::be_f64, enc = *encb::be_f64),
+    key(dec = decb::u8, enc = encb::u8, size(exact = 1)),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)),
+    default(typ = f64, dec = decb::be_f64, enc = *encb::be_f64, size(exact = 8)),
 )]
 pub(crate) struct GpsCoord {
     #[klv(key = 0x01)]

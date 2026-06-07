@@ -20,7 +20,7 @@ use rand::{RngExt, rngs::SmallRng};
     stream = &[u8],
     sentinel = b"\x47\x48",
     key(dec = decb::u8, enc = encb::u8),
-    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)),
     default(typ = u8, dec = decb::u8, enc = *encb::u8),
     default(typ = u32, dec = decb::be_u32, enc = *encb::be_u32),
     default(typ = i16, dec = decb::be_i16, enc = *encb::be_i16),
@@ -32,7 +32,7 @@ pub(crate) struct Compound {
     #[klv(key = 0x01)]
     pub(crate) id: u32,
 
-    #[klv(key = 0x02)]
+    #[klv(key = 0x02, size(exact = 20))]
     pub(crate) coord: GpsCoord,
 
     #[klv(key = 0x03)]
@@ -53,14 +53,8 @@ pub(crate) struct Compound {
     #[klv(key = 0x08)]
     pub(crate) mode: u8,
 
-    #[klv(key = 0x09, enc = pack_readings)]
+    #[klv(key = 0x09, size(hint = 40))]
     pub(crate) sensors: Vec<Reading>,
-}
-
-/// Writer-API adapter around [`Reading::pack`]: packs `readings` into a byte run and
-/// appends it to `out`, matching the new encoder signature `fn(&[Reading], &mut Vec<u8>)`.
-fn pack_readings(readings: &[Reading], out: &mut Vec<u8>) {
-    out.extend_from_slice(&Reading::pack(readings));
 }
 
 /// [`Compound`] implementation of [`RngSample`]

@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
     stream = &[u8],
     sentinel = b"\x47\x48",
     key(dec = decb::u8, enc = encb::u8),
-    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)),
     default(typ = u8, dec = decb::u8, enc = *encb::u8),
     default(typ = i16, dec = decb::be_i16, enc = *encb::be_i16),
     default(typ = i32, dec = decb::be_i32, enc = *encb::be_i32),
