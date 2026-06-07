@@ -144,6 +144,29 @@ pub trait EncodeValue {
     fn encode_value(&self, out: &mut Vec<u8>);
 }
 
+/// [`EncodeValue`] for any `Vec<T>` whose element type encodes - the encode twin of
+/// [`DecodeValue for Vec<T>`](crate::traits::DecodeValue)
+///
+/// Appends every element's encoded value back-to-back into `out`, with no framing between elements.
+/// Because each element is written by `T::encode_value`, this is correct **only when `T` is
+/// self-delimiting** - a fixed-width or otherwise self-terminating value that the matching
+/// `Vec<T>` decode can split back apart. A `#[derive(Klv)]` struct's `encode_value` writes its body
+/// with no outer length, so a `Vec` of derived records would not round-trip (the first element's
+/// decode would consume the whole run); give such elements a self-delimiting hand-written codec
+///
+/// Note: there is no `EncodeValue for u8` (primitives encode via the `codecs` free functions), so
+/// `Vec<u8>` does not resolve through this blanket and keeps its existing path - adding an
+/// `EncodeValue for u8` in future would silently change that
+impl<T> EncodeValue for Vec<T>
+where
+    T: EncodeValue,
+{
+    #[inline]
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        self.iter().for_each(|item| item.encode_value(out));
+    }
+}
+
 /// Full KLV encode pipeline: prepends key and length to [`EncodeValue`] output
 ///
 /// Decode counterpart: [`DecodeFrame`](crate::traits::DecodeFrame)

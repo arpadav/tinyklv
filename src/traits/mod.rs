@@ -22,8 +22,15 @@
 //! **`stream` attribute**: Only parameterizes decode. Encode always writes
 //! `Vec<u8>`
 //!
-//! **`varlen` attribute**: Decode-only. Controls whether `(len)` is passed to the
-//! decoder function. Encoding does not use it
+//! ## The `size(..)` attribute
+//!
+//! Every value has an encoder with two paths (*fixed* - always `N` bytes; *dynamic* - size varies,
+//! so the length is back-patched after the body) and a decoder with two paths (*internal* - knows
+//! its width or self-delimits on the `len`-bounded sub-slice; *uses-len* - the signature takes the
+//! runtime length). `size(..)` controls both, along two orthogonal axes: `var` (the decoder takes
+//! the runtime `len`; absent ⇒ internal) and the byte count `exact = N` (wire-exact ⇒ fixed-width
+//! fast path) or `hint = N` (a soft encode-capacity estimate only). `exact` and `hint` are mutually
+//! exclusive. See the book's "encoding model" reference for the full strategy/path table.
 // --------------------------------------------------
 // mods
 // --------------------------------------------------

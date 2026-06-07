@@ -107,9 +107,7 @@ where
         // this is done, since Vec::with_capacity() is significantly
         // faster than Vec::new() when the capacity is known in advance
         // --------------------------------------------------
-        let cap = input
-            .eof_offset()
-            .min(Self::NUM_ELEM).max(1);
+        let cap = input.eof_offset().min(Self::NUM_ELEM).max(1);
         let mut acc = Vec::with_capacity(cap);
         loop {
             let before = input.eof_offset();
