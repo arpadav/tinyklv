@@ -1,13 +1,29 @@
+//! Custom decoder/encoder function tests for `#[derive(Klv)]`
+//!
+//! Tests user-supplied `dec =` / `enc =` functions: a `decode_u16_add_one`
+//! /`encode_u16_sub_one` pair that applies a +1/-1 transform, verifying
+//! the transform is applied during decode and inverted on encode. Also tests
+//! an associated-function `Transformer::decode_scaled` / `encode_scaled`
+//! pair implementing `u16 / 100.0` scaling
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
 
+/// Decode a big-endian `u16` and add `1` to the raw wire value
 fn decode_u16_add_one(input: &mut &[u8]) -> tinyklv::Result<u16> {
     decb::be_u16(input).map(|v| v + 1)
 }
 
-fn encode_u16_sub_one(input: &u16) -> Vec<u8> {
-    encb::be_u16(input.wrapping_sub(1))
+/// Encode a `u16` by subtracting `1` before writing big-endian bytes
+///
+/// Acts as the inverse of `decode_u16_add_one`: wire value = field value - 1
+fn encode_u16_sub_one(input: &u16, out: &mut Vec<u8>) {
+    encb::be_u16(input.wrapping_sub(1), out);
 }
 
 #[derive(Klv, Debug, PartialEq)]
@@ -33,7 +49,7 @@ struct CustomDecoders {
 }
 
 #[test]
-/// Tests that a user-provided `dec` function (value + 1) is applied during decode.
+/// Tests that a user-provided `dec` function (value + 1) is applied during decode
 fn custom_decoder_applies_transform() {
     // data value is 0x0064 = 100; custom decoder adds 1 -> 101
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x64, 0x02, 0x01, 0x07];
@@ -43,26 +59,28 @@ fn custom_decoder_applies_transform() {
 }
 
 #[test]
-/// Verifies that the custom `enc`/`dec` pair compose as mutual inverses across a roundtrip.
+/// Verifies that the custom `enc`/`dec` pair compose as mutual inverses across a roundtrip
 fn custom_encoder_applies_inverse_transform() {
     let packet = CustomDecoders {
         adjusted: 101,
         plain: 7,
     };
-    let encoded = packet.encode_value();
+    let mut encoded = Vec::new();
+    packet.encode_value(&mut encoded);
     let decoded = CustomDecoders::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, packet);
 }
 
 #[test]
-/// Tests the custom-encoder/decoder roundtrip across a spread of values including edge cases like `u16::MAX`.
+/// Tests the custom-encoder/decoder roundtrip across a spread of values including edge cases like `u16::MAX`
 fn custom_encoder_decode_roundtrip() {
     for adj in [1_u16, 100, 1000, u16::MAX] {
         let packet = CustomDecoders {
             adjusted: adj,
             plain: 0,
         };
-        let encoded = packet.encode_value();
+        let mut encoded = Vec::new();
+        packet.encode_value(&mut encoded);
         let decoded = CustomDecoders::decode_value(&mut encoded.as_slice()).unwrap();
         assert_eq!(decoded.adjusted, adj);
     }
@@ -73,8 +91,8 @@ impl Transformer {
     fn decode_scaled(input: &mut &[u8]) -> tinyklv::Result<f32> {
         decb::be_u16(input).map(|v| v as f32 / 100.0)
     }
-    fn encode_scaled(input: &f32) -> Vec<u8> {
-        encb::be_u16((input * 100.0) as u16)
+    fn encode_scaled(input: &f32, out: &mut Vec<u8>) {
+        encb::be_u16((input * 100.0) as u16, out);
     }
 }
 
@@ -94,7 +112,7 @@ struct WithMethodDecoder {
 }
 
 #[test]
-/// Tests that an associated-function decoder (`Transformer::decode_scaled`) applies the `u16 / 100.0` scaling.
+/// Tests that an associated-function decoder (`Transformer::decode_scaled`) applies the `u16 / 100.0` scaling
 fn method_decoder_scales_correctly() {
     // Wire value 0x01F4 = 500; scaled = 500 / 100 = 5.0
     let data: &[u8] = &[0x01, 0x02, 0x01, 0xF4];
@@ -103,12 +121,13 @@ fn method_decoder_scales_correctly() {
 }
 
 #[test]
-/// Verifies roundtrip precision for an associated-function encoder/decoder pair over a fractional `f32` value.
+/// Verifies roundtrip precision for an associated-function encoder/decoder pair over a fractional `f32` value
 fn method_encoder_roundtrip() {
     let packet = WithMethodDecoder {
         scaled_value: 12.34,
     };
-    let encoded = packet.encode_value();
+    let mut encoded = Vec::new();
+    packet.encode_value(&mut encoded);
     let decoded = WithMethodDecoder::decode_value(&mut encoded.as_slice()).unwrap();
     assert!((decoded.scaled_value - packet.scaled_value).abs() < 0.01);
 }

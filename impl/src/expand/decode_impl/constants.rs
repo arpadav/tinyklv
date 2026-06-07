@@ -1,8 +1,9 @@
 //! Shared constants and naming helpers for the decode code-generation pass
 //!
 //! Provides small utilities that are reused across the decode codegen
-//! sub-modules: the logger macro token selection, the partial-packet struct
-//! naming convention, and the lifetime token used in generated stream references
+//! sub-modules: the partial-packet struct naming convention and the lifetime
+//! token used in generated stream references. The logging-macro selection lives
+//! in [`crate::expand::logger`], shared with the encode pass
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -10,27 +11,6 @@
 // --------------------------------------------------
 use proc_macro2::TokenStream;
 use quote::quote;
-
-/// Selects the logging macro used in generated decode debug output
-///
-/// Returns `::tracing::debug!` when the `tracing` feature is enabled, or
-/// `::std::println!` otherwise. The returned token stream is spliced directly
-/// into the generated `resume_partial` body at key/value debug-log sites
-///
-/// # Returns
-///
-/// A [`proc_macro2::TokenStream`] containing either `::tracing::debug!` or
-/// `::std::println!`
-pub(super) fn logger() -> proc_macro2::TokenStream {
-    #[cfg(feature = "tracing")]
-    {
-        quote! { ::tracing::debug! }
-    }
-    #[cfg(not(feature = "tracing"))]
-    {
-        quote! { ::std::println! }
-    }
-}
 
 /// Derives the partial-packet struct ident from a container ident
 ///

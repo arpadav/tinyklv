@@ -1,12 +1,20 @@
+//! Mixed-type field tests for `#[derive(Klv)]`
+//!
+//! Tests the `Mixed` struct (a `u8` byte value, a `u32` integer, a `size(var)`
+//! UTF-8 string, and an optional `u16`). Covers decode with all fields
+//! present, absent optional, reversed field order, missing required field,
+//! and full encode/decode roundtrip with and without the optional
+//!
+//! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use tinyklv::Klv;
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
 use tinyklv::enc::binary as encb;
 use tinyklv::enc::string as encs;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -29,7 +37,7 @@ struct Mixed {
     int_val: u32,
     #[klv(
         key = 0x03,
-        varlen = true,
+        size(var),
         dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8
     )]
@@ -43,7 +51,7 @@ struct Mixed {
 }
 
 #[test]
-/// Tests decoding a struct mixing fixed-width integers, a variable-length string, and an optional field with all keys present.
+/// Tests decoding a struct mixing fixed-width integers, a variable-length string, and an optional field with all keys present
 fn decode_all_fields_present() {
     let name = b"KLV";
     let mut data = vec![
@@ -69,7 +77,7 @@ fn decode_all_fields_present() {
 }
 
 #[test]
-/// Verifies that in a mixed-type struct the optional field decodes to `None` when its key is absent.
+/// Verifies that in a mixed-type struct the optional field decodes to `None` when its key is absent
 fn decode_optional_absent() {
     let name = b"TEST";
     let mut data = vec![
@@ -94,7 +102,7 @@ fn decode_optional_absent() {
 }
 
 #[test]
-/// Tests encode/decode roundtrip for a struct mixing integers, a `String`, and a `Some` optional.
+/// Tests encode/decode roundtrip for a struct mixing integers, a `String`, and a `Some` optional
 fn roundtrip_mixed_types() {
     let original = Mixed {
         byte_val: 0xAB,
@@ -102,7 +110,8 @@ fn roundtrip_mixed_types() {
         name: String::from("MISSION"),
         optional_short: Some(0x1234),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = Mixed::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, original);
 }
@@ -116,7 +125,8 @@ fn roundtrip_mixed_types_no_optional() {
         name: String::new(),
         optional_short: None,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = Mixed::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, original);
 }

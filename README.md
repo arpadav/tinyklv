@@ -5,13 +5,14 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![MSRV](https://img.shields.io/badge/rustc-1.95%2B-orange.svg)](https://www.rust-lang.org)
 
-The fastest derive-macro framework for encoding and decoding [Key-Length-Value (KLV)](https://en.wikipedia.org/wiki/KLV)
-binary streams, built on [`winnow`](https://crates.io/crates/winnow) parser combinators.
+The fastest derive-macro framework for encoding and decoding [Key-Length-Value
+(KLV)](https://en.wikipedia.org/wiki/KLV) binary streams, built on
+[`winnow`](https://crates.io/crates/winnow) parser combinators.
 
-![Median per-call time across KLV frameworks](https://github.com/arpadav/tinyklv/blob/main/benches/bench.jpg?raw=true)
+![tinyklv vs the KLV/TLV crates](https://github.com/arpadav/tinyklv/blob/main/benches/bench_klv.jpg?raw=true)
 
 KLV (a generic Tag-Length-Value framing) is the backbone of telemetry packets,
-video metadata streams, `IoT` sensor framing, and most custom binary protocols
+video metadata streams, IoT sensor framing, and most custom binary protocols
 that evolve without breaking older parsers. `tinyklv` is protocol-agnostic and
 ships no baked-in standards: you declare your keys, length encoding, sentinel,
 and per-field codecs as attributes on a struct, and `#[derive(Klv)]` generates
@@ -60,7 +61,8 @@ fn main() {
         sequence: 42,
         temperature_centideg: 2350,
     };
-    let frame = original.encode_frame();
+    let mut frame = Vec::new();
+    original.encode_frame(&mut frame);
     let decoded = Heartbeat::decode_frame(
         &mut frame.as_slice()
     ).unwrap();
@@ -75,25 +77,52 @@ Full annotated version: [`examples/01_hello_world.rs`](https://github.com/arpada
 Across decode and encode, flat and nested, clean and framed-over-noise,
 `tinyklv` is the fastest derive-based KLV framework - several times faster than
 `serde_klv`, an order of magnitude faster than `tlv_parser`, and within striking
-distance of hand-rolled parsing. It is also the only one of the four that
-handles **nested KLV** without hand-written glue.
+distance of hand-rolled parsing. It is also the only one that handles
+**nested KLV** without hand-written glue.
 
-The benchmark suite, the four competing implementations, and the one-command
-chart reproduction (`benches/scripts/charts.sh`) all live in
+The suite also pits all four KLV approaches against four protobuf stacks
+(`prost`, `quick_protobuf`, `rust_protobuf`, `micropb`) encoding the same records
+from `.proto` schemas - a different wire format (length-prefixed tag-value rather
+than KLV), measured the same way.
+
+A third record is built from common **native Rust types** (`chrono::DateTime`,
+`std::net::Ipv4Addr`/`Ipv6Addr`, `std::time::Duration`, `NaiveDate`/`NaiveTime`,
+`char`, `NonZeroU32`, `bool`, `String`). `tinyklv` decodes straight into them via
+its `bench`-gated `DecodeValue`/`EncodeValue` impls; every other approach must
+convert from a raw scalar - the KLV libraries field-by-field, and the protobuf
+crates over a whole generated struct (a generated message can never *be* a native
+type), each using whatever native conversions the crate genuinely provides.
+
+The benchmark suite, the eight competing implementations (four KLV libraries and
+four protobuf crates), and the one-command chart reproduction
+(`benches/scripts/gencharts.sh`) all live in
 [`benches/`](https://github.com/arpadav/tinyklv/tree/main/benches).
 
-See [results here](https://github.com/arpadav/tinyklv/blob/main/benches/bench.jpg?raw=true)
+Benchmark machine:
+
+- OS: Ubuntu 24.04.4 LTS, Linux `6.17.0-35-generic`
+- CPU: AMD Ryzen 9 9900X
+- Host: B850 AI TOP -CF-WCP-ADO
+
+See the full chart set:
+[KLV/TLV](https://github.com/arpadav/tinyklv/blob/main/benches/bench_klv.jpg?raw=true) ·
+[protobuf](https://github.com/arpadav/tinyklv/blob/main/benches/bench_proto.jpg?raw=true)
+
+The same benchmark records also put tinyklv within protobuf territory, and in
+several measured encode/decode cases ahead of the protobuf stacks:
+
+![tinyklv vs the protobuf stacks](https://github.com/arpadav/tinyklv/blob/main/benches/bench_proto.jpg?raw=true)
 
 ## Maintainability
 
 The only thing faster per packet is the `manual` bar - and it is the least
-maintainable code of the four. A hand-rolled decoder is a panic-adjacent
+maintainable code in the suite. A hand-rolled decoder is a panic-adjacent
 slice-indexing loop with one `Option` per field to juggle, repeated for every
 record shape, plus a second hand-written sub-parser for every level of nesting.
 From the benchmark's `manual` nested decoder
 ([`benches/suite/approaches/manual/nested.rs`](https://github.com/arpadav/tinyklv/blob/main/benches/suite/approaches/manual/nested.rs)):
 
-```rust
+```rust,ignore
 fn decode(body: &[u8]) -> Option<Platform> {
     let mut id = None;
     let mut coord = None;
@@ -120,7 +149,7 @@ fn decode(body: &[u8]) -> Option<Platform> {
 `tinyklv` collapses the whole thing - both directions, nesting included - into
 attributes on the struct:
 
-```rust
+```rust,ignore
 #[derive(Klv)]
 #[klv(
     stream = &[u8],

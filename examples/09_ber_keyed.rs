@@ -1,16 +1,16 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 09 - BER-OID keys and BER-encoded lengths.
+//! Example 09 - BER-OID keys and BER-encoded lengths
 //!
 //! Basic Encoding Rules (BER) give a compact, variable-width representation
 //! where values below 128 fit in a single byte and larger values grow by
 //! one byte at a time. Many industrial and military protocols use BER-OID
 //! for tag keys because they need a huge, extensible tag namespace without
-//! paying a fixed two- or four-byte cost on every packet.
+//! paying a fixed two- or four-byte cost on every packet
 //!
 //! This example builds a process-control packet with three fields whose
 //! BER-OID keys span 1, 2, and 3 bytes, plus a BER length codec so
-//! small value regions also stay compact.
+//! small value regions also stay compact
 //!
 //! Showcases:
 //! * BER-OID key codec from `dec::ber` / `enc::ber`
@@ -65,7 +65,8 @@ fn main() {
     };
 
     // encode - bytes include BER keys of 1, 2, and 3 bytes respectively
-    let frame = original.encode_frame();
+    let mut frame = Vec::new();
+    original.encode_frame(&mut frame);
 
     // decode - round-trip through the BER codecs
     let decoded = ProcessControl::decode_frame(

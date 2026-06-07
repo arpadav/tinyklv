@@ -64,9 +64,10 @@ fn repeated_sentinel_extract_loop() {
     let w2 = Waypoint::new(51.5074, -0.1278, Priority::Medium);
     let w3 = Waypoint::new(40.7128, -74.0060, Priority::High);
 
-    let mut stream: Vec<u8> = w1.encode_frame();
-    stream.extend(w2.encode_frame());
-    stream.extend(w3.encode_frame());
+    let mut stream: Vec<u8> = Vec::new();
+    w1.encode_frame(&mut stream);
+    w2.encode_frame(&mut stream);
+    w3.encode_frame(&mut stream);
 
     let mut results: Vec<Waypoint> = Vec::new();
     let mut slice = stream.as_slice();
@@ -92,7 +93,8 @@ fn repeated_sentinel_extract_empty_stream() {
 /// Verifies encode/decode roundtrip for a single sentinel-framed `Waypoint` via `encode_frame`/`decode_frame`
 fn repeated_sentinel_extract_single() {
     let w = Waypoint::new(35.6762, 139.6503, Priority::Critical);
-    let encoded = w.encode_frame();
+    let mut encoded = Vec::new();
+    w.encode_frame(&mut encoded);
     let decoded = Waypoint::decode_frame(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, w);
 }
@@ -115,8 +117,9 @@ fn drain_frames_two_framed_packets() {
         },
     };
 
-    let mut stream = p1.encode_frame();
-    stream.extend(p2.encode_frame());
+    let mut stream = Vec::new();
+    p1.encode_frame(&mut stream);
+    p2.encode_frame(&mut stream);
 
     let results = FramedPacket::drain_frames(&mut stream.as_slice()).unwrap();
     assert_eq!(results.len(), 2);
@@ -142,7 +145,10 @@ fn repeated_sentinel_three_roundtrip_values() {
         Waypoint::new(90.0, -180.0, Priority::High),
     ];
 
-    let stream: Vec<u8> = waypoints.iter().flat_map(tinyklv::EncodeFrame::encode_frame).collect();
+    let mut stream: Vec<u8> = Vec::new();
+    for wp in &waypoints {
+        wp.encode_frame(&mut stream);
+    }
     let mut slice = stream.as_slice();
     let mut decoded: Vec<Waypoint> = Vec::new();
     while let Ok(w) = Waypoint::decode_frame(&mut slice) {

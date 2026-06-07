@@ -1,9 +1,9 @@
 [package]
 name = "tinyklv"
-version = "0.1.2"
+version = "0.2.0-rc.1"
 authors = ["Arpad Voros <arpadav@gmail.com>"]
 license = "MIT"
-description = "The simplest Key-Length-Value (KLV) framework in Rust"
+description = "The fastest derive-macro Key-Length-Value (KLV) framework in Rust"
 repository = "https://github.com/arpadav/tinyklv"
 homepage = "https://arpadvoros.com/tinyklv"
 documentation = "https://docs.rs/tinyklv"
@@ -12,7 +12,7 @@ keywords = ["decode", "encode", "klv", "parsing", "tlv"]
 categories = ["development-tools", "encoding", "parsing"]
 edition = "2024"
 rust-version = "1.95"
-exclude = ["TODO.md", "book/", "examples", "tests", "benches"]
+exclude = ["book", "examples", "tests", "benches", "plans"]
 publish = true
 
 [workspace]
@@ -35,17 +35,30 @@ name = "proptest_roundtrip"
 path = "tests/proptest_roundtrip/main.rs"
 
 [dependencies]
-chrono = { version = "0.4.44", optional = true }
+# --------------------------------------------------
+# external
+# --------------------------------------------------
+chrono = { version = "0.4.45", optional = true }
 memchr = "2.8.0"
 num-traits = "0.2.19"
 pastey = "0.2.3"
-tinyklv-impl = { path = "impl", version = "0.1.2" }
 tracing = { version = "0.1.44", optional = true }
-winnow = { version = "1.0.2", features = ["binary", "parser", "simd"] }
+winnow = { version = "1.0.2", features = ["binary", "parser"] }
+# --------------------------------------------------
+# workspace
+# --------------------------------------------------
+tinyklv-impl = { path = "impl", version = "0.2.0-rc.1" }
 
 [dev-dependencies]
 criterion = "^0.8"
+micropb = { version = "^0.6", features = ["alloc"] }
 proptest = "1.11"
+# prost runtime must stay in lockstep with prost-build in benches/proto-gen (separate workspace)
+prost = "^0.14"
+# prost-types: WKT Timestamp/Duration for the native_nested record (lockstep with prost)
+prost-types = "^0.14"
+protobuf = "^3"
+quick-protobuf = "^0.8"
 rand = "^0.10"
 rand_distr = "^0.6"
 serde = { version = "^1", features = ["derive"] }
@@ -55,20 +68,35 @@ tlv_parser = "^0.10"
 tokio = { version = "^1.52", features = ["macros", "rt-multi-thread", "sync"] }
 
 [[bench]]
-name = "suite"
+# the suite uses the native-type codecs behind `bench`; without the feature it is skipped
+name = "compsuite"
+harness = false
+required-features = ["bench"]
+
+[[bench]]
+# guards the Decoder::feed compaction against per-feed O(n^2) on small-chunk streaming
+name = "streaming_compaction"
+harness = false
+
+[[bench]]
+# safe `try_from(..).expect(..)` vs unchecked `unsafe` conversion in the fixed-width int decoders
+name = "int_decode"
 harness = false
 
 [features]
 default = []
 ascii = ["winnow/ascii"]
+bench = ["chrono"] # for benchmarking
 full = ["ascii", "chrono"]
 tracing = ["dep:tracing", "tinyklv-impl/tracing"]
+simd = ["winnow/simd"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
+indexing_slicing = "deny"             # force explicit bounds-reasoning on every raw slice index
 cast_possible_truncation = "allow"    # wire-format width casts
 cast_possible_wrap = "allow"          # wire-format width casts
 cast_sign_loss = "allow"              # wire-format width casts

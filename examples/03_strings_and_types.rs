@@ -1,19 +1,19 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 03 - UTF-8 strings + variable-length fields.
+//! Example 03 - UTF-8 strings + variable-length fields
 //!
-//! Fixed-width fields use a plain `fn(&mut Stream) -> Result<T>` decoder.
+//! Fixed-width fields use a plain `fn(&mut Stream) -> Result<T>` decoder
 //! Variable-length fields (like strings) need the length to read a payload
 //! bounded by the preceding `len` bytes - tinyklv surfaces this with the
-//! `varlen = true` field attribute, which expects a length-parameterised
-//! decoder of the form `fn(usize) -> impl FnMut(&mut Stream) -> Result<T>`.
+//! `size(var)` field attribute, which expects a length-parameterised
+//! decoder of the form `fn(usize) -> impl FnMut(&mut Stream) -> Result<T>`
 //!
 //! Showcases:
-//! * `varlen = true` for string payloads
+//! * `size(var)` for string payloads
 //! * Mixing fixed-width `be_u32` and variable-length UTF-8 on one struct
 //! * The split between `dec::binary` / `enc::binary` and `enc::string`
 //!
-//! See also: book Tutorial 03.
+//! See also: book Tutorial 03
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::dec::string as decs;   // string decoders
@@ -39,17 +39,17 @@ struct StationRegistration {
 
     #[klv(
         key = 0x02,
-        varlen = true,
+        size(var),
         dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8,
     )]
-    /// Variable-length UTF-8 region name; `varlen = true` selects the
+    /// Variable-length UTF-8 region name; `size(var)` selects the
     /// length-parameterised decoder signature
     region_name: String,
 
     #[klv(
         key = 0x03,
-        varlen = true,
+        size(var),
         dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8,
     )]
@@ -67,7 +67,8 @@ fn main() {
 
     // encode - emits three KLV triples, the last two with a length prefix
     // computed from the UTF-8 byte length of the string
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
 
     // decode - rebuilds the struct from the KLV triples
     let decoded = StationRegistration::decode_value(

@@ -36,7 +36,10 @@ fn ber_length_0x80_claims_zero_extra_bytes() {
     // Behavior: 0x80 has num_bytes=0; parse_length_u128 with 0 bytes
     // produces 0 via fold. This is technically "indefinite form" but
     // the library decodes it as length 0.
-    if let Ok(len) = result { assert_eq!(len, 0, "0x80 decodes as length 0") } else { /* also acceptable if implementation rejects it */ }
+    if let Ok(len) = result {
+        assert_eq!(len, 0, "0x80 decodes as length 0");
+    } else { /* also acceptable if implementation rejects it */
+    }
 }
 
 #[test]
@@ -112,7 +115,8 @@ fn ber_length_0x82_only_one_byte_follows() {
 /// Tests BER length roundtrip for `u16::MAX`, verifying long-form encoding is produced
 fn ber_length_u16_max_roundtrip() {
     let val = u16::MAX as u64;
-    let encoded = encber::ber_length(val);
+    let mut encoded = Vec::new();
+    encber::ber_length(val, &mut encoded);
     assert!(encoded.len() > 1, "u16::MAX must encode as long form");
     let decoded = decber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, val as usize);
@@ -122,7 +126,8 @@ fn ber_length_u16_max_roundtrip() {
 /// Tests BER length roundtrip for `u32::MAX`, verifying long-form encoding is produced
 fn ber_length_u32_max_roundtrip() {
     let val = u32::MAX as u64;
-    let encoded = encber::ber_length(val);
+    let mut encoded = Vec::new();
+    encber::ber_length(val, &mut encoded);
     assert!(encoded.len() > 1);
     let decoded = decber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, val as usize);
@@ -133,7 +138,8 @@ fn ber_length_u32_max_roundtrip() {
 fn ber_oid_large_value_roundtrip() {
     // Encode a 3-byte OID value (> 16383, needs 3 VLQ bytes)
     let val = 0x00_20_00_00_u64; // 2_097_152 - needs 4 VLQ bytes
-    let encoded = encber::ber_oid(val);
+    let mut encoded = Vec::new();
+    encber::ber_oid(val, &mut encoded);
     assert!(encoded.len() >= 3, "large OID needs multiple bytes");
     let decoded = decber::ber_oid::<u64>(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, val);
@@ -144,7 +150,8 @@ fn ber_oid_large_value_roundtrip() {
 fn ber_length_short_form_boundary_roundtrips() {
     // Every value 0..=127 must round-trip as 1 byte
     for v in 0u64..=127 {
-        let encoded = encber::ber_length(v);
+        let mut encoded = Vec::new();
+        encber::ber_length(v, &mut encoded);
         assert_eq!(encoded.len(), 1, "value {v} should be short form (1 byte)");
         let decoded = decber::ber_length(&mut encoded.as_slice()).unwrap();
         assert_eq!(decoded, v as usize, "short-form roundtrip failed for {v}");

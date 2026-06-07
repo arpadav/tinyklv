@@ -10,6 +10,9 @@
 //! cross-packet streaming path also works when nested accumulation is
 //! in play.
 
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
@@ -64,7 +67,7 @@ fn parent_bytes(id: u8, readings: &[Reading]) -> Vec<u8> {
     // --------------------------------------------------
     let mut inner = Vec::new();
     for r in readings {
-        inner.extend(r.encode_value());
+        r.encode_value(&mut inner);
     }
     let mut body = vec![0x0F, 0x01, id];
     body.push(0x10);

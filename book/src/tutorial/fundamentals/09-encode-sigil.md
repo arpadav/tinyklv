@@ -10,16 +10,16 @@ Similar to decoding, custom encoders can be made. They follow the simple functio
 of:
 
 ```rust
-fn <name>(input: {1,2,3}) -> Vec<u8>;
+fn <name>(input: {1,2,3}, out: &mut Vec<u8>);
 ```
 
-where the output is always `Vec<u8>`. The input comes in one of three function signatures,
+where the bytes are appended to `out`. The input comes in one of three function signatures,
 which use _sigil's_ to describe the format of their inputs. The
 derive bridges the shapes with a leading sigil on `enc`:
 
-1. `enc = f`  - `f(&T) -> O`
-2. `enc = &f` - `f(<T as EncodeAs>::Borrowed) -> O`
-3. `enc = *f` - `f<T: Copy>(T) -> O`
+1. `enc = f`  - `f(&T, &mut Vec<u8>)`
+2. `enc = &f` - `f(<T as EncodeAs>::Borrowed, &mut Vec<u8>)`
+3. `enc = *f` - `f<T: Copy>(T, &mut Vec<u8>)`
 
 `tinyklv`'s provided encoders, by default, take the literal values themselves, so
 most need a sigil, e.g. `enc = &encb::u8`. 

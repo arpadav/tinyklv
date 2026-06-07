@@ -4,10 +4,13 @@
 //! container `default(..)` falls back to the `EncodeValue`/`DecodeValue` trait
 //! implementations for the field's type. Without the flag, the existing
 //! `UnimplementedEncode`/`UnimplementedDecode` errors still fire
+// --------------------------------------------------
+// local
+// --------------------------------------------------
+use tinyklv::Klv;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::Klv;
 
 // --------------------------------------------------
 // hand-impl leaf struct
@@ -19,9 +22,9 @@ impl tinyklv::DecodeValue<&[u8]> for Id {
         Ok(Id(decb::be_u16(input)?))
     }
 }
-impl tinyklv::EncodeValue<Vec<u8>> for Id {
-    fn encode_value(&self) -> Vec<u8> {
-        encb::be_u16(self.0)
+impl tinyklv::EncodeValue for Id {
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        encb::be_u16(self.0, out);
     }
 }
 
@@ -43,11 +46,11 @@ impl tinyklv::DecodeValue<&[u8]> for Mode {
         }
     }
 }
-impl tinyklv::EncodeValue<Vec<u8>> for Mode {
-    fn encode_value(&self) -> Vec<u8> {
+impl tinyklv::EncodeValue for Mode {
+    fn encode_value(&self, out: &mut Vec<u8>) {
         match self {
-            Mode::A => vec![0],
-            Mode::B => vec![1],
+            Mode::A => out.push(0),
+            Mode::B => out.push(1),
         }
     }
 }
@@ -104,7 +107,8 @@ fn fallback_leaf_struct_roundtrip() {
         opt_id: Some(Id(42)),
         inner: Inner { value: 0x1234 },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = OuterFallback::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
@@ -119,7 +123,8 @@ fn fallback_enum_roundtrip() {
             opt_id: None,
             inner: Inner { value: 0 },
         };
-        let encoded = original.encode_value();
+        let mut encoded = Vec::new();
+        original.encode_value(&mut encoded);
         let decoded = OuterFallback::decode_value(&mut encoded.as_slice()).unwrap();
         assert_eq!(decoded.mode, mode);
     }
@@ -138,14 +143,15 @@ fn fallback_option_none() {
     // id
     encoded.push(0x01);
     encoded.push(2);
-    encoded.extend(Id(7).encode_value());
+    Id(7).encode_value(&mut encoded);
     // mode
     encoded.push(0x02);
     encoded.push(1);
-    encoded.extend(Mode::B.encode_value());
+    Mode::B.encode_value(&mut encoded);
     // skip opt_id
     // inner
-    let inner_bytes = (Inner { value: 0xAA }).encode_value();
+    let mut inner_bytes = Vec::new();
+    (Inner { value: 0xAA }).encode_value(&mut inner_bytes);
     encoded.push(0x04);
     encoded.push(inner_bytes.len() as u8);
     encoded.extend(inner_bytes);
@@ -163,7 +169,8 @@ fn fallback_nested_derived_roundtrip() {
         opt_id: Some(Id(u16::MIN)),
         inner: Inner { value: 0xCAFE },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = OuterFallback::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded.inner.value, 0xCAFE);
     assert_eq!(decoded, original);
@@ -176,8 +183,8 @@ fn custom_id_dec(input: &mut &[u8]) -> tinyklv::Result<Id> {
     let raw = decb::be_u16(input)?;
     Ok(Id(raw ^ 0xFFFF))
 }
-fn custom_id_enc(id: &Id) -> Vec<u8> {
-    encb::be_u16(id.0 ^ 0xFFFF)
+fn custom_id_enc(id: &Id, out: &mut Vec<u8>) {
+    encb::be_u16(id.0 ^ 0xFFFF, out);
 }
 
 #[derive(Klv, Debug, PartialEq)]
@@ -205,7 +212,8 @@ fn fallback_precedence_field_xcoder_beats_fallback() {
         custom: Id(0x1234),
         fallback: Id(0x5678),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = PrecedenceField::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
     // also confirm the custom path was taken for `custom` by inspecting the
@@ -237,7 +245,8 @@ fn fallback_precedence_default_beats_fallback() {
     let original = PrecedenceDefault {
         via_default: Id(0xABCD),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     // container default uses custom_id_enc which xors
     let key_pos = encoded.iter().position(|&b| b == 0x01).unwrap();
     assert_eq!(&encoded[key_pos + 2..key_pos + 4], &[0x54, 0x32]); // 0xABCD ^ 0xFFFF

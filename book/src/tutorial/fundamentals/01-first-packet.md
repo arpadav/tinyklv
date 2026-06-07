@@ -30,9 +30,11 @@ Same `#[klv(..)]` format is used, where here `#[klv(key = literal)]` is used to 
 to the specified field. Similarly, `#[klv(dec = ..)]` is used to point to a function or macro
 which can decode the byte stream into its specified type.
 
-No length value is necessary: decoders will either have fixed-length decoding baked-into the 
-function itself, or will take in a length value.Decoder function signatures are discussed
-more in the [Implementing Custom Decoder](./05-custom-decoder.md) tutorial.
+No field-level length attribute is necessary for fixed-width decoders: they have
+the value width baked into the function itself. Decoders that need the runtime
+KLV length use `size(var)`, which is introduced in
+[Value lengths](./07-val-lengths.md). Decoder function signatures are discussed
+more in the [Custom decoder functions](./05-custom-decoder.md) tutorial.
 
 [All field attributes here](../../reference/field-attributes.md)
 
@@ -56,15 +58,15 @@ In addition, you might see `allow_unimplemented_encode` here. This is a flag, wh
 default, `tinyklv::Klv` requires both encoding and decoding to be implemented. 
 [More on this here](../../reference/container-attributes.md#allow_unimplemented_encode)
 
-Run this example: `cargo run --example book_01_getting_started`
+Run this example: `cargo run --example book_01_first_packet`
 
 ```rust
-{{#include ../../../../examples/book_01_getting_started.rs}}
+{{#include ../../../../examples/book_01_first_packet.rs}}
 ```
 
 ## Note
 
-For the first couple of examples, the stream is hand-built + annocated so you can
+For the first couple of examples, the stream is hand-built and annotated so you can
 see every byte.
 
 ## Overview

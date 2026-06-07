@@ -1,3 +1,16 @@
+//! Field-level `default = <expr>` and non-KLV field tests for `#[derive(Klv)]`
+//!
+//! Tests the `default = <expr>` field attribute (fallback when the key is
+//! absent) and the non-`#[klv]` field behavior (resolved to `Default::default()`
+//! at decode time). Covers: present key overriding the default, absent key
+//! using the fallback, required-field enforcement on fields without a default,
+//! and non-KLV fields staying at `Default::default()` even when the stream
+//! contains unknown keys
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
@@ -25,7 +38,7 @@ struct WithDefault {
 }
 
 #[test]
-/// Tests that when a field with `default = 42` has its key present in the stream, the decoded value wins over the default fallback.
+/// Tests that when a field with `default = 42` has its key present in the stream, the decoded value wins over the default fallback
 fn decode_with_default_key_present() {
     let data: &[u8] = &[0x01, 0x02, 0x01, 0x00, 0x02, 0x04, 0x00, 0x00, 0x00, 0xFF];
     let result = WithDefault::decode_value(&mut &data[..]).unwrap();
@@ -34,7 +47,7 @@ fn decode_with_default_key_present() {
 }
 
 #[test]
-/// Verifies that a missing key for a `default`-annotated field falls back to the inline expression.
+/// Verifies that a missing key for a `default`-annotated field falls back to the inline expression
 fn decode_with_default_key_absent_uses_default() {
     let data: &[u8] = &[0x02, 0x04, 0x00, 0x00, 0x00, 0xFF];
     let result = WithDefault::decode_value(&mut &data[..]).unwrap();
@@ -46,7 +59,7 @@ fn decode_with_default_key_absent_uses_default() {
 }
 
 #[test]
-/// Ensures a field without a `default` attribute remains required and errors if its key is absent.
+/// Ensures a field without a `default` attribute remains required and errors if its key is absent
 fn decode_without_default_still_required() {
     let data: &[u8] = &[0x01, 0x02, 0x00, 0x10];
     let result = WithDefault::decode_value(&mut &data[..]);
@@ -54,13 +67,14 @@ fn decode_without_default_still_required() {
 }
 
 #[test]
-/// Tests encode/decode roundtrip preserving values for a struct that has a `default`-annotated field.
+/// Tests encode/decode roundtrip preserving values for a struct that has a `default`-annotated field
 fn roundtrip_with_default() {
     let original = WithDefault {
         with_default: 999,
         without_default: 0xDEAD_BEEF,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithDefault::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded, original);
 }
@@ -84,7 +98,7 @@ struct WithExtraField {
 }
 
 #[test]
-/// Verifies that a struct field not annotated with `#[klv(...)]` is populated with `Default::default()` on decode.
+/// Verifies that a struct field not annotated with `#[klv(...)]` is populated with `Default::default()` on decode
 fn decode_non_klv_field_is_default() {
     let data: &[u8] = &[0x01, 0x01, 0x07];
     let result = WithExtraField::decode_value(&mut &data[..]).unwrap();
@@ -97,7 +111,7 @@ fn decode_non_klv_field_is_default() {
 }
 
 #[test]
-/// Tests that non-KLV fields remain at their `Default` value even when the stream contains extra unknown-key bytes.
+/// Tests that non-KLV fields remain at their `Default` value even when the stream contains extra unknown-key bytes
 fn decode_non_klv_field_unchanged_by_stream() {
     let data: &[u8] = &[0x01, 0x01, 0xAB, 0xFF, 0x01, 0x00];
     let result = WithExtraField::decode_value(&mut &data[..]).unwrap();

@@ -34,6 +34,7 @@
 - [Sigil coercion & `EncodeAs`](./reference/sigil-coercion.md)
 - [Traits](./reference/traits.md)
 - [Codecs](./reference/codecs.md)
+- [Benchmarks](./reference/benchmarks.md)
 
 # Appendix
 

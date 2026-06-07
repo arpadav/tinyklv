@@ -1,3 +1,14 @@
+//! `deny_unknown_keys` container-attribute tests for `#[derive(Klv)]`
+//!
+//! Tests two structs side by side: `Strict` (with `deny_unknown_keys`) and
+//! `Permissive` (without it). Verifies that a strict struct errors on any
+//! unrecognized key while a permissive struct silently skips it, and that
+//! multiple consecutive unknown keys are all skipped by a permissive struct
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
@@ -19,7 +30,7 @@ struct Strict {
 }
 
 #[test]
-/// Tests that a `deny_unknown_keys` struct decodes successfully when the stream contains only known keys.
+/// Tests that a `deny_unknown_keys` struct decodes successfully when the stream contains only known keys
 fn strict_known_key_only_ok() {
     let data: &[u8] = &[0x01, 0x02, 0xAB, 0xCD];
     let result = Strict::decode_value(&mut &data[..]).unwrap();
@@ -27,7 +38,7 @@ fn strict_known_key_only_ok() {
 }
 
 #[test]
-/// Verifies that `deny_unknown_keys` produces an error when an unrecognized key appears alongside valid keys.
+/// Verifies that `deny_unknown_keys` produces an error when an unrecognized key appears alongside valid keys
 fn strict_unknown_key_fails() {
     let data: &[u8] = &[
         0x01, 0x02, 0xAB, 0xCD, // known key 0x01
@@ -41,7 +52,7 @@ fn strict_unknown_key_fails() {
 }
 
 #[test]
-/// Tests that `deny_unknown_keys` errors when the stream contains only an unknown key.
+/// Tests that `deny_unknown_keys` errors when the stream contains only an unknown key
 fn strict_only_unknown_key_fails() {
     let data: &[u8] = &[0xFF, 0x02, 0x00, 0x00];
     let result = Strict::decode_value(&mut &data[..]);
@@ -64,7 +75,7 @@ struct Permissive {
 }
 
 #[test]
-/// Verifies that without `deny_unknown_keys` an unknown key is skipped and the known field still decodes.
+/// Verifies that without `deny_unknown_keys` an unknown key is skipped and the known field still decodes
 fn permissive_unknown_key_is_skipped() {
     let data: &[u8] = &[
         0xFF, 0x01, 0x00, // unknown key 0xFF, len=1, val=0x00
@@ -78,7 +89,7 @@ fn permissive_unknown_key_is_skipped() {
 }
 
 #[test]
-/// Tests that a permissive struct skips multiple consecutive unknown keys before decoding the known field.
+/// Tests that a permissive struct skips multiple consecutive unknown keys before decoding the known field
 fn permissive_multiple_unknown_keys_skipped() {
     let data: &[u8] = &[
         0xAA, 0x02, 0x00, 0x00, // unknown key 0xAA

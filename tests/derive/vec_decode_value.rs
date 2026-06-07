@@ -53,7 +53,8 @@ fn vec_decode_value_single_item() {
         sensor_id: 1,
         value: 2350,
     };
-    let encoded = r.encode_value();
+    let mut encoded = Vec::new();
+    r.encode_value(&mut encoded);
     let result = Vec::<Reading>::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(result.len(), 1);
     assert_eq!(result[0], r);
@@ -72,8 +73,9 @@ fn vec_decode_value_unframed_merge_last_wins() {
         sensor_id: 2,
         value: 200,
     };
-    let mut stream = r1.encode_value();
-    stream.extend(r2.encode_value());
+    let mut stream = Vec::new();
+    r1.encode_value(&mut stream);
+    r2.encode_value(&mut stream);
 
     let result = Vec::<Reading>::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(
@@ -107,10 +109,10 @@ struct SingleField {
 /// in one pass (last-wins), so `Vec<T>` collects exactly one element
 fn vec_decode_value_single_key_last_wins() {
     let items: Vec<u32> = vec![10, 20, 30, 40, 50];
-    let stream: Vec<u8> = items
-        .iter()
-        .flat_map(|&v| SingleField { val: v }.encode_value())
-        .collect();
+    let mut stream: Vec<u8> = Vec::new();
+    for &v in &items {
+        SingleField { val: v }.encode_value(&mut stream);
+    }
 
     let result = Vec::<SingleField>::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(result.len(), 1);
@@ -157,7 +159,8 @@ fn vec_decode_value_roundtrip_single() {
         b: 20,
         c: 30,
     };
-    let encoded = mk.encode_value();
+    let mut encoded = Vec::new();
+    mk.encode_value(&mut encoded);
     let result = Vec::<MultiKey>::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(result.len(), 1);
     assert_eq!(result[0], mk);
@@ -174,8 +177,9 @@ fn vec_decode_value_two_multikey_merge() {
         b: 20,
         c: 30,
     };
-    let mut stream = p1.encode_value();
-    stream.extend(p2.encode_value());
+    let mut stream = Vec::new();
+    p1.encode_value(&mut stream);
+    p2.encode_value(&mut stream);
 
     let result = Vec::<MultiKey>::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(result.len(), 1);
@@ -197,7 +201,8 @@ fn vec_decode_value_two_multikey_merge() {
 /// case, see `Decoder<T>` / the streaming tests
 fn vec_decode_value_trailing_junk_yields_empty() {
     let mk = MultiKey { a: 1, b: 2, c: 3 };
-    let mut stream = mk.encode_value();
+    let mut stream = Vec::new();
+    mk.encode_value(&mut stream);
     // --------------------------------------------------
     // unknown key=0xFF, len=0x10 (16 bytes that don't exist)
     // --------------------------------------------------
@@ -228,8 +233,9 @@ fn vec_decode_value_cursor_safe_on_clean_eof() {
         b: 20,
         c: 30,
     };
-    let mut stream = p1.encode_value();
-    stream.extend(p2.encode_value());
+    let mut stream = Vec::new();
+    p1.encode_value(&mut stream);
+    p2.encode_value(&mut stream);
     let mut cursor: &[u8] = stream.as_slice();
 
     let _ = Vec::<MultiKey>::decode_value(&mut cursor).unwrap();

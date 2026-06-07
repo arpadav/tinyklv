@@ -1,3 +1,14 @@
+//! User-defined nested-type field tests for `#[derive(Klv)]`
+//!
+//! Tests a `WithNestedType` struct where one field holds a user-defined
+//! `Point` struct (x/y as `i16`) that manually implements `DecodeValue` and
+//! `EncodeValue`. Covers known-value decode, roundtrip, origin point, and
+//! signed-integer extreme coordinates (`i16::MIN`/`MAX`)
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
@@ -14,11 +25,10 @@ impl tinyklv::DecodeValue<&[u8]> for Point {
         Ok(Point { x, y })
     }
 }
-impl tinyklv::EncodeValue<Vec<u8>> for Point {
-    fn encode_value(&self) -> Vec<u8> {
-        let mut v = encb::be_i16(self.x);
-        v.extend(encb::be_i16(self.y));
-        v
+impl tinyklv::EncodeValue for Point {
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        encb::be_i16(self.x, out);
+        encb::be_i16(self.y, out);
     }
 }
 
@@ -42,7 +52,7 @@ struct WithNestedType {
 }
 
 #[test]
-/// Tests that a user-defined `Point` struct (implementing `DecodeValue`) decodes correctly as a nested field.
+/// Tests that a user-defined `Point` struct (implementing `DecodeValue`) decodes correctly as a nested field
 fn decode_nested_type() {
     let data: &[u8] = &[
         0x01, 0x02, 0x00, 0x2A, // id = 42
@@ -56,31 +66,33 @@ fn decode_nested_type() {
 }
 
 #[test]
-/// Verifies encode/decode roundtrip when a field is a user-defined nested struct with signed coordinates.
+/// Verifies encode/decode roundtrip when a field is a user-defined nested struct with signed coordinates
 fn encode_nested_type_roundtrip() {
     let original = WithNestedType {
         id: 99,
         location: Point { x: 100, y: -200 },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithNestedType::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
 #[test]
-/// Tests nested-type roundtrip with the zero/origin case `Point { x: 0, y: 0 }`.
+/// Tests nested-type roundtrip with the zero/origin case `Point { x: 0, y: 0 }`
 fn nested_type_origin_point() {
     let original = WithNestedType {
         id: 0,
         location: Point { x: 0, y: 0 },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithNestedType::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
 #[test]
-/// Tests nested-type roundtrip at signed-integer extremes (`i16::MIN`/`MAX`) to exercise sign-boundary encoding.
+/// Tests nested-type roundtrip at signed-integer extremes (`i16::MIN`/`MAX`) to exercise sign-boundary encoding
 fn nested_type_extreme_coordinates() {
     let original = WithNestedType {
         id: u16::MAX,
@@ -89,7 +101,8 @@ fn nested_type_extreme_coordinates() {
             y: i16::MAX,
         },
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = WithNestedType::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }

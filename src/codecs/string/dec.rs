@@ -26,11 +26,11 @@ use crate::prelude::*;
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use winnow::token::take;
 #[cfg(feature = "ascii")]
 use winnow::ascii::{alpha1, alphanumeric1, dec_int, dec_uint, digit1, float, hex_uint};
 #[cfg(feature = "ascii")]
 use winnow::combinator::{eof, terminated};
+use winnow::token::take;
 
 #[inline(always)]
 /// Decodes a byte slice into a [`String`], using [`String::from_utf8_lossy`]
@@ -94,7 +94,7 @@ pub fn to_string_utf8_strict(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result
 ///
 /// **Endianness warning**: Using the wrong endianness variant will silently
 /// produce corrupted string data. Verify the endianness of your KLV stream
-/// before selecting a variant.
+/// before selecting a variant
 ///
 /// # Example
 ///
@@ -137,7 +137,7 @@ pub fn to_string_utf16_le(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<St
 ///
 /// **Endianness warning**: Using the wrong endianness variant will silently
 /// produce corrupted string data. Verify the endianness of your KLV stream
-/// before selecting a variant.
+/// before selecting a variant
 ///
 /// # Example
 ///
@@ -203,7 +203,9 @@ pub fn to_string_ascii(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<Strin
             .verify(<[u8]>::is_ascii)
             // bytes are verified ASCII above, so `from_utf8_lossy` never substitutes
             .map(|slice: &[u8]| String::from_utf8_lossy(slice).into_owned())
-            .context(winnow::error::StrContext::Label("Unable to decode bytes as ASCII"))
+            .context(winnow::error::StrContext::Label(
+                "Unable to decode bytes as ASCII",
+            ))
             .parse_next(input)
     }
 }

@@ -12,7 +12,7 @@
 //! * `EncodeFrame::encode_frame` emitting sentinel + length + KLV triples
 //! * `DecodeFrame::decode_frame` seeking the sentinel and rebuilding the struct
 //!
-//! See also: book Tutorial 01.
+//! See also: book Tutorial 01
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -51,7 +51,8 @@ fn main() {
     };
 
     // encode - prepends the sentinel + 1-byte length, then KLV triples
-    let frame = original.encode_frame();
+    let mut frame = Vec::new();
+    original.encode_frame(&mut frame);
 
     // decode - seeks the sentinel, reads the length, decodes the value region
     let decoded = Heartbeat::decode_frame(

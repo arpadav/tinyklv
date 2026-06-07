@@ -1,6 +1,6 @@
 [package]
 name = "tk-syn-macros"
-version = "0.1.2"
+version = "0.2.0-rc.1"
 edition = "2024"
 description = "Implementation detail of the `tinyklv` crate"
 documentation = "https://docs.rs/tinyklv"
@@ -19,3 +19,8 @@ syn = "^2.0"
 [dev-dependencies]
 const_format = "^0.2"
 syn = { version = "^2.0", features = ["extra-traits", "full"] }
+
+# no [lints] table by design: this crate is a compile-time syn/quote codegen helper, not runtime
+# code. tinyklv's clippy wall (indexing_slicing, and runtime-oriented denials like unwrap_used /
+# expect_used / panic) targets emitted runtime code; applying it to proc-macro internals would be
+# wrong, so the runtime lint policy is intentionally NOT applied here.

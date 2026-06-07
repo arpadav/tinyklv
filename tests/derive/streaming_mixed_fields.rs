@@ -73,7 +73,8 @@ impl SensorReport {
 /// and a second `next()` returns `None`
 fn mixed_one_shot() {
     let pkt = SensorReport::new(1001, 23.5_f32, 0x0000_0001, 87, None);
-    let frame = pkt.encode_frame();
+    let mut frame = Vec::new();
+    pkt.encode_frame(&mut frame);
 
     let mut dec = SensorReport::decoder();
     dec.feed(&frame);
@@ -97,7 +98,13 @@ fn mixed_byte_by_byte() {
         SensorReport::new(30, 99.125_f32, 0x1234_5678, 11, Some(9999)),
     ];
 
-    let blob: Vec<u8> = pkts.iter().flat_map(tinyklv::EncodeFrame::encode_frame).collect();
+    let blob: Vec<u8> = {
+        let mut out = Vec::new();
+        for pkt in &pkts {
+            pkt.encode_frame(&mut out);
+        }
+        out
+    };
 
     let mut dec = SensorReport::decoder();
     let mut got = Vec::new();
@@ -132,8 +139,8 @@ fn mixed_with_junk_prefix() {
         // junk before first sentinel
         0x00, 0x00, 0xFF, 0xDE, 0xAD, 0x00, 0x00,
     ];
-    data.extend(report1.encode_frame());
-    data.extend(report2.encode_frame());
+    report1.encode_frame(&mut data);
+    report2.encode_frame(&mut data);
 
     let mut dec = SensorReport::decoder();
     dec.feed(&data);
@@ -160,7 +167,13 @@ fn mixed_irregular_chunks() {
         SensorReport::new(4, 100.0_f32, 0x0000_0004, 55, Some(8192)),
         SensorReport::new(5, 37.25_f32, 0x0000_0005, 11, Some(1)),
     ];
-    let blob: Vec<u8> = pkts.iter().flat_map(tinyklv::EncodeFrame::encode_frame).collect();
+    let blob: Vec<u8> = {
+        let mut out = Vec::new();
+        for pkt in &pkts {
+            pkt.encode_frame(&mut out);
+        }
+        out
+    };
     let chunk_sizes = [1usize, 4, 2, 3, 9, 5, 7, 11, 2, 8, 1, 6, 3];
     let mut dec = SensorReport::decoder();
     let mut got = Vec::new();
@@ -197,8 +210,8 @@ fn mixed_optional_absent() {
     let without_humidity = SensorReport::new(51, 26.0_f32, 0x0000_00BB, 80, None);
 
     let mut blob = Vec::new();
-    blob.extend(with_humidity.encode_frame());
-    blob.extend(without_humidity.encode_frame());
+    with_humidity.encode_frame(&mut blob);
+    without_humidity.encode_frame(&mut blob);
 
     let mut dec = SensorReport::decoder();
     let mut got = Vec::new();

@@ -1,6 +1,7 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
 //! Book tutorial 12 - nested KLV packets
+//! See `book/tutorial/12-nested-packets.md` for the full narrative
 //!
 //! Demonstrates composing an inner `GpsFix` sub-packet inside an outer
 //! `Heartbeat` frame. The inner type derives `Klv` without a sentinel so it
@@ -8,10 +9,6 @@
 //! references `GpsFix::decode_value` / `encode_value` directly in its `#[klv]`
 //! attribute. Both directions are asserted to round-trip correctly, and the
 //! inner type is also verified in isolation
-//!
-//! See `book/tutorial/12-nested-packets.md` for the full narrative.
-//!
-//! Author: aav
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -106,7 +103,8 @@ fn main() {
 
     // encode - the GPS sub-packet occupies the value region of key 0x04 and
     // contains its own key/length/value triples inside
-    let frame = original.encode_frame();
+    let mut frame = Vec::new();
+    original.encode_frame(&mut frame);
 
     // decode - outer and inner are reconstructed in one call
     let decoded = Heartbeat::decode_frame(
@@ -116,7 +114,8 @@ fn main() {
 
     // the inner type can also be used on its own, which is how we assert it
     // round-trips independently of the outer frame
-    let inner_bytes = original.gps.encode_value();
+    let mut inner_bytes = Vec::new();
+    original.gps.encode_value(&mut inner_bytes);
     let inner_decoded = GpsFix::decode_value(
         &mut inner_bytes.as_slice(),
     ).unwrap();

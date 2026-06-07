@@ -7,14 +7,13 @@ read.
 
 ## Subslices
 
-Realistically, what happens is the key is sought, the len value is "grabbed"
-as a sub-slice, and only the sub-slice (value) is passed into the decoder. As a result,
-you can have functions work which can decode zero-padded values.
+Realistically, the decoder matches the key, reads the length value, takes the
+value as a subslice, and passes only that subslice into the field decoder. As a
+result, fixed-width decoders can still decode zero-padded values.
 
-In this example, you see that `value: u16` and uses the big-endian `u16` decoder. However,
-the length is set to 4. As a result, the slice passed to the decoder will be of 
-length 4, but the `u16` decoder will only use the first two values, discarding the
-rest. 
+In this example, `value: u16` uses the big-endian `u16` decoder, but the KLV
+length is set to 4. The slice passed to the decoder is 4 bytes long, but the
+`u16` decoder uses only the first two bytes and leaves the padding behind. 
 
 Run this example: `cargo run --example book_07_a_subslice`
 
@@ -24,27 +23,27 @@ Run this example: `cargo run --example book_07_a_subslice`
 
 ## Variable length
 
-`String` and other variable length types are different. Its width is only
-known at parse time, from the KLV length byte. The codec contract becomes:
+`String` and other variable-length types are different. Their width is only
+known at parse time, from the KLV length value. The codec contract becomes:
 
 ```rust
 fn(len: usize) -> impl Fn(&mut S) -> Result<T>;
 ```
 
 which is a function that takes the parsed length and returns a parser specialised to
-that length. Setting `varlen = true` on the field tells the derive to call
+that length. Setting `size(var)` on the field tells the derive to call
 `decs::to_string_utf8(len)(input)` instead of `decs::to_string_utf8(input)`.
 
-Run this example: `cargo run --example book_07_b_varlen`
+Run this example: `cargo run --example book_07_b_size_var`
 
 ```rust
-{{#include ../../../../examples/book_07_b_varlen.rs}}
+{{#include ../../../../examples/book_07_b_size_var.rs}}
 ```
 
 ## Overview
 
-- `varlen = true` selects the length-taking codec shape.
+- `size(var)` selects the length-taking codec shape.
 - `decs::to_string_utf8` is the canonical UTF-8 `String` decoder.
-- The outer body length still frames the packet; `varlen` only affects the field.
+- The outer body length still frames the packet; `size(var)` only affects the field value decoder.
 
 **Next:** [08 - Latebind transforms](./08-latebind.md)

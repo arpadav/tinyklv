@@ -1,16 +1,16 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 10 - container `default(typ=...)` + field-level `default`.
+//! Example 10 - container `default(typ=...)` + field-level `default`
 //!
 //! Two ergonomics features compose cleanly on one struct:
 //!
 //! * **Container `default(typ=..., dec=..., enc=...)`** installs codecs for
 //!   every field of a given type, so fields of that type only need a
-//!   `key = ...` attribute.
+//!   `key = ...` attribute
 //! * **Field-level `default = expr`** supplies a fallback value used when the
 //!   decode loop finishes without ever seeing that key - essential for
 //!   forward-compatible protocols where newer fields may be absent in older
-//!   stream recordings.
+//!   stream recordings
 //!
 //! Showcases:
 //! * Hand-written `DecodeValue` / `EncodeValue` impls on two custom enums
@@ -41,19 +41,19 @@ impl DecodeValue<&[u8]> for SignalStrength {
     }
 }
 
-impl EncodeValue<Vec<u8>> for SignalStrength {
-    fn encode_value(&self) -> Vec<u8> {
+impl EncodeValue for SignalStrength {
+    fn encode_value(&self, out: &mut Vec<u8>) {
         encb::u8(match self {
             SignalStrength::None      => 0,
             SignalStrength::Weak      => 1,
             SignalStrength::Good      => 2,
             SignalStrength::Excellent => 3,
-        })
+        }, out);
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-/// Network transport mode stored as one bytAe
+/// Network transport mode stored as one byte
 enum NetworkMode {
     Offline,
     WiFi,
@@ -73,14 +73,14 @@ impl DecodeValue<&[u8]> for NetworkMode {
     }
 }
 
-impl EncodeValue<Vec<u8>> for NetworkMode {
-    fn encode_value(&self) -> Vec<u8> {
+impl EncodeValue for NetworkMode {
+    fn encode_value(&self, out: &mut Vec<u8>) {
         encb::u8(match self {
             NetworkMode::Offline   => 0,
             NetworkMode::WiFi      => 1,
             NetworkMode::Cellular  => 2,
             NetworkMode::Satellite => 3,
-        })
+        }, out);
     }
 }
 
@@ -135,7 +135,8 @@ fn main() {
     };
 
     // encode + decode - full round-trip through the container defaults
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = RadioConfig::decode_value(
         &mut encoded.as_slice(),
     ).unwrap();

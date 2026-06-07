@@ -17,14 +17,20 @@ use tinyklv::enc::string as encs;
 /// Tests `to_string_ascii` decodes a printable ASCII payload
 fn ascii_known_value() {
     let mut input: &[u8] = &[0x41, 0x46, 0x2D, 0x31, 0x30, 0x31];
-    assert_eq!(decs::to_string_ascii(6)(&mut input), Ok(String::from("AF-101")));
+    assert_eq!(
+        decs::to_string_ascii(6)(&mut input),
+        Ok(String::from("AF-101"))
+    );
 }
 
 #[test]
 /// Tests `to_string_ascii` accepts the boundary byte `0x7F` (highest 7-bit value)
 fn ascii_accepts_0x7f() {
     let mut input: &[u8] = &[0x7F];
-    assert_eq!(decs::to_string_ascii(1)(&mut input), Ok(String::from("\u{7f}")));
+    assert_eq!(
+        decs::to_string_ascii(1)(&mut input),
+        Ok(String::from("\u{7f}"))
+    );
 }
 
 #[test]
@@ -59,14 +65,17 @@ fn ascii_empty() {
 #[test]
 /// Tests `from_string_ascii` emits the raw ASCII bytes
 fn from_ascii_encode() {
-    assert_eq!(encs::from_string_ascii("HELLO"), b"HELLO".to_vec());
+    let mut __v = Vec::new();
+    encs::from_string_ascii("HELLO", &mut __v);
+    assert_eq!(__v, b"HELLO".to_vec());
 }
 
 #[test]
 /// Tests `to_string_ascii`/`from_string_ascii` roundtrip over a printable string
 fn ascii_roundtrip() {
     let original = "MISSION01";
-    let encoded = encs::from_string_ascii(original);
+    let mut encoded = Vec::new();
+    encs::from_string_ascii(original, &mut encoded);
     let decoded = decs::to_string_ascii(encoded.len())(&mut encoded.as_slice()).unwrap();
     assert_eq!(original, decoded);
 }

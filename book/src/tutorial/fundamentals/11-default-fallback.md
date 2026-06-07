@@ -3,7 +3,7 @@
 ### `Option<T>` fields
 
 Optional types are handled with ease. During encoding, they are omitted when `None`
-and encoded as expected when `Some`. Duringd ecoding, they simply default to `None`,
+and encoded as expected when `Some`. During decoding, they simply default to `None`,
 but when encountered, it will populate it as `Some`.
 
 This can be useful in majority of cases. 
@@ -47,10 +47,10 @@ The thin stream below is hand-rolled to show the grammar - just
 `key, len, value` triples. Decoding it produces `None` and `100` for the
 two missing keys; no error, no panic.
 
-Run this example: `cargo run --example book_12_a_default`
+Run this example: `cargo run --example book_11_a_default`
 
 ```rust
-{{#include ../../../../examples/book_12_a_default.rs}}
+{{#include ../../../../examples/book_11_a_default.rs}}
 ```
 
 ## Fallback Implementation
@@ -91,7 +91,7 @@ Instead, you can write:
 #[derive(Klv)]
 #[klv(
     ..,
-    tinyklv_trait_fallback,
+    trait_fallback,
 )]
 struct Paint {
     #[klv(key = 0x01)]
@@ -107,10 +107,10 @@ Where `Size` and `Color` in both examples implement `tinyklv::EncodeValue` and
 
 ## Examples
 
-Run this example: `cargo run --example book_12_b_fallback`
+Run this example: `cargo run --example book_11_b_fallback`
 
 ```rust
-{{#include ../../../../examples/book_12_b_fallback.rs}}
+{{#include ../../../../examples/book_11_b_fallback.rs}}
 ```
 
 ## Overview

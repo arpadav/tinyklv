@@ -11,7 +11,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use tinyklv::codecs::string::dec::{to_string_utf16_le, to_string_utf8};
+use tinyklv::codecs::string::dec::{to_string_utf8, to_string_utf16_le};
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
 use tinyklv::enc::binary as encb;
@@ -74,21 +74,24 @@ fn be_u64_lengthed_zero_returns_zero() {
 #[test]
 /// Tests that `enc::binary::be_u16_lengthed(0)` produces an empty byte vector regardless of value
 fn enc_be_u16_lengthed_zero_produces_empty() {
-    let result = encb::be_u16_lengthed(0)(0x1234_u16);
+    let mut result = Vec::new();
+    encb::be_u16_lengthed(0)(0x1234_u16, &mut result);
     assert!(result.is_empty());
 }
 
 #[test]
 /// Tests that `enc::binary::le_u32_lengthed(0)` produces an empty byte vector regardless of value
 fn enc_le_u32_lengthed_zero_produces_empty() {
-    let result = encb::le_u32_lengthed(0)(0xDEADBEEF_u32);
+    let mut result = Vec::new();
+    encb::le_u32_lengthed(0)(0xDEADBEEF_u32, &mut result);
     assert!(result.is_empty());
 }
 
 #[test]
 /// Tests that `enc::binary::be_u64_lengthed(0)` produces an empty byte vector regardless of value
 fn enc_be_u64_lengthed_zero_produces_empty() {
-    let result = encb::be_u64_lengthed(0)(u64::MAX);
+    let mut result = Vec::new();
+    encb::be_u64_lengthed(0)(u64::MAX, &mut result);
     assert!(result.is_empty());
 }
 
@@ -110,9 +113,10 @@ struct ZeroLenOptional {
         enc = *encb::be_u16,
     )]
     numeric: Option<u16>,
+
     #[klv(
         key = 0x02,
-        varlen = true,
+        size(var),
         dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8
     )]

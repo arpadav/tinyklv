@@ -1,9 +1,20 @@
+//! Invalid string input rejection tests
+//!
+//! Tests strict UTF-8 rejection of invalid byte sequences (lone continuation
+//! bytes, truncated multi-byte sequences, overlong encodings, and `0xFF 0xFE`)
+//! and the lossy decoder's U+FFFD substitution behavior. Also tests UTF-16 LE
+//! and BE rejection of odd byte-count inputs (`1`, `3`, `5`, `7` bytes)
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::codecs::string::dec::{
-    to_string_utf16_be, to_string_utf16_le, to_string_utf8, to_string_utf8_strict,
+    to_string_utf8, to_string_utf8_strict, to_string_utf16_be, to_string_utf16_le,
 };
 
 #[test]
-/// Tests that `to_string_utf8_strict` rejects the invalid byte pair `0xFF 0xFE`.
+/// Tests that `to_string_utf8_strict` rejects the invalid byte pair `0xFF 0xFE`
 fn strict_utf8_0xff_0xfe_fails() {
     let mut input: &[u8] = &[0xFF, 0xFE];
     let result = to_string_utf8_strict(2)(&mut input);
@@ -14,7 +25,7 @@ fn strict_utf8_0xff_0xfe_fails() {
 }
 
 #[test]
-/// Tests that `to_string_utf8_strict` rejects a lone continuation byte (`0x80`) without a leading byte.
+/// Tests that `to_string_utf8_strict` rejects a lone continuation byte (`0x80`) without a leading byte
 fn strict_utf8_lone_continuation_fails() {
     // 0x80 is a UTF-8 continuation byte without a leading byte
     let mut input: &[u8] = &[0x80];
@@ -23,7 +34,7 @@ fn strict_utf8_lone_continuation_fails() {
 }
 
 #[test]
-/// Tests that `to_string_utf8_strict` rejects a truncated multi-byte sequence (leading `0xC3` without continuation).
+/// Tests that `to_string_utf8_strict` rejects a truncated multi-byte sequence (leading `0xC3` without continuation)
 fn strict_utf8_truncated_multibyte_fails() {
     // First byte 0xC3 (start of 2-byte sequence) but no continuation
     let mut input: &[u8] = &[0xC3];
@@ -32,7 +43,7 @@ fn strict_utf8_truncated_multibyte_fails() {
 }
 
 #[test]
-/// Tests that `to_string_utf8_strict` rejects the overlong NUL encoding `0xC0 0x80`.
+/// Tests that `to_string_utf8_strict` rejects the overlong NUL encoding `0xC0 0x80`
 fn strict_utf8_overlong_fails() {
     // 0xC0 0x80 is an overlong encoding of NUL - invalid UTF-8
     let mut input: &[u8] = &[0xC0, 0x80];
@@ -41,7 +52,7 @@ fn strict_utf8_overlong_fails() {
 }
 
 #[test]
-/// Tests that lossy `to_string_utf8` accepts invalid `0xFF 0xFE` by emitting U+FFFD replacement characters.
+/// Tests that lossy `to_string_utf8` accepts invalid `0xFF 0xFE` by emitting U+FFFD replacement characters
 fn lossy_utf8_0xff_0xfe_ok() {
     let mut input: &[u8] = &[0xFF, 0xFE];
     let result = to_string_utf8(2)(&mut input);
@@ -57,7 +68,7 @@ fn lossy_utf8_0xff_0xfe_ok() {
 }
 
 #[test]
-/// Tests that lossy `to_string_utf8` produces a string containing U+FFFD when every input byte is invalid.
+/// Tests that lossy `to_string_utf8` produces a string containing U+FFFD when every input byte is invalid
 fn lossy_utf8_all_invalid_ok() {
     let mut input: &[u8] = &[0x80, 0x81, 0x82, 0xFF];
     let result = to_string_utf8(4)(&mut input);
@@ -68,7 +79,7 @@ fn lossy_utf8_all_invalid_ok() {
 }
 
 #[test]
-/// Tests that `to_string_utf16_be(3)` errors because UTF-16 requires an even byte count.
+/// Tests that `to_string_utf16_be(3)` errors because UTF-16 requires an even byte count
 fn utf16_be_odd_length_3_fails() {
     let mut input: &[u8] = &[0x00, 0x41, 0x00];
     let result = to_string_utf16_be(3)(&mut input);
@@ -79,7 +90,7 @@ fn utf16_be_odd_length_3_fails() {
 }
 
 #[test]
-/// Tests that `to_string_utf16_le(1)` errors because one byte is not a valid UTF-16 code unit.
+/// Tests that `to_string_utf16_le(1)` errors because one byte is not a valid UTF-16 code unit
 fn utf16_le_odd_length_1_fails() {
     let mut input: &[u8] = &[0x41];
     let result = to_string_utf16_le(1)(&mut input);
@@ -90,7 +101,7 @@ fn utf16_le_odd_length_1_fails() {
 }
 
 #[test]
-/// Tests that `to_string_utf16_be(5)` errors on five bytes (odd, can't form 2-byte code units).
+/// Tests that `to_string_utf16_be(5)` errors on five bytes (odd, can't form 2-byte code units)
 fn utf16_be_odd_length_5_fails() {
     let mut input: &[u8] = &[0x00, 0x41, 0x00, 0x42, 0x00];
     let result = to_string_utf16_be(5)(&mut input);
@@ -101,7 +112,7 @@ fn utf16_be_odd_length_5_fails() {
 }
 
 #[test]
-/// Tests that `to_string_utf16_le(7)` errors on seven bytes (odd, can't form 2-byte code units).
+/// Tests that `to_string_utf16_le(7)` errors on seven bytes (odd, can't form 2-byte code units)
 fn utf16_le_odd_length_7_fails() {
     let mut input: &[u8] = &[0x41, 0x00, 0x42, 0x00, 0x43, 0x00, 0x44];
     let result = to_string_utf16_le(7)(&mut input);
