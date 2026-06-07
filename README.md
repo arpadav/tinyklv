@@ -5,8 +5,9 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![MSRV](https://img.shields.io/badge/rustc-1.95%2B-orange.svg)](https://www.rust-lang.org)
 
-The fastest derive-macro framework for encoding and decoding [Key-Length-Value (KLV)](https://en.wikipedia.org/wiki/KLV)
-binary streams, built on [`winnow`](https://crates.io/crates/winnow) parser combinators.
+The fastest derive-macro framework for encoding and decoding [Key-Length-Value
+(KLV)](https://en.wikipedia.org/wiki/KLV) binary streams, built on
+[`winnow`](https://crates.io/crates/winnow) parser combinators.
 
 ![tinyklv vs the KLV/TLV crates](https://github.com/arpadav/tinyklv/blob/main/benches/bench_klv.jpg?raw=true)
 
@@ -97,10 +98,18 @@ four protobuf crates), and the one-command chart reproduction
 (`benches/scripts/gencharts.sh`) all live in
 [`benches/`](https://github.com/arpadav/tinyklv/tree/main/benches).
 
-See results here:
-[KLV/TLV](https://github.com/arpadav/tinyklv/blob/main/benches/bench_klv.jpg?raw=true) ·
+Benchmark machine:
 
-And tinyklv is so fast, its comparable and faster than protobuf implementations:
+- OS: Ubuntu 24.04.4 LTS, Linux `6.17.0-35-generic`
+- CPU: AMD Ryzen 9 9900X
+- Host: B850 AI TOP -CF-WCP-ADO
+
+See the full chart set:
+[KLV/TLV](https://github.com/arpadav/tinyklv/blob/main/benches/bench_klv.jpg?raw=true) ·
+[protobuf](https://github.com/arpadav/tinyklv/blob/main/benches/bench_proto.jpg?raw=true)
+
+The same benchmark records also put tinyklv within protobuf territory, and in
+several measured encode/decode cases ahead of the protobuf stacks:
 
 ![tinyklv vs the protobuf stacks](https://github.com/arpadav/tinyklv/blob/main/benches/bench_proto.jpg?raw=true)
 

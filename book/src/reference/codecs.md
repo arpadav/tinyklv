@@ -13,6 +13,41 @@ use tinyklv::dec::string as decs;
 use tinyklv::enc::string as encs;
 ```
 
+## Function signatures
+
+Every codec path satisfies one of the shapes below. These are the
+canonical contracts a `dec = ...` / `enc = ...` value must match.
+
+A decoder takes one of two shapes, selected by `size(var)` on the field:
+
+```rust,ignore
+// standard: no size(var). Reads from the stream cursor directly.
+fn(input: &mut S) -> tinyklv::Result<T>
+
+// length-parameterized: with size(var). The derive calls
+// dec_fn(len)(input), passing the runtime KLV length as an extra input,
+// which enables variable-length reads.
+fn(len: usize) -> impl Fn(&mut S) -> tinyklv::Result<T>
+```
+
+`tinyklv::Result` is an alias for `winnow::Result`. The `_lengthed`
+binary variants and the string codecs satisfy the length-parameterized
+shape.
+
+An encoder appends bytes to a caller-owned buffer and returns nothing:
+
+```rust,ignore
+fn(val: &T, out: &mut Vec<u8>)
+```
+
+The `&` and `*` sigils rewrite how the field is handed in (a value-taking
+`fn(T, &mut Vec<u8>)` is reached via the `&`/`EncodeAs` path); see
+[Sigil coercion & `EncodeAs`](./sigil-coercion.md).
+
+Length codecs work in `usize`: the container `len(...)` decoder produces
+`usize` and its encoder accepts `usize` (the `_as_usize` / `_from_usize`
+family below).
+
 ## Binary (`tinyklv::dec::binary` / `tinyklv::enc::binary`)
 
 Fixed-width integer and float codecs in three endianness families:
@@ -66,7 +101,7 @@ Each numeric type also has a `_lengthed` variant that reads a
 variable number of bytes (up to the type width) and zero-extends:
 
 ```rust,ignore
-#[klv(key = 0x01, varlen = true, dec = decb::be_u32_lengthed)]
+#[klv(key = 0x01, size(var), dec = decb::be_u32_lengthed)]
 value: u32,
 ```
 
@@ -89,7 +124,7 @@ Edge cases:
 
 ## Strings (`tinyklv::dec::string` / `tinyklv::enc::string`)
 
-Variable-length string codecs. Use with `varlen = true` on the field.
+Variable-length string codecs. Use with `size(var)` on the field.
 
 | Decoder | Encoder | Produces |
 |---------|---------|----------|
@@ -148,7 +183,7 @@ and macro invocations all satisfy this. Closures do **not** work
 inline (proc-macro attribute parsing limitation) - use a named
 function instead.
 
-See the full example: `cargo run --example book_05b_macro_decoders`
+See the full example: `cargo run --example book_10_macro`
 
 ### Feature-gated (`chrono`)
 

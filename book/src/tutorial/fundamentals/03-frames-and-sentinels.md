@@ -15,10 +15,10 @@ you used on Tutorial 01.
 
 ## Example
 
-Run this example: `cargo run --example book_03_frame_and_sentinel`
+Run this example: `cargo run --example book_03_frames_and_sentinels`
 
 ```rust
-{{#include ../../../../examples/book_03_frame_and_sentinel.rs}}
+{{#include ../../../../examples/book_03_frames_and_sentinels.rs}}
 ```
 
 ## Overview

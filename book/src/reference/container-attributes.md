@@ -38,16 +38,19 @@ Associates the codec pair used for the **key** byte(s) of every KLV triple in
 this container. Supply `dec` for decoding support and `enc` for encoding
 support; either half can be omitted to stay unimplemented.
 
-## `len(dec = ..., enc = ...)`
+## `len(dec = ..., enc = ..., size(...))`
 
 ```rust,ignore
-#[klv(len(dec = decb::u8_as_usize, enc = encb::u8_from_usize))]
+#[klv(len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)))]
 ```
 
-The length value will *always* be `usize`. Therefore, `dec` must output a `usize`
-and `enc` must accept a `usize`. Use the `_as_usize` / `_from_usize` variants from `decb` / `encb`.
+The decoded length value is always `usize`; `dec` must output a `usize` and `enc`
+must accept a `usize`. Use the `_as_usize` / `_from_usize` helpers from `decb` /
+`encb`. `len(size(exact = N))` declares a fixed-width `N`-byte length prefix.
+A bare `len(..)` or `len(size(var))` uses the variable-width length path, which
+is the path used by BER-style length codecs.
 
-## `default(typ = T, dec = ..., enc = ..., varlen = <bool>)`
+## `default(typ = T, dec = ..., enc = ..., size(...))`
 
 ```rust,ignore
 #[klv(
@@ -61,10 +64,11 @@ and `enc` must accept a `usize`. Use the `_as_usize` / `_from_usize` variants fr
 
 Attaches a codec to a concrete field type. Every field of type `T` in the
 struct resolves its codec from this default unless it overrides locally.
-Only `typ` is required; `dec`, `enc`, and `varlen` are independently
-optional, so a default can supply just a decoder, just an encoder, or
-both. `varlen` selects the variable-length decoder shape; see
-[`varlen`](./field-attributes.md#varlen--true).
+Only `typ` is required; `dec`, `enc`, and `size(..)` are independently
+optional, so a default can supply just a decoder, just an encoder, or both.
+`size(var)` selects the length-taking decoder shape; `size(exact = N)` and
+`size(hint = N)` carry the same encode meanings as field-level `size(..)`. A
+default `size(..)` applies only to fields that resolve through that default.
 
 The `enc` path inside `default(...)` accepts the same `&` and `*` sigils
 as field-level `enc`. See
@@ -76,8 +80,10 @@ as field-level `enc`. See
 #[klv(debug)]
 ```
 
-Prints the derive's expansion to stderr at compile time. Useful when
-debugging codec wiring or diagnosing an attribute parse error.
+Enables generated runtime decode logging for matched fields and decoded key/value
+pairs. With the `tracing` feature this emits `tracing::debug!`; otherwise it falls
+back to `println!` in the generated decode code. Encode overflow diagnostics are
+separate error-path logging and are not controlled by this flag.
 
 ## `deny_unknown_keys`
 
@@ -125,10 +131,10 @@ trait impls on the field type. Field-level codecs and container
 | `stream` | [03 - Frames & sentinels](../tutorial/fundamentals/03-frames-and-sentinels.md) |
 | `sentinel` | [03 - Frames & sentinels](../tutorial/fundamentals/03-frames-and-sentinels.md) |
 | `key(dec, enc)` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
-| `len(dec, enc)` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
-| `default(typ, dec, enc, varlen)` | [04 - Default codecs](../tutorial/fundamentals/04-default-codec.md) |
+| `len(dec, enc, size)` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
+| `default(typ, dec, enc, size)` | [04 - Default codecs](../tutorial/fundamentals/04-default-codec.md) |
 | `debug` | Reference only |
 | `deny_unknown_keys` | Reference only |
 | `allow_unimplemented_encode` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
 | `allow_unimplemented_decode` | Reference only |
-| `trait_fallback` | [10 - Optional fields & default](../tutorial/fundamentals/10-default-fallback.md) |
+| `trait_fallback` | [11 - Optional fields & default](../tutorial/fundamentals/11-default-fallback.md) |
