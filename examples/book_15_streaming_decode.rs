@@ -1,6 +1,6 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Book tutorial 15a - streaming decode via `Decoder`
+//! Book tutorial 15 - streaming decode via `Decoder`
 //! See `book/tutorial/15-streaming-decode.md` for the full narrative
 //!
 //! Demonstrates three patterns for incrementally decoding a sentinel-framed

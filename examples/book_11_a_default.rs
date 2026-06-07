@@ -1,7 +1,7 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Book tutorial 12a - `Option<T>` fields and `default = expr` fallbacks
-//! See `book/tutorial/12-default-fallback.md` for the full narrative
+//! Book tutorial 11a - `Option<T>` fields and `default = expr` fallbacks
+//! See `book/tutorial/11-default-fallback.md` for the full narrative
 //!
 //! Shows two complementary mechanisms for handling absent keys on decode:
 //!

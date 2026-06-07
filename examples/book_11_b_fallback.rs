@@ -1,7 +1,7 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Book tutorial 12b - `trait_fallback`: auto-resolve codecs from type impls
-//! See `book/tutorial/12-default-fallback.md` for the full narrative
+//! Book tutorial 11b - `trait_fallback`: auto-resolve codecs from type impls
+//! See `book/tutorial/11-default-fallback.md` for the full narrative
 //!
 //! When a type already implements `DecodeValue` and `EncodeValue`, the
 //! `trait_fallback` container attribute lets `#[klv(key = ...)]` fields omit

@@ -1,6 +1,6 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Book tutorial 15b - implementing a custom `Consume` extension on `Decoder`
+//! Book tutorial 15 - implementing a custom `Consume` extension on `Decoder`
 //! See `book/tutorial/15b-consume-impl.md` for the full narrative
 //!
 //! Shows how to add a `consume` method to `Decoder` that lazily pulls byte
