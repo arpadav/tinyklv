@@ -12,7 +12,7 @@ keywords = ["decode", "encode", "klv", "parsing", "tlv"]
 categories = ["development-tools", "encoding", "parsing"]
 edition = "2024"
 rust-version = "1.95"
-exclude = ["TODO.md", "book/", "examples", "tests", "benches"]
+exclude = ["book", "examples", "tests", "benches", "plans"]
 publish = true
 
 [workspace]
