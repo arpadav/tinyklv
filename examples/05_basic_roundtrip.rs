@@ -1,6 +1,6 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 05 - encode/decode symmetry.
+//! Example 05 - encode/decode symmetry
 //!
 //! `#[derive(Klv)]` generates matched pairs of traits: `EncodeValue`/`DecodeValue`
 //! for the raw KLV triples and `EncodeFrame`/`DecodeFrame` for the sentinel-wrapped
@@ -17,7 +17,7 @@
 //! * `decode_value` vs `decode_frame`
 //! * Sentinel + outer-length accounting
 //!
-//! See also: book Tutorial 05.
+//! See also: book Tutorial 05
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -56,10 +56,12 @@ fn main() {
     };
 
     // encode - value bytes contain only the field KLV triples
-    let value_bytes = original.encode_value();
+    let mut value_bytes = Vec::new();
+    original.encode_value(&mut value_bytes);
 
     // encode - frame bytes wrap the value region in sentinel + outer length
-    let frame_bytes = original.encode_frame();
+    let mut frame_bytes = Vec::new();
+    original.encode_frame(&mut frame_bytes);
 
     // the framed form must be strictly larger (sentinel + outer length)
     assert!(

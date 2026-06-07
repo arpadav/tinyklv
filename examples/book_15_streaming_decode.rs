@@ -1,6 +1,7 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Book tutorial 15a - streaming decode via `Decoder`
+//! Book tutorial 15 - streaming decode via `Decoder`
+//! See `book/tutorial/15-streaming-decode.md` for the full narrative
 //!
 //! Demonstrates three patterns for incrementally decoding a sentinel-framed
 //! KLV stream: (1) feeding the whole buffer then draining with `IntoIterator`,
@@ -8,10 +9,6 @@
 //! (3) low-level `decode_partial` / `resume_partial` for callers that manage
 //! their own in-flight partial state. All three patterns are asserted to yield
 //! the same result
-//!
-//! See `book/tutorial/15-streaming-decode.md` for the full narrative.
-//!
-//! Author: aav
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -24,12 +21,14 @@ use tinyklv::ResumePartial;
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Heartbeat used to demonstrate the three `Decoder` usage patterns
 struct Heartbeat {
     #[klv(
         key = 0x01,
         dec = decb::u8,
         enc = *encb::u8,
     )]
+    /// Monotonic frame counter
     sequence: u8,
 
     #[klv(
@@ -37,6 +36,7 @@ struct Heartbeat {
         dec = decb::be_u16,
         enc = *encb::be_u16,
     )]
+    /// Temperature in 0.01 C units (big-endian u16)
     temperature_centideg: u16,
 
     #[klv(
@@ -44,6 +44,7 @@ struct Heartbeat {
         dec = decb::be_u32,
         enc = *encb::be_u32,
     )]
+    /// Seconds since boot (big-endian u32)
     uptime_s: u32,
 }
 
@@ -57,7 +58,9 @@ fn main() {
         // junk / zeros before the first sentinel
         0xDE, 0xAD, 0x00, 0x00, 0xFF, 0x00,
     ];
-    buf.extend(want.iter().flat_map(tinyklv::EncodeFrame::encode_frame));
+    for hb in &want {
+        hb.encode_frame(&mut buf);
+    }
 
     // Pattern 1: feed the whole stream into `::decoder()`, then drain with
     // IntoIterator on &mut Decoder.
@@ -89,7 +92,8 @@ fn main() {
     // body boundaries and manages the in-flight partial explicitly.
     {
         let original = want.first().unwrap().clone();
-        let body = original.encode_value();
+        let mut body = Vec::new();
+        original.encode_value(&mut body);
         let (first, second_half) = body.split_at(5);
 
         let mut first_half: &[u8] = first;

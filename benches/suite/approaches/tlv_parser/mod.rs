@@ -7,9 +7,9 @@
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
-mod simple;
-mod rich;
 mod compound;
+mod rich;
+mod simple;
 
 // --------------------------------------------------
 // local
@@ -19,6 +19,7 @@ use crate::suite::Approach;
 /// The tlv_parser approach.
 pub(crate) struct TlvParser;
 
+/// [`TlvParser`] implementation of [`Approach`]
 impl Approach for TlvParser {
     const NAME: &'static str = "tlv_parser";
 }

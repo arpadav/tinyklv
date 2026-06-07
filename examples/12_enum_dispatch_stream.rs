@@ -1,19 +1,19 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
-//! Example 12 - variant dispatch on a multiplexed stream.
+//! Example 12 - variant dispatch on a multiplexed stream
 //!
 //! Real telemetry buses carry several packet types mixed together. The
 //! canonical tinyklv pattern is: give each packet type its own sentinel,
 //! write a tiny peek-and-route dispatcher, and fold the results into a
 //! `Vec<Packet>` enum. The dispatcher advances one byte at a time past
-//! unknown prefixes so it can recover from inter-packet garbage.
+//! unknown prefixes so it can recover from inter-packet garbage
 //!
 //! Showcases:
 //! * Two `#[derive(Klv)]` structs with distinct sentinels
 //! * A hand-written dispatcher that peeks the next few bytes
 //! * Wrapping decoded frames in a plain Rust `enum`
 //!
-//! See also: book Tutorial 12.
+//! See also: book Tutorial 12
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -118,15 +118,15 @@ fn main() {
     // encode - concatenate four frames with three bytes of garbage spliced
     // between the first Nav and the first Weather to exercise the dispatcher
     let mut stream: Vec<u8> = Vec::new();
-    stream.extend(nav1.encode_frame());
+    nav1.encode_frame(&mut stream);
     // inter-packet garbage (not a sentinel prefix):
     stream.extend_from_slice(&[
         // three noise bytes:
             0xDE, 0xAD, 0xFF,
     ]);
-    stream.extend(wx1.encode_frame());
-    stream.extend(nav2.encode_frame());
-    stream.extend(wx2.encode_frame());
+    wx1.encode_frame(&mut stream);
+    nav2.encode_frame(&mut stream);
+    wx2.encode_frame(&mut stream);
 
     // decode - drain by peek-and-dispatch until the slice is empty
     let mut slice = stream.as_slice();

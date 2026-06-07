@@ -3,9 +3,9 @@
 //! Free-function wrappers around [`crate::codecs::ber::BerLength`] and
 //! [`crate::codecs::ber::BerOid`] that expose a flat, winnow-compatible
 //! function signature. Use these in `#[klv(dec = ...)]` attributes and
-//! anywhere a `fn(&mut &[u8]) -> crate::Result<T>` is needed.
+//! anywhere a `fn(&mut &[u8]) -> crate::Result<T>` is needed
 //!
-//! The encode counterparts live in [`crate::codecs::ber::enc`].
+//! The encode counterparts live in [`crate::codecs::ber::enc`]
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -20,7 +20,7 @@ use crate::prelude::*;
 /// directly into `winnow::token::take(len)`, which expects a [`usize`]. The
 /// encode counterpart ([`super::enc::ber_length`]) is generic over
 /// `T: OfBerCommon`. Use [`crate::codecs::ber::BerLength`] directly for a
-/// type-preserving roundtrip that keeps the full `T` precision.
+/// type-preserving roundtrip that keeps the full `T` precision
 ///
 /// # Arguments
 ///
@@ -54,10 +54,10 @@ pub fn ber_length(input: &mut &[u8]) -> crate::Result<usize> {
 /// Reads zero or more continuation bytes (MSB set) followed by exactly one
 /// terminator byte (MSB clear), accumulating 7 bits per byte into the output
 /// value. The type `T` must implement [`super::OfBerCommon`], which restricts
-/// the set to fixed-width unsigned integers (`u8`..=`u128`).
+/// the set to fixed-width unsigned integers (`u8`..=`u128`)
 ///
 /// Use [`crate::codecs::ber::BerOid`] directly when you need the full
-/// newtype wrapper rather than the bare value.
+/// newtype wrapper rather than the bare value
 ///
 /// # Arguments
 ///

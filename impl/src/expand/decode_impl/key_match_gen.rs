@@ -11,9 +11,9 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::constants;
 use super::helpers;
 use crate::ast::attr::MainField;
+use crate::ast::attr::size::SizeSpec;
 
 // --------------------------------------------------
 // external
@@ -55,6 +55,58 @@ pub(super) fn gen_known_keys_check(
     fields: &[MainField],
 ) -> proc_macro2::TokenStream {
     // --------------------------------------------------
+    // wrap the known-keys pattern in the streaming gate, which returns the `&'static str` label
+    // expected by `resume_partial`'s `Result<_, &'static str>`
+    // --------------------------------------------------
+    let pattern = gen_known_keys_pattern(fields);
+    let message = gen_unknown_key_message(name);
+    quote! {
+        if !matches!(key, #pattern) {
+            return ::core::result::Result::Err(#message);
+        }
+    }
+}
+
+/// Generates the `deny_unknown_keys` rejection message as a `concat!` expression
+///
+/// Both gates - the streaming [`gen_known_keys_check`] (returning a `&'static str`) and the
+/// one-shot direct gate (wrapping it in a `ContextError` via `labeled_error`) - wrap the same key
+/// pattern with this identical message, differing only in the error type. Generated here once so
+/// the wording cannot drift between the two decode paths
+///
+/// # Arguments
+///
+/// * `name` - The container ident, named in the message so the user knows which struct's keys to check
+///
+/// # Returns
+///
+/// A `concat!(..)` token expression evaluating to a `&'static str`
+pub(super) fn gen_unknown_key_message(name: &syn::Ident) -> proc_macro2::TokenStream {
+    quote! {
+        concat!(
+            "invalid key (expected one of the keys defined on `",
+            stringify!(#name),
+            "`; to turn this off, remove `deny_unknown_keys`)",
+        )
+    }
+}
+
+/// Generates the `|`-joined alternation of every field's `#[klv(key = ..)]` literal
+///
+/// The pattern feeds a `matches!(key, #pattern)` guard. A struct with no KLV fields yields the
+/// never-match `_ if false`, so every key is treated as unknown. Shared by the streaming
+/// [`gen_known_keys_check`] (which returns a `&'static str` label) and the one-shot direct decoder
+/// (which wraps it to return a `ContextError`), so the key set lives in one place
+///
+/// # Arguments
+///
+/// * `fields` - All fields of the container; non-KLV fields contribute no key
+///
+/// # Returns
+///
+/// The pattern token stream (`0x01 | 0x02 | ..` or `_ if false`)
+pub(super) fn gen_known_keys_pattern(fields: &[MainField]) -> proc_macro2::TokenStream {
+    // --------------------------------------------------
     // collect each klv field's declared key expression
     // --------------------------------------------------
     let keys: Vec<_> = fields
@@ -70,21 +122,7 @@ pub(super) fn gen_known_keys_check(
     // --------------------------------------------------
     // splice keys with `|` separators to form a pattern alternation
     // --------------------------------------------------
-    let pattern = quote! { #(#keys)|* };
-    // --------------------------------------------------
-    // return the matches
-    // --------------------------------------------------
-    quote! {
-        if !matches!(key, #pattern) {
-            return ::core::result::Result::Err(
-                concat!(
-                    "invalid key (expected one of the keys defined on `",
-                    stringify!(#name),
-                    "`; to turn this off, remove `deny_unknown_keys`)",
-                )
-            );
-        }
-    }
+    quote! { #(#keys)|* }
 }
 
 /// Generates match arms that dispatch a parsed key to its per-field decoder
@@ -145,10 +183,11 @@ pub(super) fn gen_items_match(
                 quote! { #dec }
             };
             // --------------------------------------------------
-            // varlen - changes fn signature
+            // size - a `var` size makes the decoder take the runtime `len`; a reserve-only size or
+            // an omitted one reads without it (defaults to no `len` arg)
             // --------------------------------------------------
-            let varlen = attrs.var.as_ref().is_some_and(|v| v.value); // <-- defaults to false
-            let optional_len_arg = if varlen {
+            let takes_len = attrs.size.is_some_and(SizeSpec::takes_len);
+            let optional_len_arg = if takes_len {
                 quote! { (len) }
             } else {
                 quote! {}
@@ -177,7 +216,7 @@ pub(super) fn gen_items_match(
             // field assignment with optional logging
             // --------------------------------------------------
             if debug {
-                let logger = constants::logger();
+                let logger = crate::expand::logger::debug_logger();
                 quote! {
                     #key => {
                         let val = #dec_tokens #optional_len_arg (&mut subinput);

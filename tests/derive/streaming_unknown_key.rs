@@ -5,6 +5,9 @@
 //! of the declared length is attempted. The legacy ordering reported
 //! "truncated" in this scenario and wasted the take.
 
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
@@ -54,7 +57,8 @@ fn unknown_key_before_take_reports_unknown_not_truncated() {
 /// cleanly even when `deny_unknown_keys` is set.
 fn strict_accepts_known_keys_only() {
     let v = Strict { a: 7, b: 42 };
-    let encoded = v.encode_value();
+    let mut encoded = Vec::new();
+    v.encode_value(&mut encoded);
     let decoded = Strict::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, v);
 }

@@ -1,12 +1,12 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 13 - `varlen = true` for length-parameterised value decoders.
+//! Example 13 - `size(var)` for length-parameterised value decoders
 //!
 //! A fixed-width value decoder has the signature
 //! `fn(&mut Stream) -> Result<T>` - it reads exactly as many bytes as the
 //! type requires. A variable-length field instead reads a number of bytes
 //! dictated by the preceding `len` field, which the macro plumbs into the
-//! decoder when the field is annotated with `varlen = true`:
+//! decoder when the field is annotated with `size(var)`:
 //!
 //! ```text
 //! fn(usize) -> impl FnMut(&mut Stream) -> Result<T>
@@ -15,10 +15,10 @@
 //! This example uses a sensor-log entry with a fixed-width `u32` timestamp
 //! and a variable-length UTF-8 annotation, then round-trips two payloads -
 //! a short one (single-byte length) and a long one (multi-byte length via
-//! BER) - so the length codec gets exercised in both regimes.
+//! BER) - so the length codec gets exercised in both regimes
 //!
 //! Showcases:
-//! * `varlen = true` on a `String` field
+//! * `size(var)` on a `String` field
 //! * Mixing fixed-width and variable-length fields in one struct
 //! * BER length codec scaling to small and large payloads on the same struct
 use tinyklv::prelude::*;            // Klv proc-macro + traits
@@ -46,11 +46,11 @@ struct SensorLog {
     )]
     timestamp_s: u32,
 
-    /// Human-readable annotation; `varlen = true` passes the decoded length
+    /// Human-readable annotation; `size(var)` passes the decoded length
     /// into the string decoder so it reads exactly that many bytes
     #[klv(
         key = 0x02_u64,
-        varlen = true,
+        size(var),
         dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8,
     )]
@@ -65,7 +65,8 @@ fn main() {
     };
 
     // encode + decode - round-trip through the single-byte BER length path
-    let small_frame = small.encode_frame();
+    let mut small_frame = Vec::new();
+    small.encode_frame(&mut small_frame);
     let dec_small = SensorLog::decode_frame(
         &mut small_frame.as_slice(),
     ).unwrap();
@@ -78,12 +79,13 @@ fn main() {
     };
 
     // encode + decode - round-trip through the multi-byte BER length path
-    let large_frame = large.encode_frame();
+    let mut large_frame = Vec::new();
+    large.encode_frame(&mut large_frame);
     let dec_large = SensorLog::decode_frame(
         &mut large_frame.as_slice(),
     ).unwrap();
 
-    // assert - both payloads survive; the long one proves `varlen = true`
+    // assert - both payloads survive; the long one proves `size(var)`
     // correctly threaded the length into the string decoder
     assert_eq!(dec_large, large);
     assert!(

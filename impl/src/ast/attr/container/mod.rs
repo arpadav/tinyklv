@@ -3,12 +3,13 @@
 //! Defines [`Container`] (the raw parsed form of every recognised attribute on
 //! a `#[derive(Klv)]` struct) and [`ContainerParsed`] (the validated form that
 //! guarantees `key` and `len` are both present). Sub-modules handle the
-//! individual attribute parsers: `default`, `keylen`, `sentinel`, and `stream`
+//! individual attribute parsers: `break_on`, `default`, `keylen`, `sentinel`, and `stream`
 //!
 //! Author: aav
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
+pub(crate) mod break_on;
 pub(crate) mod default;
 pub(crate) mod keylen;
 pub(crate) mod sentinel;
@@ -19,6 +20,7 @@ pub(crate) mod stream;
 // --------------------------------------------------
 use crate::Ctxt;
 use crate::symbol;
+use break_on::{BreakOn, BreakOnSpec};
 use default::DefaultXcoder;
 use keylen::Xcoder;
 use sentinel::Sentinel;
@@ -44,6 +46,9 @@ pub(crate) struct Container {
 
     /// The recognition sentinel literal, e.g. `b"HEARTBEAT"`
     pub sentinel: Option<syn::Lit>,
+
+    /// The break condition: a key literal (stop on match) or a `fn(key, len) -> BreakType` path
+    pub break_on: Option<BreakOnSpec>,
 
     /// The key encoder/decoder xcoder pair
     pub key: Option<Xcoder>,
@@ -96,6 +101,7 @@ impl Container {
         // --------------------------------------------------
         let mut stream = None;
         let mut sentinel = None;
+        let mut break_on = None;
         let mut key = None;
         let mut len = None;
         let mut defaults: HashMap<syn::Type, DefaultXcoder> = HashMap::new();
@@ -202,6 +208,10 @@ impl Container {
                             &list.path,
                             err!(ExpectedAsNameValue(symbol::SENTINEL)),
                         ),
+                        symbol::BREAK_ON => cx.error_spanned_by(
+                            &list.path,
+                            err!(ExpectedAsNameValue(symbol::BREAK_ON)),
+                        ),
                         symbol::DEBUG => {
                             cx.error_spanned_by(&list.path, err!(ExpectedAsPath(symbol::DEBUG)));
                         }
@@ -245,6 +255,13 @@ impl Container {
                                 sentinel = Sentinel::try_from(&nv)
                                     .map_err(|err| cx.syn_error(err))
                                     .ok();
+                            }
+                        },
+                        symbol::BREAK_ON => match break_on {
+                            Some(_) => cx.error_spanned_by(&nv, err!(DuplicateBreakOn)),
+                            None => {
+                                break_on =
+                                    BreakOn::try_from(&nv).map_err(|err| cx.syn_error(err)).ok();
                             }
                         },
                         // --------------------------------------------------
@@ -316,6 +333,9 @@ impl Container {
                         symbol::SENTINEL => {
                             cx.error_spanned_by(&path, err!(ExpectedAsNameValue(symbol::SENTINEL)));
                         }
+                        symbol::BREAK_ON => {
+                            cx.error_spanned_by(&path, err!(ExpectedAsNameValue(symbol::BREAK_ON)));
+                        }
                         _ => cx.error_spanned_by(&path, err!(UnknownContainerAttribute(path))),
                     },
                 }
@@ -350,6 +370,7 @@ impl Container {
         Container {
             stream: stream.and_then(|x| x.0),
             sentinel: sentinel.and_then(|x| x.0),
+            break_on: break_on.and_then(|x| x.0),
             key,
             len,
             defaults,
@@ -376,6 +397,9 @@ pub(crate) struct ContainerParsed {
 
     /// The recognition sentinel literal, if any
     pub sentinel: Option<syn::Lit>,
+
+    /// The break condition, if any: a key literal (stop on match) or a `fn(key, len) -> BreakType`
+    pub break_on: Option<BreakOnSpec>,
 
     /// The key xcoder (always present after validation)
     pub key: Xcoder,
@@ -441,6 +465,7 @@ impl ContainerParsed {
         Some(ContainerParsed {
             stream: cont.stream,
             sentinel: cont.sentinel,
+            break_on: cont.break_on,
             key,
             len,
             debug: cont.debug,

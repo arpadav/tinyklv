@@ -25,7 +25,7 @@ Associates the codec pair for this field. `dec` must match
 `fn(&mut S) -> tinyklv::Result<T>`, where `tinyklv::Result` is
 an alias for `winnow::Result`
 
-`enc` must match `fn(&T) -> Vec<u8>`
+`enc` must match `fn(&T, &mut Vec<u8>)`
 (when owned-argument, add the `&` sigil below). Either can be omitted when
 the container default covers the field type.
 
@@ -51,23 +51,59 @@ sequence: u8,
 custom: MyStruct,
 ```
 
-Encoders by default expect `fn(&T) -> O`. The two sigils (`&` and `*`)
+Encoders by default expect `fn(&T, &mut Vec<u8>)`. The two sigils (`&` and `*`)
 rewrite how the field is handed to the encoder. See
 [Sigil coercion & `EncodeAs`](./sigil-coercion.md) for the full
 dispatch semantics, built-in `EncodeAs` implementations, and when to
 write your own.
 
-## `varlen = true`
+## `size(..)`
 
 ```rust,ignore
-#[klv(key = 0x07, varlen = true, dec = decs::to_string_utf8)]
+#[klv(key = 0x07, size(var), dec = decs::to_string_utf8)]
 station_id: String,
+
+#[klv(key = 0x08, size(exact = 8))]
+fixed_nested: FixedNested,
+
+#[klv(key = 0x09, size(hint = 64))]
+notes: Vec<Note>,
 ```
 
-Selects the length-taking decoder shape. Instead of `fn(&mut S) -> Result<T>`,
-the derive calls `dec_fn(len)(input)` where `dec_fn` matches
-`fn(len: usize) -> impl Fn(&mut S) -> Result<T>`. Canonical use: UTF-8
-strings and other length-prefixed payloads.
+Controls the value length contract. `size(var)` selects the length-taking decoder
+shape: instead of `fn(&mut S) -> Result<T>`, the derive calls `dec_fn(len)(input)`
+where `dec_fn` matches `fn(len: usize) -> impl Fn(&mut S) -> Result<T>`.
+
+`size(exact = N)` declares that the encoded value is exactly `N` bytes, allowing
+the encoder to use the fixed-width path even for custom types. `size(hint = N)`
+is only a reserve hint; the value remains dynamically sized.
+
+`size(..)` has two independent axes:
+
+| Axis | Keyword | Effect |
+|------|---------|--------|
+| Decode arity | `var` | The decoder receives the runtime KLV length. |
+| Byte count | `exact = N` | The encoder treats the value as exactly `N` bytes. |
+| Reserve estimate | `hint = N` | The encoder reserves around `N` bytes but still measures the actual output. |
+
+The decode fn signature is determined solely by whether `var` is present
+(`exact` / `hint` only affect the encode path):
+
+| `var` | Decode fn signature |
+|-------|---------------------|
+| present | Length decoder [`fn(len) -> impl Fn(&mut S) -> Result<T>`](./codecs.md#function-signatures) |
+| absent | Standard decoder [`fn(&mut S) -> Result<T>`](./codecs.md#function-signatures) |
+
+The common forms, with their encode paths, are:
+
+| Attribute | Decode fn signature | Encode path |
+|-----------|---------------------|-------------|
+| none | Standard decoder | Fixed-width for known primitives, otherwise dynamic. |
+| `size(var)` | Length decoder | Dynamic. |
+| `size(exact = N)` | Standard decoder | Fixed-width `N`. |
+| `size(hint = N)` | Standard decoder | Dynamic with a reserve hint. |
+| `size(var, exact = N)` | Length decoder | Fixed-width `N`. |
+| `size(var, hint = N)` | Length decoder | Dynamic with a reserve hint. |
 
 ## `default` / `default = <expr>`
 
@@ -127,8 +163,8 @@ function patches the decoded value in place.
 | `enc = <path>` | [09 - Encoding & sigils](../tutorial/fundamentals/09-encode-sigil.md) |
 | `enc = &<path>` | [09 - Encoding & sigils](../tutorial/fundamentals/09-encode-sigil.md) |
 | `enc = *<path>` | [09 - Encoding & sigils](../tutorial/fundamentals/09-encode-sigil.md) |
-| `varlen = true` | [07 - Variable-length fields](../tutorial/fundamentals/07-val-lengths.md) |
-| `default` | [10 - Optional fields & default](../tutorial/fundamentals/10-default-fallback.md) |
-| `default = <expr>` | [10 - Optional fields & default](../tutorial/fundamentals/10-default-fallback.md) |
+| `size(var)` | [07 - Variable-length fields](../tutorial/fundamentals/07-val-lengths.md) |
+| `default` | [11 - Optional fields & default](../tutorial/fundamentals/11-default-fallback.md) |
+| `default = <expr>` | [11 - Optional fields & default](../tutorial/fundamentals/11-default-fallback.md) |
 | `latebind = <path>` | [08 - Latebind transforms](../tutorial/fundamentals/08-latebind.md) |
 | `latebind = &mut <path>` | [08 - Latebind transforms](../tutorial/fundamentals/08-latebind.md) |

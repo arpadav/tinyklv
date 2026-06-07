@@ -1,6 +1,6 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 06 - hand-written encoder / decoder functions.
+//! Example 06 - hand-written encoder / decoder functions
 //!
 //! The built-in `dec::binary` / `enc::binary` helpers cover integers and
 //! floats in big/little endian. Whenever a field needs a domain-specific
@@ -9,12 +9,12 @@
 //! signatures:
 //!
 //! * Decoder: `fn(&mut Stream) -> tinyklv::Result<T>`
-//! * Encoder: `fn(&T) -> Vec<u8>` (or `fn(T) -> Vec<u8>` for Copy types)
+//! * Encoder: `fn(&T, &mut Vec<u8>)` (or `fn(T, &mut Vec<u8>)` for Copy types)
 //!
 //! The `dec =` and `enc =` field attributes then reference them by path,
 //! exactly as they would reference a built-in. This example encodes GPS
 //! lat/lon as scaled `i32` values to save bandwidth while keeping the
-//! in-memory type as `f64`.
+//! in-memory type as `f64`
 //!
 //! Showcases:
 //! * Custom decode/encode fns with free-function signatures
@@ -30,15 +30,15 @@ const LON_SCALE: f64 = 180.0 / (i32::MAX as f64);
 const LAT_SCALE: f64 = 90.0 / (i32::MAX as f64);
 
 /// Encode a longitude in degrees as a 4-byte big-endian scaled i32
-fn scale_lon_enc(v: &f64) -> Vec<u8> {
+fn scale_lon_enc(v: &f64, out: &mut Vec<u8>) {
     let data = (*v / LON_SCALE) as i32;
-    encb::be_i32(data)
+    encb::be_i32(data, out);
 }
 
 /// Encode a latitude in degrees as a 4-byte big-endian scaled i32
-fn scale_lat_enc(v: &f64) -> Vec<u8> {
+fn scale_lat_enc(v: &f64, out: &mut Vec<u8>) {
     let data = (*v / LAT_SCALE) as i32;
-    encb::be_i32(data)
+    encb::be_i32(data, out);
 }
 
 /// Decode a 4-byte big-endian scaled i32 back to an f64 longitude in degrees
@@ -96,7 +96,8 @@ fn main() {
     };
 
     // encode - the custom fns produce 4-byte scaled i32 values for lat/lon
-    let frame = original.encode_frame();
+    let mut frame = Vec::new();
+    original.encode_frame(&mut frame);
 
     // decode - the hand-written decoders invert the scaling
     let decoded = GpsFix::decode_frame(

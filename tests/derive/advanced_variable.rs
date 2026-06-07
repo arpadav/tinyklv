@@ -1,4 +1,4 @@
-//! Variable-length field (`varlen = true`) tests for `#[derive(Klv)]`
+//! Variable-length field (`size(var)`) tests for `#[derive(Klv)]`
 //!
 //! Tests variable-length decoders - those with signature
 //! `fn(len: usize) -> impl Fn(&mut &[u8]) -> Result<T>` - across fixed/var
@@ -32,7 +32,7 @@ struct MixedVarFixed {
 
     #[klv(
         key = 0x04,
-        varlen = true,
+        size(var),
         dec = decs::to_string_utf8,
         enc = encs::from_string_utf8
     )]
@@ -54,7 +54,7 @@ struct OptVarString {
     priority: Priority,
     #[klv(
         key = 0x02,
-        varlen = true,
+        size(var),
         dec = decs::to_string_utf8,
         enc = encs::from_string_utf8
     )]
@@ -76,7 +76,7 @@ struct VarSensorArray {
     color: Color,
     #[klv(
         key = 0x02,
-        varlen = true,
+        size(var),
         dec = decode_sensor_readings,
         enc = encode_sensor_readings
     )]
@@ -84,7 +84,7 @@ struct VarSensorArray {
 }
 
 #[test]
-/// Tests encode/decode roundtrip of a struct mixing fixed-length fields with a `varlen = true` UTF-8 label
+/// Tests encode/decode roundtrip of a struct mixing fixed-length fields with a `size(var)` UTF-8 label
 fn mixed_var_fixed_roundtrip() {
     let original = MixedVarFixed {
         coord: Coordinate {
@@ -98,13 +98,14 @@ fn mixed_var_fixed_roundtrip() {
         },
         label: String::from("Paris"),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = MixedVarFixed::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }
 
 #[test]
-/// Tests that an `Option<String>` with `varlen = true` decodes to `Some` when its key and non-zero payload are present
+/// Tests that an `Option<String>` with `size(var)` decodes to `Some` when its key and non-zero payload are present
 fn option_var_present() {
     // priority=Low(0), label="hello" (5 bytes)
     let data: &[u8] = &[
@@ -117,7 +118,7 @@ fn option_var_present() {
 }
 
 #[test]
-/// Tests that an `Option<String>` with `varlen = true` decodes to `None` when its key is absent from the stream
+/// Tests that an `Option<String>` with `size(var)` decodes to `None` when its key is absent from the stream
 fn option_var_absent() {
     // only priority present, label key absent
     let data: &[u8] = &[0x01, 0x01, 0x02]; // priority=High
@@ -127,7 +128,7 @@ fn option_var_absent() {
 }
 
 #[test]
-/// Tests that a `varlen` optional with length zero decodes to `Some("")` rather than `None`
+/// Tests that a `size(var)` optional with length zero decodes to `Some("")` rather than `None`
 fn option_var_zero_len() {
     // key present but len=0 -> Some("")
     let data: &[u8] = &[
@@ -161,7 +162,8 @@ fn var_sensor_array() {
         color: Color::Blue,
         readings: readings.clone(),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = VarSensorArray::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded.color, Color::Blue);
     assert_eq!(decoded.readings.len(), 3);

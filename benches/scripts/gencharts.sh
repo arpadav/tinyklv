@@ -14,14 +14,23 @@
 # run; it vendors its own `protoc` (via protoc-bin-vendored) and uses pure-Rust parsers, so no
 # system `protoc` / `pb-rs` is required
 #
-# usage: benches/scripts/gencharts.sh [-o h|v] [-s log|lin] [-k bar|box] [-n abs|byte|pkt] [-f|--force]
+# usage: benches/scripts/gencharts.sh [-o h|v] [-s log|lin] [-k bar|box] [-n abs|byte|pkt]
+#                                      [--ops encode|decode|both] [--approaches a,b,c] [-f|--force]
 #   -o, --orientation - chart orientation forwarded to plot_times.py (default h)
 #   -s, --scale       - value-axis scale forwarded to plot_times.py (default lin)
 #   -k, --kind        - bar vs box forwarded to plot_times.py (default bar)
 #   -n, --norm        - abs/byte/pkt normalization forwarded to plot_times.py (default byte)
+#       --ops         - which operation tiers to run: encode | decode | both (default both)
+#       --approaches  - comma-separated approach subset to run, e.g. tinyklv,prost,manual
+#                       (default all). matched against the approach segment of the benchmark id
 #   -f, --force       - regenerate the protobuf code and re-run the criterion bench even if results
 #                       already exist; otherwise existing target/criterion results are reused and
 #                       the script just re-renders the charts
+#
+# --ops/--approaches build a criterion filter regex (matched against the "<label>_<op>_<tier>/
+# <approach>" benchmark id) so only the selected benches run. a filtered run is a partial result
+# set, so the chart render is skipped - the criterion medians print to stdout. the exact `cargo
+# bench` and `plot_times.py` commands are echoed before they run
 #
 # author: aav
 set -euo pipefail
@@ -32,8 +41,9 @@ cd "$(dirname "$0")/../.."
 # --------------------------------------------------
 usage() {
     echo "Usage: bash benches/scripts/gencharts.sh [-o|--orientation h|v] [-s|--scale log|lin] \
-[-k|--kind bar|box] [-n|--norm abs|byte|pkt] [-f|--force]"
+[-k|--kind bar|box] [-n|--norm abs|byte|pkt] [--ops encode|decode|both] [--approaches a,b,c] [-f|--force]"
     echo "  forwards orientation/scale/kind/norm to plot_times.py; --force re-runs the criterion bench"
+    echo "  --ops/--approaches restrict which benches run (filtered run skips chart render)"
 }
 
 # --------------------------------------------------
@@ -44,21 +54,57 @@ SCALE=lin           # default linear value axis
 KIND=bar            # default median grouped bars (vs box-and-whisker)
 NORM=byte           # default ns-per-input-byte normalization
 FORCE=false         # default to reusing existing criterion results
+OPS=both            # default run both encode and decode tiers
+APPROACHES=all      # default run every approach
 
 # --------------------------------------------------
 # parse cli args
+#
+# need_val aborts cleanly when a value-taking flag is the last token, instead of tripping
+# `set -u` on the unset `$2` / failing the `shift 2`
 # --------------------------------------------------
+need_val() { [[ $# -ge 2 ]] || { echo "error: $1 requires a value" >&2; usage; exit 1; }; }
 while [[ $# -gt 0 ]]; do
     case "$1" in
-    -o | --orientation) ORIENTATION="$2"; shift 2 ;;
-    -s | --scale)       SCALE="$2"; shift 2 ;;
-    -k | --kind)        KIND="$2"; shift 2 ;;
-    -n | --norm)        NORM="$2"; shift 2 ;;
+    -o | --orientation) need_val "$@"; ORIENTATION="$2"; shift 2 ;;
+    -s | --scale)       need_val "$@"; SCALE="$2"; shift 2 ;;
+    -k | --kind)        need_val "$@"; KIND="$2"; shift 2 ;;
+    -n | --norm)        need_val "$@"; NORM="$2"; shift 2 ;;
+    --ops)              need_val "$@"; OPS="$2"; shift 2 ;;
+    --approaches)       need_val "$@"; APPROACHES="$2"; shift 2 ;;
     -f | --force)       FORCE=true; shift ;;
     -h | --help)        usage; exit 0 ;;
     *)                  echo "Unknown argument: $1"; usage; exit 1 ;;
     esac
 done
+
+# --------------------------------------------------
+# build the criterion filter regex from --ops / --approaches
+#
+# criterion matches the regex against each benchmark id, formed as "<label>_<op>_<tier>/
+# <approach>" (e.g. simple_encode_value/tinyklv). an empty filter runs everything, preserving
+# the default full-suite behavior. the op fragments lead with `_` and the approach fragment
+# ends with `$` so a partial/substring name can't match the wrong segment
+# --------------------------------------------------
+OPS_RE=""
+case "$OPS" in
+both)   OPS_RE="" ;;
+encode) OPS_RE='(_encode_value|_encode_frame)' ;;
+decode) OPS_RE='(_decode_value|_decode_frame|_decode_streamed)' ;;
+*)      echo "error: --ops must be encode|decode|both (got '$OPS')" >&2; exit 1 ;;
+esac
+APPR_RE=""
+[[ "$APPROACHES" != all ]] && APPR_RE="(${APPROACHES//,/|})\$"
+# the slash pins each fragment to its own id segment so an approach name can't match a label
+if [[ -n "$OPS_RE" && -n "$APPR_RE" ]]; then
+    FILTER="${OPS_RE}/${APPR_RE}"
+elif [[ -n "$OPS_RE" ]]; then
+    FILTER="${OPS_RE}/"
+elif [[ -n "$APPR_RE" ]]; then
+    FILTER="/${APPR_RE}"
+else
+    FILTER=""
+fi
 
 # --------------------------------------------------
 # constants
@@ -79,21 +125,42 @@ if [[ ! -x "$PY" ]]; then
 fi
 
 # --------------------------------------------------
-# run the criterion suite bench (skip if results exist and not forced)
+# run the criterion suite bench (skip if results exist and neither forced nor filtered)
+#
+# a filtered run (--ops/--approaches) always re-runs, since the point is fresh numbers for the
+# selected subset. the exact commands are echoed before they run
 # --------------------------------------------------
-if [[ "$FORCE" == true || ! -f "$SENTINEL" ]]; then
-    echo "==> regenerating protobuf approach code (proto-gen)"
-    cargo run --quiet --manifest-path benches/proto-gen/Cargo.toml
-    echo "==> running criterion suite bench"
-    # --features bench enables tinyklv's native-type codecs (required by the suite)
-    RUSTFLAGS='-C target-cpu=native' cargo bench --bench compsuite --features bench
+# --features bench enables tinyklv's native-type codecs (required by the suite)
+CARGO_BENCH=(cargo bench --bench compsuite --features bench)
+[[ -n "$FILTER" ]] && CARGO_BENCH+=(-- "$FILTER")
+if [[ "$FORCE" == true || -n "$FILTER" || ! -f "$SENTINEL" ]]; then
+    # proto code only needs regenerating on a forced or first-time run, not per filtered run
+    if [[ "$FORCE" == true || ! -f "$SENTINEL" ]]; then
+        echo "==> regenerating protobuf approach code (proto-gen)"
+        echo "    cargo run --quiet --manifest-path benches/proto-gen/Cargo.toml"
+        cargo run --quiet --manifest-path benches/proto-gen/Cargo.toml
+    fi
+    echo "==> running criterion suite bench${FILTER:+ (filter: $FILTER)}"
+    # echo a copy-pasteable form: the filter is single-quoted so the user's shell won't split
+    # or glob its `|`/`()` metacharacters (the array execution below is already correctly quoted)
+    echo "    RUSTFLAGS='-C target-cpu=native' cargo bench --bench compsuite --features bench${FILTER:+ -- '$FILTER'}"
+    RUSTFLAGS='-C target-cpu=native' "${CARGO_BENCH[@]}"
 else
     echo "==> reusing existing criterion results (pass -f to re-run)"
 fi
 
 # --------------------------------------------------
 # render the two paradigm charts from criterion's medians (knobs from the cli args / defaults)
+#
+# a filtered run only refreshes a subset of groups, so the full-suite chart would mix fresh and
+# stale bars - skip it and let the criterion medians above stand as the result
 # --------------------------------------------------
-echo "==> rendering charts ($ORIENTATION $SCALE $KIND $NORM)"
-"$PY" benches/scripts/plot_times.py "$CRITERION_DIR" "$ORIENTATION" "$SCALE" "$KIND" "$NORM" benches
-echo "==> done - images written to benches/bench_klv.jpg and benches/bench_proto.jpg"
+if [[ -n "$FILTER" ]]; then
+    echo "==> filtered run (--ops/--approaches): partial result set, skipping chart render"
+    echo "    criterion medians printed above; rerun without --ops/--approaches to regenerate charts"
+else
+    echo "==> rendering charts ($ORIENTATION $SCALE $KIND $NORM)"
+    echo "    $PY benches/scripts/plot_times.py $CRITERION_DIR $ORIENTATION $SCALE $KIND $NORM benches"
+    "$PY" benches/scripts/plot_times.py "$CRITERION_DIR" "$ORIENTATION" "$SCALE" "$KIND" "$NORM" benches
+    echo "==> done - images written to benches/bench_klv.jpg and benches/bench_proto.jpg"
+fi

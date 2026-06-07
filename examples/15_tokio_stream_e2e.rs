@@ -1,29 +1,32 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-//! Example 15 - synchronous decode over a buffered Tokio channel.
+//! Example 15 - synchronous decode over a buffered Tokio channel
 //!
 //! Tinyklv itself is fully synchronous and operates on byte slices. That
 //! makes it trivial to integrate with any async executor: the async runtime
 //! handles I/O, accumulates bytes into a buffer, and hands that buffer to
 //! `decode_frame` in a normal `while let Ok(...)` loop. The sentinel seeker
 //! tolerates partial chunks - if the next frame is incomplete, the decoder
-//! returns `Err` and the loop waits for more bytes before retrying.
+//! returns `Err` and the loop waits for more bytes before retrying
 //!
 //! This example spawns a sender task that emits randomly-padded frames with
 //! decoy blocks around each real one, and a receiver task that accumulates
 //! incoming chunks and drains as many complete frames as possible after
-//! each receive.
+//! each receive
 //!
 //! Showcases:
 //! * Synchronous tinyklv decoding driven by an async producer
 //! * Buffer management: keep the unconsumed tail between receives
 //! * The seeker skipping padding and decoys to find the real sentinel
 //!
-//! See also: book Tutorial 15.
-use rand::prelude::*;
+//! See also: book Tutorial 15
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use rand::prelude::*;
 
 #[derive(Klv, Debug, PartialEq, Clone)]
 #[klv(
@@ -84,7 +87,7 @@ fn wrap_with_noise(
     }
 
     // the real frame
-    chunk.extend_from_slice(&reading.encode_frame());
+    reading.encode_frame(&mut chunk);
 
     // optional trailing decoy
     if rng.random_bool(0.5) {

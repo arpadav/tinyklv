@@ -1,3 +1,21 @@
+//! Proc-macro implementation crate for `#[derive(Klv)]`
+//!
+//! Drives the full derive pipeline for the [`tinyklv`] crate's `Klv` derive
+//! macro. When a struct is annotated with `#[derive(Klv)]` and the appropriate
+//! `#[klv(..)]` attribute, this crate:
+//!
+//! 1. Parses the derive input and all `#[klv(..)]` attributes into an AST
+//!    representation (`ast` module)
+//! 2. Accumulates diagnostics via [`Ctxt`] and emits compile errors for any
+//!    invalid or missing annotations
+//! 3. Conditionally generates `Encode`/`EncodeValue`/`EncodeFrame` and
+//!    `Decode`/`DecodeValue`/`DecodeFrame` implementations depending on
+//!    which fields carry encoders and decoders (`expand` module)
+//!
+//! This crate is an implementation detail of `tinyklv` and is not intended to
+//! be used directly
+//!
+//! Author: aav
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
@@ -8,26 +26,40 @@ mod ctxt;
 mod expand;
 
 // --------------------------------------------------
+// local
+// --------------------------------------------------
+use crate::ast::symbol;
+use crate::ctxt::Ctxt;
+
+// --------------------------------------------------
 // external
 // --------------------------------------------------
 use syn::{DeriveInput, parse_macro_input};
 use thiserror::Error;
 
 // --------------------------------------------------
-// re-exports
-// --------------------------------------------------
-use crate::ast::symbol;
-use crate::ctxt::Ctxt;
-
-// --------------------------------------------------
 // constants
 // --------------------------------------------------
+/// The crate name referenced in user-facing error messages
 const CRATE_NAME: &str = "tinyklv";
+
+/// The derive macro name referenced in user-facing error messages (e.g. `#[derive(Klv)]`)
 const DERIVE_NAME: &str = "Klv";
+
+/// The attribute name used on containers and fields (e.g. `#[klv(..)]`)
 const ATTR_NAME: &str = "klv";
 
+/// Entry point for the `#[derive(Klv)]` proc-macro
+///
+/// Parses the annotated struct into a [`syn::DeriveInput`], delegates the full
+/// AST parsing and code-generation pipeline to [`expand::derive`], and converts
+/// any [`syn::Error`] diagnostics into compile errors via
+/// [`syn::Error::into_compile_error`]
+///
+/// The generated implementations depend on which `#[klv(..)]` attributes are
+/// present: containers without an encoder on every field produce no encode impl,
+/// and similarly for decoders
 #[proc_macro_derive(Klv, attributes(klv))]
-/// [`tinyklv`](crate) proc-macro
 pub fn klv_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     expand::derive(&input)
@@ -35,8 +67,14 @@ pub fn klv_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         .into()
 }
 
+/// All diagnostic errors that the `#[derive(Klv)]` proc-macro can emit
+///
+/// Each variant corresponds to one class of user mistake in the `#[klv(..)]`
+/// annotation or the shape of the annotated struct. Variants are formatted via
+/// [`thiserror::Error`] and displayed directly in compiler diagnostics. The
+/// [`crate::err!`] macro converts a variant into a [`std::borrow::Cow<str>`]
+/// suitable for passing to [`crate::Ctxt::error_spanned_by`]
 #[derive(Debug, Error)]
-/// [`tinyklv`](crate) proc-macro errors
 enum Error {
     // --------------------------------------------------
     // container parsing
@@ -123,6 +161,22 @@ Options include {s}.",
     DuplicateSentinel,
 
     // --------------------------------------------------
+    // break_on
+    // --------------------------------------------------
+    #[error("\
+        Duplicate `{s}` attribute. Only one break condition per struct is supported.",
+        s = symbol::BREAK_ON,
+    )]
+    DuplicateBreakOn,
+
+    #[error("\
+        `{s}` expects either a key literal (e.g. `{s} = 0xFF`) or a function path \
+        (e.g. `{s} = my_break_fn`, where `fn(key, len) -> tinyklv::BreakType`).",
+        s = symbol::BREAK_ON,
+    )]
+    InvalidBreakOn,
+
+    // --------------------------------------------------
     // key / len
     // --------------------------------------------------
     #[error("\
@@ -151,11 +205,12 @@ Options include {s}.",
 
     #[error("\
         Unknown field `{0}` in {k}/{l}.
-Expected `{e} = <..>` or `{d} = <..>`.",
+Expected `{e} = <..>`, `{d} = <..>`, or `{s} = <..>`.",
         k = symbol::KEY,
         l = symbol::LENGTH,
         e = symbol::ENCODER,
         d = symbol::DECODER,
+        s = symbol::SIZE,
     )]
     UnknownKeyLenField(String),
 
@@ -174,6 +229,14 @@ Expected `{e} = <..>` or `{d} = <..>`.",
         l = symbol::LENGTH,
     )]
     DuplicateDecoderInKeyLen,
+
+    #[error("\
+        Duplicate `{s}` field. Only one {s} per {k}/{l} is allowed.",
+        s = symbol::SIZE,
+        k = symbol::KEY,
+        l = symbol::LENGTH,
+    )]
+    DuplicateSizeInKeyLen,
 
     #[error("\
         Missing required `{e}` field for `{0}`.
@@ -242,10 +305,10 @@ To add ways to decode said type, they must be done on a field-by-field basis and
     DuplicateDecoderInDefault(String),
 
     #[error("\
-        Duplicate `{s}` field. Only required once, defaults to `false`.",
-        s = symbol::VARIABLE_LENGTH,
+        Duplicate `{s}` field. Only one {s} per default is allowed.",
+        s = symbol::SIZE,
     )]
-    DuplicateVariableLengthInDefault,
+    DuplicateSizeInDefault,
 
     #[error("\
         Duplicate '{1}' found for `{d}({t} = {0})`. Only one default {1} is allowed per type.",
@@ -292,10 +355,27 @@ Currently only one key per field is supported.",
     DuplicateDecoderInField,
 
     #[error("\
-        Duplicate `{s}` field. Only required once, will default to `false`.",
-        s = symbol::VARIABLE_LENGTH,
+        Duplicate `{s}` field. Only one {s} per field is allowed.",
+        s = symbol::SIZE,
     )]
-    DuplicateVariableLengthInField,
+    DuplicateSizeInField,
+
+    #[error("\
+        Unknown `{s}` sub-attribute: `{0}`.
+Expected {sf}.",
+        s = symbol::SIZE,
+        sf = symbol::SIZE_FIELDS,
+    )]
+    UnknownSizeField(String),
+
+    #[error("\
+        Conflicting `{s}` byte count. `{e}` and `{h}` are mutually exclusive - a `{s}` is either an \
+exact width or a soft capacity estimate, not both.",
+        s = symbol::SIZE,
+        e = symbol::EXACT,
+        h = symbol::HINT,
+    )]
+    SizeExactHintConflict,
 
     #[error("\
         Duplicate `{s}` field.",
@@ -352,16 +432,22 @@ Otherwise, you can:
     UnimplementedDecode(String, String),
 
     #[error("\
-Field `{0}: {1}` has `{v} = true` but no `{d} = ..` was set.
+Field `{0}: {1}` has `{s}(var)` but no `{d} = ..` was set.
 The trait fallback (`<{1} as ::tinyklv::DecodeValue<..>>::decode_value`) has no length argument - \
-supply an explicit `{d}` or remove `{v}`.",
-        v = symbol::VARIABLE_LENGTH,
+supply an explicit `{d}` or change the `{s}`.",
+        s = symbol::SIZE,
         d = symbol::DECODER,
     )]
-    VarlenFallbackRequiresExplicitDec(String, String),
+    SizeVarFallbackRequiresExplicitDec(String, String),
 }
 /// [`Error`] implementation
 impl Error {
+    /// Converts this error to an owned [`std::borrow::Cow<str>`]
+    ///
+    /// Formats the error via its [`std::fmt::Display`] impl (provided by
+    /// [`thiserror`]) and wraps it in [`std::borrow::Cow::Owned`]. The result
+    /// is passed to [`crate::Ctxt::error_spanned_by`] so the diagnostic message
+    /// is attached to the correct source span
     fn as_str(&self) -> std::borrow::Cow<'_, str> {
         std::borrow::Cow::Owned(self.to_string())
     }

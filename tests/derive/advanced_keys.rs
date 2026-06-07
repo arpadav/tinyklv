@@ -1,4 +1,15 @@
-//! Derive macro tests - non-sequential and boundary key values with complex domain types
+//! Derive macro tests for non-sequential and boundary key values with complex domain types
+//!
+//! Tests three struct shapes: `WideKeySpacing` (keys `0x01`, `0x40`, `0x80`, `0xFE`),
+//! `BoundaryKeys` (keys at `0x00`, `0x7F`, `0x80`, `0xFF`), and
+//! `WideKeySpacingOptional` (same wide keys but all `Option<T>`). Verifies
+//! correct decode when triples arrive in forward, reversed, and partial order,
+//! and full encode/decode roundtrip for the boundary and wide-key structs
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use super::types::*;
 use tinyklv::Klv;
 use tinyklv::dec::binary as decb;
@@ -104,7 +115,11 @@ struct WideKeySpacingOptional {
     flags: Option<StatusFlags>,
 }
 
-/// Build a single KLV triple: [key:1][len:1][value:N]
+/// Build a single KLV triple `[key:1][len:1][value:N]`
+///
+/// Prepends the 1-byte key and 1-byte value length header before the provided
+/// value bytes, producing a complete TLV triple suitable for hand-building
+/// streams in tests
 fn klv_triple(key: u8, value: &[u8]) -> Vec<u8> {
     let mut out = vec![key, value.len() as u8];
     out.extend_from_slice(value);
@@ -112,23 +127,27 @@ fn klv_triple(key: u8, value: &[u8]) -> Vec<u8> {
 }
 
 #[test]
-/// Tests decode-and-roundtrip for a struct using widely-spaced keys (`0x01`, `0x40`, `0x80`, `0xFE`) over complex domain types.
+/// Tests decode-and-roundtrip for a struct using widely-spaced keys (`0x01`, `0x40`, `0x80`, `0xFE`) over complex domain types
 fn wide_key_spacing_roundtrip() {
-    let color_bytes = Color::Green.encode_value();
-    let priority_bytes = Priority::High.encode_value();
-    let velocity_bytes = Velocity {
+    let mut color_bytes = Vec::new();
+    Color::Green.encode_value(&mut color_bytes);
+    let mut priority_bytes = Vec::new();
+    Priority::High.encode_value(&mut priority_bytes);
+    let mut velocity_bytes = Vec::new();
+    Velocity {
         dx: 100,
         dy: -50,
         dz: 25,
     }
-    .encode_value();
-    let flags_bytes = StatusFlags {
+    .encode_value(&mut velocity_bytes);
+    let mut flags_bytes = Vec::new();
+    StatusFlags {
         active: true,
         armed: false,
         locked: true,
         mode: 3,
     }
-    .encode_value();
+    .encode_value(&mut flags_bytes);
     let mut data: Vec<u8> = Vec::new();
     data.extend(klv_triple(0x01, &color_bytes));
     data.extend(klv_triple(0x40, &priority_bytes));
@@ -155,7 +174,8 @@ fn wide_key_spacing_roundtrip() {
         }
     );
     // encode -> decode roundtrip
-    let encoded = result.encode_value();
+    let mut encoded = Vec::new();
+    result.encode_value(&mut encoded);
     let decoded = WideKeySpacing::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded.color, Color::Green);
     assert_eq!(decoded.priority, Priority::High);
@@ -179,7 +199,7 @@ fn wide_key_spacing_roundtrip() {
 }
 
 #[test]
-/// Tests encode/decode roundtrip for a struct whose keys sit at `u8` boundaries (`0x00`, `0x7F`, `0x80`, `0xFF`).
+/// Tests encode/decode roundtrip for a struct whose keys sit at `u8` boundaries (`0x00`, `0x7F`, `0x80`, `0xFF`)
 fn boundary_keys_roundtrip() {
     let ts = Timestamp {
         seconds: 0xDEAD_BEEF,
@@ -200,7 +220,8 @@ fn boundary_keys_roundtrip() {
         attitude,
         coord: coord.clone(),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = BoundaryKeys::decode_value(&mut &encoded[..]).unwrap();
     assert_eq!(decoded.timestamp, ts);
     assert_eq!(decoded.color, Color::Blue);
@@ -209,23 +230,27 @@ fn boundary_keys_roundtrip() {
 }
 
 #[test]
-/// Verifies that widely-spaced keys decode correctly when the triples arrive in reverse key order (`0xFE` first, `0x01` last).
+/// Verifies that widely-spaced keys decode correctly when the triples arrive in reverse key order (`0xFE` first, `0x01` last)
 fn wide_keys_reversed_order() {
-    let color_bytes = Color::Red.encode_value();
-    let priority_bytes = Priority::Critical.encode_value();
-    let velocity_bytes = Velocity {
+    let mut color_bytes = Vec::new();
+    Color::Red.encode_value(&mut color_bytes);
+    let mut priority_bytes = Vec::new();
+    Priority::Critical.encode_value(&mut priority_bytes);
+    let mut velocity_bytes = Vec::new();
+    Velocity {
         dx: 0,
         dy: 0,
         dz: -1,
     }
-    .encode_value();
-    let flags_bytes = StatusFlags {
+    .encode_value(&mut velocity_bytes);
+    let mut flags_bytes = Vec::new();
+    StatusFlags {
         active: false,
         armed: true,
         locked: false,
         mode: 7,
     }
-    .encode_value();
+    .encode_value(&mut flags_bytes);
     let mut data: Vec<u8> = Vec::new();
     // reversed: 0xFE, 0x80, 0x40, 0x01
     data.extend(klv_triple(0xFE, &flags_bytes));
@@ -255,15 +280,17 @@ fn wide_keys_reversed_order() {
 }
 
 #[test]
-/// Tests that only the present optional keys (`0x01` and `0x80`) decode to `Some`, while absent keys (`0x40`, `0xFE`) decode to `None`.
+/// Tests that only the present optional keys (`0x01` and `0x80`) decode to `Some`, while absent keys (`0x40`, `0xFE`) decode to `None`
 fn wide_keys_partial_optional() {
-    let color_bytes = Color::Alpha.encode_value();
-    let velocity_bytes = Velocity {
+    let mut color_bytes = Vec::new();
+    Color::Alpha.encode_value(&mut color_bytes);
+    let mut velocity_bytes = Vec::new();
+    Velocity {
         dx: 10,
         dy: 20,
         dz: 30,
     }
-    .encode_value();
+    .encode_value(&mut velocity_bytes);
     let mut data: Vec<u8> = Vec::new();
     data.extend(klv_triple(0x01, &color_bytes));
     data.extend(klv_triple(0x80, &velocity_bytes));

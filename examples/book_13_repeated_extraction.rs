@@ -1,15 +1,12 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
 //! Book tutorial 13 - repeated extraction from a concatenated frame buffer
+//! See `book/tutorial/13-repeated-extraction.md` for the full narrative
 //!
 //! Shows how to concatenate multiple `encode_frame` outputs into a single byte
 //! buffer and recover all records in one call using `DrainFrames::drain_frames`,
 //! the blanket convenience provided by the prelude for any type that implements
 //! `DecodeFrame`
-//!
-//! See `book/tutorial/13-repeated-extraction.md` for the full narrative.
-//!
-//! Author: aav
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -59,10 +56,10 @@ fn main() {
     ];
 
     // concatenate the encoded frames into one buffer
-    let batch: Vec<u8> = original
-        .iter()
-        .flat_map(tinyklv::EncodeFrame::encode_frame)
-        .collect();
+    let mut batch: Vec<u8> = Vec::new();
+    for reading in &original {
+        reading.encode_frame(&mut batch);
+    }
 
     // peel them all off in one call - DrainFrames::drain_frames comes
     // from the prelude via the blanket impl for any T: DecodeFrame<S>

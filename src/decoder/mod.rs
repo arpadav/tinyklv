@@ -73,8 +73,9 @@ const EMPTY: &[u8] = &[];
 /// # Example
 ///
 /// ```ignore
-/// // fresh mode (no in-flight partial): seek sentinel + decode framed body
-/// let mut dec = Decoder::<<MyPacket as DecodePartial<&[u8]>>::Partial>::new();
+/// // feed bytes as they arrive; `next` yields each ready packet. A partial packet
+/// // is carried internally across `feed` calls - no manual resume is needed
+/// let mut dec: Decoder<MyPacketPartial, &[u8]> = Decoder::new();
 /// let mut scratch = [0u8; 2048];
 /// loop {
 ///     let n = socket.recv(&mut scratch)?;
@@ -82,20 +83,6 @@ const EMPTY: &[u8] = &[];
 ///     while let Some(pkt) = dec.next() {
 ///         handle(pkt);
 ///     }
-/// }
-///
-/// // resume mode: handed back from `Packet::NeedMore`
-/// match MyPacket::decode_partial(&mut input) {
-///     Ok(Packet::Ready(t)) => use_packet(t),
-///     Ok(Packet::NeedMore(partial)) => {
-///         let mut dec = Decoder::new();
-///         dec.feed(more_bytes);
-///         while let Some(pkt) = dec.next() {
-///             use_packet(pkt);
-///             break;
-///         }
-///     }
-///     Err(label) => report(label),
 /// }
 /// ```
 pub struct Decoder<P, S> {
@@ -329,8 +316,8 @@ where
         let partial = self.partial.unwrap_or_default();
         partial.finalize().map_err(|label| {
             // --------------------------------------------------
-            // no live input at finish time - is this okay? carries label
-            // but no live input to report position info.
+            // no live input at finish time, so the error carries
+            // the label anchored at EMPTY
             // --------------------------------------------------
             DecodeIterError::Malformed(label_to_context_error!(EMPTY, label))
         })

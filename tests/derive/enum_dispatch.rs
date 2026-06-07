@@ -4,6 +4,9 @@
 //! the recommended pattern: define each packet type with `#[derive(Klv)]` and
 //! a unique sentinel, then write a thin enum wrapper that peeks the sentinel
 //! bytes and routes to the appropriate `::extract()` call.
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use super::types::*;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
@@ -104,8 +107,9 @@ fn dispatch_by_sentinel() {
     let nav = NavPacket::default();
     let weather = WeatherPacket::default();
 
-    let mut stream: Vec<u8> = nav.encode_frame();
-    stream.extend(weather.encode_frame());
+    let mut stream: Vec<u8> = Vec::new();
+    nav.encode_frame(&mut stream);
+    weather.encode_frame(&mut stream);
 
     let mut slice = stream.as_slice();
     let mut packets: Vec<Packet> = Vec::new();
@@ -139,9 +143,10 @@ fn dispatch_nav_then_weather_then_nav() {
         },
     };
 
-    let mut stream: Vec<u8> = n1.encode_frame();
-    stream.extend(w1.encode_frame());
-    stream.extend(n2.encode_frame());
+    let mut stream: Vec<u8> = Vec::new();
+    n1.encode_frame(&mut stream);
+    w1.encode_frame(&mut stream);
+    n2.encode_frame(&mut stream);
 
     let mut slice = stream.as_slice();
     let mut packets: Vec<Packet> = Vec::new();
@@ -163,7 +168,7 @@ fn dispatch_unknown_sentinel_skips_byte() {
     // Stream: 2 garbage bytes, then a valid NavPacket
     let nav = NavPacket::default();
     let mut stream: Vec<u8> = vec![0xDE, 0xAD];
-    stream.extend(nav.encode_frame());
+    nav.encode_frame(&mut stream);
 
     let mut slice = stream.as_slice();
     let mut packets: Vec<Packet> = Vec::new();

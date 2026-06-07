@@ -9,6 +9,9 @@
 //! Exercised on required fields, `Option<U>` fields (present/absent), and
 //! alongside `default` to confirm the default-populated path is NOT re-run
 //! through latebind
+// --------------------------------------------------
+// local
+// --------------------------------------------------
 use tinyklv::Klv;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
@@ -42,8 +45,8 @@ impl Status {
             Status::Unknown => 0xFF,
         }
     }
-    fn encode(&self) -> Vec<u8> {
-        encb::u8(self.as_u8())
+    fn encode(&self, out: &mut Vec<u8>) {
+        encb::u8(self.as_u8(), out);
     }
 }
 
@@ -79,7 +82,8 @@ fn consuming_latebind_roundtrip() {
         status: Status::Active,
         backup: Some(Status::Error),
     };
-    let bytes = original.encode_frame();
+    let mut bytes = Vec::new();
+    original.encode_frame(&mut bytes);
     let mut slice = bytes.as_slice();
     let decoded = ConsumingPacket::decode_frame(&mut slice).expect("decode_frame");
     assert_eq!(original, decoded);
@@ -92,7 +96,8 @@ fn consuming_latebind_optional_absent() {
         status: Status::Idle,
         backup: None,
     };
-    let bytes = original.encode_frame();
+    let mut bytes = Vec::new();
+    original.encode_frame(&mut bytes);
     let mut slice = bytes.as_slice();
     let decoded = ConsumingPacket::decode_frame(&mut slice).expect("decode_frame");
     assert_eq!(original, decoded);
@@ -116,10 +121,9 @@ fn dec_xy_z0(input: &mut &[u8]) -> tinyklv::Result<Coordinate> {
     Ok(Coordinate { x, y, z: 0.0 })
 }
 
-fn enc_xyz(c: &Coordinate) -> Vec<u8> {
-    let mut out = encb::be_f32(c.x);
-    out.extend(encb::be_f32(c.y));
-    out
+fn enc_xyz(c: &Coordinate, out: &mut Vec<u8>) {
+    encb::be_f32(c.x, out);
+    encb::be_f32(c.y, out);
 }
 
 fn apply_global_z(c: &mut Coordinate) {
@@ -165,7 +169,8 @@ fn mutating_latebind_injects_z() {
             z: 0.0,
         }),
     };
-    let bytes = data.encode_frame();
+    let mut bytes = Vec::new();
+    data.encode_frame(&mut bytes);
     let mut slice = bytes.as_slice();
     let decoded = MutatingPacket::decode_frame(&mut slice).expect("decode_frame");
     assert_eq!(decoded.pos.x, 1.0);
@@ -188,7 +193,8 @@ fn mutating_latebind_optional_absent() {
         },
         maybe_pos: None,
     };
-    let bytes = data.encode_frame();
+    let mut bytes = Vec::new();
+    data.encode_frame(&mut bytes);
     let mut slice = bytes.as_slice();
     let decoded = MutatingPacket::decode_frame(&mut slice).expect("decode_frame");
     assert!(decoded.maybe_pos.is_none());

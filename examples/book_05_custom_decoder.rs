@@ -1,6 +1,12 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/05-custom-decoder.md` for full example
+//! Book tutorial 05 - custom field decoder function
+//! See `book/tutorial/05-custom-decoder.md` for the full narrative
+//!
+//! Shows how to supply a hand-written free function as the `dec = ...` value
+//! for a single field. The `decode_celsius` function reads a big-endian `u16`
+//! of centidegrees and scales it to a `Celsius(f32)` newtype - the rest of the
+//! fields still resolve their decoders from the container defaults
 use tinyklv::prelude::*;            // Klv proc-macro, traits
 use tinyklv::dec::binary as decb;   // binary decoders
 
@@ -24,13 +30,14 @@ fn decode_celsius(input: &mut &[u8]) -> tinyklv::Result<Celsius> {
     default(typ = u32, dec = decb::be_u32),
     allow_unimplemented_encode,
 )]
+/// Heartbeat with a custom `Celsius` decoder replacing the raw centidegree field
 struct Heartbeat {
-    #[klv(key = 0x01)]                          sequence:    u8,
-    #[klv(key = 0x02, dec = decode_celsius)]    temperature: Celsius,
-    #[klv(key = 0x03)]                          battery_pct: u8,
-    #[klv(key = 0x04)]                          rssi_dbm:    u8,
-    #[klv(key = 0x05)]                          uptime_s:    u32,
-    #[klv(key = 0x06)]                          mode_flags:  u8,
+    #[klv(key = 0x01)]                          sequence:    u8,      // monotonic frame counter
+    #[klv(key = 0x02, dec = decode_celsius)]    temperature: Celsius, // decoded via custom fn
+    #[klv(key = 0x03)]                          battery_pct: u8,      // battery charge 0..=100 %
+    #[klv(key = 0x04)]                          rssi_dbm:    u8,      // receive signal strength
+    #[klv(key = 0x05)]                          uptime_s:    u32,     // seconds since boot
+    #[klv(key = 0x06)]                          mode_flags:  u8,      // bitmask of active flags
 }
 
 fn main() {

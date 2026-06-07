@@ -1,16 +1,13 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Book tutorial 15b - implementing a custom `Consume` extension on `Decoder`
+//! Book tutorial 15 - implementing a custom `Consume` extension on `Decoder`
+//! See `book/tutorial/15b-consume-impl.md` for the full narrative
 //!
 //! Shows how to add a `consume` method to `Decoder` that lazily pulls byte
 //! chunks from any iterator, feeding each chunk and yielding decoded packets
 //! on demand. `ConsumeIter` drives the `Decoder` from an arbitrary chunk
 //! source and returns decoded values one at a time without buffering them all
 //! upfront
-//!
-//! See `book/tutorial/15b-consume-impl.md` for the full narrative.
-//!
-//! Author: aav
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -22,12 +19,14 @@ use tinyklv::enc::binary as encb;   // binary encoders
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Heartbeat decoded lazily by the custom `ConsumeIter` extension
 struct Heartbeat {
     #[klv(
         key = 0x01,
         dec = decb::u8,
         enc = *encb::u8,
     )]
+    /// Monotonic frame counter
     sequence: u8,
 
     #[klv(
@@ -35,6 +34,7 @@ struct Heartbeat {
         dec = decb::be_u16,
         enc = *encb::be_u16,
     )]
+    /// Temperature in 0.01 C units (big-endian u16)
     temperature_centideg: u16,
 
     #[klv(
@@ -42,10 +42,15 @@ struct Heartbeat {
         dec = decb::be_u32,
         enc = *encb::be_u32,
     )]
+    /// Seconds since boot (big-endian u32)
     uptime_s: u32,
 }
 
-/// A consuming iterator that decodes values as they are encountered
+/// Lazy iterator adapter that feeds byte chunks from `I` into a `Decoder` and
+/// yields decoded packets one at a time without buffering them all upfront
+/// Each call to `next` drains any already-complete packets first, then pulls
+/// from the chunk iterator until a new packet becomes available or the source
+/// is exhausted
 pub struct ConsumeIter<'a, P, S, I, B>
 where
     I: Iterator<Item = B>,
@@ -114,9 +119,10 @@ fn main() {
         Heartbeat { sequence: 2, temperature_centideg: 2310, uptime_s: 20 },
         Heartbeat { sequence: 3, temperature_centideg: 2340, uptime_s: 30 },
     ];
-    let buf: Vec<u8> = want.iter()
-        .flat_map(tinyklv::EncodeFrame::encode_frame)
-        .collect();
+    let mut buf: Vec<u8> = Vec::new();
+    for hb in &want {
+        hb.encode_frame(&mut buf);
+    }
 
     let mut dec = Heartbeat::decoder();
     let got: Vec<Heartbeat> = dec.consume(buf.chunks(3)).collect();

@@ -7,7 +7,7 @@
 // --------------------------------------------------
 use super::{Manual, put};
 use crate::suite::Codec;
-use crate::suite::records::{GpsCoord, Compound, Reading};
+use crate::suite::records::{Compound, GpsCoord, Reading};
 
 mod key {
     /// Key for field `id` (`u32`)

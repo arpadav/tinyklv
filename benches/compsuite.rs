@@ -24,7 +24,7 @@ mod suite;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use suite::records::{Rich, Compound, Simple};
+use suite::records::{Compound, Rich, Simple};
 
 // --------------------------------------------------
 // external

@@ -170,7 +170,8 @@ fn streaming_byte_at_a_time_sentinel_framed() {
         c: 0x56789ABC,
         d: Some(42),
     };
-    let frame: Vec<u8> = want.encode_frame();
+    let mut frame: Vec<u8> = Vec::new();
+    want.encode_frame(&mut frame);
 
     let mut dec = Triple::decoder();
     let mut got: Option<Triple> = None;
@@ -239,7 +240,8 @@ fn decoder_resume_mid_value() {
         c: 0xDDEEFF11,
         d: None,
     };
-    let frame = want.encode_frame();
+    let mut frame = Vec::new();
+    want.encode_frame(&mut frame);
     let split = frame.len() / 2;
     let mut dec = Triple::decoder();
     dec.feed(&frame[..split]);
@@ -262,7 +264,8 @@ fn decoder_resume_after_key_byte() {
         c: 3,
         d: None,
     };
-    let frame = want.encode_frame();
+    let mut frame = Vec::new();
+    want.encode_frame(&mut frame);
     let split = 3 + 1 + 3 + 1; // sentinel + len + a_triple + one more byte
     let mut dec = Triple::decoder();
     dec.feed(&frame[..split]);
@@ -285,7 +288,8 @@ fn decoder_resume_with_optional() {
         c: 0x56789ABC,
         d: Some(42),
     };
-    let frame = want.encode_frame();
+    let mut frame = Vec::new();
+    want.encode_frame(&mut frame);
     let mut dec = Triple::decoder();
     let mut got = Vec::new();
     for chunk in frame.chunks(4) {

@@ -8,7 +8,7 @@
 // --------------------------------------------------
 use super::{Prost, generated};
 use crate::suite::Codec;
-use crate::suite::records::{GpsCoord, Compound, Reading};
+use crate::suite::records::{Compound, GpsCoord, Reading};
 
 // --------------------------------------------------
 // external

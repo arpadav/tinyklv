@@ -12,10 +12,10 @@ byte-stream data to be generated and parsed on the fly.
 ## Who this is for
 
 Anyone decoding or emitting binary framed data in Rust. Some examples may
-include telemetry parsers, video metadata tools, embedded protocol handlers,]
-test harnesses for custom binary formats. 
+include telemetry parsers, video metadata tools, embedded protocol handlers,
+and test harnesses for custom binary formats. 
 
-Prior exposure to `winnow` helps but is not required, but is highly encouranged. 
+Prior exposure to `winnow` helps but is not required. 
 This book introduces parser-combinator concepts where they matter.
 
 ## Quick start

@@ -1,19 +1,19 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 02 - non-`u8` key types.
+//! Example 02 - non-`u8` key types
 //!
 //! The key codec is configured once at the container level and every field
 //! key is interpreted through it. Three mirrored structs carry the same two
 //! logical fields but are keyed with `u8`, big-endian `u16`, and
 //! little-endian `u16` respectively - demonstrating that the layout of
-//! the tag is a property of the codec pair, not the field.
+//! the tag is a property of the codec pair, not the field
 //!
 //! Showcases:
 //! * `key(dec = ..., enc = ...)` with different integer widths
 //! * Typed key literals like `0x0001_u16` on the field attribute
 //! * Endianness selection (`be_u16` vs `le_u16`) at the container level
 //!
-//! See also: book Tutorial 02.
+//! See also: book Tutorial 02
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -56,6 +56,7 @@ struct SoilSensorBeU16Key {
         dec = decb::u8,
         enc = *encb::u8,
     )]
+    /// Node identifier on the mesh
     node_id: u8,
 
     #[klv(
@@ -63,6 +64,7 @@ struct SoilSensorBeU16Key {
         dec = decb::be_u32,
         enc = *encb::be_u32,
     )]
+    /// Moisture in parts-per-billion
     moisture_ppb: u32,
 }
 
@@ -79,6 +81,7 @@ struct SoilSensorLeU16Key {
         dec = decb::u8,
         enc = *encb::u8,
     )]
+    /// Node identifier on the mesh
     node_id: u8,
 
     #[klv(
@@ -86,6 +89,7 @@ struct SoilSensorLeU16Key {
         dec = decb::be_u32,
         enc = *encb::be_u32,
     )]
+    /// Moisture in parts-per-billion
     moisture_ppb: u32,
 }
 
@@ -98,9 +102,9 @@ fn main() {
     let b = SoilSensorBeU16Key { node_id, moisture_ppb };
     let c = SoilSensorLeU16Key { node_id, moisture_ppb };
 
-    let enc_a = a.encode_value();
-    let enc_b = b.encode_value();
-    let enc_c = c.encode_value();
+    let mut enc_a = Vec::new(); a.encode_value(&mut enc_a);
+    let mut enc_b = Vec::new(); b.encode_value(&mut enc_b);
+    let mut enc_c = Vec::new(); c.encode_value(&mut enc_c);
 
     // decode - each uses its own container key codec
     let dec_a = SoilSensorU8Key::decode_value(

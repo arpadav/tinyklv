@@ -1,25 +1,26 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 14 - custom `BreakCondition` via a hand-written `DecodeValue`.
+//! Example 14 - custom loop control via a hand-written `DecodeValue`
 //!
-//! The derive-generated decode loop always uses the default `BreakCondition`
-//! (always-proceed). When a decoder needs to do something non-standard for
-//! certain keys - silently skip a reserved/deprecated tag, stop on a
-//! terminator key, or abort on tamper detection - the canonical pattern is
-//! to drop the derive on that side and write a manual `DecodeValue` impl
-//! that embeds the match directly in the loop. The encode side can still
-//! use `#[derive(Klv)]` on a mirror type.
+//! Most decoders that need non-standard loop behaviour - silently skip a
+//! reserved/deprecated tag, stop on a terminator key, or abort on tamper
+//! detection - should reach for the `#[klv(break_on = ..)]` container
+//! attribute (see `book_14_break_condition.rs`). This example shows the
+//! lower-level escape hatch for cases the attribute does not cover: drop the
+//! derive on the decode side and write a manual `DecodeValue` impl that embeds
+//! the loop-control match directly. The encode side can still use
+//! `#[derive(Klv)]` on a mirror type
 //!
 //! This example ships with a `SensorFrame` encoder (derived) and a
 //! `SensorReading` decoder (manual) that silently skips the reserved key
-//! `0xFE` so the loop can continue and find the real fields behind it.
+//! `0xFE` so the loop can continue and find the real fields behind it
 //!
 //! Showcases:
 //! * Hand-written `DecodeValue` impl living next to a derived encoder
 //! * `Skip` semantics: consume `len` bytes and continue the loop
 //! * Junk prefix bytes before the fields to stress the skip path
 //!
-//! See also: book Tutorial 14.
+//! See also: book Tutorial 14
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -153,7 +154,8 @@ fn main() {
         temperature_centideg: 9_999,
         co2_ppm:                800,
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let via_derive = SensorReading::decode_value(
         &mut encoded.as_slice(),
     ).unwrap();

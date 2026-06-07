@@ -32,7 +32,7 @@ use std::{
     stream = &[u8],
     sentinel = b"\x47\x48",
     key(dec = decb::u8, enc = encb::u8),
-    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)),
     default(typ = u32, dec = decb::be_u32, enc = *encb::be_u32),
     trait_fallback,
 )]
@@ -40,37 +40,42 @@ pub(crate) struct Rich {
     #[klv(key = 0x01)]
     pub(crate) id: u32,
 
-    #[klv(key = 0x02)]
+    #[klv(key = 0x02, size(exact = 20))]
     pub(crate) coord: GpsCoord,
 
-    #[klv(key = 0x03)]
+    #[klv(key = 0x03, size(exact = 8))]
     pub(crate) timestamp: DateTime<Utc>,
 
-    #[klv(key = 0x04)]
+    #[klv(key = 0x04, size(exact = 8))]
     pub(crate) elapsed: Duration,
 
-    #[klv(key = 0x05)]
+    #[klv(key = 0x05, size(exact = 4))]
     pub(crate) addr: Ipv4Addr,
 
-    #[klv(key = 0x06)]
+    #[klv(key = 0x06, size(exact = 16))]
     pub(crate) addr6: Ipv6Addr,
 
-    #[klv(key = 0x07)]
+    #[klv(key = 0x07, size(exact = 4))]
     pub(crate) date: NaiveDate,
 
-    #[klv(key = 0x08)]
+    #[klv(key = 0x08, size(exact = 4))]
     pub(crate) time: NaiveTime,
 
-    #[klv(key = 0x09)]
+    #[klv(key = 0x09, size(exact = 4))]
     pub(crate) symbol: char,
 
-    #[klv(key = 0x0A)]
+    #[klv(key = 0x0A, size(exact = 4))]
     pub(crate) seq: NonZeroU32,
 
-    #[klv(key = 0x0B)]
+    #[klv(key = 0x0B, size(exact = 1))]
     pub(crate) flag: bool,
 
-    #[klv(key = 0x0C, varlen = true, dec = decs::to_string_utf8, enc = &encs::from_string_utf8)]
+    #[klv(
+        key = 0x0C,
+        dec = decs::to_string_utf8,
+        enc = &encs::from_string_utf8,
+        size(var, hint = 16),
+    )]
     pub(crate) label: String,
 }
 

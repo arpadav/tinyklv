@@ -1,20 +1,28 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/12-default-fallback.md` for full example
+//! Book tutorial 11b - `trait_fallback`: auto-resolve codecs from type impls
+//! See `book/tutorial/11-default-fallback.md` for the full narrative
+//!
+//! When a type already implements `DecodeValue` and `EncodeValue`, the
+//! `trait_fallback` container attribute lets `#[klv(key = ...)]` fields omit
+//! `dec` and `enc` entirely - the derive resolves them from the trait impls
+//! automatically. `Option<T>` wrapping is also supported: a missing key leaves
+//! the field as `None`
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
 
 #[derive(Debug, PartialEq)]
+/// Two-byte device identifier whose codec comes from its own trait impls
 struct DeviceId(u16);
 impl DecodeValue<&[u8]> for DeviceId {
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
         Ok(DeviceId(decb::be_u16(input)?))
     }
 }
-impl EncodeValue<Vec<u8>> for DeviceId {
-    fn encode_value(&self) -> Vec<u8> {
-        encb::be_u16(self.0)
+impl EncodeValue for DeviceId {
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        encb::be_u16(self.0, out);
     }
 }
 
@@ -41,7 +49,8 @@ fn main() {
         id:     DeviceId(0xBEEF),
         opt_id: Some(DeviceId(42)),
     };
-    let full_bytes = full.encode_value();
+    let mut full_bytes = Vec::new();
+    full.encode_value(&mut full_bytes);
     let full_decoded = Reading::decode_value(
         &mut full_bytes.as_slice(),
     ).unwrap();

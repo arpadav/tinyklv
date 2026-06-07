@@ -6,9 +6,9 @@
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
-mod simple;
-mod rich;
 mod compound;
+mod rich;
+mod simple;
 
 // --------------------------------------------------
 // local
@@ -18,6 +18,7 @@ use crate::suite::Approach;
 /// The serde_klv approach.
 pub(crate) struct SerdeKlv;
 
+/// [`SerdeKlv`] implementation of [`Approach`]
 impl Approach for SerdeKlv {
     const NAME: &'static str = "serde_klv";
 }

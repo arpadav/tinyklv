@@ -145,10 +145,10 @@ This example shows both levels:
 - `Heartbeat::decoder()` on a framed stream split into tiny chunks
 - `Heartbeat::decode_partial()` / `resume_partial()` on one split body
 
-Run this example: `cargo run --example book_15_a_streaming_decode`
+Run this example: `cargo run --example book_15_streaming_decode`
 
 ```rust
-{{#include ../../../../examples/book_15_a_streaming_decode.rs}}
+{{#include ../../../../examples/book_15_streaming_decode.rs}}
 ```
 
 ## Overview

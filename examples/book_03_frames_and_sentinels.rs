@@ -1,6 +1,12 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/03-frames-and-sentinels.md` for full example
+//! Book tutorial 03 - frames, sentinels, and `decode_frame`
+//! See `book/tutorial/03-frames-and-sentinels.md` for the full narrative
+//!
+//! Extends the getting-started example with a sentinel (`b"HEARTBEAT"`) so the
+//! decode call becomes `decode_frame` instead of `decode_value`. The hand-built
+//! stream includes a four-byte junk preamble before the sentinel; `decode_frame`
+//! seeks past it automatically before reading the length and the field triples
 use tinyklv::prelude::*;            // Klv proc-macro, DecodeFrame, and more
 use tinyklv::dec::binary as decb;   // binary decoders
 
@@ -12,17 +18,20 @@ use tinyklv::dec::binary as decb;   // binary decoders
     len(dec = decb::u8_as_usize),
     allow_unimplemented_encode,
 )]
+/// Sentinel-framed heartbeat used to introduce `decode_frame` and sentinel seeking
 struct Heartbeat {
     #[klv(
         key = 0x01,
         dec = decb::u8,
     )]
+    /// Monotonic frame counter
     sequence: u8,
 
     #[klv(
         key = 0x02,
         dec = decb::be_u16,
     )]
+    /// Temperature in 0.01 C units (big-endian u16)
     temperature_centideg: u16,
 }
 

@@ -1,6 +1,13 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/06-decode-value-impl.md` for full example
+//! Book tutorial 06 - `DecodeValue` trait impl on a custom type
+//! See `book/tutorial/06-decode-value-impl.md` for the full narrative
+//!
+//! Moves the decoder logic from a free function into a `DecodeValue<&[u8]>`
+//! trait impl on `Celsius`. Because the impl exists, the type can be listed
+//! in a container `default(typ = Celsius, dec = Celsius::decode_value)` entry
+//! and all fields of that type resolve their decoder automatically - no
+//! per-field `dec = ...` needed
 use tinyklv::prelude::*;            // Klv proc-macro, traits
 use tinyklv::dec::binary as decb;   // binary decoders
 
@@ -27,13 +34,14 @@ impl DecodeValue<&[u8]> for Celsius {
     default(typ = Celsius, dec = Celsius::decode_value),
     allow_unimplemented_encode,
 )]
+/// Heartbeat whose `Celsius` field is decoded via the type's own `DecodeValue` impl
 struct Heartbeat {
-    #[klv(key = 0x01)]  sequence:    u8,
-    #[klv(key = 0x02)]  temperature: Celsius,
-    #[klv(key = 0x03)]  battery_pct: u8,
-    #[klv(key = 0x04)]  rssi_dbm:    u8,
-    #[klv(key = 0x05)]  uptime_s:    u32,
-    #[klv(key = 0x06)]  mode_flags:  u8,
+    #[klv(key = 0x01)]  sequence:    u8,      // monotonic frame counter
+    #[klv(key = 0x02)]  temperature: Celsius, // decoded via Celsius::decode_value
+    #[klv(key = 0x03)]  battery_pct: u8,      // battery charge 0..=100 %
+    #[klv(key = 0x04)]  rssi_dbm:    u8,      // receive signal strength
+    #[klv(key = 0x05)]  uptime_s:    u32,     // seconds since boot
+    #[klv(key = 0x06)]  mode_flags:  u8,      // bitmask of active flags
 }
 
 fn main() {

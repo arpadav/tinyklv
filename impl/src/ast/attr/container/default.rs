@@ -9,6 +9,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use crate::ast::attr::size::SizeSpec;
 use crate::ast::symbol;
 use crate::ast::types::{SiguledXcoder, TypeType, XcoderType};
 
@@ -23,11 +24,11 @@ use tk_syn_macros::handle_unique_nested_meta_values;
 ///
 /// # Syntax
 ///
-/// `default(typ = <type>, enc = <path>, dec = <path>, varlen = <bool>)`
+/// `default(typ = <type>, enc = <path>, dec = <path>, size(var | exact = N | hint = N))`
 ///
 /// Both `enc` and `dec` are optional, however at least one must be provided
 ///
-/// `varlen` defaults to `false`
+/// `size` is optional; when omitted, matched fields read without a `len` argument
 pub(crate) struct DefaultXcoder {
     /// The type associated with the encoder / decoder
     pub typ: Option<TypeType>,
@@ -38,15 +39,15 @@ pub(crate) struct DefaultXcoder {
     /// The decoder
     pub dec: Option<XcoderType>,
 
-    /// Whether the decoder requires a variable length input
-    pub var: Option<syn::LitBool>,
+    /// The value size shape propagated to matched fields; see [`SizeSpec`]
+    pub size: Option<SizeSpec>,
 
     /// syn errors
     pub errors: Option<syn::Error>,
 }
 /// [`DefaultXcoder`] implementation of [`From`] for [`syn::MetaList`]
 ///
-/// Parses the nested meta arguments from a `default(typ = .., enc = .., dec = .., varlen = ..)`
+/// Parses the nested meta arguments from a `default(typ = .., enc = .., dec = .., size(..))`
 /// attribute list into a [`DefaultXcoder`]
 ///
 /// Validation errors (missing type, missing both enc and dec, duplicate fields) are
@@ -60,7 +61,7 @@ impl From<&syn::MetaList> for DefaultXcoder {
         let mut typ: Option<TypeType> = None;
         let mut enc: Option<SiguledXcoder> = None;
         let mut dec: Option<XcoderType> = None;
-        let mut var: Option<syn::LitBool> = None;
+        let mut size: Option<SizeSpec> = None;
         // --------------------------------------------------
         // parse nested meta
         // --------------------------------------------------
@@ -75,7 +76,7 @@ impl From<&syn::MetaList> for DefaultXcoder {
                 enc: symbol::pnm_parse_maybestr_encoder => err!(DuplicateEncoderInDefault(maybe_typ)),
                 dec: symbol::pnm_parse_maybestr_decoder => err!(DuplicateDecoderInDefault(maybe_typ)),
                 typ: symbol::pnm_parse_maybestr_type    => err!(DuplicateTypeInDefault),
-                var: symbol::parse_pnm_variable_length  => err!(DuplicateVariableLengthInDefault),
+                size: symbol::parse_pnm_size            => err!(DuplicateSizeInDefault),
             }
         }).err();
         // --------------------------------------------------
@@ -105,7 +106,7 @@ impl From<&syn::MetaList> for DefaultXcoder {
             typ,
             enc,
             dec,
-            var,
+            size,
             errors,
         }
     }

@@ -1,19 +1,19 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 04 - optional fields.
+//! Example 04 - optional fields
 //!
 //! `Option<T>` on a struct field makes the corresponding KLV triple optional
 //! in the stream. On encode, `None` emits nothing; on decode, missing keys
 //! leave the field as `None` without raising an error. This lets a single
 //! struct describe heterogeneous telemetry from units with different sensor
-//! sets.
+//! sets
 //!
 //! Showcases:
 //! * `Option<T>` field wrapping around the same codecs as `T`
 //! * Frame shrinkage when optional fields are absent
 //! * Decode tolerating missing keys
 //!
-//! See also: book Tutorial 04.
+//! See also: book Tutorial 04
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -80,7 +80,8 @@ fn main() {
     };
 
     // encode + decode - every optional appears in the frame
-    let enc_full = full.encode_frame();
+    let mut enc_full = Vec::new();
+    full.encode_frame(&mut enc_full);
     let dec_full = DroneTelemetry::decode_frame(
         &mut enc_full.as_slice(),
     ).unwrap();
@@ -96,7 +97,8 @@ fn main() {
     };
 
     // encode - absent fields emit zero bytes, so the partial frame is shorter
-    let enc_partial = partial.encode_frame();
+    let mut enc_partial = Vec::new();
+    partial.encode_frame(&mut enc_partial);
     assert!(
         enc_partial.len() < enc_full.len(),
         "absent fields must shrink the frame",

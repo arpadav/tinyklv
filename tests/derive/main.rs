@@ -28,6 +28,7 @@ mod basic_fixed;
 mod basic_variable;
 mod ber_keyed;
 mod break_condition;
+mod break_on_attr;
 mod custom_decoders;
 mod decode_partial_error_kinds;
 mod decode_partial_resume;

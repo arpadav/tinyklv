@@ -1,13 +1,13 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Example 07 - `SeekSentinel` scanning past leading junk.
+//! Example 07 - `SeekSentinel` scanning past leading junk
 //!
 //! Real network streams arrive wrapped in UDP/IP headers, partial payloads
 //! from earlier frames, and general noise. `decode_frame` handles this by
 //! calling `SeekSentinel::seek_sentinel` internally, scanning forward until
 //! it finds the magic bytes, then reading the length and value region. This
 //! example plants obvious garbage before a valid frame and asserts that the
-//! decoder still recovers the struct unchanged.
+//! decoder still recovers the struct unchanged
 //!
 //! Showcases:
 //! * `decode_frame` skipping arbitrary prefix bytes
@@ -51,7 +51,8 @@ fn main() {
     };
 
     // encode - the clean KLV frame, sentinel-prefixed
-    let clean_frame = original.encode_frame();
+    let mut clean_frame = Vec::new();
+    original.encode_frame(&mut clean_frame);
 
     // prepend noise + zeros the seeker must skip
     let mut noisy_buffer: Vec<u8> = Vec::new();

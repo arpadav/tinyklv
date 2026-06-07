@@ -2,7 +2,7 @@
 //!
 //! Tests the `dec::string` / `enc::string` ASCII codec families wired up
 //! through the derive macro on a realistic `AsciiTelemetry` struct that
-//! mixes a fixed binary `u16` field with `varlen = true` decimal-integer,
+//! mixes a fixed binary `u16` field with `size(var)` decimal-integer,
 //! signed-integer, float, hex, and alpha-run fields.  Covers a full
 //! roundtrip, hand-built packet decoding, and rejection of garbage numerics
 //!
@@ -29,19 +29,19 @@ struct AsciiTelemetry {
     #[klv(key = 0x01, dec = decb::be_u16, enc = *encb::be_u16)]
     id: u16,
 
-    #[klv(key = 0x02, varlen = true, dec = deca::u32, enc = *enca::u32)]
+    #[klv(key = 0x02, size(var), dec = deca::u32, enc = *enca::u32)]
     sequence: u32,
 
-    #[klv(key = 0x03, varlen = true, dec = deca::i32, enc = *enca::i32)]
+    #[klv(key = 0x03, size(var), dec = deca::i32, enc = *enca::i32)]
     offset: i32,
 
-    #[klv(key = 0x04, varlen = true, dec = deca::f64, enc = *enca::f64)]
+    #[klv(key = 0x04, size(var), dec = deca::f64, enc = *enca::f64)]
     altitude: f64,
 
-    #[klv(key = 0x05, varlen = true, dec = deca::hex_u16, enc = *enca::hex_u16)]
+    #[klv(key = 0x05, size(var), dec = deca::hex_u16, enc = *enca::hex_u16)]
     flags: u16,
 
-    #[klv(key = 0x06, varlen = true, dec = deca::alpha, enc = enca::from_string_ascii)]
+    #[klv(key = 0x06, size(var), dec = deca::alpha, enc = enca::from_string_ascii)]
     callsign: String,
 }
 
@@ -56,7 +56,8 @@ fn ascii_telemetry_roundtrip() {
         flags: 0xABCD,
         callsign: String::from("FALCON"),
     };
-    let encoded = original.encode_value();
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
     let decoded = AsciiTelemetry::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 }

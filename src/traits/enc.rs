@@ -1,14 +1,10 @@
-//! Encode traits for KLV field values, key-length-value framing, and output types
+//! Encode traits for KLV field values and key-length-value framing
 //!
 //! Core encode-side traits:
-//! * [`EncodeValue`] - encodes the value portion `V` of a KLV triple to owned output `O`
-//! * [`IntoKlv`] - prepends key and length bytes to an already-encoded value to form a
-//!   complete KLV triple
-//! * [`EncodeFrame`] - combines both steps: produces a full key-length-value byte sequence
-//! * [`EncodedOutput`] (re-exported from parent) - marker for owned byte-sequence types
-//!   that can serve as the output of an encoding operation
+//! * [`EncodeValue`] - appends the encoded value portion of a KLV triple to a caller-owned buffer
+//! * [`EncodeFrame`] - appends a full key-length-value byte sequence to a caller-owned buffer
 //!
-//! Decode counterparts live in [`crate::traits::dec`].
+//! Decode counterparts live in [`crate::traits::dec`]
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -16,11 +12,13 @@
 // --------------------------------------------------
 pub use super::*;
 
-/// Encodes the value portion of a KLV field to owned stream-type `O`.
+/// Appends the encoded value portion of a KLV field to a caller-owned [`Vec<u8>`]
 ///
 /// Decode counterpart: [`DecodeValue`](crate::traits::DecodeValue)
 ///
-/// Trait for encoding ***data only*** to owned stream-type `O`, where `O` is an owned stream-type of [`winnow::stream::Stream`], with elements `T`.
+/// Trait for encoding ***data only*** by appending its bytes to an output buffer. Writing
+/// into a caller-owned buffer (rather than returning a fresh allocation) lets one buffer be
+/// reused across many records and lets a field's value be written without a per-field heap alloc
 ///
 /// ```text
 ///                                  This is what is encoded
@@ -31,12 +29,11 @@ pub use super::*;
 ///
 /// ***This trait IS automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv) trait, in which every field has an associated encoder for it's type. Otherwise, this trait CAN be implemented manually.***
 ///
-/// Common stream types include `&[u8]` and `&str`, therefore the return type of encoding is likely an owned value like [`Vec<u8>`] or [`String`].
-///
-/// For custom encoding functions, ***no need to use this trait***. Instead, please ensure the functions signature matches the following:
+/// For custom encoding functions, ***no need to use this trait***. Instead, ensure the function
+/// appends the value bytes to the buffer with a signature matching the following:
 ///
 /// ```rust ignore
-/// fn encoder_fn_name(..) -> O;
+/// fn encoder_fn_name(input: &T, out: &mut Vec<u8>);
 /// ```
 ///
 /// # Example
@@ -48,17 +45,17 @@ pub use super::*;
 ///
 /// struct InnerValue {}
 ///
-/// fn ex01_encoder(input: &InnerValue) -> Vec<u8> {
-///     return vec![0x65, 0x66, 0x67, 0x68];
+/// fn ex01_encoder(input: &InnerValue, out: &mut Vec<u8>) {
+///     out.extend_from_slice(&[0x65, 0x66, 0x67, 0x68]);
 /// }
 ///
-/// fn ex02_encoder(input: &InnerValue) -> Vec<u8> {
-///     return String::from("Y2K").into_bytes();
+/// fn ex02_encoder(input: &InnerValue, out: &mut Vec<u8>) {
+///     out.extend_from_slice(&String::from("Y2K").into_bytes());
 /// }
 ///
-/// impl EncodeValue<Vec<u8>> for InnerValue {
-///     fn encode_value(&self) -> Vec<u8> {
-///         return String::from("KLV").to_lowercase().into_bytes();
+/// impl EncodeValue for InnerValue {
+///     fn encode_value(&self, out: &mut Vec<u8>) {
+///         out.extend_from_slice(&String::from("KLV").to_lowercase().into_bytes());
 ///     }
 /// }
 ///
@@ -81,11 +78,12 @@ pub use super::*;
 ///     example_three: InnerValue,
 /// }
 ///
-/// let my_struct_value_encoded = MyStruct {
+/// let mut my_struct_value_encoded = Vec::new();
+/// MyStruct {
 ///     example_one: InnerValue {},
 ///     example_two: InnerValue {},
 ///     example_three: InnerValue {},
-/// }.encode_value();
+/// }.encode_value(&mut my_struct_value_encoded);
 ///
 /// assert_eq!(my_struct_value_encoded, vec![
 ///     // example 1
@@ -105,11 +103,12 @@ pub use super::*;
 ///     0x6B, 0x6C, 0x76,   // example 3 value
 /// ]);
 ///
-/// let my_struct_encoded = MyStruct {
+/// let mut my_struct_encoded = Vec::new();
+/// MyStruct {
 ///     example_one: InnerValue {},
 ///     example_two: InnerValue {},
 ///     example_three: InnerValue {},
-/// }.encode_frame(); // See: `tinyklv::prelude::EncodeFrame` -> This prepends the key and length
+/// }.encode_frame(&mut my_struct_encoded); // See: `tinyklv::prelude::EncodeFrame` -> This prepends the key and length
 ///
 /// assert_eq!(my_struct_encoded, vec![
 ///     0x00,               // sentinel
@@ -132,104 +131,47 @@ pub use super::*;
 ///     0x6B, 0x6C, 0x76,   // example 3 value
 /// ]);
 /// ```
-pub trait EncodeValue<O: EncodedOutput> {
-    /// Encodes the value portion of this KLV field into the owned output type `O`
+pub trait EncodeValue {
+    /// Appends the encoded value portion of this KLV field to `out`
     ///
-    /// Does **not** prepend the key or length bytes. Use [`IntoKlv::into_klv`]
-    /// on the result to produce a complete KLV triple, or use [`EncodeFrame`]
-    /// to combine both steps.
-    #[must_use = "encoded value is discarded; call `.into_klv(...)` or assign the result"]
-    fn encode_value(&self) -> O;
-}
-
-/// Trait for prepending encoded data with its key and length.
-///
-/// ```text
-///     This is what is prepended
-///  vvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-/// [ ... key ... | ... length ... | ..... value (self) ..... ]
-///  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-/// ```
-///
-/// ***This trait is automatically implemented for all potential encoded-like datatypes. There is no need to implement it manually.***
-///
-/// # Example
-///
-/// ```rust
-/// use tinyklv::prelude::*;
-/// use tinyklv::traits::EncodeValue;
-///
-/// struct MyStruct {}
-///
-/// impl EncodeValue<Vec<u8>> for MyStruct {
-///     fn encode_value(&self) -> Vec<u8> {
-///         return "a value".as_bytes().to_vec();
-///     }
-/// }
-///
-/// let my_struct = MyStruct {};
-///
-/// let key_len_val_of_my_struct = my_struct.encode_value().into_klv(
-///     [0xFF, 0xBB],   // encoded key (must implement into iter)
-///     |x: usize|      // length encoder
-///         (x as u8).to_be_bytes().to_vec(),
-/// );
-///
-/// assert_eq!(key_len_val_of_my_struct, [
-///     0xFF, 0xBB,                     // key
-///     0x07,                           // length
-///     97, 32, 118, 97, 108, 117, 101, // value
-/// ]);
-/// ```
-///
-/// See [`EncodeValue`] for more information.
-pub trait IntoKlv<O: EncodedOutput> {
-    /// Prepends the encoded key and a length prefix to `self`, producing a complete KLV triple
+    /// Writes **only** the value bytes (no key or length prefix) to the end of the
+    /// caller-owned buffer, growing it as needed. Use [`EncodeFrame::encode_frame`]
+    /// to write a complete key-length-value triple instead
     ///
     /// # Arguments
     ///
-    /// * `encoded_key` - The already-encoded key bytes (e.g. `[0xFF, 0xBB]`); anything
-    ///   that implements `Into<O>` is accepted, including byte arrays and `Vec<u8>`
-    /// * `len_encoder` - A function that encodes a `usize` length as `O` (e.g.
-    ///   `tinyklv::codecs::binary::enc::u8_from_usize`)
-    ///
-    /// # Returns
-    ///
-    /// `O` containing `key_bytes || length_bytes || self_bytes`
-    #[must_use = "the KLV-wrapped output is discarded; assign or extend into a buffer"]
-    fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O;
+    /// * `out` - The output buffer the value bytes are appended to
+    fn encode_value(&self, out: &mut Vec<u8>);
 }
-/// [`IntoKlv`] implementation for all types O that implement [`EncodedOutput<T>`]
-impl<O: EncodedOutput> IntoKlv<O> for O {
-    #[inline(always)]
-    fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
-        encoded_key
-            .into()
-            .into_iter()
-            .chain(len_encoder(self.as_ref().len()))
-            .chain(self)
-            .collect()
-    }
-}
-/// [`IntoKlv`] implementation for all types [`Option<O>`] that implement [`EncodedOutput<T>`]
+
+/// [`EncodeValue`] for any `Vec<T>` whose element type encodes - the encode twin of
+/// [`DecodeValue for Vec<T>`](crate::traits::DecodeValue)
 ///
-/// `None` produces empty output (field omitted from encoded packet). This is
-/// typically the correct behavior for optional KLV fields.
-impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
-    #[inline(always)]
-    fn into_klv(self, encoded_key: impl Into<O>, len_encoder: fn(usize) -> O) -> O {
-        match self {
-            Some(x) => x.into_klv(encoded_key, len_encoder),
-            None => std::iter::empty::<O::Element>().collect(),
-        }
+/// Appends every element's encoded value back-to-back into `out`, with no framing between elements.
+/// Because each element is written by `T::encode_value`, this is correct **only when `T` is
+/// self-delimiting** - a fixed-width or otherwise self-terminating value that the matching
+/// `Vec<T>` decode can split back apart. A `#[derive(Klv)]` struct's `encode_value` writes its body
+/// with no outer length, so a `Vec` of derived records would not round-trip (the first element's
+/// decode would consume the whole run); give such elements a self-delimiting hand-written codec
+///
+/// Note: there is no `EncodeValue for u8` (primitives encode via the `codecs` free functions), so
+/// `Vec<u8>` does not resolve through this blanket and keeps its existing path - adding an
+/// `EncodeValue for u8` in future would silently change that
+impl<T> EncodeValue for Vec<T>
+where
+    T: EncodeValue,
+{
+    #[inline]
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        self.iter().for_each(|item| item.encode_value(out));
     }
 }
 
-/// Full KLV encode pipeline: prepends key and length to [`EncodeValue`] output.
+/// Full KLV encode pipeline: prepends key and length to [`EncodeValue`] output
 ///
 /// Decode counterpart: [`DecodeFrame`](crate::traits::DecodeFrame)
 ///
-/// Trait for encoding data to its full key-length-value representation.
+/// Trait for encoding data to its full key-length-value representation
 ///
 /// ```text
 ///                 This is what is encoded
@@ -244,9 +186,9 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 ///
 /// 1. Encode the struct/value
 ///
-/// This can be done by implementing the [`EncodeValue`] trait.
+/// This can be done by implementing the [`EncodeValue`] trait
 ///
-/// 2. Use the [`IntoKlv`] function to convert the struct/value into its key-length-value, providing the encoded key/recognition sentinel, alongside the length encoder.
+/// 2. Prepend the encoded value with its key/recognition sentinel and length to convert the struct/value into its key-length-value representation
 ///
 /// Then, youre done: now you can produce the key-length-value representation of your struct with the following snippet:
 ///
@@ -256,19 +198,23 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 ///
 /// struct MyStruct {}
 ///
-/// impl EncodeValue<Vec<u8>> for MyStruct {
-///     fn encode_value(&self) -> Vec<u8> {
-///         return "example".as_bytes().to_vec();
+/// impl EncodeValue for MyStruct {
+///     fn encode_value(&self, out: &mut Vec<u8>) {
+///         out.extend_from_slice("example".as_bytes());
 ///     }
 /// }
 ///
 /// let my_struct = MyStruct {};
 ///
-/// let key_len_val_of_my_struct = my_struct.encode_value().into_klv(
-///     [0xFF, 0xBB],   // encoded key (must implement into iter)
-///     |x: usize|      // length encoder
-///         (x as u8).to_be_bytes().to_vec(),
-/// );
+/// let key_len_val_of_my_struct = {
+///     let mut out = Vec::new();
+///     let mut body = Vec::new();
+///     my_struct.encode_value(&mut body);
+///     out.extend_from_slice(&[0xFF, 0xBB]);            // encoded key
+///     out.extend_from_slice(&(body.len() as u8).to_be_bytes()); // length encoder
+///     out.extend_from_slice(&body);
+///     out
+/// };
 ///
 /// assert_eq!(key_len_val_of_my_struct, [
 ///     0xFF, 0xBB,                         // key
@@ -285,25 +231,26 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 ///
 /// struct MyStruct {}
 ///
-/// impl EncodeValue<Vec<u8>> for MyStruct {
-///     fn encode_value(&self) -> Vec<u8> {
-///         return "example".as_bytes().to_vec();
+/// impl EncodeValue for MyStruct {
+///     fn encode_value(&self, out: &mut Vec<u8>) {
+///         out.extend_from_slice("example".as_bytes());
 ///     }
 /// }
 ///
-/// impl EncodeFrame<Vec<u8>> for MyStruct {
-///     fn encode_frame(&self) -> Vec<u8> {
-///         return self.encode_value().into_klv(
-///             [0xFF, 0xBB],   // encoded key (must implement into iter)
-///             |x: usize|      // length encoder
-///                 (x as u8).to_be_bytes().to_vec(),
-///         );
+/// impl EncodeFrame for MyStruct {
+///     fn encode_frame(&self, out: &mut Vec<u8>) {
+///         let mut body = Vec::new();
+///         self.encode_value(&mut body);
+///         out.extend_from_slice(&[0xFF, 0xBB]);            // encoded key
+///         out.extend_from_slice(&(body.len() as u8).to_be_bytes()); // length encoder
+///         out.extend_from_slice(&body);
 ///     }
 /// }
 ///
 /// let my_struct = MyStruct {};
 ///
-/// let key_len_val_of_my_struct = my_struct.encode_frame();
+/// let mut key_len_val_of_my_struct = Vec::new();
+/// my_struct.encode_frame(&mut key_len_val_of_my_struct);
 ///
 /// assert_eq!(key_len_val_of_my_struct, [
 ///     0xFF, 0xBB,                         // key
@@ -318,8 +265,8 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 /// use tinyklv::Klv;
 /// use tinyklv::prelude::*;
 ///
-/// fn string_encoder(input: &String) -> Vec<u8> {
-///     return input.as_bytes().to_vec();
+/// fn string_encoder(input: &String, out: &mut Vec<u8>) {
+///     out.extend_from_slice(input.as_bytes());
 /// }
 ///
 /// #[derive(Klv)]
@@ -337,26 +284,34 @@ impl<O: EncodedOutput> IntoKlv<O> for Option<O> {
 /// }
 ///
 /// // using `tinyklv::Klv` to encode as KLV
-/// let mystruct_klv_1 = MyStruct {
+/// let mut mystruct_klv_1 = Vec::new();
+/// MyStruct {
 ///     value: "example".into()
-/// }.encode_frame();                                   // `tinyklv::prelude::EncodeFrame` implementation
+/// }.encode_frame(&mut mystruct_klv_1);                // `tinyklv::prelude::EncodeFrame` implementation
 ///
 /// // using manual implementation to encode as KLV
-/// let mystruct_klv_2 = MyStruct {
-///     value: "example".into()
-/// }.encode_value().into_klv(
-///     [0x00],                                         // recognition sentinel (must implement into iter)
-///     tinyklv::codecs::binary::enc::u8_from_usize,    // length encoder
-/// );                                                  // this is now equivalent to the macro call
+/// let mut mystruct_klv_2 = Vec::new();
+/// {
+///     let mut body = Vec::new();
+///     MyStruct {
+///         value: "example".into()
+///     }.encode_value(&mut body);
+///     mystruct_klv_2.extend_from_slice(&[0x00]);      // recognition sentinel
+///     tinyklv::codecs::binary::enc::u8_from_usize(body.len(), &mut mystruct_klv_2); // length encoder
+///     mystruct_klv_2.extend_from_slice(&body);
+/// }                                                   // this is now equivalent to the macro call
 ///
 /// assert_eq!(mystruct_klv_1, mystruct_klv_2);
 /// ```
-pub trait EncodeFrame<O: EncodedOutput> {
-    /// Encodes `self` as a complete KLV frame: key bytes, length bytes, and value bytes concatenated
+pub trait EncodeFrame {
+    /// Appends `self` as a complete KLV frame to `out`: key bytes, then length bytes, then value bytes
     ///
-    /// Combines the steps of [`EncodeValue::encode_value`] and [`IntoKlv::into_klv`]
-    /// in a single call. The derive macro generates this implementation when both
-    /// `key` and `len` encoders are provided in the `#[klv(...)]` attribute.
-    #[must_use = "encoded frame is discarded; assign or send the result"]
-    fn encode_frame(&self) -> O;
+    /// Writes a full key-length-value triple to the end of the caller-owned buffer in
+    /// one pass. The derive macro generates this implementation when both `key` and
+    /// `len` encoders are provided in the `#[klv(...)]` attribute
+    ///
+    /// # Arguments
+    ///
+    /// * `out` - The output buffer the framed bytes are appended to
+    fn encode_frame(&self, out: &mut Vec<u8>);
 }

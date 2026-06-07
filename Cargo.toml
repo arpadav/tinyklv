@@ -3,7 +3,7 @@ name = "tinyklv"
 version = "0.1.2"
 authors = ["Arpad Voros <arpadav@gmail.com>"]
 license = "MIT"
-description = "The simplest Key-Length-Value (KLV) framework in Rust"
+description = "The fastest derive-macro Key-Length-Value (KLV) framework in Rust"
 repository = "https://github.com/arpadav/tinyklv"
 homepage = "https://arpadvoros.com/tinyklv"
 documentation = "https://docs.rs/tinyklv"
@@ -12,7 +12,7 @@ keywords = ["decode", "encode", "klv", "parsing", "tlv"]
 categories = ["development-tools", "encoding", "parsing"]
 edition = "2024"
 rust-version = "1.95"
-exclude = ["TODO.md", "book/", "examples", "tests", "benches"]
+exclude = ["book", "examples", "tests", "benches", "plans"]
 publish = true
 
 [workspace]
@@ -35,13 +35,19 @@ name = "proptest_roundtrip"
 path = "tests/proptest_roundtrip/main.rs"
 
 [dependencies]
+# --------------------------------------------------
+# external
+# --------------------------------------------------
 chrono = { version = "0.4.44", optional = true }
 memchr = "2.8.0"
 num-traits = "0.2.19"
 pastey = "0.2.3"
-tinyklv-impl = { path = "impl", version = "0.1.2" }
 tracing = { version = "0.1.44", optional = true }
 winnow = { version = "1.0.2", features = ["binary", "parser", "simd"] }
+# --------------------------------------------------
+# workspace
+# --------------------------------------------------
+tinyklv-impl = { path = "impl", version = "0.1.2" }
 
 [dev-dependencies]
 criterion = "^0.8"
@@ -80,10 +86,9 @@ harness = false
 [features]
 default = []
 ascii = ["winnow/ascii"]
-# native-type DecodeValue/EncodeValue impls (chrono/std) used by the benchmark suite
-bench = ["chrono"]
 full = ["ascii", "chrono"]
 tracing = ["dep:tracing", "tinyklv-impl/tracing"]
+bench = ["chrono"] # for benchmarking
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

@@ -12,7 +12,9 @@ use ::tinyklv::prelude::*;
 /// [`Tinyklv`] implementation of [`Codec`] for [`Compound`]
 impl Codec<Compound> for Tinyklv {
     fn encode(rec: &Compound) -> Vec<u8> {
-        rec.encode_value()
+        let mut out = Vec::new();
+        rec.encode_value(&mut out);
+        out
     }
 
     fn decode(body: &[u8]) -> Option<Compound> {
@@ -21,7 +23,9 @@ impl Codec<Compound> for Tinyklv {
     }
 
     fn encode_framed(rec: &Compound) -> Vec<u8> {
-        rec.encode_frame()
+        let mut out = Vec::new();
+        rec.encode_frame(&mut out);
+        out
     }
 
     fn decode_framed(frame: &[u8]) -> Option<Compound> {

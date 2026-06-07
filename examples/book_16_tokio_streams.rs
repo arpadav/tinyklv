@@ -1,6 +1,13 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/16-tokio-streams.md` for full example
+//! Book tutorial 16 - real-time `Decoder` feed/iter loop over a Tokio channel
+//! See `book/tutorial/16-tokio-streams.md` for the full narrative
+//!
+//! Shows how to drive the stateful `Decoder` from an async producer/consumer
+//! pair connected by a `tokio::sync::mpsc` channel. The producer splits each
+//! encoded frame in half before sending, so the consumer always receives
+//! partial frames that it must reassemble. After each `recv`, `dec.feed` adds
+//! the new bytes and `dec.iter()` drains any complete packets
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -12,12 +19,14 @@ use tinyklv::enc::binary as encb;   // binary encoders
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Sensor heartbeat streamed over an async Tokio channel in two split halves
 struct Heartbeat {
     #[klv(
         key = 0x01,
         dec = decb::u8,
         enc = *encb::u8,
     )]
+    /// Monotonic frame counter
     sequence: u8,
 
     #[klv(
@@ -25,6 +34,7 @@ struct Heartbeat {
         dec = decb::be_u16,
         enc = *encb::be_u16,
     )]
+    /// Temperature in 0.01 C units (big-endian u16)
     temperature_centideg: u16,
 
     #[klv(
@@ -32,16 +42,18 @@ struct Heartbeat {
         dec = decb::be_u32,
         enc = *encb::be_u32,
     )]
+    /// Seconds since boot (big-endian u32)
     uptime_s: u32,
 }
 
-/// Encode packets into KLV frames/packets, split each in two, return all chunks.
+/// Encode packets into KLV frames, split each in two, and return all chunks
 fn make_chunks(packets: &[Heartbeat]) -> Vec<Vec<u8>> {
     let mut chunks = Vec::new();
     // junk / zeros before the first sentinel - the decoder skips them
     chunks.push(vec![0xDE, 0xAD, 0x00, 0x00, 0xFF, 0x00]);
     for p in packets {
-        let frame = p.encode_frame();
+        let mut frame = Vec::new();
+        p.encode_frame(&mut frame);
         let (head, tail) = frame.split_at(frame.len() / 2);
         chunks.push(head.to_vec());
         chunks.push(tail.to_vec());

@@ -166,7 +166,7 @@ impl BufCursor {
             self.head = 0;
         }
         // --------------------------------------------------
-        // append
+        // append new bytes
         // --------------------------------------------------
         self.buf.extend_from_slice(bytes);
     }

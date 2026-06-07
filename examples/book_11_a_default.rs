@@ -1,6 +1,14 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! See: `book/tutorial/12-default-fallback.md` for full example
+//! Book tutorial 11a - `Option<T>` fields and `default = expr` fallbacks
+//! See `book/tutorial/11-default-fallback.md` for the full narrative
+//!
+//! Shows two complementary mechanisms for handling absent keys on decode:
+//!
+//! * **`Option<T>`**: the field is `None` when the key is missing; encoding
+//!   a `None` emits no KLV triple, making the frame shorter
+//! * **`default = expr`**: the field takes a compile-time expression when the
+//!   key is absent; the field type is plain `T` (not `Option`)
 use tinyklv::prelude::*;            // Klv proc-macro + traits
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
@@ -11,12 +19,14 @@ use tinyklv::enc::binary as encb;   // binary encoders
     key(dec = decb::u8,          enc = encb::u8),
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
 )]
+/// Heartbeat illustrating `Option<T>` absence and `default = expr` fallback
 struct Heartbeat {
     #[klv(
         key = 0x01,
         dec = decb::u8,
         enc = *encb::u8,
     )]
+    /// Monotonic frame counter
     sequence: u8,
 
     #[klv(
@@ -58,7 +68,8 @@ fn main() {
         signal_dbm:  Some(-54),
         battery_pct: 87,
     };
-    let full_bytes = full.encode_value();
+    let mut full_bytes = Vec::new();
+    full.encode_value(&mut full_bytes);
     let full_decoded = Heartbeat::decode_value(
         &mut full_bytes.as_slice(),
     ).unwrap();
@@ -67,5 +78,7 @@ fn main() {
     // when signal_dbm is None the encoded bytes are strictly shorter -
     // a `None` field emits no KLV triple
     let thin = Heartbeat { signal_dbm: None, ..full };
-    assert!(thin.encode_value().len() < full_bytes.len());
+    let mut thin_bytes = Vec::new();
+    thin.encode_value(&mut thin_bytes);
+    assert!(thin_bytes.len() < full_bytes.len());
 }

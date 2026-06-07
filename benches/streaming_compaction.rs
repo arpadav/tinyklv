@@ -46,7 +46,7 @@ const CHUNK_LEN: usize = 4;
     stream = &[u8],
     sentinel = b"SMPL",
     key(dec = decb::u8, enc = encb::u8),
-    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)),
 )]
 struct Sample {
     #[klv(key = 0x01, dec = decb::u8, enc = *encb::u8)]
@@ -67,13 +67,11 @@ struct Sample {
 fn build_stream(n: usize) -> Vec<u8> {
     let mut buf = Vec::new();
     for i in 0..n {
-        buf.extend(
-            Sample {
-                a: i as u8,
-                b: i as u16,
-            }
-            .encode_frame(),
-        );
+        Sample {
+            a: i as u8,
+            b: i as u16,
+        }
+        .encode_frame(&mut buf);
     }
     buf
 }
