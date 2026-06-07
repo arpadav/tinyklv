@@ -22,6 +22,7 @@
 // mods
 // --------------------------------------------------
 mod compound;
+#[rustfmt::skip]
 mod generated;
 mod rich;
 mod simple;
