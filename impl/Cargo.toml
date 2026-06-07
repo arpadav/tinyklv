@@ -1,6 +1,6 @@
 [package]
 name = "tinyklv-impl"
-version = "0.1.2"
+version = "0.2.0-rc.1"
 authors = ["Arpad Voros <arpadav@gmail.com>"]
 license = "MIT"
 description = "Implementation detail of the `tinyklv` crate"
@@ -28,7 +28,7 @@ thiserror = "2.0"
 # --------------------------------------------------
 # workspace
 # --------------------------------------------------
-tk-syn-macros = { path = "tk-syn-macros", version = "0.1.2" }
+tk-syn-macros = { path = "tk-syn-macros", version = "0.2.0-rc.1" }
 
 [features]
 tracing = []

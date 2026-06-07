@@ -1,6 +1,6 @@
 [package]
 name = "tinyklv"
-version = "0.1.2"
+version = "0.2.0-rc.1"
 authors = ["Arpad Voros <arpadav@gmail.com>"]
 license = "MIT"
 description = "The fastest derive-macro Key-Length-Value (KLV) framework in Rust"
@@ -38,16 +38,16 @@ path = "tests/proptest_roundtrip/main.rs"
 # --------------------------------------------------
 # external
 # --------------------------------------------------
-chrono = { version = "0.4.44", optional = true }
+chrono = { version = "0.4.45", optional = true }
 memchr = "2.8.0"
 num-traits = "0.2.19"
 pastey = "0.2.3"
 tracing = { version = "0.1.44", optional = true }
-winnow = { version = "1.0.2", features = ["binary", "parser", "simd"] }
+winnow = { version = "1.0.2", features = ["binary", "parser"] }
 # --------------------------------------------------
 # workspace
 # --------------------------------------------------
-tinyklv-impl = { path = "impl", version = "0.1.2" }
+tinyklv-impl = { path = "impl", version = "0.2.0-rc.1" }
 
 [dev-dependencies]
 criterion = "^0.8"
@@ -86,9 +86,10 @@ harness = false
 [features]
 default = []
 ascii = ["winnow/ascii"]
+bench = ["chrono"] # for benchmarking
 full = ["ascii", "chrono"]
 tracing = ["dep:tracing", "tinyklv-impl/tracing"]
-bench = ["chrono"] # for benchmarking
+simd = ["winnow/simd"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
