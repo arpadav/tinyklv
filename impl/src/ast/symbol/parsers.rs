@@ -22,6 +22,7 @@ use tk_syn_macros::create_parser;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use crate::ast::attr::size::SizeSpec;
 use crate::ast::types::*;
 use crate::symbol::*;
 
@@ -122,9 +123,56 @@ create_parser!(KEY: syn::Lit; pnm);
 create_parser!(SENTINEL: syn::Lit; nv);
 
 // --------------------------------------------------
-// variable length
+// size (key/len/field size shape: `size(var, exact = N | hint = N)`) and its inner keywords
 // --------------------------------------------------
-create_parser!(VARIABLE_LENGTH: syn::LitBool; pnm);
+// the `exact = N` / `hint = N` byte counts (kept as `LitInt` so a conflict can be spanned)
+create_parser!(EXACT: syn::LitInt; pnm);
+create_parser!(HINT: syn::LitInt; pnm);
+
+/// Parses the bare `var` flag inside a `size(..)` list (a path, no `= value`)
+///
+/// Modelled on [`parse_pnm_default_value`]'s bare form: an `Err` from `value()` means the flag was
+/// present with no value (the valid form); an `Ok` means the user wrote `var = ..`, which is rejected
+///
+/// # Arguments
+///
+/// * `input` - the nested meta entry, positioned at the `var` keyword
+///
+/// # Returns
+///
+/// [`None`] if the keyword is not [`VAR`]; `Some(Ok(()))` for a bare `var`; `Some(Err(..))` otherwise
+pub(crate) fn parse_pnm_var(input: &syn::meta::ParseNestedMeta) -> Option<syn::Result<()>> {
+    if input.path != VAR {
+        return None;
+    }
+    Some(match input.value() {
+        Ok(_) => Err(input.error("`var` is a flag and takes no value")),
+        Err(_) => Ok(()),
+    })
+}
+
+/// Parses a [`SizeSpec`] from the `size(..)` group on a [`syn::meta::ParseNestedMeta`]
+///
+/// Defers straight to [`SizeSpec::try_from`], which recurses into the parenthesised group with
+/// [`ParseNestedMeta::parse_nested_meta`] - so the inner `var`/`exact`/`hint` parse goes through
+/// [`handle_unique_nested_meta_values!`](tk_syn_macros::handle_unique_nested_meta_values) like every
+/// other list attribute, with no `syn::MetaList` re-materialisation
+///
+/// # Arguments
+///
+/// * `input` - the nested meta entry, positioned at the `size` keyword (before its `(..)`)
+///
+/// # Returns
+///
+/// [`None`] if the keyword is not [`SIZE`]; otherwise the parsed [`SizeSpec`] or a parse error
+///
+/// [`ParseNestedMeta::parse_nested_meta`]: syn::meta::ParseNestedMeta::parse_nested_meta
+pub(crate) fn parse_pnm_size(input: &syn::meta::ParseNestedMeta) -> Option<syn::Result<SizeSpec>> {
+    if input.path != SIZE {
+        return None;
+    }
+    Some(SizeSpec::try_from(input))
+}
 
 // --------------------------------------------------
 // default

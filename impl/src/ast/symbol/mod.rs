@@ -41,6 +41,15 @@ pub(crate) const LENGTH: Symbol = Symbol("len");
 pub(crate) const ENCODER: Symbol = Symbol("enc");
 /// The `dec` sub-attribute identifier
 pub(crate) const DECODER: Symbol = Symbol("dec");
+/// The `size` sub-attribute identifier for `key(..)`/`len(..)`/fields; see
+/// [`SizeSpec`](crate::ast::attr::size::SizeSpec)
+pub(crate) const SIZE: Symbol = Symbol("size");
+/// The `var` inner keyword of `size(..)`
+pub(crate) const VAR: Symbol = Symbol("var");
+/// The `exact = N` inner keyword of `size(..)`
+pub(crate) const EXACT: Symbol = Symbol("exact");
+/// The `hint = N` inner keyword of `size(..)`
+pub(crate) const HINT: Symbol = Symbol("hint");
 /// The `stream` sub-attribute identifier
 pub(crate) const STREAM: Symbol = Symbol("stream");
 /// The `default` sub-attribute identifier
@@ -58,8 +67,6 @@ pub(crate) const BREAK_ON: Symbol = Symbol("break_on");
 /// above; they are parsed in different `MetaList` scopes so there is no
 /// collision
 pub(crate) const DEFAULT_VALUE: Symbol = Symbol("default");
-/// The `var` sub-attribute identifier for variable-length fields
-pub(crate) const VARIABLE_LENGTH: Symbol = Symbol("varlen");
 /// The `latebind` sub-attribute identifier for post-decode conversion/mutation
 pub(crate) const LATEBIND: Symbol = Symbol("latebind");
 /// The `deny_unknown_keys` sub-attribute identifier
@@ -97,22 +104,18 @@ pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
 /// Container-level symbols that accept list syntax (e.g. `key(..)`)
 pub(crate) static CONT_LIST_SYMBOLS: Symbols = Symbols(&[KEY, LENGTH, DEFAULT]);
 
-/// Container-level default list symbols (type, encoder, decoder, var-length)
-pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols =
-    Symbols(&[TYPE, ENCODER, DECODER, VARIABLE_LENGTH]);
+/// Container-level default list symbols (type, encoder, decoder, value size)
+pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols = Symbols(&[TYPE, ENCODER, DECODER, SIZE]);
 
 /// Container-level name-value symbols (e.g. `stream = ..`)
 pub(crate) static CONT_NV_SYMBOLS: Symbols = Symbols(&[STREAM, SENTINEL, BREAK_ON]);
 
 /// All valid field-level symbols accepted by the `#[klv(..)]` attribute
-pub(crate) static FIELD_SYMBOLS: Symbols = Symbols(&[
-    KEY,
-    ENCODER,
-    DECODER,
-    VARIABLE_LENGTH,
-    LATEBIND,
-    DEFAULT_VALUE,
-]);
+pub(crate) static FIELD_SYMBOLS: Symbols =
+    Symbols(&[KEY, ENCODER, DECODER, SIZE, LATEBIND, DEFAULT_VALUE]);
+
+/// Valid inner keywords of the `size(..)` list (`var`, `exact = N`, `hint = N`)
+pub(crate) static SIZE_FIELDS: Symbols = Symbols(&[VAR, EXACT, HINT]);
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 /// A symbol for KLV attributes
@@ -141,12 +144,15 @@ const KNOWN: &[Symbol] = &[
     LENGTH,
     ENCODER,
     DECODER,
+    SIZE,
+    VAR,
+    EXACT,
+    HINT,
     STREAM,
     DEFAULT,
     SENTINEL,
     BREAK_ON,
     DEFAULT_VALUE,
-    VARIABLE_LENGTH,
     LATEBIND,
     DENY_UNKNOWN_KEYS,
     ALLOW_UNIMPLEMENTED_DECODE,

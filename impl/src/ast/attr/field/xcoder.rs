@@ -2,7 +2,7 @@
 //!
 //! Defines [`FieldXcoder`], which accumulates every recognized sub-attribute
 //! from one `#[klv(..)]` annotation on a struct field: the key literal, the
-//! optional encoder and decoder, the variable-length flag, the `latebind`
+//! optional encoder and decoder, the value size shape, the `latebind`
 //! post-decode step, and field-level `default`. The [`From<&syn::MetaList>`]
 //! impl drives the actual `parse_nested_meta` parse; duplicate-field errors
 //! are stored in `FieldXcoder::errors` so the caller can forward them to
@@ -12,6 +12,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use crate::ast::attr::size::SizeSpec;
 use crate::ast::symbol;
 use crate::ast::types::{DefaultValue, LatebindXcoder, SiguledXcoder, XcoderType};
 
@@ -29,8 +30,8 @@ pub(crate) struct FieldXcoder {
     pub enc: Option<SiguledXcoder>,
     /// The decoder for the field
     pub dec: Option<XcoderType>,
-    /// Whether the decoder requires a variable length input
-    pub varlen: Option<syn::LitBool>,
+    /// The declared size shape of the field's value; see [`SizeSpec`]
+    pub size: Option<SizeSpec>,
     /// Post-decode conversion or in-place mutation (`latebind = path` or
     /// `latebind = &mut path`). `None` means no post-decode step
     pub latebind: Option<LatebindXcoder>,
@@ -50,7 +51,7 @@ pub(crate) struct FieldXcoder {
 /// [`FieldXcoder`] implementation of [`From`] for [`syn::MetaList`]
 ///
 /// Parses the nested meta arguments from a field-level `#[klv(key = .., enc =
-/// .., dec = .., varlen = .., latebind = .., default = ..)]` attribute list
+/// .., dec = .., size(..), latebind = .., default = ..)]` attribute list
 /// into a [`FieldXcoder`]
 ///
 /// Duplicate-field errors and unknown-field errors are stored in
@@ -65,7 +66,7 @@ impl From<&syn::MetaList> for FieldXcoder {
         let mut key: Option<syn::Lit> = None;
         let mut enc: Option<SiguledXcoder> = None;
         let mut dec: Option<XcoderType> = None;
-        let mut varlen: Option<syn::LitBool> = None;
+        let mut size: Option<SizeSpec> = None;
         let mut latebind: Option<LatebindXcoder> = None;
         let mut default: Option<DefaultValue> = None;
         // --------------------------------------------------
@@ -80,7 +81,7 @@ impl From<&syn::MetaList> for FieldXcoder {
                     key: symbol::parse_pnm_key                      => err!(DuplicateKeyInField),
                     enc: symbol::pnm_parse_maybestr_encoder         => err!(DuplicateEncoderInField),
                     dec: symbol::pnm_parse_maybestr_decoder         => err!(DuplicateDecoderInField),
-                    varlen: symbol::parse_pnm_variable_length       => err!(DuplicateVariableLengthInField),
+                    size: symbol::parse_pnm_size                    => err!(DuplicateSizeInField),
                     latebind: symbol::pnm_parse_maybestr_latebind   => err!(DuplicateLatebindInField),
                     default: symbol::parse_pnm_default_value        => err!(DuplicateDefaultInField),
                 }
@@ -93,7 +94,7 @@ impl From<&syn::MetaList> for FieldXcoder {
             key,
             enc,
             dec,
-            varlen,
+            size,
             latebind,
             errors,
             default,

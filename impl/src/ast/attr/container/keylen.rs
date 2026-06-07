@@ -15,6 +15,7 @@ use quote::ToTokens;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use crate::ast::attr::size::SizeSpec;
 use crate::ast::symbol;
 use crate::ast::types::{SiguledXcoder, XcoderType};
 
@@ -29,6 +30,8 @@ pub struct Xcoder {
     pub enc: Option<SiguledXcoder>,
     /// The decoder, or `None` when unimplemented decoding is allowed
     pub dec: Option<XcoderType>,
+    /// The declared size shape of the key or length prefix (absent ⇒ variable-width); see [`SizeSpec`]
+    pub size: Option<SizeSpec>,
 }
 /// [`Xcoder`] implementation of [`TryFrom`] for [`syn::MetaList`]
 ///
@@ -45,6 +48,7 @@ impl TryFrom<&syn::MetaList> for Xcoder {
         // --------------------------------------------------
         let mut enc: Option<SiguledXcoder> = None;
         let mut dec: Option<XcoderType> = None;
+        let mut size: Option<SizeSpec> = None;
         // --------------------------------------------------
         // parse nested meta
         // --------------------------------------------------
@@ -52,14 +56,15 @@ impl TryFrom<&syn::MetaList> for Xcoder {
             tk_syn_macros::handle_unique_nested_meta_values! {
                 meta;
                 err!(UnknownKeyLenField(meta.path));
-                2;
+                3;
                 enc: symbol::pnm_parse_maybestr_encoder => err!(DuplicateEncoderInKeyLen),
                 dec: symbol::pnm_parse_maybestr_decoder => err!(DuplicateDecoderInKeyLen),
+                size: symbol::parse_pnm_size => err!(DuplicateSizeInKeyLen),
             }
         })?;
         // --------------------------------------------------
-        // return
+        // return (size is validated during its own parse)
         // --------------------------------------------------
-        Ok(Xcoder { enc, dec })
+        Ok(Xcoder { enc, dec, size })
     }
 }

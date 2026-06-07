@@ -19,6 +19,7 @@ mod xcoder;
 // --------------------------------------------------
 use crate::Ctxt;
 use crate::ast::attr::container::default::DefaultXcoder;
+use crate::ast::attr::size::SizeSpec;
 use crate::ast::types::{
     DefaultValue, LatebindXcoder, SiguledXcoder, XcoderLike, XcoderSigil, XcoderType,
 };
@@ -179,17 +180,17 @@ impl Field {
         };
 
         // --------------------------------------------------
-        // get all klv attr var
+        // get all klv attr size
         // --------------------------------------------------
-        let vars = all_field_xcoders
+        let sizes = all_field_xcoders
             .iter()
-            .filter_map(|f| f.varlen.clone())
+            .filter_map(|f| f.size)
             .collect::<Vec<_>>();
-        field_xcoder.varlen = match vars.len() {
+        field_xcoder.size = match sizes.len() {
             0 => None,
-            1 => Some(vars[0].clone()),
+            1 => Some(sizes[0]),
             _ => {
-                cx.error_spanned_by(field, err!(DuplicateVariableLengthInField));
+                cx.error_spanned_by(field, err!(DuplicateSizeInField));
                 None
             }
         };
@@ -237,7 +238,7 @@ impl Field {
             }
             if let (Some(default_dec), false) = (&default.dec, keep_dec_none) {
                 field_xcoder.dec = Some(default_dec.clone());
-                field_xcoder.varlen.clone_from(&default.var);
+                field_xcoder.size = default.size;
             }
         }
 
@@ -270,11 +271,14 @@ impl Field {
             && !allow_unimplemented_decode
             && field_xcoder.dec.is_none()
         {
-            let varlen_set = field_xcoder.varlen.as_ref().is_some_and(|v| v.value);
-            if varlen_set {
+            let takes_len = field_xcoder.size.is_some_and(SizeSpec::takes_len);
+            if takes_len {
                 cx.error_spanned_by(
                     name.clone(),
-                    err!(VarlenFallbackRequiresExplicitDec(name, typ_maybe_unwrapped)),
+                    err!(SizeVarFallbackRequiresExplicitDec(
+                        name,
+                        typ_maybe_unwrapped
+                    )),
                 );
             } else {
                 // placeholder - see encode comment above. `decode_impl.rs`
@@ -327,8 +331,8 @@ pub(crate) struct FieldParsed {
     /// The decoder xcoder, if one was resolved (explicit, default, or fallback)
     pub dec: Option<XcoderType>,
 
-    /// Whether the decoder expects a length argument (variable-length fields)
-    pub var: Option<syn::LitBool>,
+    /// The declared value size shape; see [`SizeSpec`]
+    pub size: Option<SizeSpec>,
 
     /// Optional post-decode transformation applied via `.map(..)`
     pub latebind: Option<LatebindXcoder>,
@@ -374,7 +378,7 @@ impl FieldParsed {
             key: key.clone(),
             enc: f.contents.enc.clone(),
             dec: f.contents.dec.clone(),
-            var: f.contents.varlen.clone(),
+            size: f.contents.size,
             latebind: f.contents.latebind.clone(),
             default: f.contents.default.clone(),
             fallback_enc: f.contents.fallback_enc,
