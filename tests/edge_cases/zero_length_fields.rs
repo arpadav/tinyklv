@@ -113,9 +113,10 @@ struct ZeroLenOptional {
         enc = *encb::be_u16,
     )]
     numeric: Option<u16>,
+
     #[klv(
         key = 0x02,
-        varlen = true,
+        size(var),
         dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8
     )]

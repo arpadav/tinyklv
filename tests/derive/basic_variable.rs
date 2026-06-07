@@ -1,6 +1,6 @@
 //! Basic variable-length field decode and roundtrip tests for `#[derive(Klv)]`
 //!
-//! Tests the `WithString` struct (a fixed `u16` id plus a `varlen = true`
+//! Tests the `WithString` struct (a fixed `u16` id plus a `size(var)`
 //! UTF-8 string). Covers decoding known payloads, zero-length strings,
 //! long strings, reversed field order, full encode/decode roundtrip, and
 //! missing-required-field errors
@@ -31,7 +31,7 @@ struct WithString {
 
     #[klv(
         key = 0x02,
-        varlen = true,
+        size(var),
         dec = decs::to_string_utf8,
         enc = encs::from_string_utf8
     )]

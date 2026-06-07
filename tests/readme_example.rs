@@ -1,16 +1,10 @@
+#![allow(noop_method_call)]
 //! Integration test mirroring the README quick-start example
 //!
 //! Decodes the `Foo` struct (a UTF-8 string name + big-endian `u16` number)
 //! from hand-crafted `&[u8]` streams using both the sentinel-seeking
 //! `decode_frame` path and the direct `decode_value` path, asserting the
 //! decoded values match the expected payload for two distinct packets
-//!
-//! Author: aav
-#![allow(noop_method_call)]
-
-// --------------------------------------------------
-// local
-// --------------------------------------------------
 use tinyklv::Klv;
 use tinyklv::prelude::*;
 
@@ -23,11 +17,7 @@ use tinyklv::prelude::*;
     allow_unimplemented_encode,
 )]
 struct Foo {
-    #[klv(
-        key = 0x01,
-        varlen = true,
-        dec = "tinyklv::dec::string::to_string_utf8"
-    )]
+    #[klv(key = 0x01, size(var), dec = "tinyklv::dec::string::to_string_utf8")]
     // value length is variable, always read from stream
     //
     // therefore, it is used as an input arg in decoder: `tinyklv::dec::string::to_string_utf8`

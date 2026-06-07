@@ -7,7 +7,7 @@
 //! discriminants (`Color`, `Material`), packed composites (`Coordinate`,
 //! `Velocity`, `Attitude`, `Timestamp`, `StatusFlags`), and a nested
 //! composite (`SensorReading`).  Helper functions `decode_sensor_readings`
-//! and `encode_sensor_readings` demonstrate the `varlen` decoder signature
+//! and `encode_sensor_readings` demonstrate the `size(var)` decoder signature
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -361,7 +361,7 @@ pub fn decode_sensor_readings(
 /// Serialises each [`SensorReading`] in order using its `EncodeValue`
 /// implementation (1 kind byte + 4 value bytes = 5 bytes per reading) and
 /// concatenates the results.  Intended as the `enc =` counterpart to
-/// `decode_sensor_readings` inside a `varlen = true` field annotation
+/// `decode_sensor_readings` inside a `size(var)` field annotation
 pub fn encode_sensor_readings(v: &Vec<SensorReading>, out: &mut Vec<u8>) {
     for r in v {
         r.encode_value(out);

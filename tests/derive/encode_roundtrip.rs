@@ -191,7 +191,7 @@ fn optional_none_roundtrip() {
 #[klv(
     stream = &[u8],
     key(dec = decb::u8, enc = encb::u8),
-    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)),
 )]
 struct WithStringRoundtrip {
     #[klv(
@@ -202,7 +202,7 @@ struct WithStringRoundtrip {
     id: u16,
     #[klv(
         key = 0x02,
-        varlen = true,
+        size(var),
         dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8
     )]
@@ -317,6 +317,44 @@ fn encode_frame_appends_to_nonempty_buffer() {
     assert_eq!(decoded, rec);
 }
 
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    sentinel = b"\x4B\x4C",
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)),
+)]
+struct FramedFixedLen {
+    #[klv(key = 0x01, dec = decb::be_u16, enc = *encb::be_u16)]
+    a: u16,
+    #[klv(key = 0x02, dec = decb::be_u32, enc = *encb::be_u32)]
+    b: u32,
+}
+
+#[test]
+/// A `sentinel` + fixed-width `len(size(exact = N))` frame takes the back-patch path (vs the BER
+/// staging of [`FramedRecord`], whose `len` has no `size`). Exercises the `EncodeFrame` fixed-slot
+/// branch - including the temporary tail length bytes the back-patch reserves for - and confirms it
+/// round-trips both from a fresh buffer and when appended to a non-empty one
+fn framed_fixed_len_backpatch_roundtrip() {
+    let rec = FramedFixedLen {
+        a: 0xBEEF,
+        b: 0x0102_0304,
+    };
+    let prefix: &[u8] = b"\x77\x66";
+    let mut fresh = Vec::new();
+    rec.encode_frame(&mut fresh);
+
+    let mut prefilled = prefix.to_vec();
+    rec.encode_frame(&mut prefilled);
+
+    assert!(prefilled.starts_with(prefix), "prefix was clobbered");
+    assert_eq!(prefilled.strip_prefix(prefix), Some(fresh.as_slice()));
+
+    let decoded = FramedFixedLen::decode_frame(&mut fresh.as_slice()).unwrap();
+    assert_eq!(decoded, rec);
+}
+
 #[test]
 /// Leaf and BER encoders append into an existing buffer rather than replacing its contents
 fn leaf_and_ber_encoders_append() {
@@ -331,17 +369,37 @@ fn leaf_and_ber_encoders_append() {
 }
 
 #[test]
-#[should_panic(expected = "exceeds the 1-byte KLV length prefix")]
-/// A variable-width field whose encoded body is longer than the (1-byte) length prefix can
-/// represent must abort loudly: a silently-wrapped length (`300 as u8 == 44`) would emit a
-/// mis-framed, undecodable packet. Guards the back-patch path against length-prefix overflow
-fn oversized_field_aborts_rather_than_corrupting() {
+/// A field whose encoded body is longer than its declared `len` fixed `size` can represent is a
+/// user error. The back-patch path never emits a mis-framed item: it logs the error and rolls the
+/// whole key-length-value triple back out of `out`, leaving the preceding `id` field untouched.
+/// Here `name` is 300 bytes against a 1-byte length prefix (max 255), so only the `id` triple
+/// survives: `key(0x01) + len(0x02) + be_u16(7)`
+fn oversized_field_with_fixed_size_omits_item() {
     let original = WithStringRoundtrip {
         id: 7,
         name: "x".repeat(300),
     };
     let mut encoded = Vec::new();
     original.encode_value(&mut encoded);
+    assert_eq!(encoded, vec![0x01, 0x02, 0x00, 0x07]);
+    assert!(
+        !encoded.contains(&b'x'),
+        "the oversized item's body must not reach the buffer",
+    );
+}
+
+#[test]
+/// An in-range field under an explicit fixed `len` `size` round-trips normally: the back-patched
+/// length is correct and the record decodes back to the original
+fn fixed_len_size_in_range_roundtrips() {
+    let original = WithStringRoundtrip {
+        id: 0xABCD,
+        name: "hello".to_string(),
+    };
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
+    let decoded = WithStringRoundtrip::decode_value(&mut encoded.as_slice()).unwrap();
+    assert_eq!(decoded, original);
 }
 
 #[test]
@@ -403,5 +461,84 @@ fn decode_value_rewinds_truncated_value_body() {
         input,
         &encoded[prefix_len..],
         "truncated value body should rewind the whole triple"
+    );
+}
+
+// --------------------------------------------------
+// size(exact = N) vs size(hint = N): the FixedWidth and Backpatch encode paths must produce
+// byte-identical output - the only difference is the path, not the wire
+// --------------------------------------------------
+
+/// A nested record that encodes to exactly 8 bytes: `2 x (key 1 + len 1 + u16 2)`. Not a registry
+/// primitive, so without `size(exact = ..)` a field of this type takes the back-patch path
+#[derive(Klv, Debug, PartialEq, Clone, Copy)]
+#[klv(
+    stream = &[u8],
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)),
+    default(typ = u16, dec = decb::be_u16, enc = *encb::be_u16),
+)]
+struct Pair {
+    #[klv(key = 0x01)]
+    a: u16,
+    #[klv(key = 0x02)]
+    b: u16,
+}
+
+/// `size(exact = 8)` on the nested field forces the `FixedWidth` fast encode path
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)),
+    trait_fallback,
+)]
+struct ExactParent {
+    #[klv(key = 0x01, size(exact = 8))]
+    pair: Pair,
+}
+
+/// `size(hint = 8)` on the nested field keeps the `Backpatch` path (soft estimate)
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)),
+    trait_fallback,
+)]
+struct HintParent {
+    #[klv(key = 0x01, size(hint = 8))]
+    pair: Pair,
+}
+
+#[test]
+/// `size(exact = N)` (FixedWidth) and `size(hint = N)` (Backpatch) must encode a non-registry
+/// fixed-size value to byte-identical output; both must round-trip. The `FixedWidth` arm's
+/// debug-assert also confirms the declared width matches what `Pair` actually writes
+fn exact_and_hint_encode_identically() {
+    let pair = Pair {
+        a: 0x1234,
+        b: 0xABCD,
+    };
+    let mut exact_bytes = Vec::new();
+    ExactParent { pair }.encode_value(&mut exact_bytes);
+    let mut hint_bytes = Vec::new();
+    HintParent { pair }.encode_value(&mut hint_bytes);
+
+    assert_eq!(
+        exact_bytes, hint_bytes,
+        "FixedWidth (exact) and Backpatch (hint) must produce identical wire bytes"
+    );
+    assert_eq!(
+        ExactParent::decode_value(&mut exact_bytes.as_slice())
+            .unwrap()
+            .pair,
+        pair,
+    );
+    assert_eq!(
+        HintParent::decode_value(&mut hint_bytes.as_slice())
+            .unwrap()
+            .pair,
+        pair,
     );
 }

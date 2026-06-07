@@ -1,6 +1,6 @@
 //! Mixed-type field tests for `#[derive(Klv)]`
 //!
-//! Tests the `Mixed` struct (a `u8` byte value, a `u32` integer, a `varlen`
+//! Tests the `Mixed` struct (a `u8` byte value, a `u32` integer, a `size(var)`
 //! UTF-8 string, and an optional `u16`). Covers decode with all fields
 //! present, absent optional, reversed field order, missing required field,
 //! and full encode/decode roundtrip with and without the optional
@@ -37,7 +37,7 @@ struct Mixed {
     int_val: u32,
     #[klv(
         key = 0x03,
-        varlen = true,
+        size(var),
         dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8
     )]

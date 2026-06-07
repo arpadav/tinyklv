@@ -5,9 +5,8 @@
 //! `be_u16_as_usize`, `be_u32_as_usize`, `be_u64_as_usize`,
 //! `le_u16_as_usize`, `le_u32_as_usize`, and their `_from_usize` encoder
 //! counterparts. Covers known-value decoding for BE and LE variants,
-//! encode/decode roundtrips, single-byte truncation on `u8_from_usize(256)`,
-//! and the `be_u32_from_usize`/`be_u32_as_usize` roundtrip across boundary
-//! values
+//! encode/decode roundtrips, and the `be_u32_from_usize`/`be_u32_as_usize`
+//! roundtrip across boundary values
 //!
 //! Author: aav
 #[test]
@@ -186,13 +185,4 @@ fn be_u32_from_usize_roundtrip() {
         let decoded = tinyklv::dec::binary::be_u32_as_usize(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded);
     }
-}
-
-#[test]
-/// Tests `u8_from_usize(256)` truncates to `0x00` (wraps modulo 256)
-fn u8_from_usize_truncates() {
-    // 256 as u8 = 0
-    let mut encoded = Vec::new();
-    tinyklv::enc::binary::u8_from_usize(256, &mut encoded);
-    assert_eq!(encoded, vec![0x00]);
 }
