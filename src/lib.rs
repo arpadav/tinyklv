@@ -5,6 +5,7 @@
 // --------------------------------------------------
 pub mod codecs;
 pub mod decoder;
+pub mod framing;
 pub mod traits;
 
 // --------------------------------------------------
@@ -12,6 +13,7 @@ pub mod traits;
 // --------------------------------------------------
 pub use codecs::*;
 pub use decoder::{Decoder, Packet};
+pub use framing::Framing;
 pub use tinyklv_impl::*;
 pub use traits::*;
 
@@ -63,13 +65,15 @@ pub mod __export {
 /// Importing `tinyklv::prelude::*` brings into scope the [`Decoder`],
 /// [`Packet`], all codec traits ([`DecodeValue`], [`EncodeValue`],
 /// [`EncodeFrame`], [`DecodeFrame`]), the [`BreakType`] loop-control enum, the
-/// [`Klv`] derive macro, and the winnow combinators and stream
-/// utilities that the derive-generated code depends on
+/// [`Framing`] fused-`keylen` frame descriptor, the [`Klv`] derive macro, and
+/// the winnow combinators and stream utilities that the derive-generated code
+/// depends on
 pub mod prelude {
     // --------------------------------------------------
     // local
     // --------------------------------------------------
     pub use crate::decoder::{Decoder, Packet};
+    pub use crate::framing::Framing;
     pub use crate::traits::{
         BreakType, DecodeFrame as _, DecodePartial, DecodeValue, DrainFrames as _, EncodeAs,
         EncodeFrame as _, EncodeValue, Partial, SeekSentinel as _,
