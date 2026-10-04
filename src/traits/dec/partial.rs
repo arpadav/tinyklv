@@ -27,7 +27,7 @@ use crate::decoder::{DecodeIterError, Packet};
 /// required-field validation and yields the final type on success
 ///
 /// The derive macro emits the partial type automatically as
-/// `Tinyklv<Name>PartialPacket`. Manual impls are only needed for types
+/// `<Name>PartialPacket`. Manual impls are only needed for types
 /// that do not use the derive macro
 pub trait Partial: Sized {
     /// The finalised type this partial turns into
@@ -53,11 +53,12 @@ pub trait Partial: Sized {
 /// Low-level iterator interface for advancing a [`crate::decoder::Decoder`] one packet at a time
 ///
 /// Implemented by [`crate::decoder::Decoder`] for the `&[u8]` stream specialisation
+///
 /// Callers outside of generated code and the decoder internals should prefer
 /// [`crate::decoder::Decoder::next`] or the [`Iterator`] impl on
 /// [`crate::decoder::DecoderIter`] rather than calling these methods directly
 pub trait PartialIterator<P: Partial> {
-    /// Continues decoding a packet that was previously interrupted with [`Packet::NeedMore`]
+    /// Continues decoding a packet that was interrupted with [`Packet::NeedMore`]
     ///
     /// Picks up from the stored in-flight partial, runs
     /// [`ResumePartial::resume_partial`] against the buffered bytes, and
@@ -94,12 +95,13 @@ pub trait PartialIterator<P: Partial> {
 /// Every implementor has an associated [`Self::Partial`] type: a mirror of
 /// the struct in which every KLV field is `Option<T>`, i.e. a parse state
 /// that can be fed incrementally and validated only at the end. The derive
-/// macro emits this automatically as `Tinyklv<Name>PartialPacket`
+/// macro emits this automatically as `<Name>PartialPacket`
 ///
 /// Automatically implemented for structs deriving [`tinyklv::Klv`](crate::Klv)
 ///
 /// The outer `Result` carries a `&'static str` label when the codegen hits an
 /// unrecoverable parse condition and the partial-to-final conversion also fails
+///
 /// Successful conversion on give-up is `Ok(Packet::Ready(t))`. Recoverable
 /// truncation surfaces as `Ok(Packet::NeedMore(p))`
 pub trait DecodePartial<S>: Sized + DecodeValue<S>
@@ -188,11 +190,14 @@ impl<P: Partial> Partial for Vec<P> {
 
 /// [`Vec`] implementation of [`DecodePartial`] for all `T` that implement [`DecodePartial`]
 ///
-/// Parses inner items until one returns [`Packet::NeedMore`] or an error without
-/// consuming bytes. A [`Packet::NeedMore`] from the inner parser is treated as
-/// "done for now": whatever was accumulated is best-effort-finalised and returned
-/// as `Packet::Ready`. The cursor has been rewound by the inner call so the next
-/// invocation can resume with more bytes
+/// Parses inner items until one returns [`Packet::NeedMore`], consumes no byte, or propagates an
+/// error raised after consuming bytes. A [`Packet::NeedMore`] from the inner parser is treated as
+/// "done for now": whatever was accumulated is best-effort-finalised and returned as
+/// `Packet::Ready`. The cursor has been rewound by the inner call so the next invocation can resume
+/// with more bytes
+///
+/// An element that consumed zero bytes is never pushed, under the same rule as `Vec<T>`'s
+/// [`DecodeValue`] impl; the loop stops and returns what was accumulated
 impl<S, T> DecodePartial<S> for Vec<T>
 where
     S: winnow::stream::Stream,
@@ -205,7 +210,16 @@ where
         loop {
             let before = input.eof_offset();
             let cp = input.checkpoint();
-            match T::decode_partial(input) {
+            let decoded = T::decode_partial(input);
+            // --------------------------------------------------
+            // nothing consumed: rewind and stop without pushing, the input would yield this
+            // element forever
+            // --------------------------------------------------
+            if input.eof_offset() == before {
+                input.reset(&cp);
+                return Ok(Packet::Ready(acc));
+            }
+            match decoded {
                 // --------------------------------------------------
                 // push the val and continue looping
                 // --------------------------------------------------
@@ -221,16 +235,9 @@ where
                     return Ok(Packet::Ready(acc));
                 }
                 // --------------------------------------------------
-                // if no bytes consumed, rewind and return the acc values as Ready
-                // otherwise, propagate the error label outward
+                // bytes consumed: propagate the error label outward
                 // --------------------------------------------------
-                Err(label) => {
-                    if input.eof_offset() == before {
-                        input.reset(&cp);
-                        return Ok(Packet::Ready(acc));
-                    }
-                    return Err(label);
-                }
+                Err(label) => return Err(label),
             }
         }
     }

@@ -216,16 +216,12 @@ fn vec_decode_value_trailing_junk_yields_empty() {
 }
 
 #[test]
-/// Companion to the trailing-junk test: verifies the cursor-hazard fix
-/// in the `Vec<T>` blanket. After the blanket exits, the outer cursor
-/// must NOT be advanced past bytes that a surrounding parser may still
-/// want to consume
+/// Companion to the trailing-junk test: on clean end of input the `Vec<T>` blanket leaves the
+/// outer cursor drained
 ///
-/// Here we hand the blanket two valid `MultiKey` packets back-to-back
-/// with no junk. It consumes them both (last-wins merge inside one
-/// `decode_value` call, so `len == 1`), then on the next iteration hits
-/// clean EOF, rewinds to that checkpoint, and returns. The outer slice
-/// must be empty at the end
+/// Two valid `MultiKey` packets back-to-back with no junk are consumed in one pass (last-wins
+/// merge inside one `decode_value` call, so the result has one element). The next iteration
+/// finds the input empty, stops at that checkpoint, and the outer slice is empty at the end
 fn vec_decode_value_cursor_safe_on_clean_eof() {
     let p1 = MultiKey { a: 1, b: 2, c: 3 };
     let p2 = MultiKey {
@@ -243,4 +239,35 @@ fn vec_decode_value_cursor_safe_on_clean_eof() {
         cursor.is_empty(),
         "Vec<T> blanket must drain the outer cursor on clean EOF",
     );
+}
+
+/// All-optional KLV packet: decodes from zero bytes without error
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+)]
+struct Beacon {
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *encb::be_u16,
+    )]
+    altitude: Option<u16>,
+
+    #[klv(
+        key = 0x02,
+        dec = decb::u8,
+        enc = *encb::u8,
+    )]
+    heading: Option<u8>,
+}
+
+#[test]
+/// An all-optional `T` decodes from empty input without consuming a byte, so
+/// the `Vec<T>` blanket pushes nothing: empty input is an empty `Vec`, not
+/// one all-`None` element
+fn vec_decode_value_all_optional_empty_stream() {
+    assert_eq!(Vec::<Beacon>::decode_value(&mut &[][..]), Ok(vec![]));
 }

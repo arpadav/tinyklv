@@ -28,8 +28,11 @@ use crate::prelude::*;
 ///
 /// # Returns
 ///
-/// `Ok(len)` where `len` is the decoded length as a [`usize`], or an error if the
-/// stream is empty or contains too few bytes for the declared long-form length
+/// `Ok(len)` where `len` is the decoded length as a [`usize`]
+///
+/// # Errors
+///
+/// Runs out of bytes: the cursor is left at the end of the input
 ///
 /// # Example
 ///
@@ -65,8 +68,12 @@ pub fn ber_length(input: &mut &[u8]) -> crate::Result<usize> {
 ///
 /// # Returns
 ///
-/// `Ok(value)` with the decoded integer, or an error if the stream ends before
-/// a terminator byte is reached or the accumulated value overflows `T`
+/// `Ok(value)` with the decoded integer
+///
+/// # Errors
+///
+/// - Runs out of bytes: the cursor is left at the end of the input
+/// - The value does not fit `T`: the cursor is rewound to where it started
 ///
 /// # Example
 ///

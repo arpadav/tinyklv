@@ -2,10 +2,10 @@
 //!
 //! Defines [`SizeSpec`] and its byte-count axis [`SizeBytes`] - the declared size shape parsed from
 //! a `size(var, exact = N | hint = N)` list. Unlike every other attr parser this one is shared by
-//! BOTH field-level (`attr/field`) and key/len (`attr/container/{keylen,default}`) scopes, so it
+//! BOTH field-level (`attr/field`) and key/len (`attr/container/{header,default}`) scopes, so it
 //! lives one tier up, directly under `attr`. [`TryFrom<&syn::MetaList>`] drives the
 //! `parse_nested_meta` loop via [`handle_unique_nested_meta_values!`], matching the
-//! [`FieldXcoder`](super::field) / [`keylen::Xcoder`](super::container::keylen) /
+//! [`FieldXcoder`](super::field) / `container::header::HeaderXcoder` /
 //! [`DefaultXcoder`](super::container::default) convention
 //!
 //! Author: aav
@@ -56,6 +56,7 @@ pub(crate) struct SizeSpec {
     /// `var` was present: variable-length prefix / length-parameterised field decoder.
     /// Private so the `var`-vs-`bytes` disambiguation stays inside the accessors below
     var: bool,
+
     /// the declared byte count, if any (see [`SizeBytes`])
     bytes: SizeBytes,
 }

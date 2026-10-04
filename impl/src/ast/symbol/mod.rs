@@ -37,6 +37,8 @@ pub(crate) const TYPE: Symbol = Symbol("typ");
 pub(crate) const DEBUG: Symbol = Symbol("debug");
 /// The `len` sub-attribute identifier
 pub(crate) const LENGTH: Symbol = Symbol("len");
+/// The `keylen` sub-attribute identifier
+pub(crate) const KEYLEN: Symbol = Symbol("keylen");
 /// The `enc` sub-attribute identifier
 pub(crate) const ENCODER: Symbol = Symbol("enc");
 /// The `dec` sub-attribute identifier
@@ -91,6 +93,7 @@ pub(crate) const TRAIT_FALLBACK: Symbol = Symbol("trait_fallback");
 pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
     KEY,
     LENGTH,
+    KEYLEN,
     STREAM,
     DEFAULT,
     SENTINEL,
@@ -102,7 +105,7 @@ pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
 ]);
 
 /// Container-level symbols that accept list syntax (e.g. `key(..)`)
-pub(crate) static CONT_LIST_SYMBOLS: Symbols = Symbols(&[KEY, LENGTH, DEFAULT]);
+pub(crate) static CONT_LIST_SYMBOLS: Symbols = Symbols(&[KEY, LENGTH, KEYLEN, DEFAULT]);
 
 /// Container-level default list symbols (type, encoder, decoder, value size)
 pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols = Symbols(&[TYPE, ENCODER, DECODER, SIZE]);
@@ -135,13 +138,16 @@ impl std::fmt::Display for Symbol {
 pub(crate) const UNKNOWN: Symbol = Symbol("<unknown>");
 
 /// All known [`Symbol`] constants that [`Symbol::from`] can resolve against
-/// Lookup is linear - the set is tiny (<20) and resolution runs at macro-expansion time
+///
+/// Lookup is linear - the set is tiny (a couple dozen entries) and resolution runs at
+/// macro-expansion time
 const KNOWN: &[Symbol] = &[
     KLV_ATTR,
     KEY,
     TYPE,
     DEBUG,
     LENGTH,
+    KEYLEN,
     ENCODER,
     DECODER,
     SIZE,

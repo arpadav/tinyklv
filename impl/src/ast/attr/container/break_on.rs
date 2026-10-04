@@ -41,6 +41,16 @@ impl std::fmt::Debug for BreakOnSpec {
     }
 }
 
+/// [`BreakOnSpec`] implementation of [`ToTokens`], emitting the right-hand side as written
+impl ToTokens for BreakOnSpec {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        match self {
+            BreakOnSpec::Literal(lit) => lit.to_tokens(tokens),
+            BreakOnSpec::Func(path) => path.to_tokens(tokens),
+        }
+    }
+}
+
 /// Newtype wrapper paralleling [`super::sentinel::Sentinel`]: `Some` once a `break_on = ..` has been
 /// parsed, `None` when the name-value was for some other keyword
 pub(crate) struct BreakOn(pub Option<BreakOnSpec>);
@@ -56,7 +66,7 @@ impl std::fmt::Debug for BreakOn {
 ///
 /// Returns `Ok(BreakOn(None))` when the name-value is not the `break_on` keyword (so the caller can
 /// fall through), `Ok(BreakOn(Some(..)))` for a literal or path value, and `Err` when the value is
-/// neither (e.g. `break_on = "oops"` written as a non-literal expression like an array)
+/// neither (e.g. an array or call expression such as `break_on = [0xFF]`)
 impl TryFrom<&syn::MetaNameValue> for BreakOn {
     type Error = syn::Error;
     fn try_from(input: &syn::MetaNameValue) -> syn::Result<Self> {

@@ -9,6 +9,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use crate::helpers::ContextErrorExt;
 use tinyklv::codecs::ber::BerOid;
 use tinyklv::prelude::*;
 
@@ -144,4 +145,29 @@ fn ber_oid_struct_roundtrip() {
 fn ber_oid_empty_input_fails() {
     let mut input: &[u8] = &[];
     assert!(tinyklv::dec::ber::ber_oid::<u64>(&mut input).is_err());
+}
+
+#[test]
+/// Tests that `ber_oid` rejects a value past its type's range with the cursor unchanged and an
+/// error expecting a value that fits
+fn ber_oid_overflow_rewinds() {
+    // 0x82 0x00 = 256, past u8::MAX
+    let wire = [0x82, 0x00];
+    let mut input = &wire[..];
+    match tinyklv::dec::ber::ber_oid::<u8>(&mut input) {
+        Err(error) if error.expects_fits_target() => {}
+        other => panic!("expected an overflow Err, got {other:?}"),
+    }
+    assert_eq!(input, &wire[..]);
+}
+
+#[test]
+/// Tests that `ber_oid` out of bytes mid-value errors with the cursor at the end of input, so a
+/// framed caller classes the cut as truncation
+fn ber_oid_truncated_consumes_to_end() {
+    // 0x81 0x82 both continue; no terminator follows
+    let wire = [0x81, 0x82];
+    let mut input = &wire[..];
+    assert!(tinyklv::dec::ber::ber_oid::<u64>(&mut input).is_err());
+    assert_eq!(input, &wire[2..]);
 }

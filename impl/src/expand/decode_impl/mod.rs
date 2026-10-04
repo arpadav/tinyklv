@@ -4,12 +4,15 @@
 //! trait implementations for a `#[derive(Klv)]` struct. It drives the
 //! sub-modules in order and assembles their outputs into a single token stream:
 //!
-//! * `sentinel_gen` - `SeekSentinel` impl (only when a sentinel is declared)
+//! * `sentinel_gen` - `SeekSentinel` impl (only when a sentinel is declared, which only a
+//!   separate `key`+`len` container can do)
 //! * `partial_gen` - partial-packet struct definition, `Partial` impl, and
 //!   `TryFrom<Partial>` impl
 //! * `decode_partial_gen` - `DecodePartial`, `ResumePartial`, and the one-shot direct `DecodeValue`
 //!   impls (`DecodeValue`/`DecodeFrame` decode directly; the streaming `decoder()` path uses the
-//!   resumable `Partial` machinery)
+//!   resumable `Partial` machinery). Both loops are assembled from `frame_gen` (the frame header
+//!   and body per framing mode), `loop_driver` (the exits per entry point) and `key_match_gen`
+//!   (the per-field arms)
 //! * local helper - the `decoder()` constructor
 //!
 //! Author: aav
@@ -18,17 +21,17 @@
 // --------------------------------------------------
 mod constants;
 mod decode_partial_gen;
+mod frame_gen;
 mod key_match_gen;
+mod loop_driver;
 mod partial_gen;
 mod sentinel_gen;
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::{
-    ast::{attr::MainContainer, types},
-    expand::helpers,
-};
+use crate::{ast::attr::MainContainer, expand::helpers};
+use frame_gen::DecodeFraming;
 
 // --------------------------------------------------
 // external
@@ -45,21 +48,35 @@ use quote::quote;
 /// rather than delegating to the partial machinery). If the container declares a
 /// `sentinel`, a `SeekSentinel` impl is prepended as well
 ///
+/// The container's framing mode selects the frame header and body of both decode loops:
+/// separate `key`+`len` decoders, or the fused `keylen` decoder
+///
 /// # Arguments
 ///
 /// * `input` - The fully parsed container, providing field data and all attributes
-/// * `key_decoder` - Token expression used to parse each TLV key from the stream
-/// * `len_decoder` - Token expression used to parse each TLV length from the stream
 ///
 /// # Returns
 ///
 /// A [`proc_macro2::TokenStream`] containing all decode-related impl blocks,
-/// concatenated in dependency order (sentinel first, then partial struct, then impls)
-pub(crate) fn gen_decode_impl(
-    input: &MainContainer,
-    key_decoder: &types::XcoderType,
-    len_decoder: &types::XcoderType,
-) -> proc_macro2::TokenStream {
+/// concatenated in dependency order (sentinel first, then partial struct, then impls), or
+/// `None` when the struct has no KLV field, or a field or framing decoder is missing
+/// (`allow_unimplemented_decode`)
+pub(super) fn gen_decode_impl(input: &MainContainer) -> Option<proc_macro2::TokenStream> {
+    // --------------------------------------------------
+    // a decoder on every field, and at least one field; else no decode impl
+    // --------------------------------------------------
+    let mut fields = input
+        .data
+        .iter()
+        .filter_map(|f| f.attrs.as_ref())
+        .peekable();
+    if fields.peek().is_none() || !fields.all(|f| f.dec.is_some()) {
+        return None;
+    }
+    // --------------------------------------------------
+    // frame header codec(s); none means no decode impl
+    // --------------------------------------------------
+    let framing = DecodeFraming::from_mode(&input.attrs.mode)?;
     // --------------------------------------------------
     // get name and partial name
     // --------------------------------------------------
@@ -72,20 +89,22 @@ pub(crate) fn gen_decode_impl(
     let lifetime = constants::create_lifetime();
     let stream_lifetimed = helpers::insert_lifetime(&stream, lifetime.clone());
     // --------------------------------------------------
-    // seek implementation
+    // seek implementation: a fused container rejects `sentinel` at parse time,
+    // so a sentinel always comes with the separate length decoder its scan needs
     // --------------------------------------------------
-    let sentinel = input.attrs.sentinel.as_ref();
-    let seek_if_sentinel = match sentinel {
-        Some(sentinel) => sentinel_gen::gen_sentinel_impl(
-            name,
-            sentinel,
-            &stream,
-            &stream_lifetimed,
-            &lifetime,
-            len_decoder,
-            input.generics,
-        ),
-        None => quote! {},
+    let seek_if_sentinel = match (input.attrs.sentinel.as_ref(), framing) {
+        (Some(sentinel), DecodeFraming::Separate { len_decoder, .. }) => {
+            sentinel_gen::gen_sentinel_impl(
+                name,
+                sentinel,
+                &stream,
+                &stream_lifetimed,
+                &lifetime,
+                len_decoder,
+                input.generics,
+            )
+        }
+        _ => quote! {},
     };
 
     // --------------------------------------------------
@@ -103,20 +122,16 @@ pub(crate) fn gen_decode_impl(
     let try_from_partial_struct_impl =
         partial_gen::gen_try_from_partial_impl(name, &partial_name, input.generics);
     // --------------------------------------------------
-    // DecodePartial and ResumePartial impls
+    // DecodePartial (framing-agnostic: delegates to ResumePartial), ResumePartial and one-shot
+    // DecodeValue
     // --------------------------------------------------
-    let decode_partial_impl =
-        decode_partial_gen::gen_decode_partial_impl(name, &partial_name, &stream, input.generics);
-    let resume_partial_impl = decode_partial_gen::gen_resume_partial_impl(
-        input,
-        name,
-        &partial_name,
-        &stream,
-        key_decoder,
-        len_decoder,
-    );
+    let loop_parts =
+        decode_partial_gen::DecodeLoopParts::new(input, framing, &stream, &partial_name);
+    let decode_partial_impl = loop_parts.decode_partial_impl();
+    let resume_partial_impl = loop_parts.resume_partial_impl();
+    let decode_value_impl = loop_parts.decode_value_impl();
     // --------------------------------------------------
-    // decoder() constructor and DecodeValue impl
+    // decoder() constructor
     // --------------------------------------------------
     let decoder_fn_impl = gen_decoder_fn(
         name,
@@ -125,18 +140,10 @@ pub(crate) fn gen_decode_impl(
         lifetime,
         input.generics,
     );
-    let decode_value_impl = decode_partial_gen::gen_decode_value(
-        input,
-        name,
-        &partial_name,
-        &stream,
-        key_decoder,
-        len_decoder,
-    );
     // --------------------------------------------------
     // assemble and return all impls
     // --------------------------------------------------
-    quote! {
+    Some(quote! {
         #seek_if_sentinel
         #partial_struct_def
         #partial_struct_impl
@@ -145,7 +152,7 @@ pub(crate) fn gen_decode_impl(
         #resume_partial_impl
         #decode_partial_impl
         #decode_value_impl
-    }
+    })
 }
 
 /// Generates the `decoder()` inherent method for a container

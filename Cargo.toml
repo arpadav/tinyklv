@@ -27,6 +27,10 @@ name = "derive"
 path = "tests/derive/main.rs"
 
 [[test]]
+name = "keylen"
+path = "tests/keylen/main.rs"
+
+[[test]]
 name = "edge_cases"
 path = "tests/edge_cases/main.rs"
 

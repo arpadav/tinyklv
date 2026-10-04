@@ -4,6 +4,8 @@
 // mods
 // --------------------------------------------------
 pub mod codecs;
+#[cfg(doctest)]
+mod compile_fail;
 pub mod decoder;
 pub mod framing;
 pub mod traits;
@@ -18,7 +20,8 @@ pub use tinyklv_impl::*;
 pub use traits::*;
 
 #[doc(hidden)]
-/// Internal re-exports used during proc-macro expansion
+/// Internal re-exports and helpers used by `#[derive(Klv)]` expansions
+///
 /// Not part of the public API - may change without notice
 pub mod __export {
     #[cfg(feature = "chrono")]
@@ -29,10 +32,10 @@ pub mod __export {
     /// Builds a [`winnow::error::ContextError`] anchored at `input` carrying a
     /// single [`winnow::error::StrContext::Label`]
     ///
-    /// Shared construction path for single-label errors that cannot be
-    /// expressed through a parser combinator (precondition failures and
-    /// derive-generated decoders); multi-context sites build their error
-    /// inline. Keeps manual error construction uniform with the hand-written
+    /// Shared construction path for errors that cannot be expressed through
+    /// a parser combinator (precondition failures and derive-generated
+    /// decoders); a site that needs more context adds it to the returned
+    /// error. Keeps manual error construction uniform with the hand-written
     /// codecs
     ///
     /// Not part of the public API - may change without notice
@@ -72,11 +75,13 @@ pub mod prelude {
     // --------------------------------------------------
     // local
     // --------------------------------------------------
-    pub use crate::decoder::{Decoder, Packet};
-    pub use crate::framing::Framing;
-    pub use crate::traits::{
-        BreakType, DecodeFrame as _, DecodePartial, DecodeValue, DrainFrames as _, EncodeAs,
-        EncodeFrame as _, EncodeValue, Partial, SeekSentinel as _,
+    pub use crate::{
+        decoder::{Decoder, Packet},
+        framing::Framing,
+        traits::{
+            BreakType, DecodeFrame as _, DecodePartial, DecodeValue, DrainFrames as _, EncodeAs,
+            EncodeFrame as _, EncodeValue, Partial, SeekSentinel as _,
+        },
     };
     pub use tinyklv_impl::Klv;
     // --------------------------------------------------
@@ -235,9 +240,6 @@ macro_rules! cast_enc {
 /// `data_value = (real_value - offset) / scale`. This is the encode-side
 /// counterpart to a decode pipeline that uses [`scale!`] combined with a
 /// manual offset addition
-///
-/// Useful for fields that map a real-value range to a data-value range
-/// via `data_value = (real_value - offset) / scale`
 ///
 /// # Usage
 ///

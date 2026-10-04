@@ -1,7 +1,7 @@
 //! Decode traits for KLV field values, frames, and partial/streaming decode
 //!
 //! Core decode-side traits:
-//! * [`DecodeValue`] - decodes the value portion `V` of a KLV triple from stream `S`
+//! * [`DecodeValue`] - decodes the value portion of a KLV triple from stream `S`
 //! * [`DecodeFrame`] (re-exported from `frame`) - decodes a full key-length-value frame
 //! * [`DecodePartial`] / [`Partial`] / [`ResumePartial`] (re-exported from `partial`) -
 //!   support for incremental decode of a packet across multiple byte deliveries
@@ -31,13 +31,14 @@ pub use sentinel::*;
 // --------------------------------------------------
 // constants
 // --------------------------------------------------
-/// The pre-allocation element budget for decoding value vectors
+/// The pre-allocation byte budget for decoding value vectors, which [`DecodeValue::NUM_ELEM`]
+/// divides by the element size
 ///
 /// TODO: investigate what is best/optimal for pre-sizing? right
 /// now arbitrarily set to 4096, which is baked into the binary
 const DECODE_VEC_PREALLOC_BYTE_BUDGET: usize = 4096;
 
-/// Decodes the value portion `V` of a KLV triple from stream `S`
+/// Decodes the value portion of a KLV triple from stream `S`
 ///
 /// Encode counterpart: [`crate::traits::EncodeValue`]
 ///
@@ -48,6 +49,7 @@ const DECODE_VEC_PREALLOC_BYTE_BUDGET: usize = 4096;
 ///
 /// This trait is **automatically implemented** for structs deriving
 /// [`tinyklv::Klv`](crate::Klv) when every field has an associated decoder
+///
 /// It is also blanket-implemented for [`Vec<T>`] where `T: DecodeValue<S>`
 ///
 /// For ad-hoc custom decoders passed directly to `#[klv(dec = ...)]`,
@@ -78,7 +80,7 @@ where
 
 /// [`Vec`] implementation of [`DecodeValue`]
 ///
-/// Decodes repeated `T` values until the inner decoder fails, collecting
+/// Decodes repeated `T` values until the inner decoder fails or consumes nothing, collecting
 /// successes into a [`Vec`]. Appropriate for representing a repeated inner
 /// field within a single parent KLV packet body
 ///
@@ -86,10 +88,15 @@ where
 /// (where a packet may straddle a buffer boundary), use [`crate::Decoder`]
 /// instead
 ///
-/// Cursor safety: if `T::decode_value` fails *without* consuming any bytes,
-/// the cursor is rewound to the pre-attempt checkpoint so surrounding parsers
-/// see the un-eaten bytes. If the inner decoder consumed bytes and then
-/// failed, that progress is committed and the loop stops
+/// Cursor safety: if the inner decoder consumed bytes and then failed, that
+/// progress is committed and the loop stops
+///
+/// An element that consumed zero bytes is never pushed, whether `T::decode_value`
+/// succeeded or failed: the cursor rewinds to the pre-attempt checkpoint, so
+/// surrounding parsers see the un-eaten bytes, and the loop stops. Such an element
+/// decoded nothing, and the next attempt would see the same input forever. A
+/// derived `T` whose fields are all `Option` does this whenever its loop ends
+/// without consuming a byte, e.g. on empty input
 impl<S, T> DecodeValue<S> for Vec<T>
 where
     S: winnow::stream::Stream,
@@ -102,23 +109,25 @@ where
     fn decode_value(input: &mut S) -> crate::Result<Self> {
         // --------------------------------------------------
         // pre-size to remaining bytes capped at a budget to
-        // bound adversarial allocation
-        // --------------------------------------------------
-        // this is done, since Vec::with_capacity() is significantly
-        // faster than Vec::new() when the capacity is known in advance
+        // bound adversarial allocation; this is done, since
+        // Vec::with_capacity() is significantly faster than
+        // Vec::new() when the capacity is known in advance
         // --------------------------------------------------
         let cap = input.eof_offset().min(Self::NUM_ELEM).max(1);
         let mut acc = Vec::with_capacity(cap);
         loop {
             let before = input.eof_offset();
             let cp = input.checkpoint();
-            if let Ok(val) = T::decode_value(input) {
-                acc.push(val);
-            } else {
-                if input.eof_offset() == before {
-                    input.reset(&cp);
+            let decoded = T::decode_value(input);
+            let consumed = input.eof_offset() != before;
+            match decoded {
+                Ok(val) if consumed => acc.push(val),
+                _ => {
+                    if !consumed {
+                        input.reset(&cp);
+                    }
+                    break;
                 }
-                break;
             }
         }
         Ok(acc)

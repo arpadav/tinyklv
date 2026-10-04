@@ -10,6 +10,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use crate::helpers::ContextErrorExt;
 use tinyklv::codecs::ber::BerLength;
 use tinyklv::prelude::*;
 
@@ -171,11 +172,18 @@ fn ber_length_empty_input_fails() {
 }
 
 #[test]
-/// Tests that a long-form prefix `0x82` claiming 2 extra bytes errors when only 1 byte follows
+/// Tests that a long-form prefix `0x82` claiming 2 extra bytes errors when only 1 byte follows,
+/// with the cursor at the end of input and an error expecting the bytes its long form claims, so a
+/// framed caller classes the split as truncation
 fn ber_length_truncated_long_form_fails() {
     // Byte 0x82 claims 2 more bytes, but only 1 follows
-    let mut input: &[u8] = &[0x82, 0x01];
-    assert!(tinyklv::dec::ber::ber_length(&mut input).is_err());
+    let wire = [0x82, 0x01];
+    let mut input = &wire[..];
+    match tinyklv::dec::ber::ber_length(&mut input) {
+        Err(error) if error.expects_length_bytes() => {}
+        other => panic!("expected a truncated-length Err, got {other:?}"),
+    }
+    assert_eq!(input, &wire[2..]);
 }
 
 #[test]
@@ -184,4 +192,29 @@ fn ber_length_truncated_long_form_zero_extra() {
     // Byte 0x81 claims 1 more byte, but none follow
     let mut input: &[u8] = &[0x81];
     assert!(tinyklv::dec::ber::ber_length(&mut input).is_err());
+}
+
+#[test]
+/// Tests that a `BerLength` long form split inside its length bytes errors with the cursor at
+/// the end of input, so a framed caller classes the split as truncation
+fn berlength_split_long_form_consumes_to_end() {
+    // 0x83 claims 3 more bytes, but only 2 follow
+    let wire = [0x83, 0x01, 0x00];
+    let mut input = &wire[..];
+    assert!(BerLength::<u32>::decode_value(&mut input).is_err());
+    assert_eq!(input, &wire[3..]);
+}
+
+#[test]
+/// Tests that `BerLength` rejects a value past its type's range with the cursor unchanged and
+/// an error expecting a value that fits
+fn berlength_overflow_rewinds() {
+    // 0x82 0x01 0x00 = 256, past u8::MAX
+    let wire = [0x82, 0x01, 0x00];
+    let mut input = &wire[..];
+    match BerLength::<u8>::decode_value(&mut input) {
+        Err(error) if error.expects_fits_target() => {}
+        other => panic!("expected an overflow Err, got {other:?}"),
+    }
+    assert_eq!(input, &wire[..]);
 }

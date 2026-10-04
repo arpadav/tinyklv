@@ -1,14 +1,14 @@
-//! Streaming interaction with `Vec<T>` inside a parent packet.
+//! Streaming interaction with `Vec<T>` inside a parent packet
 //!
 //! Covers the legitimate "repeated inner field" use of the
 //! `impl<S, T> DecodeValue<S> for Vec<T>` blanket: a parent `#[derive(Klv)]`
 //! struct that carries a `Vec<Reading>` as one of its fields, meaning
-//! the `0x10` tag may appear N times inside one parent packet.
+//! the `0x10` tag may appear N times inside one parent packet
 //!
 //! Then wraps the same parent in a `Decoder<Parent>` and streams
 //! several complete parent packets back-to-back to make sure the
 //! cross-packet streaming path also works when nested accumulation is
-//! in play.
+//! in play
 
 // --------------------------------------------------
 // local
@@ -17,9 +17,7 @@ use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
 
-// --------------------------------------------------
-// inner item: a 2-byte sensor reading
-// --------------------------------------------------
+/// A 2-byte sensor reading: a `channel` triple followed by a `value` triple
 #[derive(Klv, Debug, Clone, Copy, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -33,16 +31,13 @@ struct Reading {
     value: u8,
 }
 
-// --------------------------------------------------
-// parent: sentinel-framed packet holding an id plus a repeated inner
-// field.
-//
-// - `sentinel = b"PAR"` gives the `Decoder<Parent>` streaming API a way
-//   to locate packet boundaries inside a byte stream.
-// - `trait_fallback` routes the `Vec<Reading>` field through the
-//   blanket `DecodeValue`/`EncodeValue` impls at `src/traits/dec.rs`
-//   without needing an explicit field-level xcoder.
-// --------------------------------------------------
+/// A sentinel-framed packet holding an id plus a repeated `Reading` field
+///
+/// - `sentinel = b"PAR"` gives the `Decoder<Parent>` streaming API a way
+///   to locate packet boundaries inside a byte stream
+/// - `trait_fallback` routes the `Vec<Reading>` field through the blanket
+///   `DecodeValue` impl for `Vec<T>` (and `EncodeValue`) without an explicit
+///   field-level xcoder
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -61,7 +56,7 @@ struct Parent {
 
 fn parent_bytes(id: u8, readings: &[Reading]) -> Vec<u8> {
     // --------------------------------------------------
-    // hand-frame the packet: sentinel + packet_len + body.
+    // hand-frame the packet: sentinel + packet_len + body
     // body = id triple + one 0x10 triple whose sub-body is the
     // concatenation of `readings.encode_value()`.
     // --------------------------------------------------
@@ -82,14 +77,14 @@ fn parent_bytes(id: u8, readings: &[Reading]) -> Vec<u8> {
 
 #[test]
 /// Single parent packet carrying three repeated readings decodes via
-/// `decode_frame` (sentinel-aware) into a `Parent`.
+/// `decode_frame` (sentinel-aware) into a `Parent`
 ///
 /// The inner `Vec<Reading>` blanket, running on an unframed sub-slice,
 /// last-wins merges the three readings into a single `Reading` element.
 /// This is the documented behavior for the Vec<T>-inside-a-parent use
 /// case without per-reading framing; see
 /// `vec_decode_value_unframed_merge_last_wins` for the top-level
-/// counterpart.
+/// counterpart
 fn parent_with_repeated_readings_decodes() {
     let readings = [
         Reading {
@@ -116,7 +111,7 @@ fn parent_with_repeated_readings_decodes() {
 
 #[test]
 /// Junk bytes between sentinel-framed parent packets are skipped.
-/// All three parents decode in order with correct inner readings.
+/// All three parents decode in order with correct inner readings
 fn decoder_parent_with_junk_between() {
     let a = parent_bytes(
         1,
@@ -157,4 +152,90 @@ fn decoder_parent_with_junk_between() {
         ids.push(r.id);
     }
     assert_eq!(ids, vec![1, 2, 3]);
+}
+
+/// A beacon whose fields are all optional, so it decodes from zero bytes without error
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+)]
+struct Beacon {
+    #[klv(key = 0x01, dec = decb::be_u16, enc = *encb::be_u16)]
+    altitude: Option<u16>,
+    #[klv(key = 0x02, dec = decb::u8, enc = *encb::u8)]
+    heading: Option<u8>,
+}
+
+#[test]
+/// `Vec<T>::decode_partial` never pushes an element that consumed zero bytes:
+/// an all-optional `T` on empty input is `Ready` with an empty `Vec`, not one
+/// all-`None` element
+fn vec_decode_partial_all_optional_empty_stream() {
+    match Vec::<Beacon>::decode_partial(&mut &[][..]) {
+        Ok(Packet::Ready(decoded)) => assert_eq!(decoded, []),
+        other => panic!("expected Ready, got {other:?}"),
+    }
+}
+
+#[test]
+/// `Vec<T>::decode_partial` finalizes and pushes a cut final element that consumed
+/// bytes: a `heading` frame lands, then the `altitude` frame is cut
+fn vec_decode_partial_finalizes_cut_last_element() {
+    #[rustfmt::skip]
+    let wire = [
+        // heading = 5
+        0x02, 0x01, 0x05,
+        // altitude, one of its two bytes
+        0x01, 0x02, 0x00,
+    ];
+    let mut cursor = &wire[..];
+    match Vec::<Beacon>::decode_partial(&mut cursor) {
+        Ok(Packet::Ready(decoded)) => assert_eq!(
+            decoded,
+            [Beacon {
+                altitude: None,
+                heading: Some(5),
+            }]
+        ),
+        other => panic!("expected Ready, got {other:?}"),
+    }
+    assert_eq!(
+        cursor,
+        &wire[3..],
+        "the cut altitude frame stays unconsumed"
+    );
+}
+
+/// A `Beacon` with `deny_unknown_keys`, so an unrecognised key is an error
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    deny_unknown_keys,
+)]
+struct StrictBeacon {
+    #[klv(key = 0x01, dec = decb::be_u16, enc = *encb::be_u16)]
+    altitude: Option<u16>,
+    #[klv(key = 0x02, dec = decb::u8, enc = *encb::u8)]
+    heading: Option<u8>,
+}
+
+#[test]
+/// `Vec<T>::decode_partial` propagates an element's error once that element consumed
+/// bytes: a `heading` frame lands, then an unknown key is rejected
+fn vec_decode_partial_propagates_error_after_consuming() {
+    #[rustfmt::skip]
+    let wire = [
+        // heading = 5
+        0x02, 0x01, 0x05,
+        // unknown key 0x09
+        0x09, 0x01, 0x00,
+    ];
+    match Vec::<StrictBeacon>::decode_partial(&mut &wire[..]) {
+        Err(label) if label.contains("invalid key") && label.contains("StrictBeacon") => {}
+        other => panic!("expected an unknown-key Err naming `StrictBeacon`, got {other:?}"),
+    }
 }

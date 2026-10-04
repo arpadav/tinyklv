@@ -44,30 +44,27 @@ pub(super) const BER_LEN_PREFIX_BYTES: usize = 8;
 /// * `key_encoder` - Encoder expression used for each generated field key
 /// * `len_encoder` - Encoder expression used for each generated field length
 /// * `len_prefix` - Container-level length-prefix strategy shared by fields
+/// * `key_size` - The declared key size shape, forwarded to the reserve estimate
+/// * `len_size` - The declared length-prefix size shape, forwarded to the reserve estimate
 ///
 /// # Returns
 ///
 /// A token stream containing one `EncodeValue` trait implementation for the
 /// container described by `input`
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let tokens = gen_encode_value_impl(&container, &key_encoder, &len_encoder, &len_prefix);
-/// assert!(!tokens.is_empty());
-/// ```
 pub(super) fn gen_encode_value_impl(
     input: &MainContainer,
     key_encoder: &types::SiguledXcoder,
     len_encoder: &types::SiguledXcoder,
     len_prefix: &ContainerLengthPrefix,
+    key_size: Option<SizeSpec>,
+    len_size: Option<SizeSpec>,
 ) -> proc_macro2::TokenStream {
     // --------------------------------------------------
     // split the container type and reserve plan
     // --------------------------------------------------
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-    let reserve_bytes = encoded_value_reserve_bytes(input, key_encoder);
+    let reserve_bytes = encoded_value_reserve_bytes(input, key_encoder, key_size, len_size);
     // --------------------------------------------------
     // build scratch and field item emission
     // --------------------------------------------------
@@ -102,38 +99,29 @@ pub(super) fn gen_encode_value_impl(
 ///
 /// * `input` - Parsed container metadata whose attributed fields are counted
 /// * `key_encoder` - Container key encoder used to infer a fixed key width
+/// * `key_size` - The declared key size shape, used to estimate per-field key bytes
+/// * `len_size` - The declared length-prefix size shape, used to estimate per-field length bytes
 ///
 /// # Returns
 ///
 /// The total byte reserve hint for all encoded value fields in the container
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let reserve = encoded_value_reserve_bytes(&container, &key_encoder);
-/// assert!(reserve <= usize::MAX);
-/// ```
 pub(super) fn encoded_value_reserve_bytes(
     input: &MainContainer,
     key_encoder: &types::SiguledXcoder,
+    key_size: Option<SizeSpec>,
+    len_size: Option<SizeSpec>,
 ) -> usize {
     // --------------------------------------------------
     // estimate per-field key bytes
     // --------------------------------------------------
-    let key_bytes = input
-        .attrs
-        .key
-        .size
+    let key_bytes = key_size
         .and_then(SizeSpec::capacity_bytes)
         .or_else(|| fixed_width::builtin_fixed_encoder_width(key_encoder))
         .unwrap_or(DEFAULT_KEY_BYTES);
     // --------------------------------------------------
     // estimate per-field length bytes
     // --------------------------------------------------
-    let len_bytes = input
-        .attrs
-        .len
-        .size
+    let len_bytes = len_size
         .and_then(SizeSpec::capacity_bytes)
         .unwrap_or(DEFAULT_LEN_BYTES);
     // --------------------------------------------------
@@ -169,14 +157,6 @@ pub(super) fn encoded_value_reserve_bytes(
 ///
 /// A token stream containing a mutable `Vec<u8>` declaration when staging is
 /// required, or an empty token stream otherwise
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let scratch = quote::format_ident!("__scratch");
-/// let tokens = gen_scratch_decl(len_prefix, &container, &scratch);
-/// assert!(tokens.to_string().contains("scratch") || tokens.is_empty());
-/// ```
 fn gen_scratch_decl(
     len_prefix: ContainerLengthPrefix,
     input: &MainContainer,

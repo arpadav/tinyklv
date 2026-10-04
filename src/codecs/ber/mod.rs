@@ -33,8 +33,19 @@ use crate::prelude::*;
 use num_traits::{
     AsPrimitive, FromPrimitive, ToBytes, ToPrimitive, Unsigned, bounds::UpperBounded,
 };
-use winnow::error::ParserError;
-use winnow::token::{take, take_while};
+use winnow::{
+    stream::Stream,
+    token::{take, take_while},
+};
+
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+/// The `StrContext::Label` naming a [`BerLength`] value in its decode errors
+const BER_LENGTH_LABEL: &str = "BER length value";
+
+/// What a decoded BER value that overflows the target integer type was expected to be
+const FITS_TARGET: &str = "a value that fits the target integer type";
 
 /// Sealed marker restricting [`OfBerCommon`] to the fixed-width unsigned
 /// integer types, so external crates cannot add their own implementations
@@ -189,6 +200,7 @@ impl<T: OfBerCommon> BerLength<T> {
     /// Returns the wrapped length value as a [`u128`], regardless of which BER form was used
     ///
     /// Both `Short` and `Long` variants are widened to [`u128`] without loss
+    ///
     /// Used by [`crate::codecs::ber::dec::ber_length`] to produce a
     /// uniform [`usize`] for `take(len)` calls
     pub fn as_u128(&self) -> u128 {
@@ -260,6 +272,11 @@ impl<T: OfBerCommon> crate::EncodeValue for BerLength<T> {
 impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerLength<T> {
     /// Decode a [`BerLength`] from a [`&[u8]`]
     ///
+    /// # Errors
+    ///
+    /// - Runs out of bytes: the cursor is left at the end of the input
+    /// - The value does not fit `T`: the cursor is rewound to where it started
+    ///
     /// # Example
     ///
     /// ```
@@ -303,39 +320,20 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerLength<T> {
         // be simplified to below:
         // --------------------------------------------------
         if input.len() < num_bytes {
-            return Err(winnow::error::ContextError::from_input(input)
-                .add_context(
-                    input,
-                    &checkpoint,
-                    winnow::error::StrContext::Label("BER length value"),
-                )
-                .add_context(
-                    input,
-                    &checkpoint,
-                    winnow::error::StrContext::Expected(
-                        winnow::error::StrContextValue::Description(
-                            "enough bytes in stream for length encoding",
-                        ),
-                    ),
-                ));
+            // consumed to the end, so a caller classes a split long form as truncation
+            let _ = input.finish();
+            return Err(value_error(
+                input,
+                &checkpoint,
+                BER_LENGTH_LABEL,
+                "enough bytes in stream for length encoding",
+            ));
         }
         // --------------------------------------------------
         // decode the length from the specified number of bytes
         // --------------------------------------------------
         let Some(output) = T::from_u128(parse_length_u128(input, num_bytes)?) else {
-            return Err(winnow::error::ContextError::from_input(input)
-                .add_context(
-                    input,
-                    &checkpoint,
-                    winnow::error::StrContext::Label("BER length value"),
-                )
-                .add_context(
-                    input,
-                    &checkpoint,
-                    winnow::error::StrContext::Expected(
-                        winnow::error::StrContextValue::Description("less than u128::MAX"),
-                    ),
-                ));
+            return Err(overflow_error(input, &checkpoint, BER_LENGTH_LABEL));
         };
         Ok(BerLength::Long(output))
     }
@@ -467,6 +465,11 @@ impl<T: OfBerCommon> crate::EncodeValue for BerOid<T> {
 impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerOid<T> {
     /// Decode a [`BerOid`] from a [`&[u8]`]
     ///
+    /// # Errors
+    ///
+    /// - Runs out of bytes: the cursor is left at the end of the input
+    /// - The value does not fit `T`: the cursor is rewound to where it started
+    ///
     /// # Example
     ///
     /// ```
@@ -505,19 +508,7 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerOid<T> {
             .chain(std::iter::once(terminator))
             .fold(0u128, |acc, b| (acc << 7) | (b & 0x7F) as u128);
         let Some(output) = T::from_u128(output) else {
-            return Err(winnow::error::ContextError::from_input(input)
-                .add_context(
-                    input,
-                    &checkpoint,
-                    winnow::error::StrContext::Label("BER-OID value"),
-                )
-                .add_context(
-                    input,
-                    &checkpoint,
-                    winnow::error::StrContext::Expected(
-                        winnow::error::StrContextValue::Description("less than u128::MAX"),
-                    ),
-                ));
+            return Err(overflow_error(input, &checkpoint, "BER-OID value"));
         };
         Ok(BerOid::new(output))
     }
@@ -526,11 +517,59 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerOid<T> {
 #[inline(always)]
 /// Consumes exactly one byte from the input and returns it as a 1-element slice
 ///
-/// Used at the start of both [`BerLength`] and (implicitly) the BER-OID decoder
-/// to read the first framing byte before branching on short vs long form
+/// Used at the start of the [`BerLength`] decoder to read the first byte before
+/// branching on short vs long form
+///
 /// Returns an error if the stream is empty
 fn take_one<'s>(input: &mut &'s [u8]) -> crate::Result<&'s [u8]> {
     take(1usize).parse_next(input)
+}
+
+/// Rewinds `input` to `checkpoint` and builds the error for a decoded value that overflows the
+/// target integer type
+///
+/// # Arguments
+///
+/// * `input` - The input, rewound to `checkpoint` so the caller sees the cursor where the value
+///   started
+/// * `checkpoint` - The start of the value
+/// * `label` - The `StrContext::Label` naming the value
+///
+/// # Returns
+///
+/// A [`winnow::error::ContextError`] labelled `label`, expecting [`FITS_TARGET`]
+fn overflow_error<I: Stream>(
+    input: &mut I,
+    checkpoint: &I::Checkpoint,
+    label: &'static str,
+) -> winnow::error::ContextError {
+    input.reset(checkpoint);
+    value_error(input, checkpoint, label, FITS_TARGET)
+}
+
+/// Builds the error for a BER value that failed to decode
+///
+/// # Arguments
+///
+/// * `input` - The input the error is anchored to
+/// * `checkpoint` - The start of the value
+/// * `label` - The `StrContext::Label` naming the value
+/// * `expected` - The `StrContext::Expected` description of what the value had to be
+///
+/// # Returns
+///
+/// A [`winnow::error::ContextError`] labelled `label`, expecting `expected`
+fn value_error<I: Stream>(
+    input: &I,
+    checkpoint: &I::Checkpoint,
+    label: &'static str,
+    expected: &'static str,
+) -> winnow::error::ContextError {
+    crate::__export::labeled_error(input, checkpoint, label).add_context(
+        input,
+        checkpoint,
+        winnow::error::StrContext::Expected(winnow::error::StrContextValue::Description(expected)),
+    )
 }
 
 #[inline(always)]

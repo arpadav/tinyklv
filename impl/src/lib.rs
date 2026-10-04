@@ -8,9 +8,10 @@
 //!    representation (`ast` module)
 //! 2. Accumulates diagnostics via [`Ctxt`] and emits compile errors for any
 //!    invalid or missing annotations
-//! 3. Conditionally generates `Encode`/`EncodeValue`/`EncodeFrame` and
-//!    `Decode`/`DecodeValue`/`DecodeFrame` implementations depending on
-//!    which fields carry encoders and decoders (`expand` module)
+//! 3. Conditionally generates `EncodeValue`/`EncodeFrame` and
+//!    `DecodeValue`/`DecodePartial`/`ResumePartial`/`DecodeFrame` implementations
+//!    depending on the container's framing and on which fields carry encoders
+//!    and decoders (`expand` module)
 //!
 //! This crate is an implementation detail of `tinyklv` and is not intended to
 //! be used directly
@@ -28,8 +29,7 @@ mod expand;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::ast::symbol;
-use crate::ctxt::Ctxt;
+use crate::{ast::symbol, ctxt::Ctxt};
 
 // --------------------------------------------------
 // external
@@ -58,7 +58,8 @@ const ATTR_NAME: &str = "klv";
 ///
 /// The generated implementations depend on which `#[klv(..)]` attributes are
 /// present: containers without an encoder on every field produce no encode impl,
-/// and similarly for decoders
+/// and similarly for decoders. A container framed by the fused `keylen(..)` codec
+/// generates the decode impls only
 #[proc_macro_derive(Klv, attributes(klv))]
 pub fn klv_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -192,6 +193,43 @@ Options include {s}.",
     MissingLength,
 
     #[error("\
+        Missing framing attributes to describe how to encode/decode keys and lengths.
+Use `{k}(..)` + `{l}(..)`, or the fused `{kl}(..)` codec.",
+        k = symbol::KEY,
+        l = symbol::LENGTH,
+        kl = symbol::KEYLEN,
+    )]
+    MissingFraming,
+
+    #[error("\
+        Conflicting framing attributes. The fused `{kl}(..)` codec is mutually exclusive with \
+separate `{k}(..)`/`{l}(..)`.
+Use either `{kl}` OR `{k}`+`{l}`, not both.",
+        kl = symbol::KEYLEN,
+        k = symbol::KEY,
+        l = symbol::LENGTH,
+    )]
+    KeylenWithKeyOrLen,
+
+    #[error("\
+        `{s}` is not supported with `{kl}`. Remove `{s}`, or use `{k}(..)` + `{l}(..)`.",
+        s = symbol::SENTINEL,
+        kl = symbol::KEYLEN,
+        k = symbol::KEY,
+        l = symbol::LENGTH,
+    )]
+    KeylenWithSentinel,
+
+    #[error("\
+        `{b}` is not supported with `{kl}`. Remove `{b}`, or use `{k}(..)` + `{l}(..)`.",
+        b = symbol::BREAK_ON,
+        kl = symbol::KEYLEN,
+        k = symbol::KEY,
+        l = symbol::LENGTH,
+    )]
+    KeylenWithBreakOn,
+
+    #[error("\
         Duplicate `{s}` attribute. Only one method of encoding and decoding keys is allowed.",
         s = symbol::KEY,
     )]
@@ -204,39 +242,49 @@ Options include {s}.",
     DuplicateLength,
 
     #[error("\
-        Unknown field `{0}` in {k}/{l}.
-Expected `{e} = <..>`, `{d} = <..>`, or `{s} = <..>`.",
+        Duplicate `{kl}` attribute. Only one fused key/length codec per struct is allowed.",
+        kl = symbol::KEYLEN,
+    )]
+    DuplicateKeylen,
+
+    #[error("\
+        Unknown field `{0}` in {k}/{l}/{kl}.
+Expected `{e} = <..>`, `{d} = <..>`, or `{s}(..)`.",
         k = symbol::KEY,
         l = symbol::LENGTH,
+        kl = symbol::KEYLEN,
         e = symbol::ENCODER,
         d = symbol::DECODER,
         s = symbol::SIZE,
     )]
-    UnknownKeyLenField(String),
+    UnknownHeaderField(String),
 
     #[error("\
-        Duplicate `{e}` field. Only one method of encoding {k}/{l} is allowed.",
+        Duplicate `{e}` field. Only one method of encoding {k}/{l}/{kl} is allowed.",
         e = symbol::ENCODER,
         k = symbol::KEY,
         l = symbol::LENGTH,
+        kl = symbol::KEYLEN,
     )]
-    DuplicateEncoderInKeyLen,
+    DuplicateEncoderInHeader,
 
     #[error("\
-        Duplicate `{d}` field. Only one method of decoding {k}/{l} is allowed.",
+        Duplicate `{d}` field. Only one method of decoding {k}/{l}/{kl} is allowed.",
         d = symbol::DECODER,
         k = symbol::KEY,
         l = symbol::LENGTH,
+        kl = symbol::KEYLEN,
     )]
-    DuplicateDecoderInKeyLen,
+    DuplicateDecoderInHeader,
 
     #[error("\
-        Duplicate `{s}` field. Only one {s} per {k}/{l} is allowed.",
+        Duplicate `{s}` field. Only one {s} per {k}/{l}/{kl} is allowed.",
         s = symbol::SIZE,
         k = symbol::KEY,
         l = symbol::LENGTH,
+        kl = symbol::KEYLEN,
     )]
-    DuplicateSizeInKeyLen,
+    DuplicateSizeInHeader,
 
     #[error("\
         Missing required `{e}` field for `{0}`.
@@ -245,7 +293,7 @@ If no encoding is required, use `#[{a}({aue})]`.",
         a = symbol::KLV_ATTR,
         aue = symbol::ALLOW_UNIMPLEMENTED_ENCODE,
     )]
-    MissingEncInKeyLen(String),
+    MissingEncInHeader(String),
 
     #[error("\
         Missing required `{d}` field for `{0}`.
@@ -254,7 +302,7 @@ If no decoding is required, use `#[{a}({aud})]`.",
         a = symbol::KLV_ATTR,
         aud = symbol::ALLOW_UNIMPLEMENTED_DECODE,
     )]
-    MissingDecInKeyLen(String),
+    MissingDecInHeader(String),
 
     // --------------------------------------------------
     // default
