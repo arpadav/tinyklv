@@ -8,28 +8,13 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{field_length_plan::ContainerLengthPrefix, fixed_width, klv_item_gen};
-use crate::ast::{
-    attr::{MainContainer, size::SizeSpec},
-    types,
-};
+use super::{framing::EncodeFraming, klv_item_gen};
+use crate::ast::attr::MainContainer;
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use quote::{format_ident, quote};
-
-// --------------------------------------------------
-// constants
-// --------------------------------------------------
-/// Fallback per-field key-byte reserve estimate
-const DEFAULT_KEY_BYTES: usize = 1;
-
-/// Fallback per-field length-byte reserve estimate
-const DEFAULT_LEN_BYTES: usize = 1;
-
-/// Extra reserve space for a variable-width BER frame length prefix
-pub(super) const BER_LEN_PREFIX_BYTES: usize = 8;
 
 /// Generates the `EncodeValue` trait implementation for a container
 ///
@@ -41,11 +26,8 @@ pub(super) const BER_LEN_PREFIX_BYTES: usize = 8;
 /// # Arguments
 ///
 /// * `input` - Parsed container metadata and field descriptors for the derive
-/// * `key_encoder` - Encoder expression used for each generated field key
-/// * `len_encoder` - Encoder expression used for each generated field length
-/// * `len_prefix` - Container-level length-prefix strategy shared by fields
-/// * `key_size` - The declared key size shape, forwarded to the reserve estimate
-/// * `len_size` - The declared length-prefix size shape, forwarded to the reserve estimate
+/// * `framing` - The frame header encoder(s) written around each field value
+/// * `reserve_bytes` - The reserve hint from [`EncodeFraming::value_reserve_bytes`]
 ///
 /// # Returns
 ///
@@ -53,25 +35,20 @@ pub(super) const BER_LEN_PREFIX_BYTES: usize = 8;
 /// container described by `input`
 pub(super) fn gen_encode_value_impl(
     input: &MainContainer,
-    key_encoder: &types::SiguledXcoder,
-    len_encoder: &types::SiguledXcoder,
-    len_prefix: &ContainerLengthPrefix,
-    key_size: Option<SizeSpec>,
-    len_size: Option<SizeSpec>,
+    framing: EncodeFraming<'_>,
+    reserve_bytes: usize,
 ) -> proc_macro2::TokenStream {
     // --------------------------------------------------
-    // split the container type and reserve plan
+    // split the container type
     // --------------------------------------------------
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-    let reserve_bytes = encoded_value_reserve_bytes(input, key_encoder, key_size, len_size);
     // --------------------------------------------------
     // build scratch and field item emission
     // --------------------------------------------------
     let scratch = format_ident!("__scratch");
-    let scratch_decl = gen_scratch_decl(*len_prefix, input, &scratch);
-    let klv_items =
-        klv_item_gen::gen_klv_items(input, key_encoder, len_encoder, *len_prefix, &scratch);
+    let scratch_decl = gen_scratch_decl(framing, &scratch);
+    let klv_items = klv_item_gen::gen_klv_items(input, framing, &scratch);
     // --------------------------------------------------
     // assemble the trait impl
     // --------------------------------------------------
@@ -87,85 +64,27 @@ pub(super) fn gen_encode_value_impl(
     }
 }
 
-/// Computes the encode-value capacity reserve hint in bytes
-///
-/// Estimates the number of bytes the generated `encode_value` method should
-/// reserve before writing field items. The estimate combines field key width,
-/// field length width, and any statically known value width. Unknown widths
-/// contribute zero for the value portion, so the result is an allocation hint
-/// rather than a wire-format contract
-///
-/// # Arguments
-///
-/// * `input` - Parsed container metadata whose attributed fields are counted
-/// * `key_encoder` - Container key encoder used to infer a fixed key width
-/// * `key_size` - The declared key size shape, used to estimate per-field key bytes
-/// * `len_size` - The declared length-prefix size shape, used to estimate per-field length bytes
-///
-/// # Returns
-///
-/// The total byte reserve hint for all encoded value fields in the container
-pub(super) fn encoded_value_reserve_bytes(
-    input: &MainContainer,
-    key_encoder: &types::SiguledXcoder,
-    key_size: Option<SizeSpec>,
-    len_size: Option<SizeSpec>,
-) -> usize {
-    // --------------------------------------------------
-    // estimate per-field key bytes
-    // --------------------------------------------------
-    let key_bytes = key_size
-        .and_then(SizeSpec::capacity_bytes)
-        .or_else(|| fixed_width::builtin_fixed_encoder_width(key_encoder))
-        .unwrap_or(DEFAULT_KEY_BYTES);
-    // --------------------------------------------------
-    // estimate per-field length bytes
-    // --------------------------------------------------
-    let len_bytes = len_size
-        .and_then(SizeSpec::capacity_bytes)
-        .unwrap_or(DEFAULT_LEN_BYTES);
-    // --------------------------------------------------
-    // sum known field widths into the reserve hint
-    // --------------------------------------------------
-    input
-        .data
-        .iter()
-        .filter_map(|field| field.attrs.as_ref().map(|attrs| (field.ty, attrs)))
-        .map(|(ty, attrs)| {
-            let value_bytes = fixed_width::fixed_value_type_width(ty)
-                .or_else(|| attrs.size.and_then(SizeSpec::capacity_bytes))
-                .unwrap_or(0);
-            key_bytes + len_bytes + value_bytes
-        })
-        .sum()
-}
-
 /// Emits the per-value scratch buffer declaration when field values need staging
 ///
-/// Variable-width container lengths require field values to be encoded into a
-/// scratch buffer before their lengths are written. Fixed-width plans can write
-/// directly to the caller output, so this helper emits no declaration for that
-/// case and keeps generated methods free of unused locals
+/// A framing that stages values ([`EncodeFraming::stages_values`]) encodes each
+/// field value into a scratch buffer before its frame header is written. Fixed-width
+/// plans can write directly to the caller output, so this helper emits no declaration
+/// for that case and keeps generated methods free of unused locals
 ///
 /// # Arguments
 ///
-/// * `len_prefix` - Container length-prefix strategy that controls staging
-/// * `input` - Parsed container metadata used to detect encoded fields
+/// * `framing` - The frame header encoder(s), deciding whether values are staged
 /// * `scratch` - Identifier to use for the generated scratch buffer binding
 ///
 /// # Returns
 ///
 /// A token stream containing a mutable `Vec<u8>` declaration when staging is
 /// required, or an empty token stream otherwise
-fn gen_scratch_decl(
-    len_prefix: ContainerLengthPrefix,
-    input: &MainContainer,
-    scratch: &syn::Ident,
-) -> proc_macro2::TokenStream {
+fn gen_scratch_decl(framing: EncodeFraming<'_>, scratch: &syn::Ident) -> proc_macro2::TokenStream {
     // --------------------------------------------------
-    // declare scratch only for variable-width encoded fields
+    // declare scratch only for staged encoded fields
     // --------------------------------------------------
-    if len_prefix.is_variable() && input.data.iter().any(|field| field.attrs.is_some()) {
+    if framing.stages_values() {
         quote! { let mut #scratch: ::std::vec::Vec<u8> = ::std::vec::Vec::new(); }
     } else {
         quote! {}

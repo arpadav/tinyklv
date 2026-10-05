@@ -103,14 +103,14 @@ pub(super) fn fixed_value_type_width(ty: &syn::Type) -> Option<usize> {
 /// # Example
 ///
 /// ```rust,ignore
-/// let width = builtin_fixed_encoder_width(&value_encoder);
+/// let width = builtin_fixed_encoder_width(&value_encoder.inner);
 /// assert!(width.is_none() || width.unwrap() > 0);
 /// ```
-pub(super) fn builtin_fixed_encoder_width(value_encoder: &types::SiguledXcoder) -> Option<usize> {
+pub(super) fn builtin_fixed_encoder_width(encoder: &types::XcoderLike) -> Option<usize> {
     // --------------------------------------------------
     // only path-like built-in encoders can be recognized
     // --------------------------------------------------
-    let types::XcoderLike::Path(path) = &value_encoder.inner else {
+    let types::XcoderLike::Path(path) = encoder else {
         return None;
     };
     // --------------------------------------------------

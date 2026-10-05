@@ -12,6 +12,7 @@
 // --------------------------------------------------
 mod decode_basic;
 mod drive;
+mod encode_roundtrip;
 mod example;
 mod frame_dispatch;
 mod framing_rules;

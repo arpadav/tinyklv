@@ -20,7 +20,7 @@ use crate::{
     ast::{
         attr::size::SizeSpec,
         symbol::{self, Symbol},
-        types::{SiguledXcoder, XcoderType},
+        types::{HeaderEncoder, XcoderType},
     },
 };
 
@@ -38,7 +38,7 @@ use std::borrow::Cow;
 /// a missing encoder or decoder is not an error
 pub(crate) struct HeaderXcoder {
     /// The encoder, or `None` when unimplemented encoding is allowed
-    pub(crate) enc: Option<SiguledXcoder>,
+    pub(crate) enc: Option<XcoderType>,
 
     /// The decoder, or `None` when unimplemented decoding is allowed
     pub(crate) dec: Option<XcoderType>,
@@ -59,7 +59,7 @@ impl TryFrom<&syn::MetaList> for HeaderXcoder {
         // --------------------------------------------------
         // init
         // --------------------------------------------------
-        let mut enc: Option<SiguledXcoder> = None;
+        let mut enc: Option<HeaderEncoder> = None;
         let mut dec: Option<XcoderType> = None;
         let mut size: Option<SizeSpec> = None;
         // --------------------------------------------------
@@ -70,7 +70,7 @@ impl TryFrom<&syn::MetaList> for HeaderXcoder {
                 meta;
                 err!(UnknownHeaderField(meta.path));
                 3;
-                enc: symbol::pnm_parse_maybestr_encoder => err!(DuplicateEncoderInHeader),
+                enc: symbol::pnm_parse_maybestr_header_encoder => err!(DuplicateEncoderInHeader),
                 dec: symbol::pnm_parse_maybestr_decoder => err!(DuplicateDecoderInHeader),
                 size: symbol::parse_pnm_size => err!(DuplicateSizeInHeader),
             }
@@ -78,7 +78,11 @@ impl TryFrom<&syn::MetaList> for HeaderXcoder {
         // --------------------------------------------------
         // return (size is validated during its own parse)
         // --------------------------------------------------
-        Ok(HeaderXcoder { enc, dec, size })
+        Ok(HeaderXcoder {
+            enc: enc.map(|HeaderEncoder(enc)| enc),
+            dec,
+            size,
+        })
     }
 }
 
@@ -281,6 +285,69 @@ mod tests {
                 messages,
                 [expected.to_string()],
                 "{name}: the one error names its slot"
+            );
+        }
+    }
+
+    #[test]
+    /// Verifies a `&` or `*` sigil on any frame header encoder is the one error reported
+    ///
+    /// The derive passes each header encoder its key and length by value, so a sigil would be
+    /// silently ignored; every slot and both sigils must be rejected
+    fn sigil_on_header_encoder_is_rejected() {
+        let key_list = quote! { key(dec = decb::u8, enc = encb::u8) };
+        let len_list = quote! { len(dec = decb::u8_as_usize, enc = encb::u8_from_usize) };
+        // --------------------------------------------------
+        // (name, container header attributes)
+        // --------------------------------------------------
+        let cases = [
+            (
+                "& key",
+                quote! { key(dec = decb::u8, enc = &encb::u8), #len_list },
+            ),
+            (
+                "* key",
+                quote! { key(dec = decb::u8, enc = *encb::u8), #len_list },
+            ),
+            (
+                "& len",
+                quote! { #key_list, len(dec = decb::u8_as_usize, enc = &encb::u8_from_usize) },
+            ),
+            (
+                "* len",
+                quote! { #key_list, len(dec = decb::u8_as_usize, enc = *encb::u8_from_usize) },
+            ),
+            (
+                "& keylen",
+                quote! { keylen(dec = header, enc = &header_enc) },
+            ),
+            (
+                "* keylen",
+                quote! { keylen(dec = header, enc = *header_enc) },
+            ),
+            (
+                "quoted & keylen",
+                quote! { keylen(dec = header, enc = "&header_enc") },
+            ),
+        ];
+        for (name, header) in cases {
+            let item: syn::DeriveInput = syn::parse_quote! {
+                #[klv(#header)]
+                struct Reading {
+                    #[klv(key = 0x01, dec = decb::u8, enc = *encb::u8)]
+                    id: u8,
+                }
+            };
+            let cx = Ctxt::new();
+            let _ = MainContainer::from_ast(&cx, &item);
+            let Err(errors) = cx.check() else {
+                panic!("{name}: reports an error");
+            };
+            let messages: Vec<String> = errors.into_iter().map(|err| err.to_string()).collect();
+            assert_eq!(
+                messages,
+                [Error::SigilOnHeaderEncoder.to_string()],
+                "{name}: the one error is the sigil"
             );
         }
     }

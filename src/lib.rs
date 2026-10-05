@@ -4,8 +4,6 @@
 // mods
 // --------------------------------------------------
 pub mod codecs;
-#[cfg(doctest)]
-mod compile_fail;
 pub mod decoder;
 pub mod framing;
 pub mod traits;

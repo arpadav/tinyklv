@@ -134,6 +134,23 @@ impl<'a> MainContainer<'a> {
             _original: item,
         })
     }
+
+    /// Whether the struct has at least one `#[klv(..)]` field and every one of them passes `has`
+    ///
+    /// Gates each generated half: a decode or encode impl needs a codec on every KLV field, and
+    /// a struct without one has nothing to generate
+    ///
+    /// # Arguments
+    ///
+    /// * `has` - The per-field check, e.g. that the field carries an encoder
+    ///
+    /// # Returns
+    ///
+    /// `true` when some field carries `#[klv(..)]` and `has` holds for every such field
+    pub(crate) fn every_klv_field(&self, has: impl FnMut(&field::FieldParsed) -> bool) -> bool {
+        let mut fields = self.data.iter().filter_map(|f| f.attrs.as_ref()).peekable();
+        fields.peek().is_some() && fields.all(has)
+    }
 }
 
 /// Parses a punctuated list of [`syn::Field`]s into [`MainField`] entries

@@ -18,6 +18,7 @@ use crate::ast::symbol;
 // external
 // --------------------------------------------------
 use quote::ToTokens;
+use syn::spanned::Spanned;
 use tk_syn_macros::handle_unique_nested_meta_values;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -40,7 +41,7 @@ pub(crate) enum SizeBytes {
     Hint(usize),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy)]
 /// The declared size shape of a `key`/`len` prefix or a field value, parsed from `size(..)`
 ///
 /// Two orthogonal axes:
@@ -59,6 +60,9 @@ pub(crate) struct SizeSpec {
 
     /// the declared byte count, if any (see [`SizeBytes`])
     bytes: SizeBytes,
+
+    /// the `size` path, for diagnostics on the declared shape
+    span: proc_macro2::Span,
 }
 /// [`SizeSpec`] implementation
 impl SizeSpec {
@@ -76,6 +80,11 @@ impl SizeSpec {
             SizeBytes::Exact(n) => Some(n),
             SizeBytes::Unset | SizeBytes::Hint(_) => None,
         }
+    }
+
+    /// The span of the `size(..)` declaration
+    pub(crate) fn span(self) -> proc_macro2::Span {
+        self.span
     }
 
     /// The encode capacity estimate in bytes, if any: both `exact = N` and `hint = N` contribute
@@ -137,6 +146,7 @@ impl TryFrom<&syn::meta::ParseNestedMeta<'_>> for SizeSpec {
         Ok(SizeSpec {
             var: var.is_some(),
             bytes,
+            span: input.path.span(),
         })
     }
 }

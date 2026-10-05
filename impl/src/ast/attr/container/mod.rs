@@ -38,8 +38,8 @@ use syn::{Token, punctuated::Punctuated};
 /// Produced by [`ContainerParsed::from_cont`] from the mutually-exclusive
 /// `key`+`len` and `keylen` attributes. Modelling the two as one enum makes the
 /// illegal "both present" and "neither present" states unrepresentable past
-/// validation. The `expand` pass picks the decode loop's frame header and body
-/// from it; a fused container generates decode only
+/// validation. The `expand` pass picks the decode loop's frame header and body,
+/// and the frame header written around each encoded value, from it
 #[derive(Debug, Clone)]
 pub(crate) enum ContainerMode {
     /// Classic mode: separate `key`/`len` xcoders; every value is sliced via `take(len)`
@@ -49,7 +49,8 @@ pub(crate) enum ContainerMode {
         /// The length xcoder
         len: Box<HeaderXcoder>,
     },
-    /// Fused mode: one `keylen` codec returning `(key, Framing)` so framing can depend on the key
+    /// Fused mode: one `keylen` codec, whose decoder returns `(key, Framing)` so framing can
+    /// depend on the key, and whose encoder writes the header from `(key, value_len)`
     Fused(Box<HeaderXcoder>),
 }
 

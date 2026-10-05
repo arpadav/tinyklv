@@ -1,0 +1,5 @@
+error: `sentinel` is not supported with `keylen`. Remove `sentinel`, or use `key(..)` + `len(..)`.
+ --> tests/ui/fail/keylen_with_sentinel.rs:8:68
+  |
+8 | #[klv(keylen(dec = header), allow_unimplemented_encode, sentinel = b"\x06")]
+  |                                                                    ^^^^^^^

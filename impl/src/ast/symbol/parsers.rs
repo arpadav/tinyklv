@@ -88,10 +88,10 @@ create_parser!(
     ENCODER: SiguledXcoder;
     nv_parse_maybestr => syn::MetaNameValue
 );
-// A non siguled xcoder, for different encoding fn signatures
+// A frame header encoder, which takes no sigil
 create_parser!(
-    ENCODER: XcoderType;
-    pnm_parse_maybestr_encoder_no_sigil, pnm_parse_maybestr => syn::meta::ParseNestedMeta
+    ENCODER: HeaderEncoder;
+    pnm_parse_maybestr_header_encoder, pnm_parse_maybestr => syn::meta::ParseNestedMeta
 );
 
 // A non siguled xcoder, for different decoding fn signatures

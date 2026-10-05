@@ -10,7 +10,7 @@
 //!   `TryFrom<Partial>` impl
 //! * `decode_partial_gen` - `DecodePartial`, `ResumePartial`, and the one-shot direct `DecodeValue`
 //!   impls (`DecodeValue`/`DecodeFrame` decode directly; the streaming `decoder()` path uses the
-//!   resumable `Partial` machinery). Both loops are assembled from `frame_gen` (the frame header
+//!   resumable `Partial` machinery). Both loops are assembled from `framing` (the frame header
 //!   and body per framing mode), `loop_driver` (the exits per entry point) and `key_match_gen`
 //!   (the per-field arms)
 //! * local helper - the `decoder()` constructor
@@ -21,7 +21,7 @@
 // --------------------------------------------------
 mod constants;
 mod decode_partial_gen;
-mod frame_gen;
+mod framing;
 mod key_match_gen;
 mod loop_driver;
 mod partial_gen;
@@ -31,7 +31,7 @@ mod sentinel_gen;
 // local
 // --------------------------------------------------
 use crate::{ast::attr::MainContainer, expand::helpers};
-use frame_gen::DecodeFraming;
+use framing::DecodeFraming;
 
 // --------------------------------------------------
 // external
@@ -65,12 +65,7 @@ pub(super) fn gen_decode_impl(input: &MainContainer) -> Option<proc_macro2::Toke
     // --------------------------------------------------
     // a decoder on every field, and at least one field; else no decode impl
     // --------------------------------------------------
-    let mut fields = input
-        .data
-        .iter()
-        .filter_map(|f| f.attrs.as_ref())
-        .peekable();
-    if fields.peek().is_none() || !fields.all(|f| f.dec.is_some()) {
+    if !input.every_klv_field(|f| f.dec.is_some()) {
         return None;
     }
     // --------------------------------------------------

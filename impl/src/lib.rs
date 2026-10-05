@@ -57,9 +57,11 @@ const ATTR_NAME: &str = "klv";
 /// [`syn::Error::into_compile_error`]
 ///
 /// The generated implementations depend on which `#[klv(..)]` attributes are
-/// present: containers without an encoder on every field produce no encode impl,
-/// and similarly for decoders. A container framed by the fused `keylen(..)` codec
-/// generates the decode impls only
+/// present. A missing encoder, on a field or on the framing attribute (the
+/// `key(..)` + `len(..)` pair or the fused `keylen(..)` codec), is a compile
+/// error unless the container sets `allow_unimplemented_encode`, in which case no
+/// encode impl is generated. Missing decoders behave the same under
+/// `allow_unimplemented_decode`, suppressing the decode impls
 #[proc_macro_derive(Klv, attributes(klv))]
 pub fn klv_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -267,6 +269,16 @@ Expected `{e} = <..>`, `{d} = <..>`, or `{s}(..)`.",
         kl = symbol::KEYLEN,
     )]
     DuplicateEncoderInHeader,
+
+    #[error("\
+        An `{e}` in {k}/{l}/{kl} takes no `&` or `*` sigil.
+The derive passes the key and length by value; sigils apply to field encoders only.",
+        e = symbol::ENCODER,
+        k = symbol::KEY,
+        l = symbol::LENGTH,
+        kl = symbol::KEYLEN,
+    )]
+    SigilOnHeaderEncoder,
 
     #[error("\
         Duplicate `{d}` field. Only one method of decoding {k}/{l}/{kl} is allowed.",
@@ -487,6 +499,14 @@ supply an explicit `{d}` or change the `{s}`.",
         d = symbol::DECODER,
     )]
     SizeVarFallbackRequiresExplicitDec(String, String),
+
+    #[error("\
+        The value is {0} bytes but `{l}({s}({e} = {1}))` can encode lengths only up to {2}.",
+        l = symbol::LENGTH,
+        s = symbol::SIZE,
+        e = symbol::EXACT,
+    )]
+    LenPrefixTooNarrow(String, String, String),
 }
 /// [`Error`] implementation
 impl Error {

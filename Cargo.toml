@@ -38,6 +38,10 @@ path = "tests/edge_cases/main.rs"
 name = "proptest_roundtrip"
 path = "tests/proptest_roundtrip/main.rs"
 
+[[test]]
+name = "ui"
+path = "tests/ui/main.rs"
+
 [dependencies]
 # --------------------------------------------------
 # external
@@ -70,6 +74,7 @@ serde_bytes = "^0.11"
 serde_klv = "^0.3"
 tlv_parser = "^0.10"
 tokio = { version = "^1.52", features = ["macros", "rt-multi-thread", "sync"] }
+trybuild = "1.0.121"
 
 [[bench]]
 # the suite uses the native-type codecs behind `bench`; without the feature it is skipped

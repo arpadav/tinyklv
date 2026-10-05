@@ -16,13 +16,16 @@ use crate::pb;
 use tinyklv::codecs::ber::BerLength;
 use tinyklv::dec::ber as decber;
 use tinyklv::dec::binary as decb;
+use tinyklv::enc::ber as encber;
+use tinyklv::enc::binary as encb;
+use tinyklv::enc::string as encs;
 use tinyklv::prelude::*;
 
 /// A protobuf-style `enum` field: a single VARINT value mapped to a unit variant
 ///
 /// Unlike a oneof, a proto `enum` is one ordinary VARINT-valued field whose value
 /// codec maps the decoded integer to a unit variant - decoded here by [`Status::decode_value`]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum Status {
     /// Wire value `0`
     Idle,
@@ -30,6 +33,11 @@ pub(crate) enum Status {
     Active,
     /// Wire value `2`
     Error,
+}
+
+impl Status {
+    /// Every variant, in discriminant order
+    pub(crate) const ALL: [Self; 3] = [Self::Idle, Self::Active, Self::Error];
 }
 
 /// [`Status`] implementation of [`TryFrom<u64>`]: a decoded VARINT to its variant
@@ -54,6 +62,24 @@ impl TryFrom<u64> for Status {
     }
 }
 
+/// `u64` implementation of [`From<Status>`]: a variant to its VARINT, the inverse of [`TryFrom<u64>`]
+impl From<Status> for u64 {
+    /// # Arguments
+    ///
+    /// * `value` - the variant to encode
+    ///
+    /// # Returns
+    ///
+    /// The variant's wire discriminant
+    fn from(value: Status) -> Self {
+        match value {
+            Status::Idle => 0,
+            Status::Active => 1,
+            Status::Error => 2,
+        }
+    }
+}
+
 /// [`Status`] implementation of [`DecodeValue`]: a wire-0 VARINT (inline-framed custom enum)
 impl DecodeValue<&[u8]> for Status {
     /// # Arguments
@@ -71,13 +97,22 @@ impl DecodeValue<&[u8]> for Status {
     }
 }
 
+/// [`Status`] implementation of [`EncodeValue`]: the variant's discriminant as a wire-0 VARINT
+impl EncodeValue for Status {
+    /// # Arguments
+    ///
+    /// * `out` - the buffer the varint bytes are appended to
+    fn encode_value(&self, out: &mut Vec<u8>) {
+        pb::enc_varint_u64(u64::from(*self), out);
+    }
+}
+
 /// Nested proto3 message - decoded from the LEN sub-slice of `Example.inner`
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_tag_keylen),
-    allow_unimplemented_encode,
-    default(typ = i32, dec = pb::dec_varint_i32),
+    keylen(dec = pb::dec_tag_keylen, enc = pb::enc_tag_keylen),
+    default(typ = i32, dec = pb::dec_varint_i32, enc = *pb::enc_varint_i32),
 )]
 pub(crate) struct Inner {
     #[klv(key = 0x08)]
@@ -89,13 +124,12 @@ pub(crate) struct Inner {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_tag_keylen),
-    allow_unimplemented_encode,
-    default(typ = i32, dec = pb::dec_varint_i32),
-    default(typ = i64, dec = decb::le_i64),
-    default(typ = f32, dec = decb::le_f32),
-    default(typ = String, dec = pb::dec_string),
-    default(typ = Vec<i32>, dec = pb::dec_packed_i32),
+    keylen(dec = pb::dec_tag_keylen, enc = pb::enc_tag_keylen),
+    default(typ = i32, dec = pb::dec_varint_i32, enc = *pb::enc_varint_i32),
+    default(typ = i64, dec = decb::le_i64, enc = *encb::le_i64),
+    default(typ = f32, dec = decb::le_f32, enc = *encb::le_f32),
+    default(typ = String, dec = pb::dec_string, enc = &encs::from_string_utf8),
+    default(typ = Vec<i32>, dec = pb::dec_packed_i32, enc = &pb::enc_packed_i32),
 )]
 pub(crate) struct Example {
     #[klv(key = 0x08)]
@@ -110,7 +144,7 @@ pub(crate) struct Example {
     /// field 3, wire 2 LEN - `Sliced(n)`, the only shape that carries a length prefix
     pub(crate) name: String,
 
-    #[klv(key = 0x22, dec = Inner::decode_value)]
+    #[klv(key = 0x22, dec = Inner::decode_value, enc = Inner::encode_value)]
     /// field 4, wire 2 LEN - nested message; its own `decode_value` runs on the sub-slice
     pub(crate) inner: Inner,
 
@@ -122,7 +156,7 @@ pub(crate) struct Example {
     /// field 6, wire 1 I64 - `Sliced(8)`, fixed 8 bytes, no length on the wire
     pub(crate) created_at: i64,
 
-    #[klv(key = 0x38, dec = Status::decode_value)]
+    #[klv(key = 0x38, dec = Status::decode_value, enc = Status::encode_value)]
     /// field 7, wire 0 VARINT - inline-framed custom enum
     pub(crate) status: Status,
 
@@ -209,10 +243,9 @@ impl Example {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_tag_keylen),
-    allow_unimplemented_encode,
-    default(typ = i32, dec = pb::dec_varint_i32),
-    default(typ = String, dec = pb::dec_string),
+    keylen(dec = pb::dec_tag_keylen, enc = pb::enc_tag_keylen),
+    default(typ = i32, dec = pb::dec_varint_i32, enc = *pb::enc_varint_i32),
+    default(typ = String, dec = pb::dec_string, enc = &encs::from_string_utf8),
 )]
 pub(crate) struct Reading {
     #[klv(key = 0x08)]
@@ -223,15 +256,15 @@ pub(crate) struct Reading {
     /// field 2, wire 2 LEN - `Sliced(n)`
     pub(crate) label: Option<String>,
 
-    #[klv(key = 0x18, dec = Status::decode_value)]
+    #[klv(key = 0x18, dec = Status::decode_value, enc = Status::encode_value)]
     /// field 3, wire 0 VARINT - `Inline` custom enum
     pub(crate) status: Option<Status>,
 
-    #[klv(key = 0x20, dec = decber::ber_oid::<u8>)]
+    #[klv(key = 0x20, dec = decber::ber_oid::<u8>, enc = *encber::ber_oid)]
     /// field 4, wire 0 - `Inline` BER-OID, malformed past `u8::MAX`
     pub(crate) level: Option<u8>,
 
-    #[klv(key = 0x28, dec = BerLength::<u8>::decode_value)]
+    #[klv(key = 0x28, dec = BerLength::<u8>::decode_value, enc = EncodeValue::encode_value)]
     /// field 5, wire 0 - `Inline` BER length, malformed past `u8::MAX`
     pub(crate) size: Option<BerLength<u8>>,
 }

@@ -1,20 +1,22 @@
 //! Field KLV item emission
 //!
 //! Turns each `#[klv(..)]` field into a complete key-length-value write. The
-//! module resolves the encoder call shape, applies optional-field guards, and
-//! delegates length-slot bookkeeping to focused helpers
+//! module resolves the encoder call shape, picks the write the container's framing
+//! selects for the field, applies optional-field guards, and hands the header write to
+//! the container framing
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use super::{
-    field_length_plan::{self, ContainerLengthPrefix, FieldLengthPlan},
-    length_slot_gen,
+    field_length_plan::{FieldLengthPlan, ValueWidth},
+    fixed_width,
+    framing::EncodeFraming,
 };
 use crate::{
     ast::{
-        attr::{MainContainer, MainField},
+        attr::{MainContainer, MainField, size::SizeSpec},
         types::{self, XcoderSigil},
     },
     expand::helpers,
@@ -24,6 +26,7 @@ use crate::{
 // external
 // --------------------------------------------------
 use quote::{format_ident, quote, quote_spanned};
+use syn::spanned::Spanned;
 
 /// Generates all field KLV item writes for an `EncodeValue` body
 ///
@@ -34,9 +37,7 @@ use quote::{format_ident, quote, quote_spanned};
 /// # Arguments
 ///
 /// * `input` - Parsed container metadata containing the fields to encode
-/// * `key_encoder` - Encoder expression used for each generated field key
-/// * `len_encoder` - Encoder expression used for each generated field length
-/// * `len_prefix` - Container length-prefix strategy shared by field items
+/// * `framing` - The frame header encoder(s) written around each field value
 /// * `scratch` - Scratch buffer identifier used by staged value writes
 ///
 /// # Returns
@@ -46,14 +47,12 @@ use quote::{format_ident, quote, quote_spanned};
 /// # Example
 ///
 /// ```rust,ignore
-/// let items = gen_klv_items(&container, &key_encoder, &len_encoder, len_prefix, &scratch);
+/// let items = gen_klv_items(&container, framing, &scratch);
 /// assert!(items.is_empty() || !items.to_string().is_empty());
 /// ```
 pub(super) fn gen_klv_items(
     input: &MainContainer,
-    key_encoder: &types::SiguledXcoder,
-    len_encoder: &types::SiguledXcoder,
-    len_prefix: ContainerLengthPrefix,
+    framing: EncodeFraming<'_>,
     scratch: &syn::Ident,
 ) -> proc_macro2::TokenStream {
     // --------------------------------------------------
@@ -62,7 +61,7 @@ pub(super) fn gen_klv_items(
     let items = input
         .data
         .iter()
-        .filter_map(|field| gen_klv_item(field, key_encoder, len_encoder, len_prefix, scratch));
+        .filter_map(|field| gen_klv_item(field, framing, scratch));
     // --------------------------------------------------
     // concatenate generated item writes
     // --------------------------------------------------
@@ -72,16 +71,14 @@ pub(super) fn gen_klv_items(
 /// Generates one field's complete KLV item write when KLV metadata exists
 ///
 /// Resolves the field's key, value encoder call, optional-value binding shape,
-/// and length plan before delegating to the lower-level planned write helper
+/// and planned item write, then emits that write as the container framing selects.
 /// Fields without KLV metadata return `None`, leaving them out of the generated
 /// value body entirely
 ///
 /// # Arguments
 ///
 /// * `field` - Parsed field descriptor to convert into a KLV item write
-/// * `key_encoder` - Encoder expression used for the field key
-/// * `len_encoder` - Encoder expression used for the field length
-/// * `len_prefix` - Container length-prefix strategy used for this field
+/// * `framing` - The frame header encoder(s) written around the field value
 /// * `scratch` - Scratch buffer identifier used by staged value writes
 ///
 /// # Returns
@@ -92,7 +89,7 @@ pub(super) fn gen_klv_items(
 /// # Example
 ///
 /// ```rust,ignore
-/// let item = gen_klv_item(&field, &key_encoder, &len_encoder, len_prefix, &scratch);
+/// let item = gen_klv_item(&field, framing, &scratch);
 /// assert!(item.is_none() || !item.unwrap().is_empty());
 /// ```
 ///
@@ -104,9 +101,7 @@ pub(super) fn gen_klv_items(
 /// invalid encoder
 fn gen_klv_item(
     field: &MainField,
-    key_encoder: &types::SiguledXcoder,
-    len_encoder: &types::SiguledXcoder,
-    len_prefix: ContainerLengthPrefix,
+    framing: EncodeFraming<'_>,
     scratch: &syn::Ident,
 ) -> Option<proc_macro2::TokenStream> {
     // --------------------------------------------------
@@ -115,7 +110,7 @@ fn gen_klv_item(
     let attrs = field.attrs.as_ref()?;
     #[allow(
         clippy::unwrap_used,
-        reason = "`gen_encode_impl` only calls encode generation when every field encoder exists"
+        reason = "`gen_encode_impl` returns before item generation unless every field has an encoder"
     )]
     let value_encoder = attrs.enc.as_ref().unwrap();
     // --------------------------------------------------
@@ -135,28 +130,20 @@ fn gen_klv_item(
         value_argument.required
     };
     // --------------------------------------------------
-    // choose the field length write strategy
+    // emit the item write the container framing selects
     // --------------------------------------------------
-    let length_plan = field_length_plan::field_length_plan(
-        attrs.fallback_enc,
-        value_encoder,
-        field.ty,
-        len_prefix,
-        attrs.size,
-    );
-    // --------------------------------------------------
-    // emit the concrete planned KLV item write
-    // --------------------------------------------------
-    let item_write = gen_planned_item_write(PlannedItemWrite {
+    let item_write = PlannedItemWrite {
         key: &attrs.key,
-        key_encoder,
-        len_encoder,
+        fallback_enc: attrs.fallback_enc,
+        value_encoder,
+        ty: field.ty,
+        size: attrs.size,
         value_encoder_call,
         value_argument,
-        length_plan,
         scratch,
         span,
-    });
+    }
+    .emit(framing);
     // --------------------------------------------------
     // wrap optional fields with their `Some` guard
     // --------------------------------------------------
@@ -279,23 +266,26 @@ fn value_argument_tokens(
 
 /// All semantic inputs required to emit a complete field item write
 struct PlannedItemWrite<'a> {
-    /// Field key literal emitted before the item length and value bytes
+    /// Field key literal emitted in the frame header before the value bytes
     key: &'a syn::Lit,
 
-    /// Encoder expression used to write the field key
-    key_encoder: &'a types::SiguledXcoder,
+    /// Whether the value uses the fallback `EncodeValue` encoder
+    fallback_enc: bool,
 
-    /// Encoder expression used to write the field length
-    len_encoder: &'a types::SiguledXcoder,
+    /// Parsed value encoder, whose built-in width may fix the value length
+    value_encoder: &'a types::SiguledXcoder,
+
+    /// The field's declared type, whose primitive width may fix the value length
+    ty: &'a syn::Type,
+
+    /// The field's declared value size, whose exact width fixes the value length
+    size: Option<SizeSpec>,
 
     /// Callable token expression used to encode the field value bytes
     value_encoder_call: proc_macro2::TokenStream,
 
     /// Argument token expression passed to the value encoder callable
     value_argument: proc_macro2::TokenStream,
-
-    /// Selected strategy for writing or back-filling the field length
-    length_plan: FieldLengthPlan,
 
     /// Scratch buffer identifier used by staged value writes
     scratch: &'a syn::Ident,
@@ -304,78 +294,111 @@ struct PlannedItemWrite<'a> {
     span: proc_macro2::Span,
 }
 
-/// Emits the complete field write selected by [`FieldLengthPlan`]
-///
-/// Converts a fully planned field item into concrete generated statements
-/// Known-width values write their key, length, and value directly; reserved
-/// slots delegate fixed-width back-fill handling; staged values encode into the
-/// shared scratch buffer before writing the final KLV item
-///
-/// # Arguments
-///
-/// * `parts` - Planned semantic inputs for one field item write
-///
-/// # Returns
-///
-/// A token stream containing the generated statements for one complete field
-/// item write
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let tokens = gen_planned_item_write(parts);
-/// assert!(!tokens.is_empty());
-/// ```
-fn gen_planned_item_write(parts: PlannedItemWrite<'_>) -> proc_macro2::TokenStream {
-    // --------------------------------------------------
-    // unpack the planned write inputs
-    // --------------------------------------------------
-    let PlannedItemWrite {
-        key,
-        key_encoder,
-        len_encoder,
-        value_encoder_call,
-        value_argument,
-        length_plan,
-        scratch,
-        span,
-    } = parts;
-    // --------------------------------------------------
-    // emit the write shape selected by the length plan
-    // --------------------------------------------------
-    match length_plan {
-        FieldLengthPlan::KnownValueWidth { value_width } => quote_spanned! { span =>
-            {
-                #key_encoder(#key, out);
-                #len_encoder(#value_width, out);
-                let __value_start = out.len();
-                #value_encoder_call(#value_argument, out);
-                debug_assert_eq!(
-                    out.len() - __value_start,
-                    #value_width,
-                    "tinyklv: fixed-width value encoder wrote a different byte count than its detected width",
-                );
+/// [`PlannedItemWrite`] implementation
+impl PlannedItemWrite<'_> {
+    /// Picks the field write: staged, known or reserved
+    ///
+    /// A fused `keylen` encoder, or a variable-width length prefix, stages the value through
+    /// [`EncodeFraming::write_staged`]. Under a fixed-width length prefix
+    /// ([`EncodeFraming::fixed_prefix`]) the [`FieldLengthPlan`] picks a known-width or a
+    /// reserved-slot write, and the [`FixedPrefix`](super::framing::FixedPrefix) writes it
+    ///
+    /// # Arguments
+    ///
+    /// * `framing` - The frame header encoder(s) written around the value
+    ///
+    /// # Returns
+    ///
+    /// A token stream containing the generated statements for one complete field item write
+    fn emit(&self, framing: EncodeFraming<'_>) -> proc_macro2::TokenStream {
+        let Some(prefix) = framing.fixed_prefix() else {
+            return self.write_staged(framing);
+        };
+        let Self { key, span, .. } = *self;
+        let value_write = self.value_write(&quote_spanned! { span => out });
+        match self.length_plan() {
+            FieldLengthPlan::KnownValueWidth(value) => {
+                prefix.write_known(key, value, value_write, span)
             }
-        },
-        FieldLengthPlan::ReservedLengthSlot { len_width } => {
-            let prefix_write = quote_spanned! { span => #key_encoder(#key, out); };
-            let value_write = quote_spanned! { span => #value_encoder_call(#value_argument, out); };
-            length_slot_gen::gen_fixed_length_slot_write(
-                prefix_write,
-                len_encoder,
-                len_width,
-                value_write,
-            )
+            FieldLengthPlan::ReservedLengthSlot => prefix.write_reserved(key, value_write, span),
         }
-        FieldLengthPlan::StagedValue => quote_spanned! { span =>
+    }
+
+    /// Chooses how the field's value length is written under a fixed-width length prefix
+    ///
+    /// Prefers writing the length immediately when an exact field size is declared, or when a
+    /// primitive type and its built-in encoder agree on a width. Otherwise the container's fixed
+    /// length slot is reserved and back-filled after the value is encoded
+    ///
+    /// # Returns
+    ///
+    /// The known value width when provable, else the reserved fixed slot
+    fn length_plan(&self) -> FieldLengthPlan {
+        // --------------------------------------------------
+        // explicit exact field sizes can be written immediately
+        // --------------------------------------------------
+        if let Some(size) = self.size
+            && let Some(bytes) = size.exact_width()
+        {
+            return FieldLengthPlan::KnownValueWidth(ValueWidth {
+                bytes,
+                declared_at: size.span(),
+            });
+        }
+        // --------------------------------------------------
+        // prove fixed width from primitive type and built-in encoder
+        // --------------------------------------------------
+        if !self.fallback_enc {
+            let inner = helpers::unwrap_option_type(self.ty).unwrap_or(self.ty);
+            if let (Some(type_width), Some(encoder_width)) = (
+                fixed_width::fixed_value_type_width(inner),
+                fixed_width::builtin_fixed_encoder_width(&self.value_encoder.inner),
+            ) && type_width == encoder_width
             {
-                #scratch.clear();
-                #value_encoder_call(#value_argument, &mut #scratch);
-                #key_encoder(#key, out);
-                #len_encoder(#scratch.len(), out);
-                out.extend_from_slice(&#scratch);
+                return FieldLengthPlan::KnownValueWidth(ValueWidth {
+                    bytes: type_width,
+                    declared_at: self.value_encoder.inner.span(),
+                });
             }
-        },
+        }
+        // --------------------------------------------------
+        // otherwise reserve the container's fixed length slot
+        // --------------------------------------------------
+        FieldLengthPlan::ReservedLengthSlot
+    }
+
+    /// The value encoder call writing the field value into `dst`
+    ///
+    /// # Arguments
+    ///
+    /// * `dst` - The `&mut Vec<u8>` expression the value is written into
+    ///
+    /// # Returns
+    ///
+    /// The value encoder call statement
+    fn value_write(&self, dst: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+        let Self {
+            value_encoder_call,
+            value_argument,
+            span,
+            ..
+        } = self;
+        quote_spanned! { *span => #value_encoder_call(#value_argument, #dst); }
+    }
+
+    /// The field value staged in the scratch buffer, then written as one frame
+    ///
+    /// # Arguments
+    ///
+    /// * `framing` - The frame header encoder(s) written around the staged value
+    ///
+    /// # Returns
+    ///
+    /// The staged frame write from [`EncodeFraming::write_staged`]
+    fn write_staged(&self, framing: EncodeFraming<'_>) -> proc_macro2::TokenStream {
+        let Self { scratch, span, .. } = *self;
+        let stage = self.value_write(&quote_spanned! { span => &mut #scratch });
+        framing.write_staged(self.key, stage, scratch, span)
     }
 }
 

@@ -142,7 +142,7 @@ impl LoopDriver {
     /// Emits the exit that rewinds to the frame start and ends the loop, for either driver
     ///
     /// A streaming loop reaches it only through a fused frame's unknown `Inline` key, reported by
-    /// [`DecodeFraming::unknown_key_breaks`](super::frame_gen::DecodeFraming::unknown_key_breaks);
+    /// [`DecodeFraming::unknown_key_breaks`](super::framing::DecodeFraming::unknown_key_breaks);
     /// a one-shot loop already breaks at [`Self::clean_eof`]
     ///
     /// # Returns

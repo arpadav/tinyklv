@@ -5,9 +5,9 @@
 //! Token expansion entry point for the `#[derive(Klv)]` proc-macro
 //!
 //! Drives the full derive pipeline: parses the input into a [`MainContainer`],
-//! checks for attribute errors, decides whether the encode implementation can be
-//! generated, and emits the token streams. Whether decode is generated is decided
-//! by `decode_impl::gen_decode_impl`
+//! checks for attribute errors, and emits the token streams. Whether decode and
+//! encode are generated is decided by `decode_impl::gen_decode_impl` and
+//! `encode_impl::gen_encode_impl`
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -21,10 +21,7 @@ pub(crate) mod logger;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::{
-    Ctxt,
-    ast::attr::{MainContainer, container::ContainerMode},
-};
+use crate::{Ctxt, ast::attr::MainContainer};
 
 // --------------------------------------------------
 // external
@@ -35,11 +32,8 @@ use quote::quote;
 /// Drives the full `#[derive(Klv)]` expansion
 ///
 /// Parses the derive input into a [`MainContainer`], validates all container
-/// and field attributes, then emits whatever decode implementations
-/// `decode_impl::gen_decode_impl` generates. The `EncodeValue` impl (and `EncodeFrame`
-/// when a sentinel is declared) is emitted only for a separate `key(..)` + `len(..)` container with both
-/// encoders whose every `#[klv]` field carries an encoder, and at least one does;
-/// a partial set (some fields have encoders, some do not) suppresses it entirely
+/// and field attributes, then emits whatever decode and encode implementations
+/// `decode_impl::gen_decode_impl` and `encode_impl::gen_encode_impl` generate
 ///
 /// # Arguments
 ///
@@ -65,16 +59,6 @@ pub fn derive(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
     // --------------------------------------------------
     cx.check()?;
     // --------------------------------------------------
-    // check to see if all encoders exist
-    // --------------------------------------------------
-    let mut all_encoders_exist = true;
-    let mut any_encoders_exist = false;
-    for f in cont.data.iter().filter_map(|f| f.attrs.as_ref()) {
-        any_encoders_exist |= f.enc.is_some();
-        all_encoders_exist &= f.enc.is_some();
-    }
-    all_encoders_exist &= any_encoders_exist;
-    // --------------------------------------------------
     // init the output token stream
     // --------------------------------------------------
     let mut expanded = quote! {};
@@ -88,14 +72,9 @@ pub fn derive(input: &syn::DeriveInput) -> syn::Result<TokenStream> {
         }
     }
     // --------------------------------------------------
-    // impl encode: separate key + len codecs only; a fused container generates decode only
+    // impl encode
     // --------------------------------------------------
-    if let ContainerMode::Separate { key, len } = &cont.attrs.mode
-        && let (Some(key_enc), Some(len_enc), true) =
-            (key.enc.as_ref(), len.enc.as_ref(), all_encoders_exist)
-    {
-        let encode_impls =
-            encode_impl::gen_encode_impl(&cont, key_enc, len_enc, key.size, len.size);
+    if let Some(encode_impls) = encode_impl::gen_encode_impl(&cont) {
         expanded = quote! {
             #expanded
             #encode_impls

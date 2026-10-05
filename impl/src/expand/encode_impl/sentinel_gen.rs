@@ -1,67 +1,57 @@
 //! `EncodeFrame` impl emission
 //!
 //! Generates the sentinel-framed encoder for containers that declare a
-//! sentinel. Fixed-width frame lengths use the shared length-slot generator;
+//! sentinel. Fixed-width frame lengths back-fill the shared fixed-width length slot;
 //! variable-width frame lengths stage the whole body first
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{
-    encode_value_gen::BER_LEN_PREFIX_BYTES, field_length_plan::ContainerLengthPrefix,
-    length_slot_gen,
-};
-use crate::ast::{attr::MainContainer, types};
+use super::{field_length_plan::ContainerLengthPrefix, length_slot_gen::FixedLengthSlot};
+use crate::ast::types;
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use quote::quote;
 
-/// Generates the `EncodeFrame` impl for a container when a sentinel exists
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+/// Extra reserve space for a variable-width BER frame length prefix
+const BER_LEN_PREFIX_BYTES: usize = 8;
+
+/// Generates the `EncodeFrame` impl of a container that declares a sentinel
 ///
-/// Containers without a sentinel cannot be framed, so this helper returns an
-/// empty token stream for that case. When a sentinel is available, it emits an
-/// implementation that writes the sentinel, encodes the frame length using the
-/// configured plan, and appends the encoded value body
+/// The generated `encode_frame` writes the sentinel, the frame length with the separate length
+/// encoder, and the encoded value body
 ///
 /// # Arguments
 ///
-/// * `input` - Parsed container metadata containing the optional sentinel
-/// * `len_encoder` - Encoder expression used for the generated frame length
-/// * `len_prefix` - Container length-prefix strategy for the frame wrapper
+/// * `name` - The container ident the impl is generated for
+/// * `generics` - Generic parameters from the original struct definition
+/// * `sentinel` - Literal sentinel bytes written before the frame length
+/// * `len_encoder` - Encoder expression used to write the frame length
+/// * `len_prefix` - The length prefix's shape, choosing a back-filled slot or a staged body
 /// * `value_reserve_bytes` - Reserve hint for the encoded value body
 ///
 /// # Returns
 ///
-/// A token stream containing the generated `EncodeFrame` implementation, or an
-/// empty token stream when the container does not declare a sentinel
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let tokens = gen_encode_frame_impl(&container, &len_encoder, &len_prefix, reserve);
-/// assert!(tokens.is_empty() || tokens.to_string().contains("EncodeFrame"));
-/// ```
+/// A token stream containing the generated `EncodeFrame` implementation
 pub(super) fn gen_encode_frame_impl(
-    input: &MainContainer,
-    len_encoder: &types::SiguledXcoder,
-    len_prefix: &ContainerLengthPrefix,
+    name: &syn::Ident,
+    generics: &syn::Generics,
+    sentinel: &syn::Lit,
+    len_encoder: &types::XcoderType,
+    len_prefix: ContainerLengthPrefix,
     value_reserve_bytes: usize,
 ) -> proc_macro2::TokenStream {
     // --------------------------------------------------
-    // skip frame impl emission when no sentinel is declared
-    // --------------------------------------------------
-    let Some(sentinel) = input.attrs.sentinel.as_ref() else {
-        return quote! {};
-    };
-    // --------------------------------------------------
     // build the container impl shape and frame body
     // --------------------------------------------------
-    let name = &input.ident;
-    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-    let frame_write = gen_frame_write(sentinel, len_encoder, *len_prefix, value_reserve_bytes);
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let frame_write = gen_frame_write(sentinel, len_encoder, len_prefix, value_reserve_bytes);
     // --------------------------------------------------
     // assemble the trait impl
     // --------------------------------------------------
@@ -102,7 +92,7 @@ pub(super) fn gen_encode_frame_impl(
 /// ```
 fn gen_frame_write(
     sentinel: &syn::Lit,
-    len_encoder: &types::SiguledXcoder,
+    len_encoder: &types::XcoderType,
     len_prefix: ContainerLengthPrefix,
     value_reserve_bytes: usize,
 ) -> proc_macro2::TokenStream {
@@ -122,12 +112,7 @@ fn gen_frame_write(
             // --------------------------------------------------
             // delegate fixed-slot back-fill bookkeeping
             // --------------------------------------------------
-            length_slot_gen::gen_fixed_length_slot_write(
-                sentinel_write,
-                len_encoder,
-                width,
-                value_write,
-            )
+            FixedLengthSlot { len_encoder, width }.write_backfilled(sentinel_write, value_write)
         }
         ContainerLengthPrefix::Variable => quote! {
             {

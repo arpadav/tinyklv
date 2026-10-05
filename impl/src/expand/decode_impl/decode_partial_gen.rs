@@ -22,7 +22,7 @@
 // local
 // --------------------------------------------------
 use super::{
-    frame_gen::DecodeFraming,
+    framing::DecodeFraming,
     key_match_gen::ArmCtx,
     loop_driver::{LoopCtx, LoopDriver},
 };

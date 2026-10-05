@@ -5,11 +5,16 @@
 //! decision depend on the key. [`Framing`] tells the derive-generated decode loop how to bound the
 //! value bytes that follow the header, and states the rules the loop applies to each frame
 //!
-//! A `keylen` container generates decode impls only, and does not support `sentinel` or
-//! `break_on`. Here key `0x01` is length-prefixed and key `0x02` is an `Inline` BER-OID varint:
+//! On encode, each value is staged first, then the `keylen` encoder is handed `(key, value_len)`
+//! and writes the frame header: the key, and the length only when the key implies one. A `keylen`
+//! container does not support `sentinel` or `break_on`. Here key `0x01` is length-prefixed and
+//! key `0x02` is an `Inline` BER-OID varint:
 //!
 //! ```rust
-//! use tinyklv::{dec::ber as decber, dec::binary as decb, prelude::*};
+//! use tinyklv::{
+//!     dec::ber as decber, dec::binary as decb, enc::ber as encber, enc::binary as encb,
+//!     prelude::*,
+//! };
 //!
 //! fn header(input: &mut &[u8]) -> tinyklv::Result<(u8, Framing)> {
 //!     let key = decb::u8(input)?;
@@ -20,12 +25,19 @@
 //!     Ok((key, framing))
 //! }
 //!
+//! fn header_enc((key, value_len): (u8, usize), out: &mut Vec<u8>) {
+//!     encb::u8(key, out);
+//!     if key != 0x02 {
+//!         encb::u8_from_usize(value_len, out);
+//!     }
+//! }
+//!
 //! #[derive(Klv, Debug, PartialEq)]
-//! #[klv(keylen(dec = header), allow_unimplemented_encode)]
+//! #[klv(keylen(dec = header, enc = header_enc))]
 //! struct Reading {
-//!     #[klv(key = 0x01, dec = decb::u8)]
+//!     #[klv(key = 0x01, dec = decb::u8, enc = *encb::u8)]
 //!     id: u8,
-//!     #[klv(key = 0x02, dec = decber::ber_oid)]
+//!     #[klv(key = 0x02, dec = decber::ber_oid, enc = *encber::ber_oid)]
 //!     count: u64,
 //! }
 //!
@@ -35,10 +47,11 @@
 //!     // key 0x02, no length, count = 128 as a two-byte varint
 //!     0x02, 0x81, 0x00,
 //! ];
-//! assert_eq!(
-//!     Reading::decode_value(&mut &bytes[..]),
-//!     Ok(Reading { id: 7, count: 128 }),
-//! );
+//! let reading = Reading { id: 7, count: 128 };
+//! let mut out = Vec::new();
+//! reading.encode_value(&mut out);
+//! assert_eq!(out, bytes);
+//! assert_eq!(Reading::decode_value(&mut &bytes[..]), Ok(reading));
 //! ```
 //!
 //! Author: aav

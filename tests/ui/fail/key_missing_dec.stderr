@@ -1,0 +1,6 @@
+error: Missing required `dec` field for `key`.
+       If no decoding is required, use `#[klv(allow_unimplemented_decode)]`.
+ --> tests/ui/fail/key_missing_dec.rs:5:5
+  |
+5 |     key(enc = tinyklv::enc::binary::u8),
+  |     ^^^

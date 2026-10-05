@@ -4,8 +4,8 @@
 //! parsed from `#[klv(..)]` attributes: the [`XcoderLike`] enum covering paths,
 //! expressions, and macro invocations; the [`XcoderSigil`] enum that controls
 //! how the argument is passed to the xcoder function; [`SiguledXcoder`] which
-//! pairs a sigil with an inner xcoder; and supporting types [`LatebindXcoder`]
-//! and [`DefaultValue`]
+//! pairs a sigil with an inner xcoder; [`HeaderEncoder`], the sigil-free frame
+//! header encoder; and supporting types [`LatebindXcoder`] and [`DefaultValue`]
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -140,6 +140,24 @@ impl ToTokens for SiguledXcoder {
             XcoderLike::Macro(mcro) => mcro.to_tokens(tokens),
             XcoderLike::Expr(expr) => expr.to_tokens(tokens),
         }
+    }
+}
+
+#[derive(Debug)]
+/// A frame header encoder, the `enc = ..` of `key(..)`, `len(..)` or `keylen(..)`
+///
+/// The derive calls it with the key and length by value, so the field-only `&` / `*` sigils of
+/// [`SiguledXcoder`] are rejected at parse time
+pub(crate) struct HeaderEncoder(pub(crate) XcoderLike);
+/// [`HeaderEncoder`] implementation of [`syn::parse::Parse`]
+///
+/// Rejects a leading `&` or `*` at the sigil, then parses the [`XcoderLike`]
+impl syn::parse::Parse for HeaderEncoder {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        if input.peek(syn::Token![&]) || input.peek(syn::Token![*]) {
+            return Err(input.error(err!(SigilOnHeaderEncoder)));
+        }
+        input.parse().map(Self)
     }
 }
 

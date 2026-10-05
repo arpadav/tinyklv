@@ -1,0 +1,6 @@
+error: Missing required `enc` field for `keylen`.
+       If no encoding is required, use `#[klv(allow_unimplemented_encode)]`.
+ --> tests/ui/fail/keylen_missing_enc.rs:8:7
+  |
+8 | #[klv(keylen(dec = header))]
+  |       ^^^^^^
