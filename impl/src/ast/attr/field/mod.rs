@@ -17,13 +17,17 @@ mod xcoder;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::Ctxt;
-use crate::ast::attr::container::default::DefaultXcoder;
-use crate::ast::attr::size::SizeSpec;
-use crate::ast::types::{
-    DefaultValue, LatebindXcoder, SiguledXcoder, XcoderLike, XcoderSigil, XcoderType,
+use crate::{
+    Ctxt,
+    ast::{
+        attr::{container::DefaultXcoder, size::SizeSpec},
+        types::{
+            DefaultValue, LatebindXcoder, SiguledXcoder, XcoderLike, XcoderSigil, XcoderType,
+            unwrap_option_type,
+        },
+    },
+    symbol,
 };
-use crate::symbol;
 use xcoder::FieldXcoder;
 
 // --------------------------------------------------
@@ -82,7 +86,6 @@ impl Field {
         if field.attrs.is_empty() {
             return None;
         }
-
         // --------------------------------------------------
         // loop through attrs
         // --------------------------------------------------
@@ -103,14 +106,12 @@ impl Field {
                 }
             }
         }
-
         // --------------------------------------------------
         // return if no attrs == symbol::KLV_ATTR
         // --------------------------------------------------
         if all_field_xcoders.is_empty() {
             return None;
         }
-
         // --------------------------------------------------
         // add all `syn_error`'s to `cx`
         // --------------------------------------------------
@@ -118,12 +119,10 @@ impl Field {
             .iter()
             .filter_map(|f| f.errors.clone())
             .for_each(|e| cx.syn_error(e));
-
         // --------------------------------------------------
         // init
         // --------------------------------------------------
         let mut field_xcoder = FieldXcoder::default();
-
         // --------------------------------------------------
         // get all klv attr keys
         // --------------------------------------------------
@@ -142,7 +141,6 @@ impl Field {
                 None
             }
         };
-
         // --------------------------------------------------
         // get all klv attr encoders
         // --------------------------------------------------
@@ -160,7 +158,6 @@ impl Field {
                 None
             }
         };
-
         // --------------------------------------------------
         // get all klv attr decoders
         // --------------------------------------------------
@@ -178,7 +175,6 @@ impl Field {
                 None
             }
         };
-
         // --------------------------------------------------
         // get all klv attr size
         // --------------------------------------------------
@@ -194,7 +190,6 @@ impl Field {
                 None
             }
         };
-
         // --------------------------------------------------
         // get all klv attr latebind
         // --------------------------------------------------
@@ -210,7 +205,6 @@ impl Field {
                 None
             }
         };
-
         // --------------------------------------------------
         // get all klv attr default's
         // --------------------------------------------------
@@ -226,12 +220,10 @@ impl Field {
                 None
             }
         };
-
         // --------------------------------------------------
         // set defaults, if no enc/dec was found
         // --------------------------------------------------
-        let typ_maybe_unwrapped =
-            crate::expand::helpers::unwrap_option_type(&field.ty).unwrap_or(&field.ty);
+        let typ_maybe_unwrapped = unwrap_option_type(&field.ty).unwrap_or(&field.ty);
         if let Some(default) = container_defaults.get(typ_maybe_unwrapped) {
             if let (Some(default_enc), false) = (&default.enc, keep_enc_none) {
                 field_xcoder.enc = Some(default_enc.clone());
@@ -241,7 +233,6 @@ impl Field {
                 field_xcoder.size = default.size;
             }
         }
-
         // --------------------------------------------------
         // fallback to trait impls (opt-in via `trait_fallback`)
         //
@@ -254,7 +245,7 @@ impl Field {
             && !allow_unimplemented_encode
             && field_xcoder.enc.is_none()
         {
-            // placeholder path - replaced at emit time in `encode_impl.rs`
+            // placeholder path - replaced at emit time in `encode_impl::klv_item_gen`
             // by a fully-qualified `<T as EncodeValue>::encode_value`
             // call. `syn::Path` cannot represent the qualified form directly
             // (qself lives on `TypePath`/`ExprPath`), so a marker flag plus
@@ -281,7 +272,7 @@ impl Field {
                     )),
                 );
             } else {
-                // placeholder - see encode comment above. `decode_impl.rs`
+                // placeholder - see encode comment above. `decode_impl::key_match_gen`
                 // branches on `fallback_dec` and emits the real qualified path
                 let placeholder: syn::Path = syn::parse_quote! { __tinyklv_fallback_dec };
                 field_xcoder.dec = Some(XcoderLike::Path(placeholder));

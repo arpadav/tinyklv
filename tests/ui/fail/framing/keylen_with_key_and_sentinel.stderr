@@ -1,0 +1,12 @@
+error: `sentinel` is not supported with `keylen`. Remove `sentinel`, or use `key(..)` + `len(..)`.
+  --> tests/ui/fail/framing/keylen_with_key_and_sentinel.rs:11:16
+   |
+11 |     sentinel = b"\x06",
+   |                ^^^^^^^
+
+error: Conflicting framing attributes. The fused `keylen(..)` codec is mutually exclusive with separate `key(..)`/`len(..)`.
+       Use either `keylen` OR `key`+`len`, not both.
+ --> tests/ui/fail/framing/keylen_with_key_and_sentinel.rs:9:5
+  |
+9 |     keylen(dec = header),
+  |     ^^^^^^

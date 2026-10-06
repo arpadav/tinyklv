@@ -1,0 +1,5 @@
+error: The value of field `level` is 2 bytes but `len(size(exact = 0))` can encode lengths only up to 0.
+  --> tests/ui/fail/size/len_prefix_zero_width.rs:18:50
+   |
+18 |     #[klv(key = 0x01, dec = decb::be_u16, enc = *be_u16)]
+   |                                                  ^^^^^^

@@ -9,7 +9,8 @@
 //! Defines [`HeaderSlot`], which of the three sub-attributes an occurrence belongs to, and
 //! [`HeaderXcoderAttr`], the raw state of each of the three sub-attributes on
 //! a container: absent, present but unusable, or parsed into a [`HeaderXcoder`], and the
-//! rules by which each occurrence of the attribute updates that state
+//! rules by which each occurrence of the attribute updates that state. [`HeaderAttrs`] holds the
+//! three states, indexed by slot
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -88,7 +89,7 @@ impl TryFrom<&syn::MetaList> for HeaderXcoder {
 
 /// Which of the container's frame header attributes an occurrence belongs to
 #[derive(Debug, Clone, Copy)]
-pub(super) enum HeaderSlot {
+enum HeaderSlot {
     /// `key(..)`
     Key,
     /// `len(..)`
@@ -98,6 +99,22 @@ pub(super) enum HeaderSlot {
 }
 /// [`HeaderSlot`] implementation
 impl HeaderSlot {
+    /// Every slot, the domain of [`Self::from_symbol`]
+    const ALL: [Self; 3] = [Self::Key, Self::Length, Self::Keylen];
+
+    /// The slot an attribute name belongs to
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The attribute's path, as a [`Symbol`]
+    ///
+    /// # Returns
+    ///
+    /// The slot whose [`Self::symbol`] is `name`, or `None` for any other attribute
+    fn from_symbol(name: Symbol) -> Option<Self> {
+        Self::ALL.into_iter().find(|slot| slot.symbol() == name)
+    }
+
     /// The attribute's name
     ///
     /// # Returns
@@ -130,9 +147,10 @@ impl HeaderSlot {
 /// Each present state keeps the attribute's path, which spans the diagnostics that blame the
 /// attribute itself. An [`Self::Invalid`] attribute still counts as present, so its own error is
 /// not joined by a missing-framing or conflict error that only its absence would explain
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(super) enum HeaderXcoderAttr {
     /// The attribute did not appear
+    #[default]
     Absent,
     /// The attribute appeared but is unusable (it failed to parse, or was written as a
     /// name-value or a bare path); its error is already reported. A later list occurrence is
@@ -154,7 +172,7 @@ impl HeaderXcoderAttr {
     /// * `cx` - Error accumulation context the errors are reported to
     /// * `list` - The attribute list, e.g. `keylen(dec = ..)`
     /// * `slot` - Which attribute this is, naming its errors
-    pub(super) fn on_list(&mut self, cx: &Ctxt, list: &syn::MetaList, slot: HeaderSlot) {
+    fn on_list(&mut self, cx: &Ctxt, list: &syn::MetaList, slot: HeaderSlot) {
         if matches!(self, Self::Parsed(..)) {
             cx.error_spanned_by(&list.path, slot.duplicate_error());
             return;
@@ -180,7 +198,7 @@ impl HeaderXcoderAttr {
     /// * `cx` - Error accumulation context the wrong form is reported to
     /// * `path` - The attribute's path, spanning the error and later diagnostics
     /// * `slot` - Which attribute this is, naming the error
-    pub(super) fn on_non_list(&mut self, cx: &Ctxt, path: &syn::Path, slot: HeaderSlot) {
+    fn on_non_list(&mut self, cx: &Ctxt, path: &syn::Path, slot: HeaderSlot) {
         cx.error_spanned_by(path, err!(ExpectedAsList(slot.symbol())));
         if !self.is_present() {
             *self = Self::Invalid(path.clone());
@@ -194,6 +212,61 @@ impl HeaderXcoderAttr {
     /// `false` only for [`Self::Absent`]
     pub(super) fn is_present(&self) -> bool {
         !matches!(self, Self::Absent)
+    }
+}
+
+/// The raw states of a container's `key(..)`, `len(..)` and fused `keylen(..)` attributes, each
+/// indexed by its [`HeaderSlot`]
+#[derive(Debug, Default)]
+pub(super) struct HeaderAttrs {
+    /// `key(..)`
+    pub(super) key: HeaderXcoderAttr,
+
+    /// `len(..)`
+    pub(super) len: HeaderXcoderAttr,
+
+    /// `keylen(..)`
+    pub(super) keylen: HeaderXcoderAttr,
+}
+/// [`HeaderAttrs`] implementation
+impl HeaderAttrs {
+    /// Applies one occurrence of a frame header attribute, in any form, to the state of the slot
+    /// its path names ([`HeaderSlot::from_symbol`])
+    ///
+    /// A list is parsed ([`HeaderXcoderAttr::on_list`]); a name-value or a bare path is the wrong
+    /// form ([`HeaderXcoderAttr::on_non_list`])
+    ///
+    /// # Arguments
+    ///
+    /// * `cx` - Error accumulation context the errors are reported to
+    /// * `meta` - The occurrence, e.g. `keylen(dec = ..)`
+    ///
+    /// # Returns
+    ///
+    /// Whether `meta` is a `key`, `len` or `keylen` attribute
+    #[must_use]
+    pub(super) fn on_meta(&mut self, cx: &Ctxt, meta: &syn::Meta) -> bool {
+        let Some(slot) = HeaderSlot::from_symbol(Symbol::from(meta.path())) else {
+            return false;
+        };
+        // --------------------------------------------------
+        // the occurrence is recorded on the attribute of its slot
+        // --------------------------------------------------
+        let attr = match slot {
+            HeaderSlot::Key => &mut self.key,
+            HeaderSlot::Length => &mut self.len,
+            HeaderSlot::Keylen => &mut self.keylen,
+        };
+        // --------------------------------------------------
+        // a list is parsed, any other form is blamed on the slot
+        // --------------------------------------------------
+        match meta {
+            syn::Meta::List(list) => attr.on_list(cx, list, slot),
+            syn::Meta::NameValue(syn::MetaNameValue { path, .. }) | syn::Meta::Path(path) => {
+                attr.on_non_list(cx, path, slot);
+            }
+        }
+        true
     }
 }
 

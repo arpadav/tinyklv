@@ -12,6 +12,8 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use crate::attempt_budget::AttemptBudget;
+use crate::beacon::Beacon;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
@@ -241,33 +243,13 @@ fn vec_decode_value_cursor_safe_on_clean_eof() {
     );
 }
 
-/// All-optional KLV packet: decodes from zero bytes without error
-#[derive(Klv, Debug, PartialEq)]
-#[klv(
-    stream = &[u8],
-    key(dec = decb::u8, enc = encb::u8),
-    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-)]
-struct Beacon {
-    #[klv(
-        key = 0x01,
-        dec = decb::be_u16,
-        enc = *encb::be_u16,
-    )]
-    altitude: Option<u16>,
-
-    #[klv(
-        key = 0x02,
-        dec = decb::u8,
-        enc = *encb::u8,
-    )]
-    heading: Option<u8>,
-}
-
 #[test]
 /// An all-optional `T` decodes from empty input without consuming a byte, so
 /// the `Vec<T>` blanket pushes nothing: empty input is an empty `Vec`, not
 /// one all-`None` element
 fn vec_decode_value_all_optional_empty_stream() {
-    assert_eq!(Vec::<Beacon>::decode_value(&mut &[][..]), Ok(vec![]));
+    assert_eq!(
+        Vec::<AttemptBudget<Beacon>>::decode_value(&mut &[][..]),
+        Ok(vec![])
+    );
 }

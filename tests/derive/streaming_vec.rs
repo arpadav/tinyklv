@@ -9,10 +9,10 @@
 //! several complete parent packets back-to-back to make sure the
 //! cross-packet streaming path also works when nested accumulation is
 //! in play
-
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use crate::beacon::Beacon;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
@@ -54,11 +54,24 @@ struct Parent {
     readings: Vec<Reading>,
 }
 
+/// Hand-frames one `Parent` packet carrying `readings` as its repeated `0x10` field
+///
+/// The wire is the sentinel `PAR`, the body length, then the body: the `id` triple and one `0x10`
+/// triple whose value is every reading's own encoding, back-to-back
+///
+/// # Arguments
+///
+/// * `id` - The value of `Parent::id`
+/// * `readings` - The readings the `0x10` value carries, in order
+///
+/// # Returns
+///
+/// The packet's bytes
 fn parent_bytes(id: u8, readings: &[Reading]) -> Vec<u8> {
     // --------------------------------------------------
     // hand-frame the packet: sentinel + packet_len + body
     // body = id triple + one 0x10 triple whose sub-body is the
-    // concatenation of `readings.encode_value()`.
+    // concatenation of `readings.encode_value()`
     // --------------------------------------------------
     let mut inner = Vec::new();
     for r in readings {
@@ -80,9 +93,8 @@ fn parent_bytes(id: u8, readings: &[Reading]) -> Vec<u8> {
 /// `decode_frame` (sentinel-aware) into a `Parent`
 ///
 /// The inner `Vec<Reading>` blanket, running on an unframed sub-slice,
-/// last-wins merges the three readings into a single `Reading` element.
-/// This is the documented behavior for the Vec<T>-inside-a-parent use
-/// case without per-reading framing; see
+/// last-wins merges the three readings into a single `Reading` element. This is the documented
+/// behavior for the Vec<T>-inside-a-parent use case without per-reading framing; see
 /// `vec_decode_value_unframed_merge_last_wins` for the top-level
 /// counterpart
 fn parent_with_repeated_readings_decodes() {
@@ -110,8 +122,8 @@ fn parent_with_repeated_readings_decodes() {
 }
 
 #[test]
-/// Junk bytes between sentinel-framed parent packets are skipped.
-/// All three parents decode in order with correct inner readings
+/// Junk bytes between sentinel-framed parent packets are skipped. All three parents decode in order
+/// with correct inner readings
 fn decoder_parent_with_junk_between() {
     let a = parent_bytes(
         1,
@@ -152,20 +164,6 @@ fn decoder_parent_with_junk_between() {
         ids.push(r.id);
     }
     assert_eq!(ids, vec![1, 2, 3]);
-}
-
-/// A beacon whose fields are all optional, so it decodes from zero bytes without error
-#[derive(Klv, Debug, PartialEq)]
-#[klv(
-    stream = &[u8],
-    key(dec = decb::u8, enc = encb::u8),
-    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
-)]
-struct Beacon {
-    #[klv(key = 0x01, dec = decb::be_u16, enc = *encb::be_u16)]
-    altitude: Option<u16>,
-    #[klv(key = 0x02, dec = decb::u8, enc = *encb::u8)]
-    heading: Option<u8>,
 }
 
 #[test]

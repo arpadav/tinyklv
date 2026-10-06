@@ -1,0 +1,306 @@
+//! The container's length prefix: a fixed-width slot, or a variable-width length written after the
+//! value is staged
+//!
+//! [`LengthPrefix`](crate::expand::encode_impl::length_prefix::LengthPrefix) is the `len(..)`
+//! encoder with the width its `size(..)` declares, for each field and for the sentinel frame alike
+//!
+//! [`FixedLengthSlot`](crate::expand::encode_impl::length_prefix::FixedLengthSlot) owns
+//! everything about a `len(size(exact = W))` slot: the largest length its `W` bytes can encode, the
+//! length write checked against `W` in debug builds, the write for a value of known width, and the
+//! complete write for a KLV unit whose body length is unknown until after the body is encoded:
+//! write the prefix, reserve the slot, write the value, then back-fill the slot or roll back the
+//! whole unit if the value is too large
+//!
+//! [`VariableLength`](crate::expand::encode_impl::length_prefix::VariableLength) writes the
+//! length of a staged value
+//!
+//! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
+use super::{field_length_plan::ValueWidth, staging::Staging};
+use crate::ast::{attr::size::SizeSpec, types};
+
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use quote::{ToTokens, quote, quote_spanned};
+
+/// The container's length prefix: the `len(..)` encoder and the width its `size(..)` declares
+#[derive(Debug, Clone, Copy)]
+pub(super) enum LengthPrefix<'a> {
+    /// A fixed-width slot declared by `len(size(exact = N))`
+    Fixed(FixedLengthSlot<'a>),
+    /// A variable-width length from `len(size(var))`, omitted size, or hint-only size
+    Variable(VariableLength<'a>),
+}
+
+/// [`LengthPrefix`] implementation
+impl<'a> LengthPrefix<'a> {
+    /// Resolves the length prefix from the `len(..)` encoder and its `size(..)`
+    ///
+    /// Converts exact size declarations into fixed-width length slots and
+    /// treats all other declarations as variable-width. Hint-only sizes stay
+    /// variable because they cannot reserve an exact number of bytes for a
+    /// later back-fill operation
+    ///
+    /// # Arguments
+    ///
+    /// * `len_encoder` - Encoder expression writing the length
+    /// * `size` - Optional parsed length-size declaration from container attrs
+    ///
+    /// # Returns
+    ///
+    /// `LengthPrefix::Fixed` when an exact byte width is declared, or
+    /// `LengthPrefix::Variable` for every non-exact length form
+    pub(super) fn new(len_encoder: &'a types::XcoderType, size: Option<SizeSpec>) -> Self {
+        // --------------------------------------------------
+        // exact sizes become fixed-width length slots
+        // --------------------------------------------------
+        match size.and_then(SizeSpec::exact_width) {
+            Some(width) => Self::Fixed(FixedLengthSlot { len_encoder, width }),
+            None => Self::Variable(VariableLength(len_encoder)),
+        }
+    }
+}
+
+/// A fixed-width length slot: the encoder writing the length, and the byte width it must fill
+#[derive(Debug, Clone, Copy)]
+pub(super) struct FixedLengthSlot<'a> {
+    /// Encoder expression writing the length
+    len_encoder: &'a types::XcoderType,
+
+    /// Exact byte width of the encoded length
+    width: usize,
+}
+
+/// [`FixedLengthSlot`] implementation
+impl FixedLengthSlot<'_> {
+    /// The exact byte width of the encoded length
+    ///
+    /// # Returns
+    ///
+    /// The `W` of `len(size(exact = W))`
+    pub(super) fn width(self) -> usize {
+        self.width
+    }
+
+    /// The largest length the slot encodes
+    ///
+    /// # Returns
+    ///
+    /// `256^width - 1`, saturating at `usize::MAX` when the slot is as wide as the host `usize`
+    /// or wider
+    fn max_len(self) -> usize {
+        u32::try_from(self.width)
+            .ok()
+            .and_then(|w| 256usize.checked_pow(w))
+            .map_or(usize::MAX, |b| b - 1)
+    }
+
+    /// Whether the slot encodes a length of `n`
+    ///
+    /// # Arguments
+    ///
+    /// * `n` - The length to encode
+    ///
+    /// # Returns
+    ///
+    /// `true` when `n <= self.max_len()`
+    fn fits(self, n: usize) -> bool {
+        n <= self.max_len()
+    }
+
+    /// Writes `len` with the length encoder, checking in debug builds that it filled the slot
+    ///
+    /// The statements bind `__tail` to `out.len()` before the length is written, so `__tail` is
+    /// where the written length starts. [`Self::write_backfilled`] reads it to move the length
+    /// into the slot it reserved
+    ///
+    /// # Arguments
+    ///
+    /// * `len` - The length expression written into the slot
+    /// * `span` - Span of the emitted write
+    ///
+    /// # Returns
+    ///
+    /// The `__tail` binding, the length write, then its `debug_assert_eq!` on the bytes written
+    fn write_len(self, len: &impl ToTokens, span: proc_macro2::Span) -> proc_macro2::TokenStream {
+        let Self { len_encoder, width } = self;
+        quote_spanned! { span =>
+            let __tail = out.len();
+            #len_encoder(#len, out);
+            ::core::debug_assert_eq!(
+                out.len() - __tail,
+                #width,
+                "tinyklv: length encoder wrote a different byte count than its declared fixed `size`",
+            );
+        }
+    }
+
+    /// Writes a prefix, the length, then a value whose width is known
+    ///
+    /// A value wider than the slot encodes is a compile error at [`ValueWidth::declared_at`]
+    /// naming [`ValueWidth::field`], emitted in place of the write so every other field still
+    /// expands
+    ///
+    /// # Arguments
+    ///
+    /// * `prefix_write` - Generated statements that write the field key
+    /// * `value` - The value's known width
+    /// * `value_write` - Builds the statements appending the value bytes to the buffer it is given
+    /// * `span` - Span of the emitted write
+    ///
+    /// # Returns
+    ///
+    /// A block writing the complete frame into `out`, checking in debug builds that the length
+    /// encoder filled the slot and the value encoder wrote `value.bytes` bytes, or the
+    /// `compile_error!` when the slot cannot encode `value.bytes`
+    pub(super) fn write_known(
+        self,
+        prefix_write: proc_macro2::TokenStream,
+        value: ValueWidth<'_>,
+        value_write: impl FnOnce(&proc_macro2::TokenStream) -> proc_macro2::TokenStream,
+        span: proc_macro2::Span,
+    ) -> proc_macro2::TokenStream {
+        let ValueWidth {
+            field,
+            bytes,
+            declared_at,
+        } = value;
+        // --------------------------------------------------
+        // a value the slot cannot encode is a compile error
+        // --------------------------------------------------
+        if !self.fits(bytes) {
+            let too_narrow = crate::Error::LenPrefixTooNarrow {
+                field: field.to_string(),
+                value_bytes: bytes,
+                width: self.width,
+                max_len: self.max_len(),
+            };
+            return syn::Error::new(declared_at, too_narrow).to_compile_error();
+        }
+        // --------------------------------------------------
+        // prefix, length, then value
+        // --------------------------------------------------
+        let len_write = self.write_len(&bytes, span);
+        let value_write = value_write(&quote_spanned! { span => out });
+        quote_spanned! { span =>
+            {
+                #prefix_write
+                #len_write
+                let __value_start = out.len();
+                #value_write
+                ::core::debug_assert_eq!(
+                    out.len() - __value_start,
+                    #bytes,
+                    "tinyklv: fixed-width value encoder wrote a different byte count than its detected width",
+                );
+            }
+        }
+    }
+
+    /// Writes a prefix, reserves the slot, writes the body, then back-fills the slot
+    ///
+    /// The length is written at the tail with [`Self::write_len`], copied from its `__tail` into
+    /// the reserved slot, and the tail is truncated. When the slot is too narrow to represent the
+    /// body, the generated code logs the error and rolls back the entire KLV unit
+    ///
+    /// # Arguments
+    ///
+    /// * `prefix_write` - Generated statements that write the field key or sentinel
+    /// * `value_write` - Builds the statements appending the body bytes to the buffer it is given
+    /// * `span` - Span of the `out` handed to `value_write`
+    ///
+    /// # Returns
+    ///
+    /// A block containing the complete back-filled write
+    pub(super) fn write_backfilled(
+        self,
+        prefix_write: proc_macro2::TokenStream,
+        value_write: impl FnOnce(&proc_macro2::TokenStream) -> proc_macro2::TokenStream,
+        span: proc_macro2::Span,
+    ) -> proc_macro2::TokenStream {
+        let width = self.width;
+        let value_write = value_write(&quote_spanned! { span => out });
+        let len_write = self.write_len(&quote! { __body_len }, proc_macro2::Span::call_site());
+        // --------------------------------------------------
+        // a slot narrower than usize rolls back an overflowing body
+        // --------------------------------------------------
+        if let Some(max_body_len) = self.max_len().checked_add(1) {
+            let logger = crate::expand::logger::error_logger();
+            return quote! {
+                {
+                    let __field_start = out.len();
+                    #prefix_write
+                    let __len_pos = out.len();
+                    out.resize(__len_pos + #width, 0u8);
+                    let __body_start = out.len();
+                    #value_write
+                    let __body_len = out.len() - __body_start;
+                    if __body_len >= #max_body_len {
+                        #logger(
+                            "tinyklv: KLV item body of {} bytes exceeds its {}-byte length prefix; omitting the item",
+                            __body_len,
+                            #width,
+                        );
+                        out.truncate(__field_start);
+                    } else {
+                        #len_write
+                        out.copy_within(__tail.., __len_pos);
+                        out.truncate(__tail);
+                    }
+                }
+            };
+        }
+        // --------------------------------------------------
+        // a usize-wide slot back-fills directly
+        // --------------------------------------------------
+        quote! {
+            {
+                #prefix_write
+                let __len_pos = out.len();
+                out.resize(__len_pos + #width, 0u8);
+                let __body_start = out.len();
+                #value_write
+                let __body_len = out.len() - __body_start;
+                #len_write
+                out.copy_within(__tail.., __len_pos);
+                out.truncate(__tail);
+            }
+        }
+    }
+}
+
+/// A variable-width length: the encoder writing a staged value's length
+#[derive(Debug, Clone, Copy)]
+pub(super) struct VariableLength<'a>(&'a types::XcoderType);
+
+/// [`VariableLength`] implementation
+impl VariableLength<'_> {
+    /// Stages a value, then writes the prefix, the staged length, and the staged value
+    ///
+    /// # Arguments
+    ///
+    /// * `staging` - The buffer the value is staged in
+    /// * `prefix_write` - Generated statements writing what precedes the length, the field key or
+    ///   sentinel, which may read the staged buffer
+    /// * `value_write` - Builds the statements encoding the value into the buffer it is given
+    /// * `span` - Span of the emitted write
+    ///
+    /// # Returns
+    ///
+    /// The staged write from [`Staging::write`]
+    pub(super) fn write_staged(
+        self,
+        staging: Staging,
+        prefix_write: proc_macro2::TokenStream,
+        value_write: impl FnOnce(&proc_macro2::TokenStream) -> proc_macro2::TokenStream,
+        span: proc_macro2::Span,
+    ) -> proc_macro2::TokenStream {
+        let Self(len_encoder) = self;
+        let buffer = staging.buffer();
+        let header = quote_spanned! { span => #prefix_write #len_encoder(#buffer.len(), out); };
+        staging.write(header, value_write, span)
+    }
+}

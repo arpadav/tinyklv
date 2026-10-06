@@ -1,6 +1,0 @@
-error: Missing required `dec` field for `keylen`.
-       If no decoding is required, use `#[klv(allow_unimplemented_decode)]`.
- --> tests/ui/fail/keylen_missing_dec.rs:4:7
-  |
-4 | #[klv(keylen(), allow_unimplemented_encode)]
-  |       ^^^^^^

@@ -1,0 +1,5 @@
+error: Duplicate `enc` field. Only one method of encoding key/len/keylen is allowed.
+  --> tests/ui/fail/header/keylen_duplicate_enc.rs:13:46
+   |
+13 | #[klv(keylen(dec = header, enc = header_enc, enc = header_enc))]
+   |                                              ^^^^^^^^^^^^^^^^

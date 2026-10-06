@@ -8,34 +8,11 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use crate::support::drive::Drive;
+use crate::support::pb;
 use tinyklv::dec::ber as decber;
-use tinyklv::dec::binary as decb;
 use tinyklv::enc::ber as encber;
 use tinyklv::prelude::*;
-
-/// Decodes a frame header: a `u8` key, every value `Inline`
-///
-/// # Arguments
-///
-/// * `input` - the byte stream positioned at a frame header; advanced past the key
-///
-/// # Returns
-///
-/// `Ok((key, Framing::Inline))`, or an error on empty input
-fn header(input: &mut &[u8]) -> tinyklv::Result<(u8, Framing)> {
-    Ok((decb::u8(input)?, Framing::Inline))
-}
-
-/// Encodes a frame header, the inverse of [`header`]: the `u8` key alone, since every value
-/// is `Inline` and its length never reaches the wire
-///
-/// # Arguments
-///
-/// * `(key, _)` - the field key and the (unwritten) byte length of the value that follows
-/// * `out` - the buffer the key byte is appended to
-fn header_enc((key, _): (u8, usize), out: &mut Vec<u8>) {
-    out.push(key);
-}
 
 /// Declares a one-field `keylen` message named `$name`
 macro_rules! reading {
@@ -52,8 +29,8 @@ macro_rules! reading {
 }
 reading!(
     Counter,
-    header,
-    header_enc,
+    pb::dec_u8_keylen,
+    pb::enc_u8_keylen,
     decber::ber_oid,
     encber::ber_oid
 );
@@ -67,8 +44,6 @@ fn macro_emitted_keylen_derive_roundtrips() {
         0x02, 0x81, 0x00,
     ];
     let counter = Counter { count: 128 };
-    let mut out = Vec::new();
-    counter.encode_value(&mut out);
-    assert_eq!(out, wire);
+    assert_eq!(counter.encoded(), wire);
     assert_eq!(Counter::decode_value(&mut &wire[..]), Ok(counter));
 }

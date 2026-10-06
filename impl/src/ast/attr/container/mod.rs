@@ -10,19 +10,24 @@
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
-pub(crate) mod break_on;
-pub(crate) mod default;
+mod break_on;
+mod default;
 mod header;
 mod sentinel;
 mod stream;
 
 // --------------------------------------------------
+// re-exports
+// --------------------------------------------------
+pub(crate) use break_on::BreakOnSpec;
+pub(super) use default::DefaultXcoder;
+
+// --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::{Ctxt, symbol};
-use break_on::{BreakOn, BreakOnSpec};
-use default::DefaultXcoder;
-use header::{HeaderSlot, HeaderXcoder, HeaderXcoderAttr};
+use break_on::BreakOn;
+use header::{HeaderAttrs, HeaderXcoder, HeaderXcoderAttr};
 use sentinel::Sentinel;
 use stream::Stream;
 
@@ -71,15 +76,9 @@ pub(crate) struct Container {
     /// The break condition: a key literal (stop on match) or a `fn(key, len) -> BreakType` path
     pub break_on: Option<BreakOnSpec>,
 
-    /// The key encoder/decoder xcoder pair: absent, present but unusable, or parsed
-    key: HeaderXcoderAttr,
-
-    /// The length encoder/decoder xcoder pair: absent, present but unusable, or parsed
-    len: HeaderXcoderAttr,
-
-    /// The fused key+length codec (mutually exclusive with `key`/`len`): absent, present but
-    /// unusable, or parsed
-    keylen: HeaderXcoderAttr,
+    /// The key and length xcoder pairs and the fused key+length codec (mutually exclusive with
+    /// `key`/`len`): each absent, present but unusable, or parsed
+    headers: HeaderAttrs,
 
     /// Per-type default xcoders keyed by the Rust type they apply to
     pub defaults: HashMap<syn::Type, DefaultXcoder>,
@@ -127,9 +126,7 @@ impl Container {
         let mut stream = None;
         let mut sentinel = None;
         let mut break_on = None;
-        let mut key = HeaderXcoderAttr::Absent;
-        let mut len = HeaderXcoderAttr::Absent;
-        let mut keylen = HeaderXcoderAttr::Absent;
+        let mut headers = HeaderAttrs::default();
         let mut defaults: HashMap<syn::Type, DefaultXcoder> = HashMap::new();
         let mut debug = None;
         let mut deny_unknown_keys = None;
@@ -161,16 +158,19 @@ impl Container {
             // loop through comma blocks
             // --------------------------------------------------
             for meta in nested {
+                // --------------------------------------------------
+                // the frame header attributes, `key`, `len` and `keylen`, in any form
+                // --------------------------------------------------
+                if headers.on_meta(cx, &meta) {
+                    continue;
+                }
+                let name = symbol::Symbol::from(meta.path());
                 match meta {
                     // --------------------------------------------------
                     // handle all: `syn::MetaList`
                     // e.g. `key(enc = <..>, dec = <..>),`
                     // --------------------------------------------------
-                    syn::Meta::List(list) => match symbol::Symbol::from(&list.path) {
-                        symbol::KEY => key.on_list(cx, &list, HeaderSlot::Key),
-                        symbol::LENGTH => len.on_list(cx, &list, HeaderSlot::Length),
-                        symbol::KEYLEN => keylen.on_list(cx, &list, HeaderSlot::Keylen),
-
+                    syn::Meta::List(list) => match name {
                         symbol::DEFAULT => {
                             let new = DefaultXcoder::from(&list);
                             if let Some(err) = new.errors {
@@ -208,7 +208,6 @@ impl Container {
                                 }
                             }
                         }
-
                         // --------------------------------------------------
                         // non lists
                         // --------------------------------------------------
@@ -248,12 +247,11 @@ impl Container {
                             err!(UnknownContainerListAttribute(list.path)),
                         ),
                     },
-
                     // --------------------------------------------------
                     // handle all: `syn::MetaNameValue`
                     // e.g. `sentinel = <value>,`
                     // --------------------------------------------------
-                    syn::Meta::NameValue(nv) => match symbol::Symbol::from(&nv.path) {
+                    syn::Meta::NameValue(nv) => match name {
                         symbol::STREAM => match stream {
                             Some(_) => cx.error_spanned_by(&nv, err!(DuplicateStream)),
                             None => {
@@ -279,9 +277,6 @@ impl Container {
                         // --------------------------------------------------
                         // non name-values
                         // --------------------------------------------------
-                        symbol::KEY => key.on_non_list(cx, &nv.path, HeaderSlot::Key),
-                        symbol::LENGTH => len.on_non_list(cx, &nv.path, HeaderSlot::Length),
-                        symbol::KEYLEN => keylen.on_non_list(cx, &nv.path, HeaderSlot::Keylen),
                         symbol::DEFAULT => {
                             cx.error_spanned_by(&nv.path, err!(ExpectedAsList(symbol::DEFAULT)));
                         }
@@ -309,12 +304,11 @@ impl Container {
                             err!(UnknownContainerNameValueAttribute(nv.path)),
                         ),
                     },
-
                     // --------------------------------------------------
                     // handle all: `syn::Path` (basically idents/flags)
                     // e.g. `allow_unimplemented_decode,`
                     // --------------------------------------------------
-                    syn::Meta::Path(path) => match symbol::Symbol::from(&path) {
+                    syn::Meta::Path(path) => match name {
                         symbol::DEBUG => debug = Some(path),
                         symbol::DENY_UNKNOWN_KEYS => deny_unknown_keys = Some(path),
                         symbol::ALLOW_UNIMPLEMENTED_DECODE => {
@@ -327,9 +321,6 @@ impl Container {
                         // --------------------------------------------------
                         // non paths
                         // --------------------------------------------------
-                        symbol::KEY => key.on_non_list(cx, &path, HeaderSlot::Key),
-                        symbol::LENGTH => len.on_non_list(cx, &path, HeaderSlot::Length),
-                        symbol::KEYLEN => keylen.on_non_list(cx, &path, HeaderSlot::Keylen),
                         symbol::DEFAULT => {
                             cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::DEFAULT)));
                         }
@@ -347,12 +338,11 @@ impl Container {
                 }
             }
         }
-
         // --------------------------------------------------
         // unimplemented encode / decode errors, spanned on the `key`/`len`/`keylen` path whose
         // `enc`/`dec` is missing
         // --------------------------------------------------
-        for attr in [&key, &len, &keylen] {
+        for attr in [&headers.key, &headers.len, &headers.keylen] {
             let HeaderXcoderAttr::Parsed(path, xcoder) = attr else {
                 continue;
             };
@@ -370,9 +360,7 @@ impl Container {
             stream: stream.and_then(|x| x.0),
             sentinel: sentinel.and_then(|x| x.0),
             break_on: break_on.and_then(|x| x.0),
-            key,
-            len,
-            keylen,
+            headers,
             defaults,
             debug,
             deny_unknown_keys,
@@ -450,8 +438,8 @@ impl ContainerParsed {
         // `sentinel` / `break_on` beside any `keylen(..)`, reported before the framing
         // resolution can return early
         // --------------------------------------------------
-        let fused_conflict =
-            cont.keylen.is_present() && (cont.sentinel.is_some() || cont.break_on.is_some());
+        let fused_conflict = cont.headers.keylen.is_present()
+            && (cont.sentinel.is_some() || cont.break_on.is_some());
         if fused_conflict {
             if let Some(sentinel) = &cont.sentinel {
                 cx.error_spanned_by(sentinel, err!(KeylenWithSentinel));
@@ -464,30 +452,42 @@ impl ContainerParsed {
         // resolve the framing mode: `keylen` and `key`/`len` are mutually exclusive,
         // and exactly one side must be fully specified
         // --------------------------------------------------
-        let mode = match (cont.keylen, cont.key, cont.len) {
+        let mode = match cont.headers {
             // --------------------------------------------------
             // classic mode, both parsed
             // --------------------------------------------------
-            (
-                HeaderXcoderAttr::Absent,
-                HeaderXcoderAttr::Parsed(_, key),
-                HeaderXcoderAttr::Parsed(_, len),
-            ) => ContainerMode::Separate { key, len },
+            HeaderAttrs {
+                keylen: HeaderXcoderAttr::Absent,
+                key: HeaderXcoderAttr::Parsed(_, key),
+                len: HeaderXcoderAttr::Parsed(_, len),
+            } => ContainerMode::Separate { key, len },
             // --------------------------------------------------
             // classic mode, one half missing
             // --------------------------------------------------
-            (HeaderXcoderAttr::Absent, key, HeaderXcoderAttr::Absent) if key.is_present() => {
+            HeaderAttrs {
+                keylen: HeaderXcoderAttr::Absent,
+                key,
+                len: HeaderXcoderAttr::Absent,
+            } if key.is_present() => {
                 cx.error_spanned_by(name, err!(MissingLength));
                 return None;
             }
-            (HeaderXcoderAttr::Absent, HeaderXcoderAttr::Absent, len) if len.is_present() => {
+            HeaderAttrs {
+                keylen: HeaderXcoderAttr::Absent,
+                key: HeaderXcoderAttr::Absent,
+                len,
+            } if len.is_present() => {
                 cx.error_spanned_by(name, err!(MissingKey));
                 return None;
             }
             // --------------------------------------------------
             // nothing specified
             // --------------------------------------------------
-            (HeaderXcoderAttr::Absent, HeaderXcoderAttr::Absent, HeaderXcoderAttr::Absent) => {
+            HeaderAttrs {
+                keylen: HeaderXcoderAttr::Absent,
+                key: HeaderXcoderAttr::Absent,
+                len: HeaderXcoderAttr::Absent,
+            } => {
                 cx.error_spanned_by(name, err!(MissingFraming));
                 return None;
             }
@@ -495,18 +495,25 @@ impl ContainerParsed {
             // an unusable attribute that already reported its error: classic mode with both
             // halves present and at least one unusable, or an unusable `keylen` alone
             // --------------------------------------------------
-            (HeaderXcoderAttr::Absent, _, _)
-            | (HeaderXcoderAttr::Invalid(_), HeaderXcoderAttr::Absent, HeaderXcoderAttr::Absent) => {
+            HeaderAttrs {
+                keylen: HeaderXcoderAttr::Absent,
+                ..
+            }
+            | HeaderAttrs {
+                keylen: HeaderXcoderAttr::Invalid(_),
+                key: HeaderXcoderAttr::Absent,
+                len: HeaderXcoderAttr::Absent,
+            } => {
                 return None;
             }
             // --------------------------------------------------
             // fused codec, no separate key/len
             // --------------------------------------------------
-            (
-                HeaderXcoderAttr::Parsed(_, keylen),
-                HeaderXcoderAttr::Absent,
-                HeaderXcoderAttr::Absent,
-            ) => {
+            HeaderAttrs {
+                keylen: HeaderXcoderAttr::Parsed(_, keylen),
+                key: HeaderXcoderAttr::Absent,
+                len: HeaderXcoderAttr::Absent,
+            } => {
                 if fused_conflict {
                     return None;
                 }
@@ -515,7 +522,10 @@ impl ContainerParsed {
             // --------------------------------------------------
             // fused codec alongside any separate key/len, usable or not: conflict
             // --------------------------------------------------
-            (HeaderXcoderAttr::Invalid(path) | HeaderXcoderAttr::Parsed(path, _), _, _) => {
+            HeaderAttrs {
+                keylen: HeaderXcoderAttr::Invalid(path) | HeaderXcoderAttr::Parsed(path, _),
+                ..
+            } => {
                 cx.error_spanned_by(&path, err!(KeylenWithKeyOrLen));
                 return None;
             }

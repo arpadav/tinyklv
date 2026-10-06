@@ -1,0 +1,67 @@
+error[E0308]: mismatched types
+  --> tests/ui/fail/codec/keylen_field_dec_value_type.rs:14:29
+   |
+11 | #[derive(Klv)]
+   |          --- in this derive macro expansion
+...
+14 |     #[klv(key = 0x01, dec = id)]
+   |                             ^^
+   |                             |
+   |                             expected `Option<u16>`, found `Option<u8>`
+   |                             arguments to this method are incorrect
+   |
+   = note: expected enum `Option<u16>`
+              found enum `Option<u8>`
+note: method defined here
+  --> $RUST/core/src/option.rs
+   |
+   |     pub const fn or(self, optb: Option<T>) -> Option<T>
+   |                  ^^
+   = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> tests/ui/fail/codec/keylen_field_dec_value_type.rs:14:29
+   |
+11 | #[derive(Klv)]
+   |          ---
+   |          |
+   |          expected due to the type of this binding
+   |          in this derive macro expansion
+...
+14 |     #[klv(key = 0x01, dec = id)]
+   |                             ^^ expected `Option<u8>`, found `Option<u16>`
+   |
+   = note: expected enum `Option<u8>`
+              found enum `Option<u16>`
+   = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+  --> tests/ui/fail/codec/keylen_field_dec_value_type.rs:14:29
+   |
+11 | #[derive(Klv)]
+   |          --- in this derive macro expansion
+...
+14 |     #[klv(key = 0x01, dec = id)]
+   |                             ^^
+   |                             |
+   |                             expected `u8`, found `u16`
+   |                             arguments to this enum variant are incorrect
+   |
+help: the type constructed contains `u16` due to the type of the argument passed
+  --> tests/ui/fail/codec/keylen_field_dec_value_type.rs:14:29
+   |
+11 | #[derive(Klv)]
+   |          --- in this derive macro expansion
+...
+14 |     #[klv(key = 0x01, dec = id)]
+   |                             ^^ this argument influences the type of `Some`
+note: tuple variant defined here
+  --> $RUST/core/src/option.rs
+   |
+   |     Some(#[stable(feature = "rust1", since = "1.0.0")] T),
+   |     ^^^^
+   = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: you can convert a `u16` to a `u8` and panic if the converted value doesn't fit
+   |
+14 |     #[klv(key = 0x01, dec = id.try_into().unwrap())]
+   |                               ++++++++++++++++++++

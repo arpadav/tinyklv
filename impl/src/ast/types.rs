@@ -5,7 +5,8 @@
 //! expressions, and macro invocations; the [`XcoderSigil`] enum that controls
 //! how the argument is passed to the xcoder function; [`SiguledXcoder`] which
 //! pairs a sigil with an inner xcoder; [`HeaderEncoder`], the sigil-free frame
-//! header encoder; and supporting types [`LatebindXcoder`] and [`DefaultValue`]
+//! header encoder; and supporting types [`LatebindXcoder`] and [`DefaultValue`]. Also detects an
+//! `Option` field type and extracts its inner type ([`is_option`], [`unwrap_option_type`])
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -13,7 +14,9 @@
 // --------------------------------------------------
 use quote::ToTokens;
 
+/// A Rust type named by an attribute value: the `typ` of `default(..)` or the container's `stream`
 pub(crate) type TypeType = syn::Type;
+/// An xcoder carrying no dispatch sigil: a decoder, or a frame header encoder
 pub(crate) type XcoderType = XcoderLike;
 
 #[derive(Debug, Clone)]
@@ -148,7 +151,7 @@ impl ToTokens for SiguledXcoder {
 ///
 /// The derive calls it with the key and length by value, so the field-only `&` / `*` sigils of
 /// [`SiguledXcoder`] are rejected at parse time
-pub(crate) struct HeaderEncoder(pub(crate) XcoderLike);
+pub(crate) struct HeaderEncoder(pub(super) XcoderLike);
 /// [`HeaderEncoder`] implementation of [`syn::parse::Parse`]
 ///
 /// Rejects a leading `&` or `*` at the sigil, then parses the [`XcoderLike`]
@@ -215,4 +218,69 @@ impl syn::parse::Parse for LatebindXcoder {
         let inner: XcoderLike = input.parse()?;
         Ok(LatebindXcoder { is_mut, inner })
     }
+}
+
+/// Returns the inner type `T` of an `Option<T>`, if the type is an `Option`
+///
+/// Delegates to [`is_option_helper`]. Returns `None` if `ty` is not an
+/// `Option` or if the generic argument is not a plain type
+///
+/// # Arguments
+///
+/// * `ty` - The [`syn::Type`] to inspect
+///
+/// # Returns
+///
+/// `Some(&inner_ty)` when `ty` is `Option<inner_ty>`, or `None` otherwise
+pub(crate) fn unwrap_option_type(ty: &syn::Type) -> Option<&syn::Type> {
+    is_option_helper(ty).1
+}
+
+/// Returns `true` if a [`syn::Type`] is an `Option<T>`
+///
+/// Delegates to [`is_option_helper`], discarding the inner-type result
+///
+/// # Arguments
+///
+/// * `ty` - The [`syn::Type`] to inspect
+///
+/// # Returns
+///
+/// `true` when `ty` is `Option<..>`, `false` otherwise
+pub(crate) fn is_option(ty: &syn::Type) -> bool {
+    is_option_helper(ty).0
+}
+
+/// Determines whether a [`syn::Type`] is an `Option` and extracts its inner type
+///
+/// Checks whether `ty` is a single-segment path whose ident is `Option` and
+/// whose first generic argument is a type. Returns both the boolean flag and
+/// the optional inner type so callers can use either piece without a second pass
+///
+/// # Arguments
+///
+/// * `ty` - The [`syn::Type`] to inspect
+///
+/// # Returns
+///
+/// A tuple `(is_option, inner)` where `is_option` is `true` when `ty` is
+/// `Option<..>`, and `inner` is `Some(&T)` for `Option<T>` or `None` otherwise
+fn is_option_helper(ty: &syn::Type) -> (bool, Option<&syn::Type>) {
+    if let syn::Type::Path(syn::TypePath { path, .. }) = ty
+        && let Some(syn::PathSegment {
+            ident: id,
+            arguments:
+                syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments { args, .. }),
+        }) = path.segments.first()
+        && id == "Option"
+    {
+        return (
+            true,
+            args.first().and_then(|arg| match arg {
+                syn::GenericArgument::Type(inner_ty) => Some(inner_ty),
+                _ => None,
+            }),
+        );
+    }
+    (false, None)
 }

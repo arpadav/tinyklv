@@ -9,7 +9,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::{ast::types, expand::helpers};
+use crate::ast::types;
 
 /// Generates [`primitive_type_width`] from the single fixed-width primitive list
 macro_rules! primitive_widths {
@@ -72,7 +72,7 @@ pub(super) fn fixed_value_type_width(ty: &syn::Type) -> Option<usize> {
     // --------------------------------------------------
     // optional fields do not emit a fixed number of bytes
     // --------------------------------------------------
-    if helpers::is_option(ty) {
+    if types::is_option(ty) {
         return None;
     }
     // --------------------------------------------------
@@ -84,7 +84,7 @@ pub(super) fn fixed_value_type_width(ty: &syn::Type) -> Option<usize> {
     primitive_type_width(&path.path.get_ident()?.to_string())
 }
 
-/// Returns the fixed byte width of a tinyklv built-in binary value encoder
+/// Returns the fixed byte width of a tinyklv built-in binary encoder
 ///
 /// Recognizes only built-in big-endian and little-endian primitive encoder
 /// paths whose names start with `be_` or `le_` followed by a registered
@@ -93,19 +93,12 @@ pub(super) fn fixed_value_type_width(ty: &syn::Type) -> Option<usize> {
 ///
 /// # Arguments
 ///
-/// * `value_encoder` - Parsed value encoder expression from field metadata
+/// * `encoder` - Parsed encoder expression: a field's value encoder or the container's key encoder
 ///
 /// # Returns
 ///
 /// `Some(width)` for a recognized built-in fixed-width encoder, or `None` when
 /// the encoder cannot be proven to write a stable byte width
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let width = builtin_fixed_encoder_width(&value_encoder.inner);
-/// assert!(width.is_none() || width.unwrap() > 0);
-/// ```
 pub(super) fn builtin_fixed_encoder_width(encoder: &types::XcoderLike) -> Option<usize> {
     // --------------------------------------------------
     // only path-like built-in encoders can be recognized
@@ -133,12 +126,6 @@ mod tests {
     /// Confirms that every primitive listed in `primitive_widths!` maps to
     /// `size_of::<T>()` and that intentionally unsupported names are rejected
     /// instead of receiving guessed widths
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// primitive_type_width_matches_size_of();
-    /// ```
     fn primitive_type_width_matches_size_of() {
         // --------------------------------------------------
         // primitives resolve to their platform byte widths

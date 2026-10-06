@@ -5,7 +5,9 @@
 //! and variable fields, advanced streaming / sentinel / scaling / nesting,
 //! ASCII-encoded fields, sigil dispatch, partial decode / resume, optional
 //! fields, and vec-decode semantics.  The `types` module provides shared
-//! domain types used across the advanced sub-modules
+//! domain types used across the advanced sub-modules, `beacon` the
+//! all-optional message the vec-decode sub-modules share, and
+//! `attempt_budget` the cap on decode attempts that turns a hang into a panic
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -24,8 +26,10 @@ mod advanced_stream;
 mod advanced_variable;
 #[cfg(feature = "ascii")]
 mod ascii_fields;
+mod attempt_budget;
 mod basic_fixed;
 mod basic_variable;
+mod beacon;
 mod ber_keyed;
 mod break_condition;
 mod break_on_attr;
@@ -46,6 +50,7 @@ mod optional_fields;
 mod partial_decode;
 mod repeated_decode;
 mod sentinel_seek;
+mod shadowed_debug_assert;
 mod sigil_dispatch;
 mod streaming_decoder;
 mod streaming_mixed_fields;

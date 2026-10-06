@@ -1,18 +1,18 @@
 //! Orchestration of the encode code-generation pass
 //!
 //! Top-level entry point for the `tinyklv::prelude::EncodeValue` and
-//! `tinyklv::prelude::EncodeFrame` derive implementations. This file only
-//! resolves container-level inputs, delegates the actual impl bodies to focused
-//! generators, and assembles the final token stream:
+//! `tinyklv::prelude::EncodeFrame` derive implementations. It derives an [`EncodeCtx`] from the
+//! container once, then assembles the impls its methods emit, each from the sub-module that owns
+//! it:
 //!
 //! * `encode_value_gen` - the `EncodeValue` impl
-//! * `field_length_plan` - the container length-prefix shape and the fixed-prefix field length
-//!   kinds
+//! * `field_length_plan` - the fixed-prefix field length kinds
 //! * `fixed_width` - compile-time byte-width resolution
 //! * `framing` - the frame header written around each field value, per the container's framing mode
 //! * `klv_item_gen` - field-level KLV item emission
-//! * `length_slot_gen` - the fixed-width length slot
+//! * `length_prefix` - the container's length prefix: a fixed-width slot or a variable-width length
 //! * `sentinel_gen` - the `EncodeFrame` impl (only when a sentinel is declared)
+//! * `staging` - the staged write: a value encoded into a buffer before its frame header
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -20,7 +20,7 @@
 // --------------------------------------------------
 /// Generates required `EncodeValue` impl bodies
 mod encode_value_gen;
-/// Holds the container length-prefix shape and the fixed-prefix field length kinds
+/// Holds the fixed-prefix field length kinds
 mod field_length_plan;
 /// Resolves fixed byte widths for primitive encode paths
 mod fixed_width;
@@ -28,21 +28,71 @@ mod fixed_width;
 mod framing;
 /// Generates per-field KLV item writes
 mod klv_item_gen;
-/// The fixed-width length slot
-mod length_slot_gen;
+/// The container's length prefix: a fixed-width slot or a variable-width length
+mod length_prefix;
 /// Generates the optional sentinel-framed `EncodeFrame` impl
 mod sentinel_gen;
+/// Stages a value in a buffer before its frame header is written
+mod staging;
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use self::framing::EncodeFraming;
 use crate::ast::attr::MainContainer;
+use framing::EncodeFraming;
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
+use proc_macro2::TokenStream;
 use quote::quote;
+
+/// A container that gets encode impls, with everything those impls derive from it
+///
+/// Built once per derive by [`EncodeCtx::new`]. Each encode impl is a method, defined in the
+/// sub-module that generates it
+struct EncodeCtx<'a> {
+    /// The parsed container, providing the name, generics, fields and attributes
+    input: &'a MainContainer<'a>,
+
+    /// The frame header written around each field value, per the container's framing mode
+    framing: EncodeFraming<'a>,
+
+    /// The `EncodeValue` body's reserve hint ([`EncodeFraming::value_reserve_bytes`]), which a
+    /// back-filled sentinel frame's reserve includes
+    reserve_bytes: usize,
+}
+
+/// [`EncodeCtx`] implementation
+impl<'a> EncodeCtx<'a> {
+    /// Derives the encode context of a container
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - The parsed container descriptor including field metadata
+    ///
+    /// # Returns
+    ///
+    /// The context, or `None` when the struct has no KLV field, or a field or framing encoder is
+    /// missing (`allow_unimplemented_encode`), in which case no encode impl is generated
+    fn new(input: &'a MainContainer<'a>) -> Option<Self> {
+        // --------------------------------------------------
+        // an encoder on every field, and at least one field; else no encode impl
+        // --------------------------------------------------
+        if !input.every_klv_field(|f| f.enc.is_some()) {
+            return None;
+        }
+        // --------------------------------------------------
+        // frame header encoder(s); none means no encode impl
+        // --------------------------------------------------
+        let framing = EncodeFraming::from_mode(&input.attrs.mode)?;
+        Some(Self {
+            input,
+            framing,
+            reserve_bytes: framing.value_reserve_bytes(input),
+        })
+    }
+}
 
 /// Generates all encode trait implementation tokens for a container
 ///
@@ -62,47 +112,13 @@ use quote::quote;
 /// A token stream containing the generated `EncodeValue` impl followed by the generated
 /// `EncodeFrame` impl when the container declares a sentinel, or `None` when the struct has no
 /// KLV field, or a field or framing encoder is missing under `allow_unimplemented_encode`
-pub(super) fn gen_encode_impl(input: &MainContainer) -> Option<proc_macro2::TokenStream> {
+pub(super) fn gen_encode_impl(input: &MainContainer) -> Option<TokenStream> {
+    let ctx = EncodeCtx::new(input)?;
     // --------------------------------------------------
-    // an encoder on every field, and at least one field; else no encode impl
+    // the `EncodeValue` impl, then the `EncodeFrame` impl when a sentinel is declared
     // --------------------------------------------------
-    if !input.every_klv_field(|f| f.enc.is_some()) {
-        return None;
-    }
-    // --------------------------------------------------
-    // frame header encoder(s); none means no encode impl
-    // --------------------------------------------------
-    let framing = EncodeFraming::from_mode(&input.attrs.mode)?;
-    // --------------------------------------------------
-    // the `EncodeValue` impl, sharing its reserve estimate with the frame
-    // --------------------------------------------------
-    let reserve_bytes = framing.value_reserve_bytes(input);
-    let encode_value = encode_value_gen::gen_encode_value_impl(input, framing, reserve_bytes);
-    // --------------------------------------------------
-    // the `EncodeFrame` impl: a fused container rejects `sentinel` at parse time, so a
-    // sentinel always comes with the separate length encoder that writes the frame length
-    // --------------------------------------------------
-    let encode_frame = match (input.attrs.sentinel.as_ref(), framing) {
-        (
-            Some(sentinel),
-            EncodeFraming::Separate {
-                len_encoder,
-                len_prefix,
-                ..
-            },
-        ) => sentinel_gen::gen_encode_frame_impl(
-            &input.ident,
-            input.generics,
-            sentinel,
-            len_encoder,
-            len_prefix,
-            reserve_bytes,
-        ),
-        (Some(_), EncodeFraming::Fused { .. }) | (None, _) => quote! {},
-    };
-    // --------------------------------------------------
-    // assemble: the `EncodeValue` impl, then optional `EncodeFrame` impl
-    // --------------------------------------------------
+    let encode_value = ctx.encode_value_impl();
+    let encode_frame = ctx.encode_frame_impl();
     Some(quote! {
         #encode_value
         #encode_frame

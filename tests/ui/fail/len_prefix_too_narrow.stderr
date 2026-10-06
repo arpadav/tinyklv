@@ -1,5 +1,0 @@
-error: The value is 256 bytes but `len(size(exact = 1))` can encode lengths only up to 255.
-  --> tests/ui/fail/len_prefix_too_narrow.rs:28:59
-   |
-28 |     #[klv(key = 0x01, dec = digest_dec, enc = digest_enc, size(exact = 256))]
-   |                                                           ^^^^

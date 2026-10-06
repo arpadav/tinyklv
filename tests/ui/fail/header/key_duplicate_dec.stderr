@@ -1,0 +1,5 @@
+error: Duplicate `dec` field. Only one method of decoding key/len/keylen is allowed.
+ --> tests/ui/fail/header/key_duplicate_dec.rs:5:41
+  |
+5 |     key(dec = tinyklv::dec::binary::u8, dec = tinyklv::dec::binary::u8),
+  |                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

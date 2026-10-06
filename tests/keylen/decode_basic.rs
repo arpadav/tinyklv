@@ -8,9 +8,9 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::drive::Drive;
-use crate::example::{Example, Inner, Status};
-use crate::pb;
+use crate::support::drive::Drive;
+use crate::support::example::{Example, Inner, Status};
+use crate::support::pb;
 use tinyklv::prelude::*;
 
 // --------------------------------------------------
@@ -33,16 +33,16 @@ struct Traced<T>
 where
     T: for<'a> DecodeValue<&'a [u8]> + Debug,
 {
-    #[klv(key = 0x08, dec = pb::dec_varint_i32, latebind = i64::from)]
     /// field 1, wire 0 VARINT - `Inline`, `i32` on the wire
+    #[klv(key = 0x08, dec = pb::dec_varint_i32, latebind = i64::from)]
     total: i64,
 
-    #[klv(key = 0x12)]
     /// field 2, wire 2 LEN - `Sliced(n)`
+    #[klv(key = 0x12)]
     label: String,
 
-    #[klv(key = 0x18)]
     /// field 3, wire 0 VARINT - `Inline`, no `dec`: read by `trait_fallback`
+    #[klv(key = 0x18)]
     value: Option<T>,
 }
 

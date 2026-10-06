@@ -3,14 +3,14 @@
 //! Both decode entry points run the same per-frame loop and differ only in how an iteration leaves
 //! it. [`LoopDriver`] owns the exits every framing shares, so each is spelled once per driver. The
 //! classic separate streaming header is the exception: it keeps its own malformed-key finalize so
-//! its output stays byte-identical (see `DecodeFraming::header`):
+//! its output stays byte-identical (see `LoopCtx::header`):
 //!
 //! * [`LoopDriver::Streaming`] - `resume_partial`: truncation rewinds and returns
-//!   `Packet::NeedMore`, an error returns a bare `&'static str` label, which names the field for a
-//!   malformed `Inline` value
+//!   `Packet::NeedMore`, an error returns a bare `&'static str` message, which reads
+//!   `invalid <label>` for a rejection the derive labels ([`LoopDriver::reject_label`])
 //! * [`LoopDriver::OneShot`] - `decode_value`: truncation rewinds and `break`s to the finalize
 //!   tail, an error returns a `ContextError` labelled at the input position, except a malformed
-//!   `Inline` value, which returns the value decoder's own error with the field added as context
+//!   `Inline` value, whose error names the field first, then the value decoder's own error
 //!   ([`LoopDriver::reject_value`])
 //!
 //! The rules that decide truncation against malformed are stated once, on `tinyklv::Framing`
@@ -20,11 +20,16 @@
 //! [`LoopCtx`], which pairs a driver with those types
 //!
 //! The emitted tokens assume the loop's bindings: `input`, `checkpoint` (fn entry),
-//! `checkpoint_inner` (frame start), `__acc` (the partial accumulator), `len` (the frame's value
-//! length, wherever a `take` is cut) and, inside a failed `Inline` value arm, `__err` (the value
-//! decoder's error)
+//! `checkpoint_inner` (frame start), `__acc` (the partial accumulator), the frame's value length
+//! (`DecodeFraming::len`, wherever a `take` is cut) and, inside a failed `Inline` value arm,
+//! `__err` (the value decoder's error)
 //!
 //! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
+use super::LoopCtx;
+
 // --------------------------------------------------
 // external
 // --------------------------------------------------
@@ -56,24 +61,10 @@ pub(super) enum ParseSite<'a> {
     Header,
     /// An `Inline` value read straight from the main stream
     Value {
-        /// The `&'static str` noun phrase naming the field, which a malformed value is rejected
-        /// with
+        /// Names the field, which a malformed value is rejected with (a
+        /// [`LoopDriver::reject_label`] label)
         label: &'a TokenStream,
     },
-}
-
-/// A [`LoopDriver`] together with the types its slicing and finalizing exits name
-#[derive(Debug, Clone, Copy)]
-pub(super) struct LoopCtx<'a> {
-    /// The loop exit policy
-    pub(super) driver: LoopDriver,
-
-    /// The stream type the impl is parameterised over, which `take` is instantiated over
-    pub(super) stream: &'a syn::Type,
-
-    /// The partial accumulator type, `#partial_name #ty_generics`, whose `Partial::finalize` the
-    /// finalizing exits call
-    pub(super) partial_ty: &'a TokenStream,
 }
 
 /// [`LoopDriver`] implementation
@@ -100,7 +91,7 @@ impl LoopDriver {
     }
 
     /// Whether [`Self::clean_eof`] is a `break`, one of the reports
-    /// [`DecodeLoopParts::breaks`](super::decode_partial_gen::DecodeLoopParts::breaks) ORs
+    /// [`DecodeCtx::breaks`](super::DecodeCtx::breaks) ORs
     ///
     /// Every loop takes [`Self::clean_eof`] at the top of an iteration, so this also covers the
     /// other exits that `break` only under one-shot ([`Self::truncated`] and every exit built on
@@ -163,7 +154,8 @@ impl LoopDriver {
     ///
     /// # Arguments
     ///
-    /// * `msg` - An expression evaluating to the `&'static str` label
+    /// * `msg` - An expression evaluating to the `&'static str` message, returned as is
+    ///   (streaming) or as the error's label (one-shot)
     ///
     /// # Returns
     ///
@@ -179,6 +171,27 @@ impl LoopDriver {
                     #msg,
                 ));
             },
+        }
+    }
+
+    /// Emits a fatal return naming `label`, with no finalize ([`Self::reject`])
+    ///
+    /// Streaming prefixes the `invalid ` that a one-shot `ContextError`'s display prints before
+    /// its label, so both read `invalid <label>`
+    ///
+    /// # Arguments
+    ///
+    /// * `label` - A `::core::concat!(..)` of string literals naming what was rejected, so that
+    ///   streaming can splice it into its own `concat!`
+    ///
+    /// # Returns
+    ///
+    /// `return Err(concat!("invalid ", #label));` (streaming) or
+    /// `return Err(labeled_error(input, &checkpoint, #label));` (one-shot)
+    pub(super) fn reject_label(self, label: &TokenStream) -> TokenStream {
+        match self {
+            Self::Streaming => self.reject(&quote! { ::core::concat!("invalid ", #label) }),
+            Self::OneShot => self.reject(label),
         }
     }
 
@@ -216,34 +229,28 @@ impl LoopDriver {
 
     /// Emits the fatal return for a malformed `Inline` value, with no finalize
     ///
-    /// Streaming always returns `` invalid `<Struct>::<field>` value (..) ``, prefixing `invalid `
-    /// itself. One-shot returns the value decoder's own error with `label` added as a context.
-    /// winnow's `ContextError` display shows only the first label, after `invalid `, so `label` is
-    /// shown first only when the decoder's error has no label of its own; otherwise it stays in
-    /// the context chain
+    /// Both drivers name the field first. Streaming rejects with `label`
+    /// ([`Self::reject_label`]). One-shot relabels the value decoder's error with `label` through
+    /// `tinyklv::__export::relabeled_error`, where the rule is stated
     ///
     /// # Arguments
     ///
-    /// * `label` - An expression evaluating to the `&'static str` noun phrase naming the field
+    /// * `label` - Names the field (see [`ParseSite::Value`])
     ///
     /// # Returns
     ///
-    /// `return Err(concat!("invalid ", #label));` (streaming) or `__err` with `label` added as a
-    /// `StrContext::Label` (one-shot)
+    /// `return Err(concat!("invalid ", #label));` (streaming) or `__err` relabelled with `label`
+    /// (one-shot)
     fn reject_value(self, label: &TokenStream) -> TokenStream {
         match self {
-            Self::Streaming => quote! {
-                return ::core::result::Result::Err(concat!("invalid ", #label));
-            },
+            Self::Streaming => self.reject_label(label),
             Self::OneShot => quote! {
-                return ::core::result::Result::Err(
-                    ::tinyklv::__export::winnow::error::AddContext::add_context(
-                        __err,
-                        input,
-                        &checkpoint_inner,
-                        ::tinyklv::__export::winnow::error::StrContext::Label(#label),
-                    ),
-                );
+                return ::core::result::Result::Err(::tinyklv::__export::relabeled_error(
+                    input,
+                    &checkpoint_inner,
+                    #label,
+                    __err,
+                ));
             },
         }
     }
@@ -251,7 +258,7 @@ impl LoopDriver {
 
 /// [`LoopCtx`] implementation
 impl LoopCtx<'_> {
-    /// Emits a pre-checked `take` of the frame's `len` bytes off the main input
+    /// Emits a pre-checked `take` of the frame's value length in bytes off the main input
     ///
     /// The pre-check classes a short frame as truncation before `take` runs, so the `take` failure
     /// arm of [`TakeInto::Subinput`] is unreachable in practice; it finalizes (streaming) or
@@ -266,17 +273,27 @@ impl LoopCtx<'_> {
     /// The pre-check followed by the `take` statement
     pub(super) fn take(self, into: TakeInto) -> TokenStream {
         let Self { driver, stream, .. } = self;
+        let len = self.framing.len();
         let truncated = driver.truncated();
+        // --------------------------------------------------
+        // the `take` of the value bytes off the input
+        // --------------------------------------------------
         let take = quote! {
             ::tinyklv::__export::winnow::token::take::<
                 usize,
                 #stream,
                 ::tinyklv::__export::winnow::error::ContextError,
-            >(len).parse_next(input)
+            >(#len).parse_next(input)
         };
+        // --------------------------------------------------
+        // bind the taken bytes as `subinput`, or drop them
+        // --------------------------------------------------
         let bind = match into {
             TakeInto::Discard => quote! { let _ = #take; },
             TakeInto::Subinput => {
+                // --------------------------------------------------
+                // a failed `take` finalizes (streaming) or rewinds and stops (one-shot)
+                // --------------------------------------------------
                 let fail_arm = match driver {
                     LoopDriver::Streaming => {
                         let finish = self.finish();
@@ -284,6 +301,9 @@ impl LoopCtx<'_> {
                     }
                     LoopDriver::OneShot => quote! { { #truncated } },
                 };
+                // --------------------------------------------------
+                // bind the bytes, taking the failure arm if `take` fails
+                // --------------------------------------------------
                 quote! {
                     let mut subinput: <#stream as ::tinyklv::__export::winnow::stream::Stream>::Slice = match #take {
                         ::core::result::Result::Ok(s) => s,
@@ -292,8 +312,11 @@ impl LoopCtx<'_> {
                 }
             }
         };
+        // --------------------------------------------------
+        // pre-check the length, so a short frame is truncation, then bind
+        // --------------------------------------------------
         quote! {
-            if input.eof_offset() < len {
+            if input.eof_offset() < #len {
                 #truncated
             }
             #bind
@@ -308,7 +331,7 @@ impl LoopCtx<'_> {
     /// through to the value dispatch
     ///
     /// The `Done` arm is a `break`, so a `Some` is the report
-    /// [`DecodeLoopParts::breaks`](super::decode_partial_gen::DecodeLoopParts::breaks) ORs
+    /// [`DecodeCtx::breaks`](super::DecodeCtx::breaks) ORs
     ///
     /// # Arguments
     ///
@@ -319,8 +342,17 @@ impl LoopCtx<'_> {
     /// The break-handling `match`, or `None` when `break_on` is unset
     pub(super) fn break_match(self, decision: Option<&TokenStream>) -> Option<TokenStream> {
         let decision = decision?;
+        // --------------------------------------------------
+        // `Skip` discards the value bytes
+        // --------------------------------------------------
         let skip = self.take(TakeInto::Discard);
+        // --------------------------------------------------
+        // `Abort` rejects with the user's message
+        // --------------------------------------------------
         let abort = self.driver.reject(&quote! { __msg });
+        // --------------------------------------------------
+        // match the decision; `Proceed` falls through to the value dispatch
+        // --------------------------------------------------
         Some(quote! {
             match #decision {
                 ::tinyklv::BreakType::Proceed => (),

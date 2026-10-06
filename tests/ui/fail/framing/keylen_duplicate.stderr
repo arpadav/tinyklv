@@ -1,0 +1,5 @@
+error: Duplicate `keylen` attribute. Only one fused key/length codec per struct is allowed.
+ --> tests/ui/fail/framing/keylen_duplicate.rs:8:29
+  |
+8 | #[klv(keylen(dec = header), keylen(dec = header), allow_unimplemented_encode)]
+  |                             ^^^^^^

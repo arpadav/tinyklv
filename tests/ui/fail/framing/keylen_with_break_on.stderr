@@ -1,0 +1,5 @@
+error: `break_on` is not supported with `keylen`. Remove `break_on`, or use `key(..)` + `len(..)`.
+ --> tests/ui/fail/framing/keylen_with_break_on.rs:8:68
+  |
+8 | #[klv(keylen(dec = header), allow_unimplemented_encode, break_on = 0xFF)]
+  |                                                                    ^^^^

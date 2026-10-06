@@ -10,9 +10,9 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::drive::Drive;
-use crate::example::{Example, Reading, Status};
-use crate::pb;
+use crate::support::drive::Drive;
+use crate::support::example::{Example, Reading, Status};
+use crate::support::pb;
 use tinyklv::codecs::ber::BerLength;
 use tinyklv::dec::ber as decber;
 use tinyklv::dec::binary as decb;
@@ -24,21 +24,6 @@ use tinyklv::traits::ResumePartial;
 // --------------------------------------------------
 use winnow::error::{ContextError, ParserError};
 
-/// Decodes a wire-0 VARINT like [`Status::decode_value`], but rejects an unknown
-/// discriminant without rewinding, leaving the cursor past the varint
-///
-/// # Arguments
-///
-/// * `input` - the byte stream positioned at the value; advanced past the varint
-///
-/// # Returns
-///
-/// `Ok(Status)`, or an error on truncation or an unknown discriminant
-fn decode_consuming(input: &mut &[u8]) -> tinyklv::Result<Status> {
-    let value = pb::dec_varint_u64(input)?;
-    Status::try_from(value).map_err(|_| ContextError::from_input(input))
-}
-
 /// Message whose `Inline` values use decoders the end-of-input rule reaches but misclassifies
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -48,17 +33,35 @@ fn decode_consuming(input: &mut &[u8]) -> tinyklv::Result<Status> {
     default(typ = i32, dec = pb::dec_varint_i32),
 )]
 struct Limits {
-    #[klv(key = 0x08)]
     /// field 1, wire 0 VARINT - `Inline`
+    #[klv(key = 0x08)]
     count: i32,
 
-    #[klv(key = 0x18, dec = decode_consuming)]
     /// field 3, wire 0 VARINT - `Inline`, rejects after consuming the varint
+    #[klv(key = 0x18, dec = Limits::decode_consuming)]
     status: Option<Status>,
 
-    #[klv(key = 0x20, dec = decb::be_u16)]
     /// field 4, wire 0 - `Inline`, refuses fewer than 2 bytes without consuming
+    #[klv(key = 0x20, dec = decb::be_u16)]
     port: Option<u16>,
+}
+
+/// [`Limits`] implementation
+impl Limits {
+    /// Decodes a wire-0 VARINT like [`Status::decode_value`], but rejects an unknown
+    /// discriminant without rewinding, leaving the cursor past the varint
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - the byte stream positioned at the value; advanced past the varint
+    ///
+    /// # Returns
+    ///
+    /// `Ok(Status)`, or an error on truncation or an unknown discriminant
+    fn decode_consuming(input: &mut &[u8]) -> tinyklv::Result<Status> {
+        let value = pb::dec_varint_u64(input)?;
+        Status::try_from(value).map_err(|_| ContextError::from_input(input))
+    }
 }
 
 /// Message whose keylen header is built from crate codecs: a `be_u16` key, which fails short
@@ -70,15 +73,16 @@ struct Limits {
     allow_unimplemented_encode,
 )]
 struct Wide {
-    #[klv(key = 0x0101, dec = decb::u8)]
     /// `Sliced(1)`
+    #[klv(key = 0x0101, dec = decb::u8)]
     flag: u8,
 
-    #[klv(key = 0x0102, dec = pb::dec_string)]
     /// `Sliced(128)` - length in two-byte BER long form `0x82 0x00 0x80`: non-minimal, accepted
+    #[klv(key = 0x0102, dec = pb::dec_string)]
     text: String,
 }
 
+/// [`Wide`] implementation
 impl Wide {
     /// Byte length of `text`
     const TEXT_LEN: usize = 128;
@@ -333,7 +337,7 @@ fn rejected_inline_value_is_labelled_error() {
 }
 
 /// A `ber_oid` value past its type's range, with more frames after it, is malformed in
-/// both drivers; the one-shot error keeps the decoder's label, then adds the field's
+/// both drivers; the one-shot error names the field, then keeps the decoder's label
 #[test]
 fn overflowing_ber_oid_mid_buffer_is_labelled_error() {
     #[rustfmt::skip]
@@ -346,7 +350,7 @@ fn overflowing_ber_oid_mid_buffer_is_labelled_error() {
         0x12, 0x02, 0x68, 0x69,
     ];
     Reading::assert_rejects_naming(&wire, &["Reading::level"]);
-    Reading::assert_oneshot_label_chain(&wire, "BER-OID value", "Reading::level");
+    Reading::assert_oneshot_label_chain(&wire, "Reading::level", "BER-OID value");
 }
 
 /// A `ber_oid` value past its type's range as the final frame rewinds before rejecting, so
@@ -361,11 +365,11 @@ fn overflowing_ber_oid_last_frame_is_labelled_error() {
         0x20, 0x82, 0x00,
     ];
     Reading::assert_rejects_naming(&wire, &["Reading::level"]);
-    Reading::assert_oneshot_label_chain(&wire, "BER-OID value", "Reading::level");
+    Reading::assert_oneshot_label_chain(&wire, "Reading::level", "BER-OID value");
 }
 
 /// A `BerLength<u8>` value past `u8::MAX`, with more frames after it, is malformed in both
-/// drivers; the one-shot error keeps the decoder's label, then adds the field's
+/// drivers; the one-shot error names the field, then keeps the decoder's label
 #[test]
 fn overflowing_ber_length_mid_buffer_is_labelled_error() {
     #[rustfmt::skip]
@@ -378,7 +382,7 @@ fn overflowing_ber_length_mid_buffer_is_labelled_error() {
         0x12, 0x02, 0x68, 0x69,
     ];
     Reading::assert_rejects_naming(&wire, &["Reading::size"]);
-    Reading::assert_oneshot_label_chain(&wire, "BER length value", "Reading::size");
+    Reading::assert_oneshot_label_chain(&wire, "Reading::size", "BER length value");
 }
 
 /// A `BerLength<u8>` value past `u8::MAX` as the final frame rewinds before rejecting, so it
@@ -393,7 +397,7 @@ fn overflowing_ber_length_last_frame_is_labelled_error() {
         0x28, 0x82, 0x01, 0x00,
     ];
     Reading::assert_rejects_naming(&wire, &["Reading::size"]);
-    Reading::assert_oneshot_label_chain(&wire, "BER length value", "Reading::size");
+    Reading::assert_oneshot_label_chain(&wire, "Reading::size", "BER length value");
 }
 
 /// A long-form `BerLength` `Inline` value split anywhere, including between its two length

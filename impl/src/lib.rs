@@ -9,9 +9,10 @@
 //! 2. Accumulates diagnostics via [`Ctxt`] and emits compile errors for any
 //!    invalid or missing annotations
 //! 3. Conditionally generates `EncodeValue`/`EncodeFrame` and
-//!    `DecodeValue`/`DecodePartial`/`ResumePartial`/`DecodeFrame` implementations
+//!    `DecodeValue`/`DecodePartial`/`ResumePartial`/`SeekSentinel` implementations
 //!    depending on the container's framing and on which fields carry encoders
-//!    and decoders (`expand` module)
+//!    and decoders (`expand` module). `DecodeFrame` is not generated: `tinyklv`'s
+//!    blanket impl provides it for every `SeekSentinel` + `DecodeValue` type
 //!
 //! This crate is an implementation detail of `tinyklv` and is not intended to
 //! be used directly
@@ -501,12 +502,18 @@ supply an explicit `{d}` or change the `{s}`.",
     SizeVarFallbackRequiresExplicitDec(String, String),
 
     #[error("\
-        The value is {0} bytes but `{l}({s}({e} = {1}))` can encode lengths only up to {2}.",
+        The value of field `{field}` is {value_bytes} bytes but `{l}({s}({e} = {width}))` can \
+encode lengths only up to {max_len}.",
         l = symbol::LENGTH,
         s = symbol::SIZE,
         e = symbol::EXACT,
     )]
-    LenPrefixTooNarrow(String, String, String),
+    LenPrefixTooNarrow {
+        field: String,
+        value_bytes: usize,
+        width: usize,
+        max_len: usize,
+    },
 }
 /// [`Error`] implementation
 impl Error {

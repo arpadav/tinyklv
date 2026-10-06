@@ -9,15 +9,11 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::drive::Drive;
-use crate::example::{Reading, Status};
-use crate::pb;
+use crate::support::drive::Drive;
+use crate::support::example::{Reading, Status};
+use crate::support::header_budget::HeaderBudget;
+use crate::support::pb;
 use tinyklv::prelude::*;
-
-// --------------------------------------------------
-// external
-// --------------------------------------------------
-use std::cell::Cell;
 
 /// [`Reading`] under `deny_unknown_keys`
 #[derive(Klv, Debug, PartialEq)]
@@ -30,12 +26,12 @@ use std::cell::Cell;
     default(typ = String, dec = pb::dec_string),
 )]
 struct StrictReading {
-    #[klv(key = 0x08)]
     /// field 1, wire 0 VARINT - `Inline`
+    #[klv(key = 0x08)]
     count: i32,
 
-    #[klv(key = 0x12)]
     /// field 2, wire 2 LEN - `Sliced(n)`
+    #[klv(key = 0x12)]
     label: Option<String>,
 }
 
@@ -48,17 +44,15 @@ struct StrictReading {
     default(typ = i32, dec = pb::dec_varint_i32),
 )]
 struct Sparse {
-    #[klv(key = 0x08)]
     /// field 1, wire 0 VARINT - `Inline`
+    #[klv(key = 0x08)]
     count: Option<i32>,
 }
 
+/// [`Sparse`] implementation
 impl Sparse {
-    /// Header reads one test may make before its decode counts as non-terminating
-    const HEADER_BUDGET: u32 = 64;
-
-    /// [`pb::dec_tag_keylen`] under [`Sparse::HEADER_BUDGET`], so a decode loop that never
-    /// advances panics instead of hanging the suite
+    /// [`pb::dec_tag_keylen`] under the [`HeaderBudget`], so a decode loop that never advances
+    /// panics instead of hanging the suite
     ///
     /// # Arguments
     ///
@@ -70,18 +64,9 @@ impl Sparse {
     ///
     /// # Panics
     ///
-    /// On the read past [`Sparse::HEADER_BUDGET`]
+    /// On the read past the [`HeaderBudget`]
     fn header(input: &mut &[u8]) -> tinyklv::Result<(u32, Framing)> {
-        thread_local! {
-            /// Frame headers read on this test's thread
-            static HEADERS_READ: Cell<u32> = const { Cell::new(0) };
-        }
-        let reads = HEADERS_READ.get() + 1;
-        assert!(
-            reads <= Self::HEADER_BUDGET,
-            "{reads} header reads: the decode loop is not advancing"
-        );
-        HEADERS_READ.set(reads);
+        HeaderBudget::spend();
         pb::dec_tag_keylen(input)
     }
 }

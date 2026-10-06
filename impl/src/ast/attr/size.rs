@@ -3,23 +3,23 @@
 //! Defines [`SizeSpec`] and its byte-count axis [`SizeBytes`] - the declared size shape parsed from
 //! a `size(var, exact = N | hint = N)` list. Unlike every other attr parser this one is shared by
 //! BOTH field-level (`attr/field`) and key/len (`attr/container/{header,default}`) scopes, so it
-//! lives one tier up, directly under `attr`. [`TryFrom<&syn::MetaList>`] drives the
+//! lives one tier up, directly under `attr`. [`TryFrom<&syn::meta::ParseNestedMeta>`] drives the
 //! `parse_nested_meta` loop via [`handle_unique_nested_meta_values!`], matching the
 //! [`FieldXcoder`](super::field) / `container::header::HeaderXcoder` /
-//! [`DefaultXcoder`](super::container::default) convention
+//! [`DefaultXcoder`](super::container::DefaultXcoder) convention
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::ast::symbol;
+use tk_syn_macros::handle_unique_nested_meta_values;
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use quote::ToTokens;
 use syn::spanned::Spanned;
-use tk_syn_macros::handle_unique_nested_meta_values;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 /// The byte-count axis of a [`SizeSpec`], from the `exact = N` / `hint = N` items of `size(..)`
@@ -54,8 +54,8 @@ pub(crate) enum SizeBytes {
 /// Forms: `size(var)`, `size(exact = N)`, `size(hint = N)`, `size(var, exact = N)`,
 /// `size(var, hint = N)`. `size(exact = N, hint = N)` is rejected at parse time
 pub(crate) struct SizeSpec {
-    /// `var` was present: variable-length prefix / length-parameterised field decoder.
-    /// Private so the `var`-vs-`bytes` disambiguation stays inside the accessors below
+    /// `var` was present: variable-length prefix / length-parameterised field decoder. Private so
+    /// the `var`-vs-`bytes` disambiguation stays inside the accessors below
     var: bool,
 
     /// the declared byte count, if any (see [`SizeBytes`])
@@ -104,7 +104,8 @@ impl SizeSpec {
 /// inside a `#[klv(..)]` entry rather than the top-level list:
 /// `var` is a bare-path flag, `exact`/`hint` are `= N`. The macro rejects a duplicate of any one
 /// keyword; the mutually-exclusive `exact`⊕`hint` is rejected here as a post-validation step,
-/// mirroring how [`DefaultXcoder`](super::container::default) validates its combination after the loop
+/// mirroring how [`DefaultXcoder`](super::container::DefaultXcoder) validates its combination
+/// after the loop
 ///
 /// [`ParseNestedMeta::parse_nested_meta`]: syn::meta::ParseNestedMeta::parse_nested_meta
 impl TryFrom<&syn::meta::ParseNestedMeta<'_>> for SizeSpec {

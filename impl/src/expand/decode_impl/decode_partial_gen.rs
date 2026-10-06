@@ -1,32 +1,28 @@
 //! Code generation for the `DecodePartial`, `ResumePartial` and one-shot `DecodeValue` impls
 //!
 //! Provides three entry points consumed by [`super::gen_decode_impl`], all methods of
-//! [`DecodeLoopParts`]:
+//! [`DecodeCtx`]:
 //!
-//! * [`DecodeLoopParts::decode_partial_impl`] - emits the `DecodePartial` impl, which
+//! * [`DecodeCtx::decode_partial_impl`] - emits the `DecodePartial` impl, which
 //!   allocates a default partial struct and delegates to `ResumePartial`
-//! * [`DecodeLoopParts::resume_partial_impl`] - emits the `ResumePartial` impl, the streaming
+//! * [`DecodeCtx::resume_partial_impl`] - emits the `ResumePartial` impl, the streaming
 //!   decode loop (resumable across `feed` chunks via `Packet::NeedMore`)
-//! * [`DecodeLoopParts::decode_value_impl`] - emits the one-shot `DecodeValue` impl: the same loop
+//! * [`DecodeCtx::decode_value_impl`] - emits the one-shot `DecodeValue` impl: the same loop
 //!   and `finalize`, in a single linear pass with no resume/`Packet` machinery (used by
 //!   `decode_value`/`decode_frame`)
 //!
 //! The last two differ only in their impl header and prologue. Both get the loop itself from
-//! [`DecodeLoopParts::frame_loop`], whose frame header and body come from [`DecodeFraming`] and
-//! whose exits come from [`LoopDriver`], followed, when it can `break`
-//! ([`DecodeLoopParts::breaks`]), by the [`LoopCtx::finish`] tail, which finalizes the accumulator
-//! once the loop `break`s
+//! [`DecodeCtx::frame_loop`], whose frame header and body come from
+//! [`DecodeFraming`](super::framing::DecodeFraming) and whose exits come from [`LoopDriver`],
+//! followed, when it can `break` ([`DecodeCtx::breaks`]), by the [`LoopCtx::finish`] tail, which
+//! finalizes the accumulator once the loop `break`s
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{
-    framing::DecodeFraming,
-    key_match_gen::ArmCtx,
-    loop_driver::{LoopCtx, LoopDriver},
-};
-use crate::ast::attr::{MainContainer, container::break_on::BreakOnSpec};
+use super::{DecodeCtx, LoopCtx, loop_driver::LoopDriver};
+use crate::ast::attr::container::BreakOnSpec;
 
 // --------------------------------------------------
 // external
@@ -34,118 +30,70 @@ use crate::ast::attr::{MainContainer, container::break_on::BreakOnSpec};
 use proc_macro2::TokenStream;
 use quote::quote;
 
-/// Everything the per-frame decode loop is built from, shared by both drivers
-///
-/// Built once per derive; both decode impls are emitted from it
-pub(super) struct DecodeLoopParts<'a> {
-    /// The parsed container, providing the fields
-    input: &'a MainContainer<'a>,
-
-    /// The frame header codec(s)
-    framing: DecodeFraming<'a>,
-
-    /// The stream type the impl is parameterised over
-    stream: &'a syn::Type,
-
-    /// The partial accumulator type, `#partial_name #ty_generics`
-    partial_ty: TokenStream,
-
-    /// Whether the container set `debug`, which also logs inside each field arm
-    debug_on: bool,
-
-    /// The `logger!` call after the frame header when `debug` is set, else empty
-    debug_key_val: TokenStream,
-
-    /// `#[allow(clippy::manual_range_patterns)]` on the decode fn when `deny_unknown_keys` is set
-    pre_check_clippy_allow: TokenStream,
-
-    /// Whether the container set `deny_unknown_keys`
-    deny_unknown_keys: bool,
-
-    /// Per-iteration break-condition scrutinee, present iff `#[klv(break_on = ..)]` was declared
-    ///
-    /// Carrying the decision inside the `Option` keeps "has a break" and "the decision" from
-    /// desyncing. Always `None` for a fused container, which rejects `break_on` at parse time
-    break_decision: Option<TokenStream>,
-}
-
-/// [`DecodeLoopParts`] implementation
-impl<'a> DecodeLoopParts<'a> {
-    /// Builds the loop parts from the container attributes
-    ///
-    /// # Arguments
-    ///
-    /// * `input` - The parsed container, providing the name, generics and fields and the `debug` /
-    ///   `deny_unknown_keys` / `break_on` attributes
-    /// * `framing` - The frame header codec(s)
-    /// * `stream` - The stream type the impl is parameterised over
-    /// * `partial_name` - The partial-packet struct ident; with the container's generics it is the
-    ///   accumulator type
+/// [`DecodeCtx`] implementation of the decode loop and the impls built around it
+impl DecodeCtx<'_> {
+    /// Emits the `logger!` call after the frame header, when the container set `debug`
     ///
     /// # Returns
     ///
-    /// The [`DecodeLoopParts`] both drivers emit their loop from
-    pub(super) fn new(
-        input: &'a MainContainer<'a>,
-        framing: DecodeFraming<'a>,
-        stream: &'a syn::Type,
-        partial_name: &syn::Ident,
-    ) -> Self {
-        let (_, ty_generics, _) = input.generics.split_for_impl();
-        let partial_ty = quote! { #partial_name #ty_generics };
-        // --------------------------------------------------
-        // container attributes
-        // --------------------------------------------------
-        let debug_on = input.attrs.debug.is_some();
-        let deny_unknown_keys = input.attrs.deny_unknown_keys.is_some();
-        // --------------------------------------------------
-        // debug statement after the frame header
-        // --------------------------------------------------
-        let debug_key_val = if debug_on {
-            framing.debug_line()
-        } else {
-            quote! {}
-        };
-        // --------------------------------------------------
-        // clippy allowance for the generated key alternation, emitted only when a gate exists
-        // --------------------------------------------------
-        let pre_check_clippy_allow = if deny_unknown_keys {
+    /// The log statement, or `None` without `debug`
+    fn debug_key_val(&self) -> Option<TokenStream> {
+        self.input
+            .attrs
+            .debug
+            .is_some()
+            .then(|| self.framing.debug_line())
+    }
+
+    /// Emits `#[allow(clippy::manual_range_patterns)]` for the decode fn, when the container set
+    /// `deny_unknown_keys`
+    ///
+    /// The allowance covers the generated key alternation, so it is emitted only when a gate
+    /// exists
+    ///
+    /// # Returns
+    ///
+    /// The attribute, or `None` without `deny_unknown_keys`
+    fn pre_check_clippy_allow(&self) -> Option<TokenStream> {
+        self.input.attrs.deny_unknown_keys.is_some().then(|| {
+            let key = self.framing.key();
+            let reason = format!(
+                "the matches!({key}, K1 | K2 | ...) pattern is generated by the macro and cannot be avoided. this lint appears when keys are consecutive"
+            );
             quote! {
                 #[allow(
                     clippy::manual_range_patterns,
-                    reason = "the matches!(key, K1 | K2 | ...) pattern is generated by the macro and cannot be avoided. this lint appears when keys are consecutive",
+                    reason = #reason,
                 )]
             }
-        } else {
-            quote! {}
-        };
-        // --------------------------------------------------
-        // break-condition scrutinee from `#[klv(break_on = ..)]`:
-        // * absent   -> `None`: no break codegen at all; the loop only ever proceeds
-        // * literal  -> stop when the decoded key equals the literal (concrete `key`, no trait needed)
-        // * function -> call the user's `fn(key, len) -> BreakType` directly with the concrete pair
-        // --------------------------------------------------
-        let break_decision = input.attrs.break_on.as_ref().map(|spec| match spec {
+        })
+    }
+
+    /// Emits the per-iteration break-condition scrutinee from `#[klv(break_on = ..)]`
+    ///
+    /// * literal  -> stop when the decoded key equals the literal (concrete key, no trait needed)
+    /// * function -> call the user's `fn(key, len) -> BreakType` directly with the concrete pair
+    ///
+    /// Carrying the decision inside the `Option` keeps "has a break" and "the decision" from
+    /// desyncing. Always `None` for a fused container, which rejects `break_on` at parse time
+    ///
+    /// # Returns
+    ///
+    /// The `BreakType` expression, or `None` when `break_on` is unset: no break codegen at all,
+    /// the loop only ever proceeds
+    fn break_decision(&self) -> Option<TokenStream> {
+        let key = self.framing.key();
+        let len = self.framing.len();
+        self.input.attrs.break_on.as_ref().map(|spec| match spec {
             BreakOnSpec::Literal(lit) => quote! {
-                if key == #lit {
+                if #key == #lit {
                     ::tinyklv::BreakType::Done
                 } else {
                     ::tinyklv::BreakType::Proceed
                 }
             },
-            BreakOnSpec::Func(path) => quote! { #path(key, len) },
-        });
-        DecodeLoopParts {
-            input,
-            framing,
-            stream,
-            partial_ty,
-            debug_on,
-            debug_key_val,
-            pre_check_clippy_allow,
-            deny_unknown_keys,
-            break_decision,
-        }
+            BreakOnSpec::Func(path) => quote! { #path(#key, #len) },
+        })
     }
 
     /// Emits the per-frame decode `loop { .. }` for `driver`
@@ -154,12 +102,13 @@ impl<'a> DecodeLoopParts<'a> {
     ///
     /// 1. Leaves the loop through [`LoopDriver::clean_eof`] when the input is empty
     /// 2. Checkpoints the frame start as `checkpoint_inner`
-    /// 3. Reads the frame header ([`DecodeFraming::header`])
+    /// 3. Reads the frame header ([`LoopCtx::header`])
     /// 4. Evaluates the `break_on` decision ([`LoopCtx::break_match`]), when set
     /// 5. Logs the header, when `debug` is set
     /// 6. Rejects a key outside the known set ([`LoopDriver::reject`]), when `deny_unknown_keys`
     ///    is set; this runs before any value byte is consumed, in both framing modes
-    /// 7. Decodes the value into its field ([`DecodeFraming::body`])
+    /// 7. Decodes the value into its field ([`LoopCtx::body`]), then rejects a fused frame that
+    ///    consumed no input
     ///
     /// A `break` leaves the loop for the [`LoopCtx::finish`] tail, which follows the loop only
     /// when it can `break` ([`Self::breaks`]); a loop that cannot diverges, and a tail after it
@@ -173,33 +122,33 @@ impl<'a> DecodeLoopParts<'a> {
     ///
     /// The `loop { .. }` statement, then the tail expression when the loop can `break`
     fn frame_loop(&self, driver: LoopDriver) -> TokenStream {
-        let Self {
-            input,
-            framing,
-            debug_on,
-            ref debug_key_val,
-            deny_unknown_keys,
-            ref break_decision,
-            ..
-        } = *self;
+        let input = self.input;
+        // --------------------------------------------------
+        // the loop context, and the exit taken on a clean end of input
+        // --------------------------------------------------
         let lp = self.loop_ctx(driver);
         let clean_eof = driver.clean_eof();
-        let header = framing.header(lp);
-        let break_match = lp.break_match(break_decision.as_ref());
-        let gate = if deny_unknown_keys {
-            self.unknown_key_gate(driver)
-        } else {
-            quote! {}
-        };
-        let body = framing.body(&ArmCtx {
-            container: &input.ident,
-            fields: &input.data,
-            debug: debug_on,
-            lp,
-        });
+        // --------------------------------------------------
+        // the stages of one frame, in the order the loop runs them
+        // --------------------------------------------------
+        let header = lp.header();
+        let break_match = lp.break_match(self.break_decision().as_ref());
+        let debug_key_val = self.debug_key_val();
+        let gate = input
+            .attrs
+            .deny_unknown_keys
+            .is_some()
+            .then(|| self.unknown_key_gate(driver));
+        let body = lp.body();
+        // --------------------------------------------------
+        // the tail follows the loop only when the loop can `break`
+        // --------------------------------------------------
         let finish = self
             .breaks(driver, break_match.as_ref())
             .then(|| lp.finish());
+        // --------------------------------------------------
+        // emit the loop: the clean end of input, a checkpoint, then each stage
+        // --------------------------------------------------
         quote! {
             loop {
                 if input.eof_offset() == 0 {
@@ -220,7 +169,7 @@ impl<'a> DecodeLoopParts<'a> {
     ///
     /// ORs the report of each emitter that can put a `break` into the loop:
     /// [`LoopDriver::clean_eof_breaks`], a `Some` from [`LoopCtx::break_match`], and
-    /// [`DecodeFraming::unknown_key_breaks`]
+    /// [`DecodeFraming::unknown_key_breaks`](super::framing::DecodeFraming::unknown_key_breaks)
     ///
     /// # Arguments
     ///
@@ -234,13 +183,14 @@ impl<'a> DecodeLoopParts<'a> {
         driver.clean_eof_breaks() || break_match.is_some() || self.framing.unknown_key_breaks()
     }
 
-    /// Emits the `deny_unknown_keys` gate, `if !matches!(key, #pattern) { #reject }`
+    /// Emits the `deny_unknown_keys` gate, `if !matches!(#key, #pattern) { #reject }`, where
+    /// `#key` is [`DecodeFraming::key`](super::framing::DecodeFraming::key)
     ///
     /// The gate runs after the frame header and before any value byte is consumed, so an unknown
     /// key is rejected with the `invalid key (expected one of the keys defined on ..)` message,
     /// never the truncation a declared length overrunning the input would otherwise produce. The
-    /// pattern is the `|`-joined alternation of every field's `#[klv(key = ..)]` literal; a struct
-    /// with no KLV fields yields the never-match `_ if false`, so every key is unknown
+    /// pattern is the `|`-joined alternation of every field's `#[klv(key = ..)]` literal, never
+    /// empty: a decode impl is generated only for a struct with at least one KLV field
     ///
     /// # Arguments
     ///
@@ -251,23 +201,12 @@ impl<'a> DecodeLoopParts<'a> {
     /// The gate statement
     fn unknown_key_gate(&self, driver: LoopDriver) -> TokenStream {
         let name = &self.input.ident;
+        let key = self.framing.key();
         // --------------------------------------------------
-        // collect each klv field's declared key expression
+        // each klv field's declared key expression, spliced with `|` separators
         // --------------------------------------------------
-        let keys: Vec<_> = self
-            .input
-            .data
-            .iter()
-            .filter_map(|f| f.attrs.as_ref().map(|a| &a.key))
-            .collect();
-        // --------------------------------------------------
-        // splice keys with `|` separators; no klv fields -> never-match pattern
-        // --------------------------------------------------
-        let pattern = if keys.is_empty() {
-            quote! { _ if false }
-        } else {
-            quote! { #(#keys)|* }
-        };
+        let keys = self.input.klv_fields().map(|(_, attrs)| &attrs.key);
+        let pattern = quote! { #(#keys)|* };
         let reject = driver.reject(&quote! {
             concat!(
                 "invalid key (expected one of the keys defined on `",
@@ -276,13 +215,13 @@ impl<'a> DecodeLoopParts<'a> {
             )
         });
         quote! {
-            if !matches!(key, #pattern) {
+            if !matches!(#key, #pattern) {
                 #reject
             }
         }
     }
 
-    /// Pairs `driver` with this container's stream and accumulator types
+    /// Pairs `driver` with this container, its framing, stream and accumulator types
     ///
     /// # Arguments
     ///
@@ -290,11 +229,13 @@ impl<'a> DecodeLoopParts<'a> {
     ///
     /// # Returns
     ///
-    /// The [`LoopCtx`] the loop's exits are emitted against
+    /// The [`LoopCtx`] the loop's header, body and exits are emitted against
     fn loop_ctx(&self, driver: LoopDriver) -> LoopCtx<'_> {
         LoopCtx {
+            input: self.input,
             driver,
-            stream: self.stream,
+            framing: self.framing,
+            stream: &self.stream,
             partial_ty: &self.partial_ty,
         }
     }
@@ -313,15 +254,27 @@ impl<'a> DecodeLoopParts<'a> {
     pub(super) fn resume_partial_impl(&self) -> TokenStream {
         let Self {
             input,
-            stream,
+            ref stream,
             ref partial_ty,
-            ref pre_check_clippy_allow,
             ..
         } = *self;
         let name = &input.ident;
+        // --------------------------------------------------
+        // the lint allowance for the key gate, and the streaming exit policy
+        // --------------------------------------------------
+        let pre_check_clippy_allow = self.pre_check_clippy_allow();
         let driver = LoopDriver::Streaming;
+        // --------------------------------------------------
+        // split generics
+        // --------------------------------------------------
         let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+        // --------------------------------------------------
+        // the frame loop, resuming into the caller's `__acc`
+        // --------------------------------------------------
         let frame_loop = self.frame_loop(driver);
+        // --------------------------------------------------
+        // emit the `ResumePartial` impl around the loop
+        // --------------------------------------------------
         quote! {
             #[doc(hidden)]
             #[automatically_derived]
@@ -363,15 +316,27 @@ impl<'a> DecodeLoopParts<'a> {
     pub(super) fn decode_value_impl(&self) -> TokenStream {
         let Self {
             input,
-            stream,
+            ref stream,
             ref partial_ty,
-            ref pre_check_clippy_allow,
             ..
         } = *self;
         let name = &input.ident;
+        // --------------------------------------------------
+        // the lint allowance for the key gate, and the one-shot exit policy
+        // --------------------------------------------------
+        let pre_check_clippy_allow = self.pre_check_clippy_allow();
         let driver = LoopDriver::OneShot;
+        // --------------------------------------------------
+        // split generics
+        // --------------------------------------------------
         let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+        // --------------------------------------------------
+        // the frame loop, accumulating into a stack-local partial
+        // --------------------------------------------------
         let frame_loop = self.frame_loop(driver);
+        // --------------------------------------------------
+        // emit the `DecodeValue` impl around the loop
+        // --------------------------------------------------
         quote! {
             #[doc(hidden)]
             #[automatically_derived]
@@ -401,7 +366,7 @@ impl<'a> DecodeLoopParts<'a> {
     pub(super) fn decode_partial_impl(&self) -> TokenStream {
         let Self {
             input,
-            stream,
+            ref stream,
             ref partial_ty,
             ..
         } = *self;
@@ -440,20 +405,26 @@ impl<'a> DecodeLoopParts<'a> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DecodeFraming, DecodeLoopParts,
+        DecodeCtx,
         LoopDriver::{OneShot, Streaming},
     };
-    use crate::{Ctxt, ast::attr::MainContainer, expand::helpers};
+    use crate::{Ctxt, ast::attr::MainContainer};
 
     use proc_macro2::{TokenStream, TokenTree};
 
-    /// Whether `tokens` contain a `break`, at any depth
-    fn contains_break(tokens: TokenStream) -> bool {
-        tokens.into_iter().any(|tt| match tt {
-            TokenTree::Ident(ident) => ident == "break",
-            TokenTree::Group(group) => contains_break(group.stream()),
-            TokenTree::Punct(_) | TokenTree::Literal(_) => false,
-        })
+    /// The tokens inside an emitted `loop { .. }`
+    struct LoopBody(TokenStream);
+
+    /// [`LoopBody`] implementation
+    impl LoopBody {
+        /// Whether the body contains a `break`, at any depth
+        fn breaks(self) -> bool {
+            self.0.into_iter().any(|tt| match tt {
+                TokenTree::Ident(ident) => ident == "break",
+                TokenTree::Group(group) => LoopBody(group.stream()).breaks(),
+                TokenTree::Punct(_) | TokenTree::Literal(_) => false,
+            })
+        }
     }
 
     #[test]
@@ -504,19 +475,16 @@ mod tests {
             ("one-shot separate break_on", &break_on, OneShot, true),
             ("one-shot fused", &fused, OneShot, true),
         ];
-        let stream = helpers::u8_slice();
-        let partial_name: syn::Ident = syn::parse_quote! { ReadingPartialPacket };
         for (name, item, driver, expected) in cases {
             let cx = Ctxt::new();
             let container = MainContainer::from_ast(&cx, item);
             cx.check().expect(name);
             let container = container.expect(name);
-            let framing = DecodeFraming::from_mode(&container.attrs.mode).expect(name);
-            let parts = DecodeLoopParts::new(&container, framing, &stream, &partial_name);
+            let ctx = DecodeCtx::new(&container).expect(name);
             // --------------------------------------------------
             // `loop { body } tail..`
             // --------------------------------------------------
-            let mut tokens = parts.frame_loop(driver).into_iter();
+            let mut tokens = ctx.frame_loop(driver).into_iter();
             assert!(
                 matches!(tokens.next(), Some(TokenTree::Ident(i)) if i == "loop"),
                 "{name}: starts with `loop`",
@@ -524,7 +492,7 @@ mod tests {
             let Some(TokenTree::Group(body)) = tokens.next() else {
                 panic!("{name}: `loop` is followed by its body");
             };
-            let breaks = contains_break(body.stream());
+            let breaks = LoopBody(body.stream()).breaks();
             assert_eq!(breaks, expected, "{name}: loop breaks");
             assert_eq!(
                 tokens.next().is_some(),

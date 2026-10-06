@@ -1,5 +1,0 @@
-error: Duplicate `len` attribute. Only one method of encoding and decoding lengths is allowed.
- --> tests/ui/fail/len_duplicate.rs:7:5
-  |
-7 |     len(dec = tinyklv::dec::binary::u8_as_usize),
-  |     ^^^

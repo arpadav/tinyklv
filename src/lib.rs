@@ -43,6 +43,10 @@ pub mod __export {
     /// * `input` - the stream the error is anchored to
     /// * `checkpoint` - the position recorded before the failing step
     /// * `label` - a static description of what was being parsed
+    ///
+    /// # Returns
+    ///
+    /// A fresh error whose only context is `label`
     #[must_use]
     pub fn labeled_error<S>(
         input: &S,
@@ -58,6 +62,95 @@ pub mod __export {
             checkpoint,
             winnow::error::StrContext::Label(label),
         )
+    }
+
+    /// Names the site of a failed parse in `err`, so that its display shows `label` first, then
+    /// why the parser failed
+    ///
+    /// [`winnow::error::ContextError`]'s display names only its first
+    /// [`winnow::error::StrContext::Label`]. An `err` without a label gains `label` in place,
+    /// keeping its context and cause. An `err` with one becomes the cause of a new error labelled
+    /// `label`, then `err`'s first label, whose display prints `label`, then `err`'s own
+    /// display. Neither path copies more than one label of `err`, so relabelling a value nested
+    /// `n` deep costs `O(n)`
+    ///
+    /// Not part of the public API - may change without notice
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - the stream the error is anchored to
+    /// * `checkpoint` - the position recorded before the failing step
+    /// * `label` - a static description of what was being parsed
+    /// * `err` - the error of the parser that failed there
+    ///
+    /// # Returns
+    ///
+    /// `err` with `label` added, when it carried no label of its own; otherwise a new error
+    /// labelled `label`, then `err`'s first label, with `err` as its cause
+    #[must_use]
+    pub fn relabeled_error<S>(
+        input: &S,
+        checkpoint: &<S as winnow::stream::Stream>::Checkpoint,
+        label: &'static str,
+        err: winnow::error::ContextError,
+    ) -> winnow::error::ContextError
+    where
+        S: winnow::stream::Stream,
+    {
+        use winnow::error::{AddContext, ContextError, FromExternalError, StrContext};
+        // --------------------------------------------------
+        // the first label `err` already carries, if any
+        // --------------------------------------------------
+        let own_label = err
+            .context()
+            .find(|context| matches!(context, StrContext::Label(_)))
+            .cloned();
+        // --------------------------------------------------
+        // without a label of its own, `err` gains `label` in place
+        // --------------------------------------------------
+        let Some(own_label) = own_label else {
+            return err.add_context(input, checkpoint, StrContext::Label(label));
+        };
+        // --------------------------------------------------
+        // with one, `err` becomes the cause of a new error labelled `label`
+        // --------------------------------------------------
+        let mut relabeled =
+            <ContextError as FromExternalError<S, LabeledCause>>::from_external_error(
+                input,
+                LabeledCause(err),
+            )
+            .add_context(input, checkpoint, StrContext::Label(label));
+        // --------------------------------------------------
+        // `err`'s own first label follows `label`
+        // --------------------------------------------------
+        relabeled.push(own_label);
+        relabeled
+    }
+
+    /// A labelled parser error that [`relabeled_error`] carries as the cause of the error it
+    /// builds, displayed as the parser's own error
+    #[derive(Debug)]
+    struct LabeledCause(winnow::error::ContextError);
+
+    /// [`LabeledCause`] implementation of [`std::fmt::Display`]
+    impl std::fmt::Display for LabeledCause {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            std::fmt::Display::fmt(&self.0, f)
+        }
+    }
+
+    /// [`LabeledCause`] implementation of [`std::error::Error`]
+    ///
+    /// Its `source` is the parser's own cause, so a typed cause stays reachable through the
+    /// chain. A nested [`LabeledCause`] is skipped, since this display already prints it
+    impl std::error::Error for LabeledCause {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            let mut cause = self.0.cause()?;
+            while let Some(LabeledCause(inner)) = cause.downcast_ref::<LabeledCause>() {
+                cause = inner.cause()?;
+            }
+            Some(cause)
+        }
     }
 }
 

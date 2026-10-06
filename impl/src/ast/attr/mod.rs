@@ -15,10 +15,15 @@ mod field;
 pub(crate) mod size;
 
 // --------------------------------------------------
+// re-exports
+// --------------------------------------------------
+pub(crate) use field::FieldParsed;
+
+// --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::Ctxt;
-use container::{ContainerParsed, default::DefaultXcoder};
+use container::{ContainerParsed, DefaultXcoder};
 
 // --------------------------------------------------
 // external
@@ -42,8 +47,9 @@ pub(crate) struct MainContainer<'a> {
     /// xcoders and all optional settings
     pub attrs: container::ContainerParsed,
 
-    /// Parsed representation of every field in the struct, in declaration order
-    pub data: Vec<MainField<'a>>,
+    /// Parsed representation of every field in the struct, in declaration order, read through
+    /// [`Self::klv_fields`] and [`Self::plain_fields`]
+    data: Vec<MainField<'a>>,
 
     /// Generic parameters from the original struct definition
     pub generics: &'a syn::Generics,
@@ -65,7 +71,7 @@ pub(crate) struct MainField<'a> {
 
     /// The validated KLV field attributes, or `None` if the field has no
     /// `#[klv(..)]` annotation
-    pub attrs: Option<field::FieldParsed>,
+    pub attrs: Option<FieldParsed>,
 
     /// The declared Rust type of the field
     pub ty: &'a syn::Type,
@@ -81,9 +87,10 @@ impl<'a> MainContainer<'a> {
     /// Invokes the container attribute parser, determines the struct variant
     /// (named-field structs are supported; tuple structs and unit structs emit
     /// errors), parses all fields, resolves container-level `default(..)` xcoders
-    /// and the `trait_fallback` flag, and validates that `key` and `len` xcoders
-    /// are present. Returns `None` and records diagnostics in `cx` if any
-    /// required attributes are absent or the struct variant is unsupported
+    /// and the `trait_fallback` flag, and resolves exactly one framing mode, `key` +
+    /// `len` or a fused `keylen` ([`ContainerParsed::from_cont`]). Returns `None` and
+    /// records diagnostics in `cx` if any required attributes are absent or the
+    /// struct variant is unsupported
     ///
     /// # Arguments
     ///
@@ -95,8 +102,13 @@ impl<'a> MainContainer<'a> {
     /// `Some(MainContainer)` on success, or `None` if any required attribute
     /// is missing or the struct form is not supported (errors in `cx`)
     pub fn from_ast(cx: &Ctxt, item: &'a syn::DeriveInput) -> Option<MainContainer<'a>> {
+        // --------------------------------------------------
+        // parse the container attributes
+        // --------------------------------------------------
         let attrs = container::Container::from_ast(cx, item);
-
+        // --------------------------------------------------
+        // only a named struct carries klv fields; any other form is reported
+        // --------------------------------------------------
         let data = match &item.data {
             syn::Data::Struct(data) => match &data.fields {
                 syn::Fields::Named(fields) => Some(fields_from_ast(
@@ -125,7 +137,9 @@ impl<'a> MainContainer<'a> {
                 return None;
             }
         }?;
-
+        // --------------------------------------------------
+        // validate the container attributes and build the container
+        // --------------------------------------------------
         Some(MainContainer {
             ident: item.ident.clone(),
             attrs: ContainerParsed::from_cont(cx, &item.ident, attrs)?,
@@ -133,6 +147,26 @@ impl<'a> MainContainer<'a> {
             generics: &item.generics,
             _original: item,
         })
+    }
+
+    /// The struct's `#[klv(..)]` fields, in declaration order
+    ///
+    /// # Returns
+    ///
+    /// Every field that carries `#[klv(..)]`, paired with its parsed attributes
+    pub(crate) fn klv_fields(&self) -> impl Iterator<Item = (&MainField<'a>, &FieldParsed)> {
+        self.data
+            .iter()
+            .filter_map(|field| field.attrs.as_ref().map(|attrs| (field, attrs)))
+    }
+
+    /// The struct's fields without `#[klv(..)]`, in declaration order
+    ///
+    /// # Returns
+    ///
+    /// Every field the codegen skips, which decode fills with its type's `Default`
+    pub(crate) fn plain_fields(&self) -> impl Iterator<Item = &MainField<'a>> {
+        self.data.iter().filter(|field| field.attrs.is_none())
     }
 
     /// Whether the struct has at least one `#[klv(..)]` field and every one of them passes `has`
@@ -147,9 +181,21 @@ impl<'a> MainContainer<'a> {
     /// # Returns
     ///
     /// `true` when some field carries `#[klv(..)]` and `has` holds for every such field
-    pub(crate) fn every_klv_field(&self, has: impl FnMut(&field::FieldParsed) -> bool) -> bool {
-        let mut fields = self.data.iter().filter_map(|f| f.attrs.as_ref()).peekable();
-        fields.peek().is_some() && fields.all(has)
+    pub(crate) fn every_klv_field(&self, has: impl FnMut(&FieldParsed) -> bool) -> bool {
+        let mut attrs = self.klv_fields().map(|(_, attrs)| attrs).peekable();
+        attrs.peek().is_some() && attrs.all(has)
+    }
+}
+
+/// [`MainField`] implementation
+impl<'a> MainField<'a> {
+    /// The type one value of this field has
+    ///
+    /// # Returns
+    ///
+    /// `T` for an `Option<T>` field, else the field's declared type
+    pub(crate) fn value_ty(&self) -> &'a syn::Type {
+        crate::ast::types::unwrap_option_type(self.ty).unwrap_or(self.ty)
     }
 }
 
@@ -186,7 +232,7 @@ fn fields_from_ast<'a>(
         .map(|(field, name)| MainField {
             name: name.clone(),
             attrs: match field::Field::from_ast(cx, field, name, container_defaults, aue, aud, fi) {
-                Some(x) => field::FieldParsed::from_field(cx, field, &x),
+                Some(x) => FieldParsed::from_field(cx, field, &x),
                 None => None,
             },
             ty: &field.ty,

@@ -20,7 +20,7 @@
 //!     let key = decb::u8(input)?;
 //!     let framing = match key {
 //!         0x02 => Framing::Inline,
-//!         _ => Framing::Sliced(decb::u8_as_usize(input)?),
+//!         _ => Framing::Sliced(decber::ber_length(input)?),
 //!     };
 //!     Ok((key, framing))
 //! }
@@ -28,7 +28,7 @@
 //! fn header_enc((key, value_len): (u8, usize), out: &mut Vec<u8>) {
 //!     encb::u8(key, out);
 //!     if key != 0x02 {
-//!         encb::u8_from_usize(value_len, out);
+//!         encber::ber_length(value_len, out);
 //!     }
 //! }
 //!
@@ -72,15 +72,20 @@
 /// rewinds to the start of the frame, then streaming decode returns `Packet::NeedMore` and one-shot
 /// decode finalizes what it has. A header codec such as `be_u16` fails short of the end of the
 /// input when a chunk boundary splits it, so the end-of-input test the `Inline` values use would
-/// class a split header as malformed and drop the rest of the message.
-/// The cost: a garbage header in a complete buffer is never reported as malformed. Streaming decode
-/// waits for more bytes, and one-shot decode finalizes without the frame
+/// class a split header as malformed and drop the rest of the message. The cost: a garbage header
+/// in a complete buffer is never reported as malformed. Streaming decode waits for more bytes, and
+/// one-shot decode finalizes without that frame and every frame after it
+///
+/// After a frame's value, the loop checks that the frame moved the cursor. A frame whose header and
+/// value together consumed no input would repeat forever, so it is rejected with an error naming
+/// the struct's frame, in both decodes. A header that consumes nothing is fine when its value does,
+/// such as a header that peeks a type byte the value decoder then reads
 ///
 /// Without `deny_unknown_keys`, a key with no field is skipped when [`Framing::Sliced`]. When
 /// [`Framing::Inline`] it has no length to skip it by, so the loop rewinds to the start of its
 /// frame and ends. With `deny_unknown_keys`, an unknown key is rejected in either framing, before
 /// any of its value bytes are read
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Framing {
     /// The value occupies exactly `usize` bytes, bounded by an explicit length
     ///
@@ -106,9 +111,13 @@ pub enum Framing {
     ///   frame, then streaming decode returns `Packet::NeedMore` and one-shot decode finalizes
     ///   what it has
     /// * anywhere else, the value is malformed. Streaming decode returns an error naming
-    ///   `` `<Struct>::<field>` ``. One-shot decode returns the decoder's own error with that name
-    ///   added as context, which the error's display shows first only when the decoder's error has
-    ///   no label of its own
+    ///   `` `<Struct>::<field>` ``. One-shot decode returns an error whose display names
+    ///   `` `<Struct>::<field>` `` first, then why the decoder failed: the decoder's own error
+    ///   gains the field as its label, or, when the decoder labelled it already, becomes the cause
+    ///   of a new error labelled with the field, then the decoder's label. Either way, this
+    ///   error's chain (its `cause`, then each `source`) holds every cause the decoder's error
+    ///   chain holds, other than the wrappers that carry the labels: the chain is there for
+    ///   downcasting to a cause's own type, since the display already prints every level
     ///
     /// A decoder that rejects short input without consuming it fails away from the end, so its
     /// truncation reads as malformed. Frame such values as [`Framing::Sliced`] instead, whose

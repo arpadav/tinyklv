@@ -1,0 +1,6 @@
+error: Conflicting framing attributes. The fused `keylen(..)` codec is mutually exclusive with separate `key(..)`/`len(..)`.
+       Use either `keylen` OR `key`+`len`, not both.
+ --> tests/ui/fail/framing/keylen_with_key.rs:8:7
+  |
+8 | #[klv(keylen(dec = header), key(dec = decb::u8), allow_unimplemented_encode)]
+  |       ^^^^^^

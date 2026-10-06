@@ -32,7 +32,8 @@ use crate::prelude::*;
 ///
 /// # Errors
 ///
-/// Runs out of bytes: the cursor is left at the end of the input
+/// - Runs out of bytes: the cursor is left at the end of the input
+/// - The length does not fit a [`usize`]: the cursor is rewound to where it started
 ///
 /// # Example
 ///
@@ -46,9 +47,10 @@ use crate::prelude::*;
 /// assert_eq!(ber_length(&mut long).unwrap(), 201_usize);
 /// ```
 pub fn ber_length(input: &mut &[u8]) -> crate::Result<usize> {
-    super::BerLength::<u128>::decode_value
-        .map(|value| value.as_u128() as usize)
-        .parse_next(input)
+    Ok(match super::BerLength::<usize>::decode_value(input)? {
+        super::BerLength::Short(length) => usize::from(length),
+        super::BerLength::Long(length) => length,
+    })
 }
 
 #[inline(always)]
@@ -73,7 +75,9 @@ pub fn ber_length(input: &mut &[u8]) -> crate::Result<usize> {
 /// # Errors
 ///
 /// - Runs out of bytes: the cursor is left at the end of the input
-/// - The value does not fit `T`: the cursor is rewound to where it started
+/// - The value does not fit `T`: the cursor is rewound to where it started. A run holds at most
+///   `ceil(bits(T) / 7)` bytes, leading `0x80` padding included, so a run whose byte at that
+///   position is still a continuation byte is rejected there, without reading further
 ///
 /// # Example
 ///

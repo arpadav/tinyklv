@@ -1,0 +1,6 @@
+error: Missing required `enc` field for `len`.
+       If no encoding is required, use `#[klv(allow_unimplemented_encode)]`.
+ --> tests/ui/fail/header/len_missing_enc.rs:6:5
+  |
+6 |     len(dec = tinyklv::dec::binary::u8_as_usize),
+  |     ^^^

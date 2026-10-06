@@ -1,6 +1,0 @@
-error: Missing framing attributes to describe how to encode/decode keys and lengths.
-       Use `key(..)` + `len(..)`, or the fused `keylen(..)` codec.
- --> tests/ui/fail/no_framing.rs:5:8
-  |
-5 | struct Reading {
-  |        ^^^^^^^

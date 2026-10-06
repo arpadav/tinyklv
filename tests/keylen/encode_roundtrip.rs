@@ -8,8 +8,9 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::example::{Example, Inner, Reading, Status};
-use crate::pb;
+use crate::support::drive::Drive;
+use crate::support::example::{Example, Inner, Reading, Status};
+use crate::support::pb;
 use tinyklv::codecs::ber::BerLength;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
@@ -29,23 +30,24 @@ use tinyklv::prelude::*;
     default(typ = u64, dec = decb::le_u64, enc = *encb::le_u64),
 )]
 struct Measurement {
-    #[klv(key = 0x08)]
     /// field 1, wire 0 VARINT - tag, varint, no length
+    #[klv(key = 0x08)]
     id: i32,
 
-    #[klv(key = 0x15)]
     /// field 2, wire 5 I32 - tag, 4 LE bytes, no length
+    #[klv(key = 0x15)]
     ratio: f32,
 
-    #[klv(key = 0x1A)]
     /// field 3, wire 2 LEN - tag, varint length, bytes
+    #[klv(key = 0x1A)]
     name: String,
 
-    #[klv(key = 0x21)]
     /// field 4, wire 1 I64 - tag, 8 LE bytes, no length
+    #[klv(key = 0x21)]
     created_at: Option<u64>,
 }
 
+/// [`Measurement`] implementation
 impl Measurement {
     /// `id = 5, ratio = 1.5, name = "hi"`, with `created_at` unset
     fn unstamped() -> Self {
@@ -70,30 +72,26 @@ struct Tagged<T>
 where
     T: for<'a> DecodeValue<&'a [u8]> + EncodeValue,
 {
-    #[klv(key = 0x08)]
     /// field 1, wire 0 VARINT
+    #[klv(key = 0x08)]
     count: i32,
 
-    #[klv(key = 0x10)]
     /// field 2, wire 0 VARINT - `Inline`, read and written through the `T` trait impls
+    #[klv(key = 0x10)]
     value: T,
 }
 
-/// Encodes a value into a fresh buffer
-trait Encoded {
-    /// # Returns
-    ///
-    /// The bytes `encode_value` appends to an empty buffer
-    fn encoded(&self) -> Vec<u8>;
-}
+/// The first two fields of [`Reading`], encode only: neither `keylen` nor any field has a `dec`
+#[derive(Klv, Debug)]
+#[klv(keylen(enc = pb::enc_tag_keylen), allow_unimplemented_decode)]
+struct Outgoing {
+    /// field 1, wire 0 VARINT
+    #[klv(key = 0x08, enc = *pb::enc_varint_i32)]
+    count: i32,
 
-/// [`EncodeValue`] implementation of [`Encoded`]
-impl<T: EncodeValue> Encoded for T {
-    fn encoded(&self) -> Vec<u8> {
-        let mut out = Vec::new();
-        self.encode_value(&mut out);
-        out
-    }
+    /// field 2, wire 2 LEN
+    #[klv(key = 0x12, enc = &encs::from_string_utf8)]
+    label: Option<String>,
 }
 
 /// The worked example encodes to its exact bytes: no length for the VARINT or the I32,
@@ -240,6 +238,24 @@ fn encode_reading_roundtrips() {
     ];
     assert_eq!(reading.encoded(), wire);
     assert_eq!(Reading::decode_value(&mut &wire[..]).unwrap(), reading);
+}
+
+/// An encode-only message frames its fields exactly as [`Reading`] reads them back
+#[test]
+#[rustfmt::skip]
+fn encode_only_keylen_decodes_as_reading() {
+    let outgoing = Outgoing { count: 3, label: Some("ab".to_owned()) };
+    let wire = vec![
+        // count = 3
+        0x08, 0x03,
+        // label = "ab"
+        0x12, 0x02, 0x61, 0x62,
+    ];
+    assert_eq!(outgoing.encoded(), wire);
+    assert_eq!(
+        Reading::decode_value(&mut &wire[..]),
+        Ok(Reading { label: Some("ab".to_owned()), ..Reading::count_only() })
+    );
 }
 
 /// A generic message codes its `trait_fallback` field through `T`, and encoding appends after

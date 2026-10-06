@@ -11,20 +11,19 @@
 //! * `Some(Err(e))` - keyword matched but value was malformed
 //!
 //! The `parse_pnm_default_value` function is hand-written because the bare
-//! `default` form (no `=` token) cannot be expressed via the macro
+//! `default` form (no `=` token) cannot be expressed via the macro. `parse_pnm_var`
+//! (the bare `var` flag) and `parse_pnm_size` (the `size(..)` group, delegated to
+//! [`SizeSpec`]) are hand-written too
 //!
 //! Author: aav
 // --------------------------------------------------
-// external
-// --------------------------------------------------
-use tk_syn_macros::create_parser;
-
-// --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::ast::attr::size::SizeSpec;
-use crate::ast::types::*;
-use crate::symbol::*;
+use crate::{
+    ast::{attr::size::SizeSpec, types::*},
+    symbol::*,
+};
+use tk_syn_macros::create_parser;
 
 /// Parses a value of type `T` from a [`syn::meta::ParseNestedMeta`], accepting
 /// the value either as raw tokens or wrapped in a [`syn::LitStr`]
@@ -75,9 +74,7 @@ fn nv_parse_maybestr<T: syn::parse::Parse>(input: &syn::MetaNameValue) -> syn::R
     }
 }
 
-// --------------------------------------------------
 // encoder / decoder
-// --------------------------------------------------
 // A siguled xcoder, for different encoding fn signatures
 // using &
 create_parser!(
@@ -104,9 +101,7 @@ create_parser!(
     nv_parse_maybestr => syn::MetaNameValue
 );
 
-// --------------------------------------------------
 // type / stream
-// --------------------------------------------------
 create_parser!(
     TYPE: TypeType;
     pnm_parse_maybestr => syn::meta::ParseNestedMeta
@@ -116,15 +111,11 @@ create_parser!(
     nv_parse_maybestr => syn::MetaNameValue
 );
 
-// --------------------------------------------------
 // key / sentinel
-// --------------------------------------------------
 create_parser!(KEY: syn::Lit; pnm);
 create_parser!(SENTINEL: syn::Lit; nv);
 
-// --------------------------------------------------
 // size (key/len/field size shape: `size(var, exact = N | hint = N)`) and its inner keywords
-// --------------------------------------------------
 // the `exact = N` / `hint = N` byte counts (kept as `LitInt` so a conflict can be spanned)
 create_parser!(EXACT: syn::LitInt; pnm);
 create_parser!(HINT: syn::LitInt; pnm);
@@ -174,9 +165,7 @@ pub(crate) fn parse_pnm_size(input: &syn::meta::ParseNestedMeta) -> Option<syn::
     Some(SizeSpec::try_from(input))
 }
 
-// --------------------------------------------------
 // default
-// --------------------------------------------------
 /// Parses a [`DefaultValue`] from a [`syn::meta::ParseNestedMeta`]
 ///
 /// Accepts two forms on field attributes:
@@ -185,15 +174,19 @@ pub(crate) fn parse_pnm_size(input: &syn::meta::ParseNestedMeta) -> Option<syn::
 ///   lowers to `<T as ::core::default::Default>::default()`
 /// * `default = <expr>` -> [`DefaultValue::Expr`], which codegen splices as-is
 ///
-/// Returns:
-///
-/// * [`None`] if the keyword is not [`DEFAULT_VALUE`]
-/// * [`Some(Ok(..))`] on a successful parse (both bare and name-value forms)
-/// * [`Some(Err(..))`] if `default = <expr>` was written but `<expr>` failed
-///   to parse as a [`syn::Expr`]
-///
 /// Not emitted via `create_parser!` because the bare form must yield
 /// `Some(Ok(Call))` on a missing `=`, which the macro's helper can't express
+///
+/// # Arguments
+///
+/// * `input` - the nested meta entry, positioned at the `default` keyword
+///
+/// # Returns
+///
+/// * [`None`] if the keyword is not [`DEFAULT_VALUE`]
+/// * `Some(Ok(..))` on a successful parse (both bare and name-value forms)
+/// * `Some(Err(..))` if `default = <expr>` was written but `<expr>` failed
+///   to parse as a [`syn::Expr`]
 pub(crate) fn parse_pnm_default_value(
     input: &syn::meta::ParseNestedMeta,
 ) -> Option<syn::Result<DefaultValue>> {
@@ -206,9 +199,7 @@ pub(crate) fn parse_pnm_default_value(
     })
 }
 
-// --------------------------------------------------
 // latebind
-// --------------------------------------------------
 create_parser!(
     LATEBIND: LatebindXcoder;
     pnm_parse_maybestr => syn::meta::ParseNestedMeta

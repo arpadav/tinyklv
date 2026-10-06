@@ -44,8 +44,20 @@ use winnow::{
 /// The `StrContext::Label` naming a [`BerLength`] value in its decode errors
 const BER_LENGTH_LABEL: &str = "BER length value";
 
+/// The `StrContext::Label` naming a [`BerOid`] value in its decode errors
+const BER_OID_LABEL: &str = "BER-OID value";
+
 /// What a decoded BER value that overflows the target integer type was expected to be
 const FITS_TARGET: &str = "a value that fits the target integer type";
+
+/// The value bits one BER-OID byte carries, below its continuation bit
+const OID_GROUP_BITS: usize = 7;
+
+/// The continuation bit of one BER-OID byte, set on every byte of a value but its last
+const OID_CONTINUATION_BIT: u8 = 1 << OID_GROUP_BITS;
+
+/// The mask selecting the value bits of one BER-OID byte
+const OID_GROUP_MASK: u8 = OID_CONTINUATION_BIT - 1;
 
 /// Sealed marker restricting [`OfBerCommon`] to the fixed-width unsigned
 /// integer types, so external crates cannot add their own implementations
@@ -108,7 +120,10 @@ impl<T> OfBerCommon for T where
 /// assert_eq!(BerLength::new(8_500_738_u32), BerLength::decode_value(&mut &vec![128 + 3, 129, 182, 2][..]).unwrap());
 /// ```
 pub enum BerLength<T: OfBerCommon> {
+    /// The short form: a length of `0..=127` in a single byte
     Short(u8),
+    /// The long form: the length as a `T`, written as `0x80 | num_bytes` then `num_bytes`
+    /// big-endian bytes
     Long(T),
 }
 /// [`BerLength`] implementation
@@ -200,12 +215,9 @@ impl<T: OfBerCommon> BerLength<T> {
     /// Returns the wrapped length value as a [`u128`], regardless of which BER form was used
     ///
     /// Both `Short` and `Long` variants are widened to [`u128`] without loss
-    ///
-    /// Used by [`crate::codecs::ber::dec::ber_length`] to produce a
-    /// uniform [`usize`] for `take(len)` calls
     pub fn as_u128(&self) -> u128 {
         match self {
-            BerLength::Short(len) => *len as u128,
+            BerLength::Short(len) => u128::from(*len),
             BerLength::Long(len) => len.as_(),
         }
     }
@@ -275,7 +287,8 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerLength<T> {
     /// # Errors
     ///
     /// - Runs out of bytes: the cursor is left at the end of the input
-    /// - The value does not fit `T`: the cursor is rewound to where it started
+    /// - The value does not fit `T`: the cursor is rewound to where it started. A long form may
+    ///   carry more length bytes than `T` is wide, provided the leading ones are zero
     ///
     /// # Example
     ///
@@ -311,10 +324,9 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerLength<T> {
         // --------------------------------------------------
         // extract the number of bytes used for length encoding
         // --------------------------------------------------
-        let num_bytes = (first_byte & 0x7F) as usize;
+        let num_bytes = usize::from(first_byte & 0x7F);
         // --------------------------------------------------
         // ensure there are enough bytes in the stream
-        // --------------------------------------------------
         // since 1 was taken from input, this should be
         // `input.len() + 1 < num_bytes + 1`, which can
         // be simplified to below:
@@ -332,7 +344,8 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerLength<T> {
         // --------------------------------------------------
         // decode the length from the specified number of bytes
         // --------------------------------------------------
-        let Some(output) = T::from_u128(parse_length_u128(input, num_bytes)?) else {
+        let bytes: &[u8] = take(num_bytes).parse_next(input)?;
+        let Some(output) = fold_be_digits(bytes.iter().copied(), 8).and_then(T::from_u128) else {
             return Err(overflow_error(input, &checkpoint, BER_LENGTH_LABEL));
         };
         Ok(BerLength::Long(output))
@@ -437,7 +450,7 @@ impl<T: OfBerCommon> crate::EncodeValue for BerOid<T> {
     /// tool for encoding values to BER format
     fn encode_value(&self, out: &mut Vec<u8>) {
         // --------------------------------------------------
-        // emit 7-bit groups least-significant first, then reverse just the
+        // emit groups least-significant first, then reverse just the
         // appended bytes so the most-significant group leads
         // --------------------------------------------------
         let start = out.len();
@@ -445,15 +458,15 @@ impl<T: OfBerCommon> crate::EncodeValue for BerOid<T> {
         let mut first_byte = true;
         while value > 0 {
             // --------------------------------------------------
-            // extract 7 bits at a time
+            // extract one group at a time
             // --------------------------------------------------
-            let byte = (value & 0x7F) as u8;
-            value >>= 7;
+            let byte = (value & u128::from(OID_GROUP_MASK)) as u8;
+            value >>= OID_GROUP_BITS;
             if first_byte {
                 first_byte = false;
                 out.push(byte);
             } else {
-                out.push(byte | 0x80);
+                out.push(byte | OID_CONTINUATION_BIT);
             }
         }
         if let Some(written) = out.get_mut(start..) {
@@ -468,7 +481,9 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerOid<T> {
     /// # Errors
     ///
     /// - Runs out of bytes: the cursor is left at the end of the input
-    /// - The value does not fit `T`: the cursor is rewound to where it started
+    /// - The value does not fit `T`: the cursor is rewound to where it started. A run holds at
+    ///   most `ceil(bits(T) / 7)` bytes, leading `0x80` padding included, so a run whose byte at
+    ///   that position is still a continuation byte is rejected there, without reading further
     ///
     /// # Example
     ///
@@ -488,8 +503,11 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerOid<T> {
         // BER-OID grammar: `(msb-set)* (msb-unset)`
         //   - zero or more continuation bytes with MSB = 1
         //   - exactly one terminator byte with MSB = 0
+        // each byte carries OID_GROUP_BITS value bits, so `T` holds at
+        // most ceil(bits(T) / OID_GROUP_BITS) bytes, terminator included
         // --------------------------------------------------
-        let prefix: &[u8] = take_while(0.., msb_is_set)
+        let max_bytes = (size_of::<T>() * 8).div_ceil(OID_GROUP_BITS);
+        let prefix: &[u8] = take_while(0..max_bytes, msb_is_set)
             .context(winnow::error::StrContext::Label(
                 "BER-OID continuation bytes",
             ))
@@ -500,15 +518,22 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerOid<T> {
             ))
             .parse_next(input)?;
         // --------------------------------------------------
-        // accumulate 7 bits per byte, prefix first then terminator
+        // a continuation byte where the terminator must be: the run
+        // is longer than `T` can hold
         // --------------------------------------------------
-        let output = prefix
+        if msb_is_set(terminator) {
+            return Err(overflow_error(input, &checkpoint, BER_OID_LABEL));
+        }
+        // --------------------------------------------------
+        // accumulate one group per byte, prefix first then terminator
+        // --------------------------------------------------
+        let groups = prefix
             .iter()
             .copied()
             .chain(std::iter::once(terminator))
-            .fold(0u128, |acc, b| (acc << 7) | (b & 0x7F) as u128);
-        let Some(output) = T::from_u128(output) else {
-            return Err(overflow_error(input, &checkpoint, "BER-OID value"));
+            .map(|b| b & OID_GROUP_MASK);
+        let Some(output) = fold_be_digits(groups, OID_GROUP_BITS).and_then(T::from_u128) else {
+            return Err(overflow_error(input, &checkpoint, BER_OID_LABEL));
         };
         Ok(BerOid::new(output))
     }
@@ -578,22 +603,29 @@ fn value_error<I: Stream>(
 /// Used as the predicate for `take_while` in [`BerOid`]'s decoder to collect
 /// all continuation bytes before the final terminator byte
 fn msb_is_set(b: u8) -> bool {
-    (b & 0x80) != 0
+    (b & OID_CONTINUATION_BIT) != 0
 }
 
-#[inline(always)]
-/// Consumes `num_bytes` from the input and combines them into a big-endian [`u128`]
+/// Combines big-endian digits of `bits` bits each into a [`u128`], the first digit most
+/// significant
 ///
-/// Each byte is shifted into the accumulator from the right: the first byte
-/// becomes the most significant. Called from [`BerLength`]'s decoder after the
-/// long-form prefix byte has already been consumed and its `num_bytes` field
-/// extracted. Returns an error if fewer than `num_bytes` remain in the stream
-fn parse_length_u128(input: &mut &[u8], num_bytes: usize) -> crate::Result<u128> {
-    take(num_bytes)
-        .map(|bytes: &[u8]| {
-            bytes
-                .iter()
-                .fold(0u128, |acc, &byte| (acc << 8) | byte as u128)
-        })
-        .parse_next(input)
+/// [`BerLength`] folds its long-form length bytes (8 bits each), [`BerOid`] its
+/// [`OID_GROUP_BITS`]-bit groups
+///
+/// # Arguments
+///
+/// * `digits` - The digits, most significant first, each below `1 << bits`
+/// * `bits` - The width of one digit
+///
+/// # Returns
+///
+/// The value, or `None` when it overflows a [`u128`]
+fn fold_be_digits(digits: impl IntoIterator<Item = u8>, bits: usize) -> Option<u128> {
+    digits.into_iter().try_fold(0u128, |acc, digit| {
+        debug_assert!(
+            u128::from(digit) < 1 << bits,
+            "{digit:#x} is wider than {bits} bits"
+        );
+        acc.checked_mul(1 << bits)?.checked_add(u128::from(digit))
+    })
 }

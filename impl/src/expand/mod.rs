@@ -15,7 +15,7 @@
 // --------------------------------------------------
 mod decode_impl;
 mod encode_impl;
-pub(crate) mod helpers;
+mod helpers;
 pub(crate) mod logger;
 
 // --------------------------------------------------

@@ -4,7 +4,8 @@
 //!
 //! * [`EncodeFraming::Separate`] writes each field's key with the key encoder and its length with
 //!   the length encoder. A variable-width length prefix stages every value; a fixed-width one
-//!   ([`FixedPrefix`]) writes each value at a known width or back-fills its length
+//!   ([`FixedLengthSlot`](crate::expand::encode_impl::length_prefix::FixedLengthSlot)) writes each
+//!   value at a known width or back-fills its length
 //! * [`EncodeFraming::Fused`] stages every value, then hands `(key, value_len)` to the `keylen`
 //!   encoder, which writes the key and, when the key implies one, the length
 //!
@@ -12,11 +13,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{
-    field_length_plan::{ContainerLengthPrefix, ValueWidth},
-    fixed_width,
-    length_slot_gen::FixedLengthSlot,
-};
+use super::{fixed_width, length_prefix::LengthPrefix, staging::Staging};
 use crate::{
     ast::{
         attr::{MainContainer, container::ContainerMode, size::SizeSpec},
@@ -48,17 +45,15 @@ pub(super) enum EncodeFraming<'a> {
     Separate {
         /// Encoder writing each field's key
         key_encoder: KeyEncoder<'a>,
-        /// Encoder expression writing each field's length and, under a sentinel, the frame length
-        len_encoder: &'a types::XcoderType,
-        /// The length prefix's shape, resolved from `len(.., size(..))`
-        len_prefix: ContainerLengthPrefix,
+        /// The length prefix written after each field's key and, under a sentinel, the frame length
+        len: LengthPrefix<'a>,
         /// The estimated bytes of one field's key and length, for the reserve hint
         header_bytes: usize,
     },
     /// One encoder writing each frame header from `(key, value_len)`
     Fused {
         /// Encoder expression writing each frame header
-        keylen_encoder: &'a types::XcoderType,
+        keylen_encoder: KeylenEncoder<'a>,
     },
 }
 
@@ -80,26 +75,41 @@ impl<'a> EncodeFraming<'a> {
     /// case no encode impl is generated
     pub(super) fn from_mode(mode: &'a ContainerMode) -> Option<Self> {
         match mode {
+            // --------------------------------------------------
+            // separate key and length: each has its own encoder and width
+            // --------------------------------------------------
             ContainerMode::Separate { key, len } => {
                 let key_encoder = key.enc.as_ref()?;
+                // --------------------------------------------------
+                // the key width: its `size(..)`, else a built-in fixed-width encoder, else the
+                // default
+                // --------------------------------------------------
                 let key_bytes = key
                     .size
                     .and_then(SizeSpec::capacity_bytes)
                     .or_else(|| fixed_width::builtin_fixed_encoder_width(key_encoder))
                     .unwrap_or(DEFAULT_KEY_BYTES);
+                // --------------------------------------------------
+                // the length width: its `size(..)`, else the default
+                // --------------------------------------------------
                 let len_bytes = len
                     .size
                     .and_then(SizeSpec::capacity_bytes)
                     .unwrap_or(DEFAULT_LEN_BYTES);
+                // --------------------------------------------------
+                // assemble the framing; a missing length encoder yields `None`
+                // --------------------------------------------------
                 Some(Self::Separate {
                     key_encoder: KeyEncoder(key_encoder),
-                    len_encoder: len.enc.as_ref()?,
-                    len_prefix: ContainerLengthPrefix::from_size(len.size),
-                    header_bytes: key_bytes + len_bytes,
+                    len: LengthPrefix::new(len.enc.as_ref()?, len.size),
+                    header_bytes: key_bytes.saturating_add(len_bytes),
                 })
             }
+            // --------------------------------------------------
+            // fused: one `keylen` encoder writes each frame header
+            // --------------------------------------------------
             ContainerMode::Fused(keylen) => Some(Self::Fused {
-                keylen_encoder: keylen.enc.as_ref()?,
+                keylen_encoder: KeylenEncoder(keylen.enc.as_ref()?),
             }),
         }
     }
@@ -125,7 +135,7 @@ impl<'a> EncodeFraming<'a> {
     /// writing field items: per `#[klv(..)]` field, the frame header estimate
     /// ([`Self::header_reserve_bytes`]) plus any statically known value width. Unknown widths
     /// contribute zero for the value portion, so the result is an allocation hint rather than a
-    /// wire-format contract
+    /// wire-format contract. Every sum saturates at `usize::MAX`
     ///
     /// # Arguments
     ///
@@ -143,114 +153,34 @@ impl<'a> EncodeFraming<'a> {
         // sum known field widths into the reserve hint
         // --------------------------------------------------
         input
-            .data
-            .iter()
-            .filter_map(|field| field.attrs.as_ref().map(|attrs| (field.ty, attrs)))
-            .map(|(ty, attrs)| {
-                let value_bytes = fixed_width::fixed_value_type_width(ty)
+            .klv_fields()
+            .map(|(field, attrs)| {
+                let value_bytes = fixed_width::fixed_value_type_width(field.ty)
                     .or_else(|| attrs.size.and_then(SizeSpec::capacity_bytes))
                     .unwrap_or(0);
-                header_bytes + value_bytes
+                header_bytes.saturating_add(value_bytes)
             })
-            .sum()
+            .fold(0, usize::saturating_add)
     }
 
-    /// The key encoder and fixed-width length slot of a fixed-width length prefix
+    /// Declares the scratch buffer, when field values are staged before their header is written
     ///
-    /// The one classifier of how field values are written: a fixed-width prefix writes each
-    /// header directly, every other framing stages the value first
+    /// A variable-width length prefix or a fused header encodes each field value into a scratch
+    /// buffer before its frame header is written. A fixed-width prefix writes directly to the
+    /// caller output, so it declares nothing and keeps generated methods free of unused locals
     ///
     /// # Returns
     ///
-    /// The [`FixedPrefix`] of a separate header with a fixed-width length prefix, or `None` for a
-    /// variable-width prefix and for every fused header, whose `keylen` encoder takes the value
-    /// length
-    pub(super) fn fixed_prefix(self) -> Option<FixedPrefix<'a>> {
-        match self {
-            Self::Separate {
-                key_encoder,
-                len_encoder,
-                len_prefix: ContainerLengthPrefix::Fixed { width },
-                ..
-            } => Some(FixedPrefix {
-                key_encoder,
-                len: FixedLengthSlot { len_encoder, width },
-            }),
-            Self::Separate {
-                len_prefix: ContainerLengthPrefix::Variable,
-                ..
-            }
-            | Self::Fused { .. } => None,
-        }
-    }
-
-    /// Whether field values are staged in a scratch buffer before their header is written
-    ///
-    /// # Returns
-    ///
-    /// `true` when the framing has no [`Self::fixed_prefix`]
-    pub(super) fn stages_values(self) -> bool {
-        self.fixed_prefix().is_none()
-    }
-
-    /// Writes one frame whose value is staged first: stage, write the header, then append
-    ///
-    /// The value is encoded into the cleared `scratch`, the header is written from `key` and the
-    /// staged length, and the staged bytes follow it. A separate header is spanned at the field.
-    /// The fused encoder call, staged length included, is located at the `keylen` encoder with
-    /// the derive's call-site hygiene, so an encoder with the wrong signature is reported at the
-    /// encoder while the derive's locals still resolve
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The frame's key expression
-    /// * `stage` - Statements encoding the value into `scratch`
-    /// * `scratch` - The scratch buffer the value is staged in
-    /// * `span` - Span of the emitted write
-    ///
-    /// # Returns
-    ///
-    /// A block writing the complete frame into `out`
-    pub(super) fn write_staged(
-        self,
-        key: &impl ToTokens,
-        stage: proc_macro2::TokenStream,
-        scratch: &syn::Ident,
-        span: proc_macro2::Span,
-    ) -> proc_macro2::TokenStream {
-        // --------------------------------------------------
-        // the header, written from the staged length
-        // --------------------------------------------------
-        let header = match self {
-            Self::Separate {
-                key_encoder,
-                len_encoder,
-                ..
-            } => {
-                let key_write = key_encoder.write(key, span);
-                quote_spanned! { span =>
-                    #key_write
-                    #len_encoder(#scratch.len(), out);
-                }
-            }
-            Self::Fused { keylen_encoder } => {
-                let at = helpers::call_site_at(keylen_encoder);
-                let mut scratch = scratch.clone();
-                scratch.set_span(at);
-                quote_spanned! { at => #keylen_encoder((#key, #scratch.len()), out); }
-            }
+    /// [`Staging::Scratch`]'s empty `Vec<u8>` declaration when values are staged, else `None`
+    pub(super) fn declare_scratch(self) -> Option<proc_macro2::TokenStream> {
+        let staged = match self {
+            Self::Separate { len, .. } => match len {
+                LengthPrefix::Fixed(_) => false,
+                LengthPrefix::Variable(_) => true,
+            },
+            Self::Fused { .. } => true,
         };
-        // --------------------------------------------------
-        // stage, header, append
-        // --------------------------------------------------
-        quote_spanned! { span =>
-            {
-                #scratch.clear();
-                #stage
-                #header
-                out.extend_from_slice(&#scratch);
-            }
-        }
+        staged.then(|| Staging::Scratch.declare())
     }
 }
 
@@ -280,95 +210,41 @@ impl KeyEncoder<'_> {
     }
 }
 
-/// The header of a separate frame whose length prefix is fixed-width
-///
-/// Writes each field's frame directly, with no staging: the length is written up front when the
-/// value width is known, else its slot is reserved and back-filled after the value
+/// The `keylen` encoder of a fused frame header
 #[derive(Debug, Clone, Copy)]
-pub(super) struct FixedPrefix<'a> {
-    /// Encoder writing each field's key
-    key_encoder: KeyEncoder<'a>,
+pub(super) struct KeylenEncoder<'a>(&'a types::XcoderType);
 
-    /// The fixed-width length slot following each key
-    len: FixedLengthSlot<'a>,
-}
-
-/// [`FixedPrefix`] implementation
-impl FixedPrefix<'_> {
-    /// Writes a frame whose value width is known: key, length, then value
+/// [`KeylenEncoder`] implementation
+impl KeylenEncoder<'_> {
+    /// Writes one frame whose value is staged first: stage, write the header, then append
     ///
-    /// A value wider than the length slot encodes is a compile error at
-    /// [`ValueWidth::declared_at`], emitted in place of the write so every other field still
-    /// expands
+    /// The value is encoded into the `staging` buffer, the header is written from `key` and the
+    /// staged length, and the staged bytes follow it. The encoder call, staged length included, is
+    /// located at the `keylen` encoder with the derive's call-site hygiene, so an encoder with the
+    /// wrong signature is reported at the encoder while the derive's locals still resolve
     ///
     /// # Arguments
     ///
-    /// * `key` - The field's key expression
-    /// * `value` - The value's known width
-    /// * `value_write` - Statements appending the value bytes to `out`
+    /// * `staging` - The buffer the value is staged in
+    /// * `key` - The frame's key expression
+    /// * `value_write` - Builds the statements encoding the value into the buffer it is given
     /// * `span` - Span of the emitted write
     ///
     /// # Returns
     ///
-    /// A block writing the complete frame into `out`, checking in debug builds that the length
-    /// encoder filled the slot and the value encoder wrote `value.bytes` bytes, or the
-    /// `compile_error!` when the slot cannot encode `value.bytes`
-    pub(super) fn write_known(
+    /// The staged write from [`Staging::write`]
+    pub(super) fn write_staged(
         self,
+        staging: Staging,
         key: &impl ToTokens,
-        value: ValueWidth,
-        value_write: proc_macro2::TokenStream,
+        value_write: impl FnOnce(&proc_macro2::TokenStream) -> proc_macro2::TokenStream,
         span: proc_macro2::Span,
     ) -> proc_macro2::TokenStream {
-        let ValueWidth { bytes, declared_at } = value;
-        // --------------------------------------------------
-        // a value the slot cannot encode is a compile error
-        // --------------------------------------------------
-        if !self.len.fits(bytes) {
-            let [bytes, width, max_len] = [bytes, self.len.width, self.len.max_len()]
-                .map(proc_macro2::Literal::usize_unsuffixed);
-            return syn::Error::new(declared_at, err!(LenPrefixTooNarrow(bytes, width, max_len)))
-                .to_compile_error();
-        }
-        // --------------------------------------------------
-        // key, length, then value
-        // --------------------------------------------------
-        let key_write = self.key_encoder.write(key, span);
-        let len_write = self.len.write_len(&bytes, span);
-        quote_spanned! { span =>
-            {
-                #key_write
-                #len_write
-                let __value_start = out.len();
-                #value_write
-                debug_assert_eq!(
-                    out.len() - __value_start,
-                    #bytes,
-                    "tinyklv: fixed-width value encoder wrote a different byte count than its detected width",
-                );
-            }
-        }
-    }
-
-    /// Writes a frame whose value width is unknown: key, then the length slot back-filled after
-    /// the value
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The field's key expression
-    /// * `value_write` - Statements appending the value bytes to `out`
-    /// * `span` - Span of the emitted key write
-    ///
-    /// # Returns
-    ///
-    /// The back-filled write from [`FixedLengthSlot::write_backfilled`]
-    pub(super) fn write_reserved(
-        self,
-        key: &impl ToTokens,
-        value_write: proc_macro2::TokenStream,
-        span: proc_macro2::Span,
-    ) -> proc_macro2::TokenStream {
-        self.len
-            .write_backfilled(self.key_encoder.write(key, span), value_write)
+        let Self(keylen_encoder) = self;
+        let at = helpers::call_site_at(keylen_encoder);
+        let mut buffer = staging.buffer();
+        buffer.set_span(at);
+        let header = quote_spanned! { at => #keylen_encoder((#key, #buffer.len()), out); };
+        staging.write(header, value_write, span)
     }
 }
