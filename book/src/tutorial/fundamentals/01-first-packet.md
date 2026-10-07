@@ -32,7 +32,7 @@ which can decode the byte stream into its specified type.
 
 No field-level length attribute is necessary for fixed-width decoders: they have
 the value width baked into the function itself. Decoders that need the runtime
-KLV length use `size(var)`, which is introduced in
+KLV length use `size(lengthed)`, which is introduced in
 [Value lengths](./07-val-lengths.md). Decoder function signatures are discussed
 more in the [Custom decoder functions](./05-custom-decoder.md) tutorial.
 

@@ -31,19 +31,19 @@ fn(len: usize) -> impl Fn(&mut S) -> Result<T>;
 ```
 
 which is a function that takes the parsed length and returns a parser specialised to
-that length. Setting `size(var)` on the field tells the derive to call
+that length. Setting `size(lengthed)` on the field tells the derive to call
 `decs::to_string_utf8(len)(input)` instead of `decs::to_string_utf8(input)`.
 
-Run this example: `cargo run --example book_07_b_size_var`
+Run this example: `cargo run --example book_07_b_size_lengthed`
 
 ```rust
-{{#include ../../../../examples/book_07_b_size_var.rs}}
+{{#include ../../../../examples/book_07_b_size_lengthed.rs}}
 ```
 
 ## Overview
 
-- `size(var)` selects the length-taking codec shape.
+- `size(lengthed)` selects the length-taking codec shape.
 - `decs::to_string_utf8` is the canonical UTF-8 `String` decoder.
-- The outer body length still frames the packet; `size(var)` only affects the field value decoder.
+- The outer body length still frames the packet; `size(lengthed)` only affects the field value decoder.
 
 **Next:** [08 - Latebind transforms](./08-latebind.md)

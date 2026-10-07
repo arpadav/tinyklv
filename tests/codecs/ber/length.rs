@@ -11,8 +11,9 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::helpers::{ContextErrorExt, DecoderExt};
+use super::helpers::DecoderExt;
 use super::width::BerWidth;
+use crate::common::error::ContextErrorExt;
 use tinyklv::codecs::ber::BerLength;
 use tinyklv::dec::ber as decber;
 use tinyklv::prelude::*;

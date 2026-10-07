@@ -3,9 +3,10 @@
 //! Every `fail/<group>/*.rs` case has a committed `.stderr` snapshot of its diagnostic. A group
 //! holds the cases of one stage of the derive: `framing/` which of `key`/`len`/`keylen` a
 //! container declares and what they conflict with, `header/` the form and fields inside one of
-//! them, `size/` a length slot's `size`, and `codec/` the header and field codecs a container
-//! names: a signature that does not fit the code the derive generates around it, or a missing
-//! encoder that leaves `EncodeValue` unimplemented. Regenerate the snapshots with
+//! them, `size/` a field's or a `key`/`len` slot's `size(..)`, `default/` a container
+//! `default(typ = ..)` and the `size(..)` it fills into a field, and `codec/` the header and field
+//! codecs a container names: a signature that does not fit the code the derive generates around
+//! it, or a missing encoder that leaves `EncodeValue` unimplemented. Regenerate the snapshots with
 //! `TRYBUILD=overwrite cargo +1.95.0 test --test ui`
 //!
 //! Author: aav

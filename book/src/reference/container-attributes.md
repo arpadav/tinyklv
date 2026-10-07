@@ -47,7 +47,7 @@ support; either half can be omitted to stay unimplemented.
 The decoded length value is always `usize`; `dec` must output a `usize` and `enc`
 must accept a `usize`. Use the `_as_usize` / `_from_usize` helpers from `decb` /
 `encb`. `len(size(exact = N))` declares a fixed-width `N`-byte length prefix.
-A bare `len(..)` or `len(size(var))` uses the variable-width length path, which
+A `len(..)` with no `exact` uses the variable-width length path, which
 is the path used by BER-style length codecs.
 
 ## `default(typ = T, dec = ..., enc = ..., size(...))`
@@ -63,12 +63,13 @@ is the path used by BER-style length codecs.
 ```
 
 Attaches a codec to a concrete field type. Every field of type `T` in the
-struct resolves its codec from this default unless it overrides locally.
+struct resolves its codec from this default.
 Only `typ` is required; `dec`, `enc`, and `size(..)` are independently
 optional, so a default can supply just a decoder, just an encoder, or both.
-`size(var)` selects the length-taking decoder shape; `size(exact = N)` and
-`size(hint = N)` carry the same encode meanings as field-level `size(..)`. A
-default `size(..)` applies only to fields that resolve through that default.
+`size(lengthed)` selects the length-taking decoder shape; `size(exact = N)` and
+`size(reserve = N)` carry the same meanings as field-level `size(..)`. A
+field's own setting overrides the default's; `lengthed` follows the `dec` the
+field uses.
 
 The `enc` path inside `default(...)` accepts the same `&` and `*` sigils
 as field-level `enc`. See

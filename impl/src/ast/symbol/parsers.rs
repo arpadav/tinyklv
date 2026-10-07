@@ -11,19 +11,28 @@
 //! * `Some(Err(e))` - keyword matched but value was malformed
 //!
 //! The `parse_pnm_default_value` function is hand-written because the bare
-//! `default` form (no `=` token) cannot be expressed via the macro. `parse_pnm_var`
-//! (the bare `var` flag) and `parse_pnm_size` (the `size(..)` group, delegated to
-//! [`SizeSpec`]) are hand-written too
+//! `default` form (no `=` token) cannot be expressed via the macro. `parse_pnm_lengthed`
+//! (the bare `lengthed` flag), `parse_pnm_size` (a field's `size(..)` group, delegated to
+//! [`SizeSpec`]) and `parse_pnm_header_size` (a `key(..)`/`len(..)` `size(..)` group, delegated to
+//! [`SizeBytes`]) are hand-written too
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::{
-    ast::{attr::size::SizeSpec, types::*},
+    ast::{
+        attr::size::{SizeBytes, SizeSpec},
+        types::*,
+    },
     symbol::*,
 };
 use tk_syn_macros::create_parser;
+
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use syn::spanned::Spanned;
 
 /// Parses a value of type `T` from a [`syn::meta::ParseNestedMeta`], accepting
 /// the value either as raw tokens or wrapped in a [`syn::LitStr`]
@@ -115,39 +124,44 @@ create_parser!(
 create_parser!(KEY: syn::Lit; pnm);
 create_parser!(SENTINEL: syn::Lit; nv);
 
-// size (key/len/field size shape: `size(var, exact = N | hint = N)`) and its inner keywords
-// the `exact = N` / `hint = N` byte counts (kept as `LitInt` so a conflict can be spanned)
+// size (field size shape: `size(lengthed, exact = N | reserve = N)`; key/len byte count:
+// `size(exact = N | reserve = N)`) and its inner keywords
+// the `exact = N` / `reserve = N` byte counts (kept as `LitInt` so a conflict can be spanned)
 create_parser!(EXACT: syn::LitInt; pnm);
-create_parser!(HINT: syn::LitInt; pnm);
+create_parser!(RESERVE: syn::LitInt; pnm);
 
-/// Parses the bare `var` flag inside a `size(..)` list (a path, no `= value`)
+/// Parses the bare `lengthed` flag inside a field's `size(..)` list (a path, no `= value`)
 ///
 /// Modelled on [`parse_pnm_default_value`]'s bare form: an `Err` from `value()` means the flag was
-/// present with no value (the valid form); an `Ok` means the user wrote `var = ..`, which is rejected
+/// present with no value (the valid form); an `Ok` means the user wrote `lengthed = ..`, which is
+/// rejected
 ///
 /// # Arguments
 ///
-/// * `input` - the nested meta entry, positioned at the `var` keyword
+/// * `input` - the nested meta entry, positioned at the `lengthed` keyword
 ///
 /// # Returns
 ///
-/// [`None`] if the keyword is not [`VAR`]; `Some(Ok(()))` for a bare `var`; `Some(Err(..))` otherwise
-pub(crate) fn parse_pnm_var(input: &syn::meta::ParseNestedMeta) -> Option<syn::Result<()>> {
-    if input.path != VAR {
+/// [`None`] if the keyword is not [`LENGTHED`]; `Some(Ok(span))` of a bare `lengthed`;
+/// `Some(Err(..))` otherwise
+pub(crate) fn parse_pnm_lengthed(
+    input: &syn::meta::ParseNestedMeta,
+) -> Option<syn::Result<proc_macro2::Span>> {
+    if input.path != LENGTHED {
         return None;
     }
     Some(match input.value() {
-        Ok(_) => Err(input.error("`var` is a flag and takes no value")),
-        Err(_) => Ok(()),
+        Ok(_) => Err(input.error(format!("`{LENGTHED}` is a flag and takes no value"))),
+        Err(_) => Ok(input.path.span()),
     })
 }
 
-/// Parses a [`SizeSpec`] from the `size(..)` group on a [`syn::meta::ParseNestedMeta`]
+/// Parses a field's [`SizeSpec`] from the `size(..)` group on a [`syn::meta::ParseNestedMeta`]
 ///
 /// Defers straight to [`SizeSpec::try_from`], which recurses into the parenthesised group with
-/// [`ParseNestedMeta::parse_nested_meta`] - so the inner `var`/`exact`/`hint` parse goes through
-/// [`handle_unique_nested_meta_values!`](tk_syn_macros::handle_unique_nested_meta_values) like every
-/// other list attribute, with no `syn::MetaList` re-materialisation
+/// [`ParseNestedMeta::parse_nested_meta`] - so the inner `lengthed`/`exact`/`reserve` parse goes
+/// through [`handle_unique_nested_meta_values!`](tk_syn_macros::handle_unique_nested_meta_values)
+/// like every other list attribute, with no `syn::MetaList` re-materialisation
 ///
 /// # Arguments
 ///
@@ -163,6 +177,28 @@ pub(crate) fn parse_pnm_size(input: &syn::meta::ParseNestedMeta) -> Option<syn::
         return None;
     }
     Some(SizeSpec::try_from(input))
+}
+
+/// Parses a `key(..)` or `len(..)` byte count, [`SizeBytes`], from the `size(..)` group on a
+/// [`syn::meta::ParseNestedMeta`]
+///
+/// The `key(..)`/`len(..)` counterpart of [`parse_pnm_size`]: defers to [`SizeBytes::try_from`],
+/// which parses the inner `exact`/`reserve` the same way and has no `lengthed`
+///
+/// # Arguments
+///
+/// * `input` - the nested meta entry, positioned at the `size` keyword (before its `(..)`)
+///
+/// # Returns
+///
+/// [`None`] if the keyword is not [`SIZE`]; otherwise the parsed [`SizeBytes`] or a parse error
+pub(crate) fn parse_pnm_header_size(
+    input: &syn::meta::ParseNestedMeta,
+) -> Option<syn::Result<SizeBytes>> {
+    if input.path != SIZE {
+        return None;
+    }
+    Some(SizeBytes::try_from(input))
 }
 
 // default

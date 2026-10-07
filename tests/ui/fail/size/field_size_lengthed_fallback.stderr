@@ -1,0 +1,19 @@
+error: Field `name: String` has `size(lengthed)` but no `dec = ..` was set.
+       The trait fallback (`<String as ::tinyklv::DecodeValue<..>>::decode_value`) has no length argument - supply an explicit `dec` or change the `size`.
+  --> tests/ui/fail/size/field_size_lengthed_fallback.rs:12:5
+   |
+12 |     name: String,
+   |     ^^^^
+
+error: No decoder is found for field `name: String`.
+
+       If decoding is not required, use `#[klv(allow_unimplemented_decode)]` on the struct.
+
+       Otherwise, you can:
+           a. add a default decoder for all `String` types using `#[klv(default(typ = String, dec = <..>)))]` on the struct
+           b. add a decoder to `name` using `#[klv(dec = <..>)]`
+           c. set `#[klv(trait_fallback)]` on the struct to fall back to try and use `tinyklv::DecodeValue` trait implementation
+  --> tests/ui/fail/size/field_size_lengthed_fallback.rs:12:5
+   |
+12 |     name: String,
+   |     ^^^^

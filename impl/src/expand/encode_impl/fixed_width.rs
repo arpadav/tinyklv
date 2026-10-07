@@ -49,7 +49,7 @@ primitive_widths!(u8, i8, u16, i16, u32, i32, f32, u64, i64, f64, u128, i128);
 /// Returns the encoded byte width of a fixed-width primitive field type
 ///
 /// Resolves direct primitive field types to their byte width for generated
-/// reserve hints and fixed-length fast paths. `Option<T>` and any non-primitive
+/// encode reserves and fixed-length fast paths. `Option<T>` and any non-primitive
 /// return `None`; optional fields are not a fixed number of bytes on the wire
 /// because `None` emits no KLV item
 ///

@@ -2,7 +2,7 @@
 //!
 //! Tests the `dec::string` / `enc::string` ASCII codec families wired up
 //! through the derive macro on a realistic `AsciiTelemetry` struct that
-//! mixes a fixed binary `u16` field with `size(var)` decimal-integer,
+//! mixes a fixed binary `u16` field with `size(lengthed)` decimal-integer,
 //! signed-integer, float, hex, and alpha-run fields.  Covers a full
 //! roundtrip, hand-built packet decoding, and rejection of garbage numerics
 //!
@@ -29,19 +29,19 @@ struct AsciiTelemetry {
     #[klv(key = 0x01, dec = decb::be_u16, enc = *encb::be_u16)]
     id: u16,
 
-    #[klv(key = 0x02, size(var), dec = deca::u32, enc = *enca::u32)]
+    #[klv(key = 0x02, size(lengthed), dec = deca::u32, enc = *enca::u32)]
     sequence: u32,
 
-    #[klv(key = 0x03, size(var), dec = deca::i32, enc = *enca::i32)]
+    #[klv(key = 0x03, size(lengthed), dec = deca::i32, enc = *enca::i32)]
     offset: i32,
 
-    #[klv(key = 0x04, size(var), dec = deca::f64, enc = *enca::f64)]
+    #[klv(key = 0x04, size(lengthed), dec = deca::f64, enc = *enca::f64)]
     altitude: f64,
 
-    #[klv(key = 0x05, size(var), dec = deca::hex_u16, enc = *enca::hex_u16)]
+    #[klv(key = 0x05, size(lengthed), dec = deca::hex_u16, enc = *enca::hex_u16)]
     flags: u16,
 
-    #[klv(key = 0x06, size(var), dec = deca::alpha, enc = enca::from_string_ascii)]
+    #[klv(key = 0x06, size(lengthed), dec = deca::alpha, enc = enca::from_string_ascii)]
     callsign: String,
 }
 

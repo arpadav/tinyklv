@@ -2,8 +2,8 @@
 //!
 //! Defines [`DefaultXcoder`], which represents one entry in a `#[klv(default(..))]`
 //! annotation on a struct. Each entry supplies a type together with an optional
-//! encoder and/or decoder that should be used for any field of that type when the
-//! field itself carries no explicit xcoder
+//! encoder, decoder and size, each used for any field of that type that leaves it unset; the
+//! size's `lengthed` goes with the decoder
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -24,11 +24,13 @@ use tk_syn_macros::handle_unique_nested_meta_values;
 ///
 /// # Syntax
 ///
-/// `default(typ = <type>, enc = <path>, dec = <path>, size(var | exact = N | hint = N))`
+/// `default(typ = <type>, enc = <path>, dec = <path>, size(lengthed, exact = N | reserve = N))`
 ///
 /// Both `enc` and `dec` are optional, however at least one must be provided
 ///
-/// `size` is optional; when omitted, matched fields read without a `len` argument
+/// `size` is optional; a matched field takes its `exact` / `reserve` where the field's own
+/// `size(..)` has neither, and its `lengthed` when the field uses this `dec`. A `lengthed`
+/// requires a `dec` in the same `default(..)`
 pub(crate) struct DefaultXcoder {
     /// The type associated with the encoder / decoder
     pub typ: Option<TypeType>,
@@ -84,6 +86,18 @@ impl From<&syn::MetaList> for DefaultXcoder {
         // --------------------------------------------------
         if enc.is_none() && dec.is_none() {
             let e = syn::Error::new_spanned(input.clone(), err!(MissingEncDecInDefault));
+            match errors {
+                None => errors = Some(e),
+                Some(ref mut errors) => errors.combine(e),
+            }
+        }
+        // --------------------------------------------------
+        // `lengthed` describes the decoder, so it needs this default's own `dec`
+        // --------------------------------------------------
+        if dec.is_none()
+            && let Some(lengthed) = size.as_ref().and_then(SizeSpec::lengthed)
+        {
+            let e = syn::Error::new(lengthed, err!(SizeLengthedWithoutDecInDefault));
             match errors {
                 None => errors = Some(e),
                 Some(ref mut errors) => errors.combine(e),

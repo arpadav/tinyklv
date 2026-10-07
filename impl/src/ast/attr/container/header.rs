@@ -1,25 +1,27 @@
-//! Parsing of the container-level `key(..)`, `len(..)`, and fused `keylen(..)` sub-attributes
+//! Parsing of the container-level `key(..)` and `len(..)` sub-attributes, and the state of every
+//! frame header attribute, the fused `keylen(..)` included
 //!
-//! Defines [`HeaderXcoder`], which holds the optional encoder and decoder of one of
-//! these sub-attributes. Both are optional because
+//! Defines [`HeaderXcoder`], which holds the optional encoder and decoder of a `key(..)` or
+//! `len(..)`, and the optional byte count of its `size(..)`. Both xcoders are optional because
 //! `allow_unimplemented_encode` / `allow_unimplemented_decode` may suppress
 //! the missing-xcoder error. [`TryFrom<&syn::MetaList>`] drives the
 //! `parse_nested_meta` parse for `enc = ..`, `dec = ..` and `size(..)`
 //!
 //! Defines [`HeaderSlot`], which of the three sub-attributes an occurrence belongs to, and
 //! [`HeaderXcoderAttr`], the raw state of each of the three sub-attributes on
-//! a container: absent, present but unusable, or parsed into a [`HeaderXcoder`], and the
-//! rules by which each occurrence of the attribute updates that state. [`HeaderAttrs`] holds the
-//! three states, indexed by slot
+//! a container: absent, present but unusable, or parsed into its slot's [`HeaderFields`]
+//! ([`HeaderXcoder`] or [`KeylenXcoder`]), and the rules by which each occurrence of the
+//! attribute updates that state. [`HeaderAttrs`] holds the three states, indexed by slot
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use super::keylen::KeylenXcoder;
 use crate::{
     Ctxt,
     ast::{
-        attr::size::SizeSpec,
+        attr::size::SizeBytes,
         symbol::{self, Symbol},
         types::{HeaderEncoder, XcoderType},
     },
@@ -31,8 +33,21 @@ use crate::{
 use quote::ToTokens;
 use std::borrow::Cow;
 
+/// The parsed fields of one frame header attribute list, held by a [`HeaderXcoderAttr`]
+///
+/// Each slot parses into its own type, so a `keylen(..)` holds no `size(..)`
+pub(super) trait HeaderFields:
+    for<'a> TryFrom<&'a syn::MetaList, Error = syn::Error>
+{
+    /// Whether the list set an `enc`
+    fn has_enc(&self) -> bool;
+
+    /// Whether the list set a `dec`
+    fn has_dec(&self) -> bool;
+}
+
 #[derive(Debug, Clone)]
-/// The encoder and decoder for a KLV key, a length, or a fused key+length frame header
+/// The encoder, decoder and size of a KLV key or length prefix
 ///
 /// `enc` and `dec` are optional because `allow_unimplemented_encode` or
 /// `allow_unimplemented_decode` may be set on the container, in which case
@@ -44,13 +59,14 @@ pub(crate) struct HeaderXcoder {
     /// The decoder, or `None` when unimplemented decoding is allowed
     pub(crate) dec: Option<XcoderType>,
 
-    /// The declared size shape of the key or length prefix (absent ⇒ variable-width); see [`SizeSpec`]
-    pub(crate) size: Option<SizeSpec>,
+    /// The declared byte count of the key or length prefix (absent ⇒ variable-width); see
+    /// [`SizeBytes`]
+    pub(crate) size: Option<SizeBytes>,
 }
 /// [`HeaderXcoder`] implementation of [`TryFrom`] for [`syn::MetaList`]
 ///
-/// Parses the `enc = ..`, `dec = ..` and `size(..)` sub-fields from a `key(..)`,
-/// `len(..)` or `keylen(..)` attribute list into a [`HeaderXcoder`]. Unknown fields and duplicate
+/// Parses the `enc = ..`, `dec = ..` and `size(..)` sub-fields from a `key(..)` or `len(..)`
+/// attribute list into a [`HeaderXcoder`]. Unknown fields and duplicate
 /// encoder/decoder entries are returned as [`syn::Error`] values rather than
 /// stored internally, so the caller can surface them via the [`crate::Ctxt`]
 /// accumulator immediately
@@ -62,7 +78,7 @@ impl TryFrom<&syn::MetaList> for HeaderXcoder {
         // --------------------------------------------------
         let mut enc: Option<HeaderEncoder> = None;
         let mut dec: Option<XcoderType> = None;
-        let mut size: Option<SizeSpec> = None;
+        let mut size: Option<SizeBytes> = None;
         // --------------------------------------------------
         // parse nested meta
         // --------------------------------------------------
@@ -73,7 +89,7 @@ impl TryFrom<&syn::MetaList> for HeaderXcoder {
                 3;
                 enc: symbol::pnm_parse_maybestr_header_encoder => err!(DuplicateEncoderInHeader),
                 dec: symbol::pnm_parse_maybestr_decoder => err!(DuplicateDecoderInHeader),
-                size: symbol::parse_pnm_size => err!(DuplicateSizeInHeader),
+                size: symbol::parse_pnm_header_size => err!(DuplicateSizeInHeader),
             }
         })?;
         // --------------------------------------------------
@@ -84,6 +100,16 @@ impl TryFrom<&syn::MetaList> for HeaderXcoder {
             dec,
             size,
         })
+    }
+}
+/// [`HeaderXcoder`] implementation of [`HeaderFields`]
+impl HeaderFields for HeaderXcoder {
+    fn has_enc(&self) -> bool {
+        self.enc.is_some()
+    }
+
+    fn has_dec(&self) -> bool {
+        self.dec.is_some()
     }
 }
 
@@ -148,7 +174,7 @@ impl HeaderSlot {
 /// attribute itself. An [`Self::Invalid`] attribute still counts as present, so its own error is
 /// not joined by a missing-framing or conflict error that only its absence would explain
 #[derive(Debug, Default)]
-pub(super) enum HeaderXcoderAttr {
+pub(super) enum HeaderXcoderAttr<T> {
     /// The attribute did not appear
     #[default]
     Absent,
@@ -156,16 +182,35 @@ pub(super) enum HeaderXcoderAttr {
     /// name-value or a bare path); its error is already reported. A later list occurrence is
     /// parsed in its place and reports no duplicate error
     Invalid(syn::Path),
-    /// The attribute parsed into its xcoder, boxed as in `ContainerMode`
-    Parsed(syn::Path, Box<HeaderXcoder>),
+    /// The attribute parsed into its slot's fields, boxed as in `ContainerMode`
+    Parsed(syn::Path, Box<T>),
 }
 /// [`HeaderXcoderAttr`] implementation
-impl HeaderXcoderAttr {
+impl<T: HeaderFields> HeaderXcoderAttr<T> {
+    /// Applies one occurrence of the attribute, in any form
+    ///
+    /// A list is parsed ([`Self::on_list`]); a name-value or a bare path is the wrong form
+    /// ([`Self::on_non_list`])
+    ///
+    /// # Arguments
+    ///
+    /// * `cx` - Error accumulation context the errors are reported to
+    /// * `meta` - The occurrence, e.g. `keylen(dec = ..)`
+    /// * `slot` - Which attribute this is, naming its errors
+    fn on_meta(&mut self, cx: &Ctxt, meta: &syn::Meta, slot: HeaderSlot) {
+        match meta {
+            syn::Meta::List(list) => self.on_list(cx, list, slot),
+            syn::Meta::NameValue(syn::MetaNameValue { path, .. }) | syn::Meta::Path(path) => {
+                self.on_non_list(cx, path, slot);
+            }
+        }
+    }
+
     /// Applies one `name(..)` list occurrence of the attribute
     ///
     /// A list after a [`Self::Parsed`] one is reported as the slot's duplicate error and leaves
-    /// the state alone. Otherwise the list is parsed in place of the current state:
-    /// [`Self::Parsed`], or [`Self::Invalid`] once the parse error is reported
+    /// the state alone. Otherwise the list is parsed into the slot's fields in place of the
+    /// current state: [`Self::Parsed`], or [`Self::Invalid`] once the error is reported
     ///
     /// # Arguments
     ///
@@ -178,8 +223,8 @@ impl HeaderXcoderAttr {
             return;
         }
         let path = list.path.clone();
-        *self = match HeaderXcoder::try_from(list) {
-            Ok(xcoder) => Self::Parsed(path, Box::new(xcoder)),
+        *self = match T::try_from(list) {
+            Ok(fields) => Self::Parsed(path, Box::new(fields)),
             Err(err) => {
                 cx.syn_error(err);
                 Self::Invalid(path)
@@ -213,6 +258,26 @@ impl HeaderXcoderAttr {
     pub(super) fn is_present(&self) -> bool {
         !matches!(self, Self::Absent)
     }
+
+    /// Reports the missing `enc` and `dec` of a parsed attribute, spanned on its path, unless the
+    /// container allows them
+    ///
+    /// # Arguments
+    ///
+    /// * `cx` - Error accumulation context the errors are reported to
+    /// * `allow_encode` - Whether `allow_unimplemented_encode` is set
+    /// * `allow_decode` - Whether `allow_unimplemented_decode` is set
+    fn report_missing(&self, cx: &Ctxt, allow_encode: bool, allow_decode: bool) {
+        let Self::Parsed(path, fields) = self else {
+            return;
+        };
+        if !allow_encode && !fields.has_enc() {
+            cx.error_spanned_by(path, err!(MissingEncInHeader(path)));
+        }
+        if !allow_decode && !fields.has_dec() {
+            cx.error_spanned_by(path, err!(MissingDecInHeader(path)));
+        }
+    }
 }
 
 /// The raw states of a container's `key(..)`, `len(..)` and fused `keylen(..)` attributes, each
@@ -220,21 +285,18 @@ impl HeaderXcoderAttr {
 #[derive(Debug, Default)]
 pub(super) struct HeaderAttrs {
     /// `key(..)`
-    pub(super) key: HeaderXcoderAttr,
+    pub(super) key: HeaderXcoderAttr<HeaderXcoder>,
 
     /// `len(..)`
-    pub(super) len: HeaderXcoderAttr,
+    pub(super) len: HeaderXcoderAttr<HeaderXcoder>,
 
     /// `keylen(..)`
-    pub(super) keylen: HeaderXcoderAttr,
+    pub(super) keylen: HeaderXcoderAttr<KeylenXcoder>,
 }
 /// [`HeaderAttrs`] implementation
 impl HeaderAttrs {
     /// Applies one occurrence of a frame header attribute, in any form, to the state of the slot
     /// its path names ([`HeaderSlot::from_symbol`])
-    ///
-    /// A list is parsed ([`HeaderXcoderAttr::on_list`]); a name-value or a bare path is the wrong
-    /// form ([`HeaderXcoderAttr::on_non_list`])
     ///
     /// # Arguments
     ///
@@ -252,21 +314,26 @@ impl HeaderAttrs {
         // --------------------------------------------------
         // the occurrence is recorded on the attribute of its slot
         // --------------------------------------------------
-        let attr = match slot {
-            HeaderSlot::Key => &mut self.key,
-            HeaderSlot::Length => &mut self.len,
-            HeaderSlot::Keylen => &mut self.keylen,
-        };
-        // --------------------------------------------------
-        // a list is parsed, any other form is blamed on the slot
-        // --------------------------------------------------
-        match meta {
-            syn::Meta::List(list) => attr.on_list(cx, list, slot),
-            syn::Meta::NameValue(syn::MetaNameValue { path, .. }) | syn::Meta::Path(path) => {
-                attr.on_non_list(cx, path, slot);
-            }
+        match slot {
+            HeaderSlot::Key => self.key.on_meta(cx, meta, slot),
+            HeaderSlot::Length => self.len.on_meta(cx, meta, slot),
+            HeaderSlot::Keylen => self.keylen.on_meta(cx, meta, slot),
         }
         true
+    }
+
+    /// Reports every parsed attribute's missing `enc` and `dec`, in slot order
+    /// ([`HeaderXcoderAttr::report_missing`])
+    ///
+    /// # Arguments
+    ///
+    /// * `cx` - Error accumulation context the errors are reported to
+    /// * `allow_encode` - Whether `allow_unimplemented_encode` is set
+    /// * `allow_decode` - Whether `allow_unimplemented_decode` is set
+    pub(super) fn report_missing(&self, cx: &Ctxt, allow_encode: bool, allow_decode: bool) {
+        self.key.report_missing(cx, allow_encode, allow_decode);
+        self.len.report_missing(cx, allow_encode, allow_decode);
+        self.keylen.report_missing(cx, allow_encode, allow_decode);
     }
 }
 

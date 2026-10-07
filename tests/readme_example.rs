@@ -17,7 +17,11 @@ use tinyklv::prelude::*;
     allow_unimplemented_encode,
 )]
 struct Foo {
-    #[klv(key = 0x01, size(var), dec = "tinyklv::dec::string::to_string_utf8")]
+    #[klv(
+        key = 0x01,
+        size(lengthed),
+        dec = "tinyklv::dec::string::to_string_utf8"
+    )]
     // value length is variable, always read from stream
     //
     // therefore, it is used as an input arg in decoder: `tinyklv::dec::string::to_string_utf8`

@@ -1,0 +1,15 @@
+use tinyklv::prelude::*;
+
+#[derive(Klv)]
+#[klv(
+    key(dec = tinyklv::dec::binary::u8),
+    len(dec = tinyklv::dec::binary::u8_as_usize),
+    trait_fallback,
+    allow_unimplemented_encode
+)]
+struct Reading {
+    #[klv(key = 0x01, size(lengthed))]
+    name: String,
+}
+
+fn main() {}

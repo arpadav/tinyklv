@@ -202,7 +202,7 @@ struct WithStringRoundtrip {
     id: u16,
     #[klv(
         key = 0x02,
-        size(var),
+        size(lengthed),
         dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8
     )]
@@ -465,8 +465,8 @@ fn decode_value_rewinds_truncated_value_body() {
 }
 
 // --------------------------------------------------
-// size(exact = N) vs size(hint = N): the FixedWidth and Backpatch encode paths must produce
-// byte-identical output - the only difference is the path, not the wire
+// size(exact = N) vs size(reserve = N): writing the length before the value and back-filling a
+// reserved length slot after it must produce byte-identical output - only the path differs
 // --------------------------------------------------
 
 /// A nested record that encodes to exactly 8 bytes: `2 x (key 1 + len 1 + u16 2)`. Not a registry
@@ -485,7 +485,7 @@ struct Pair {
     b: u16,
 }
 
-/// `size(exact = 8)` on the nested field forces the `FixedWidth` fast encode path
+/// `size(exact = 8)` on the nested field writes its length before the value
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -498,7 +498,8 @@ struct ExactParent {
     pair: Pair,
 }
 
-/// `size(hint = 8)` on the nested field keeps the `Backpatch` path (soft estimate)
+/// `size(reserve = 8)` on the nested field only sizes the buffer, so its length slot is reserved
+/// and back-filled after the value
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -506,28 +507,28 @@ struct ExactParent {
     len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)),
     trait_fallback,
 )]
-struct HintParent {
-    #[klv(key = 0x01, size(hint = 8))]
+struct ReserveParent {
+    #[klv(key = 0x01, size(reserve = 8))]
     pair: Pair,
 }
 
 #[test]
-/// `size(exact = N)` (FixedWidth) and `size(hint = N)` (Backpatch) must encode a non-registry
-/// fixed-size value to byte-identical output; both must round-trip. The `FixedWidth` arm's
-/// debug-assert also confirms the declared width matches what `Pair` actually writes
-fn exact_and_hint_encode_identically() {
+/// `size(exact = N)` (length written first) and `size(reserve = N)` (length back-filled) must
+/// encode a non-registry fixed-size value to byte-identical output; both must round-trip. The
+/// exact path's debug-assert also confirms the declared width matches what `Pair` actually writes
+fn exact_and_reserve_encode_identically() {
     let pair = Pair {
         a: 0x1234,
         b: 0xABCD,
     };
     let mut exact_bytes = Vec::new();
     ExactParent { pair }.encode_value(&mut exact_bytes);
-    let mut hint_bytes = Vec::new();
-    HintParent { pair }.encode_value(&mut hint_bytes);
+    let mut reserve_bytes = Vec::new();
+    ReserveParent { pair }.encode_value(&mut reserve_bytes);
 
     assert_eq!(
-        exact_bytes, hint_bytes,
-        "FixedWidth (exact) and Backpatch (hint) must produce identical wire bytes"
+        exact_bytes, reserve_bytes,
+        "exact (length first) and reserve (back-filled) must produce identical wire bytes"
     );
     assert_eq!(
         ExactParent::decode_value(&mut exact_bytes.as_slice())
@@ -536,7 +537,7 @@ fn exact_and_hint_encode_identically() {
         pair,
     );
     assert_eq!(
-        HintParent::decode_value(&mut hint_bytes.as_slice())
+        ReserveParent::decode_value(&mut reserve_bytes.as_slice())
             .unwrap()
             .pair,
         pair,

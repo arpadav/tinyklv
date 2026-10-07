@@ -53,7 +53,7 @@ pub(crate) struct Compound {
     #[klv(key = 0x08)]
     pub(crate) mode: u8,
 
-    #[klv(key = 0x09, size(hint = 40))]
+    #[klv(key = 0x09, size(reserve = 40))]
     pub(crate) sensors: Vec<Reading>,
 }
 

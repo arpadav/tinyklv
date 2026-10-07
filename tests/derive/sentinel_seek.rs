@@ -33,7 +33,7 @@ struct SentinelPacket {
     id: u16,
     #[klv(
         key = 0x02,
-        size(var),
+        size(lengthed),
         dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8
     )]

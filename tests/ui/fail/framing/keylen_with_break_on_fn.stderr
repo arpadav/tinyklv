@@ -1,0 +1,5 @@
+error: `break_on = <fn>` is not supported with `keylen`: it takes the frame's length, which an `Inline` frame does not have; use a key literal (`break_on = 0xFF`), or `key(..)` + `len(..)`.
+  --> tests/ui/fail/framing/keylen_with_break_on_fn.rs:16:68
+   |
+16 | #[klv(keylen(dec = header), allow_unimplemented_encode, break_on = stop)]
+   |                                                                    ^^^^

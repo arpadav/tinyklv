@@ -3,8 +3,9 @@
 //! Defines [`Container`] (the raw parsed form of every recognised attribute on
 //! a `#[derive(Klv)]` struct) and [`ContainerParsed`] (the validated form that
 //! resolves exactly one framing mode, [`ContainerMode`]). Sub-modules handle the
-//! individual attribute parsers: `break_on`, `default`, `header` (the `key`, `len` and `keylen`
-//! lists), `sentinel` and `stream`
+//! individual attribute parsers: `break_on`, `default`, `header` (the `key` and `len` lists, and
+//! the state of all three frame header attributes), `keylen` (the fused `keylen` list), `sentinel`
+//! and `stream`
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -13,6 +14,7 @@
 mod break_on;
 mod default;
 mod header;
+mod keylen;
 mod sentinel;
 mod stream;
 
@@ -28,6 +30,7 @@ pub(super) use default::DefaultXcoder;
 use crate::{Ctxt, symbol};
 use break_on::BreakOn;
 use header::{HeaderAttrs, HeaderXcoder, HeaderXcoderAttr};
+use keylen::KeylenXcoder;
 use sentinel::Sentinel;
 use stream::Stream;
 
@@ -43,8 +46,9 @@ use syn::{Token, punctuated::Punctuated};
 /// Produced by [`ContainerParsed::from_cont`] from the mutually-exclusive
 /// `key`+`len` and `keylen` attributes. Modelling the two as one enum makes the
 /// illegal "both present" and "neither present" states unrepresentable past
-/// validation. The `expand` pass picks the decode loop's frame header and body,
-/// and the frame header written around each encoded value, from it
+/// validation, and each mode holds only the `sentinel` and `break_on` forms it supports. The
+/// `expand` pass picks the decode loop's frame header, `break_on` check and body, the frame
+/// header written around each encoded value, and the sentinel's packet framing, from it
 #[derive(Debug, Clone)]
 pub(crate) enum ContainerMode {
     /// Classic mode: separate `key`/`len` xcoders; every value is sliced via `take(len)`
@@ -53,10 +57,21 @@ pub(crate) enum ContainerMode {
         key: Box<HeaderXcoder>,
         /// The length xcoder
         len: Box<HeaderXcoder>,
+        /// The recognition sentinel literal, if any, e.g. `b"HEARTBEAT"`
+        sentinel: Option<syn::Lit>,
+        /// The break condition, if any: a key literal or a `fn(key, len) -> BreakType` path
+        break_on: Option<BreakOnSpec>,
     },
     /// Fused mode: one `keylen` codec, whose decoder returns `(key, Framing)` so framing can
-    /// depend on the key, and whose encoder writes the header from `(key, value_len)`
-    Fused(Box<HeaderXcoder>),
+    /// depend on the key, and whose encoder writes the header from `(key, value_len)`. It has no
+    /// sentinel: there is no standalone length codec to frame the packet with
+    Fused {
+        /// The fused key+length codec
+        keylen: Box<KeylenXcoder>,
+        /// The key literal that stops the loop, if any; a `break_on` fn would need a length an
+        /// `Inline` frame does not have
+        break_on: Option<syn::Lit>,
+    },
 }
 
 #[derive(Debug)]
@@ -201,6 +216,14 @@ impl Container {
                                         (None, _) => old.enc = new.enc,
                                         _ => (),
                                     }
+                                    match (&old.size, &new.size) {
+                                        (Some(_), Some(size)) => cx.syn_error(syn::Error::new(
+                                            size.span(),
+                                            err!(DuplicateDefault(new.typ; "size")),
+                                        )),
+                                        (None, _) => old.size = new.size,
+                                        _ => (),
+                                    }
                                 }
 
                                 None => {
@@ -342,17 +365,11 @@ impl Container {
         // unimplemented encode / decode errors, spanned on the `key`/`len`/`keylen` path whose
         // `enc`/`dec` is missing
         // --------------------------------------------------
-        for attr in [&headers.key, &headers.len, &headers.keylen] {
-            let HeaderXcoderAttr::Parsed(path, xcoder) = attr else {
-                continue;
-            };
-            if allow_unimplemented_encode.is_none() && xcoder.enc.is_none() {
-                cx.error_spanned_by(path, err!(MissingEncInHeader(path)));
-            }
-            if allow_unimplemented_decode.is_none() && xcoder.dec.is_none() {
-                cx.error_spanned_by(path, err!(MissingDecInHeader(path)));
-            }
-        }
+        headers.report_missing(
+            cx,
+            allow_unimplemented_encode.is_some(),
+            allow_unimplemented_decode.is_some(),
+        );
         // --------------------------------------------------
         // return
         // --------------------------------------------------
@@ -384,13 +401,8 @@ pub(crate) struct ContainerParsed {
     /// The stream type used for decoding; `None` means `&[u8]` will be used
     pub stream: Option<syn::Type>,
 
-    /// The recognition sentinel literal, if any
-    pub sentinel: Option<syn::Lit>,
-
-    /// The break condition, if any: a key literal (stop on match) or a `fn(key, len) -> BreakType`
-    pub break_on: Option<BreakOnSpec>,
-
-    /// The validated key/length framing mode (classic separate or fused)
+    /// The validated key/length framing mode (classic separate or fused), with its `sentinel`
+    /// and `break_on`
     pub mode: ContainerMode,
 
     /// Whether debug logging is enabled for this container
@@ -415,7 +427,7 @@ impl ContainerParsed {
     /// Resolves the key/length framing into a [`ContainerMode`]: exactly one of
     /// the separate `key`+`len` pair or the fused `keylen` codec must be
     /// present. Records errors in `cx` for the conflicting, half-specified, or
-    /// absent cases, and for `sentinel` or `break_on` on a fused container, and
+    /// absent cases, and for `sentinel` or a `break_on` function on a fused container, and
     /// returns `None` if validation fails. The `sentinel`/`break_on` checks run
     /// before any early return, so they surface in the same compile as a framing
     /// conflict. An attribute that is present but unusable (it failed to parse,
@@ -435,17 +447,15 @@ impl ContainerParsed {
     /// or `None` otherwise (errors are recorded in `cx`)
     pub fn from_cont(cx: &Ctxt, name: &syn::Ident, cont: Container) -> Option<Self> {
         // --------------------------------------------------
-        // `sentinel` / `break_on` beside any `keylen(..)`, reported before the framing
-        // resolution can return early
+        // `sentinel` / a `break_on` function beside any `keylen(..)`, reported before the
+        // framing resolution can return early
         // --------------------------------------------------
-        let fused_conflict = cont.headers.keylen.is_present()
-            && (cont.sentinel.is_some() || cont.break_on.is_some());
-        if fused_conflict {
+        if cont.headers.keylen.is_present() {
             if let Some(sentinel) = &cont.sentinel {
                 cx.error_spanned_by(sentinel, err!(KeylenWithSentinel));
             }
-            if let Some(break_on) = &cont.break_on {
-                cx.error_spanned_by(break_on, err!(KeylenWithBreakOn));
+            if let Some(BreakOnSpec::Func(path)) = &cont.break_on {
+                cx.error_spanned_by(path, err!(KeylenWithBreakOnFn));
             }
         }
         // --------------------------------------------------
@@ -460,7 +470,12 @@ impl ContainerParsed {
                 keylen: HeaderXcoderAttr::Absent,
                 key: HeaderXcoderAttr::Parsed(_, key),
                 len: HeaderXcoderAttr::Parsed(_, len),
-            } => ContainerMode::Separate { key, len },
+            } => ContainerMode::Separate {
+                key,
+                len,
+                sentinel: cont.sentinel,
+                break_on: cont.break_on,
+            },
             // --------------------------------------------------
             // classic mode, one half missing
             // --------------------------------------------------
@@ -507,18 +522,24 @@ impl ContainerParsed {
                 return None;
             }
             // --------------------------------------------------
-            // fused codec, no separate key/len
+            // fused codec, no separate key/len; a `sentinel` or a `break_on` fn beside it was
+            // reported above
             // --------------------------------------------------
             HeaderAttrs {
                 keylen: HeaderXcoderAttr::Parsed(_, keylen),
                 key: HeaderXcoderAttr::Absent,
                 len: HeaderXcoderAttr::Absent,
-            } => {
-                if fused_conflict {
-                    return None;
-                }
-                ContainerMode::Fused(keylen)
-            }
+            } => match (&cont.sentinel, cont.break_on) {
+                (None, None) => ContainerMode::Fused {
+                    keylen,
+                    break_on: None,
+                },
+                (None, Some(BreakOnSpec::Literal(lit))) => ContainerMode::Fused {
+                    keylen,
+                    break_on: Some(lit),
+                },
+                (Some(_), _) | (None, Some(BreakOnSpec::Func(_))) => return None,
+            },
             // --------------------------------------------------
             // fused codec alongside any separate key/len, usable or not: conflict
             // --------------------------------------------------
@@ -535,8 +556,6 @@ impl ContainerParsed {
         // --------------------------------------------------
         Some(ContainerParsed {
             stream: cont.stream,
-            sentinel: cont.sentinel,
-            break_on: cont.break_on,
             mode,
             debug: cont.debug,
             deny_unknown_keys: cont.deny_unknown_keys,

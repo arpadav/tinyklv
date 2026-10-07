@@ -1,0 +1,5 @@
+error: Conflicting `size` byte count. `exact` and `reserve` are mutually exclusive - a `size` is either an exact width or a soft capacity estimate, not both.
+ --> tests/ui/fail/size/len_size_exact_reserve.rs:6:76
+  |
+6 |     len(dec = tinyklv::dec::binary::u8_as_usize, size(exact = 1, reserve = 2)),
+  |                                                                            ^

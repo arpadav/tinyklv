@@ -58,7 +58,7 @@ struct EncodeCtx<'a> {
     /// The frame header written around each field value, per the container's framing mode
     framing: EncodeFraming<'a>,
 
-    /// The `EncodeValue` body's reserve hint ([`EncodeFraming::value_reserve_bytes`]), which a
+    /// The `EncodeValue` body's encode reserve ([`EncodeFraming::value_reserve_bytes`]), which a
     /// back-filled sentinel frame's reserve includes
     reserve_bytes: usize,
 }

@@ -44,14 +44,15 @@ pub(crate) const ENCODER: Symbol = Symbol("enc");
 /// The `dec` sub-attribute identifier
 pub(crate) const DECODER: Symbol = Symbol("dec");
 /// The `size` sub-attribute identifier for `key(..)`/`len(..)`/fields; see
-/// [`SizeSpec`](crate::ast::attr::size::SizeSpec)
+/// [`SizeSpec`](crate::ast::attr::size::SizeSpec) and
+/// [`SizeBytes`](crate::ast::attr::size::SizeBytes)
 pub(crate) const SIZE: Symbol = Symbol("size");
-/// The `var` inner keyword of `size(..)`
-pub(crate) const VAR: Symbol = Symbol("var");
+/// The `lengthed` inner keyword of a field's `size(..)`
+pub(crate) const LENGTHED: Symbol = Symbol("lengthed");
 /// The `exact = N` inner keyword of `size(..)`
 pub(crate) const EXACT: Symbol = Symbol("exact");
-/// The `hint = N` inner keyword of `size(..)`
-pub(crate) const HINT: Symbol = Symbol("hint");
+/// The `reserve = N` inner keyword of `size(..)`
+pub(crate) const RESERVE: Symbol = Symbol("reserve");
 /// The `stream` sub-attribute identifier
 pub(crate) const STREAM: Symbol = Symbol("stream");
 /// The `default` sub-attribute identifier
@@ -117,8 +118,9 @@ pub(crate) static CONT_NV_SYMBOLS: Symbols = Symbols(&[STREAM, SENTINEL, BREAK_O
 pub(crate) static FIELD_SYMBOLS: Symbols =
     Symbols(&[KEY, ENCODER, DECODER, SIZE, LATEBIND, DEFAULT_VALUE]);
 
-/// Valid inner keywords of the `size(..)` list (`var`, `exact = N`, `hint = N`)
-pub(crate) static SIZE_FIELDS: Symbols = Symbols(&[VAR, EXACT, HINT]);
+/// Valid inner keywords of a field's or a `default(..)`'s `size(..)` list (`lengthed`,
+/// `exact = N`, `reserve = N`)
+pub(crate) static SIZE_FIELDS: Symbols = Symbols(&[LENGTHED, EXACT, RESERVE]);
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 /// A symbol for KLV attributes
@@ -151,9 +153,9 @@ const KNOWN: &[Symbol] = &[
     ENCODER,
     DECODER,
     SIZE,
-    VAR,
+    LENGTHED,
     EXACT,
-    HINT,
+    RESERVE,
     STREAM,
     DEFAULT,
     SENTINEL,

@@ -16,7 +16,11 @@
 use super::{fixed_width, length_prefix::LengthPrefix, staging::Staging};
 use crate::{
     ast::{
-        attr::{MainContainer, container::ContainerMode, size::SizeSpec},
+        attr::{
+            MainContainer,
+            container::ContainerMode,
+            size::{SizeBytes, SizeSpec},
+        },
         types,
     },
     expand::helpers,
@@ -47,8 +51,10 @@ pub(super) enum EncodeFraming<'a> {
         key_encoder: KeyEncoder<'a>,
         /// The length prefix written after each field's key and, under a sentinel, the frame length
         len: LengthPrefix<'a>,
-        /// The estimated bytes of one field's key and length, for the reserve hint
+        /// The estimated bytes of one field's key and length, for the encode reserve
         header_bytes: usize,
+        /// The sentinel the `EncodeFrame` impl writes ahead of the frame length, if any
+        sentinel: Option<&'a syn::Lit>,
     },
     /// One encoder writing each frame header from `(key, value_len)`
     Fused {
@@ -78,7 +84,9 @@ impl<'a> EncodeFraming<'a> {
             // --------------------------------------------------
             // separate key and length: each has its own encoder and width
             // --------------------------------------------------
-            ContainerMode::Separate { key, len } => {
+            ContainerMode::Separate {
+                key, len, sentinel, ..
+            } => {
                 let key_encoder = key.enc.as_ref()?;
                 // --------------------------------------------------
                 // the key width: its `size(..)`, else a built-in fixed-width encoder, else the
@@ -86,7 +94,8 @@ impl<'a> EncodeFraming<'a> {
                 // --------------------------------------------------
                 let key_bytes = key
                     .size
-                    .and_then(SizeSpec::capacity_bytes)
+                    .as_ref()
+                    .and_then(SizeBytes::capacity_bytes)
                     .or_else(|| fixed_width::builtin_fixed_encoder_width(key_encoder))
                     .unwrap_or(DEFAULT_KEY_BYTES);
                 // --------------------------------------------------
@@ -94,27 +103,29 @@ impl<'a> EncodeFraming<'a> {
                 // --------------------------------------------------
                 let len_bytes = len
                     .size
-                    .and_then(SizeSpec::capacity_bytes)
+                    .as_ref()
+                    .and_then(SizeBytes::capacity_bytes)
                     .unwrap_or(DEFAULT_LEN_BYTES);
                 // --------------------------------------------------
                 // assemble the framing; a missing length encoder yields `None`
                 // --------------------------------------------------
                 Some(Self::Separate {
                     key_encoder: KeyEncoder(key_encoder),
-                    len: LengthPrefix::new(len.enc.as_ref()?, len.size),
+                    len: LengthPrefix::new(len.enc.as_ref()?, len.size.as_ref()),
                     header_bytes: key_bytes.saturating_add(len_bytes),
+                    sentinel: sentinel.as_ref(),
                 })
             }
             // --------------------------------------------------
             // fused: one `keylen` encoder writes each frame header
             // --------------------------------------------------
-            ContainerMode::Fused(keylen) => Some(Self::Fused {
+            ContainerMode::Fused { keylen, .. } => Some(Self::Fused {
                 keylen_encoder: KeylenEncoder(keylen.enc.as_ref()?),
             }),
         }
     }
 
-    /// Estimates the bytes one field's frame header occupies, for the reserve hint
+    /// Estimates the bytes one field's frame header occupies, for the encode reserve
     ///
     /// A fused header's widths are decided by the `keylen` encoder at run time, so both take the
     /// one-byte default
@@ -129,12 +140,12 @@ impl<'a> EncodeFraming<'a> {
         }
     }
 
-    /// Computes the encode-value capacity reserve hint in bytes
+    /// Computes the `encode_value` encode reserve in bytes
     ///
     /// Estimates the number of bytes the generated `encode_value` method should reserve before
     /// writing field items: per `#[klv(..)]` field, the frame header estimate
     /// ([`Self::header_reserve_bytes`]) plus any statically known value width. Unknown widths
-    /// contribute zero for the value portion, so the result is an allocation hint rather than a
+    /// contribute zero for the value portion, so the result is an estimate rather than a
     /// wire-format contract. Every sum saturates at `usize::MAX`
     ///
     /// # Arguments
@@ -143,20 +154,20 @@ impl<'a> EncodeFraming<'a> {
     ///
     /// # Returns
     ///
-    /// The total byte reserve hint for all encoded value fields in the container
+    /// The total encode reserve in bytes for all encoded value fields in the container
     pub(super) fn value_reserve_bytes(self, input: &MainContainer) -> usize {
         // --------------------------------------------------
         // estimate per-field key and length bytes
         // --------------------------------------------------
         let header_bytes = self.header_reserve_bytes();
         // --------------------------------------------------
-        // sum known field widths into the reserve hint
+        // sum known field widths into the encode reserve
         // --------------------------------------------------
         input
             .klv_fields()
             .map(|(field, attrs)| {
                 let value_bytes = fixed_width::fixed_value_type_width(field.ty)
-                    .or_else(|| attrs.size.and_then(SizeSpec::capacity_bytes))
+                    .or_else(|| attrs.size.as_ref().and_then(SizeSpec::capacity_bytes))
                     .unwrap_or(0);
                 header_bytes.saturating_add(value_bytes)
             })

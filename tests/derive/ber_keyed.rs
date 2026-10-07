@@ -144,7 +144,7 @@ fn encode_ber_roundtrip_all_zeros() {
 struct BerLargePayload {
     #[klv(
         key = 0x01_u64,
-        size(var),
+        size(lengthed),
         dec = decs::to_string_utf8,
         enc = encs::from_string_utf8,
     )]

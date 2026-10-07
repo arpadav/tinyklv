@@ -10,7 +10,8 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::support::drive::Drive;
+use crate::common::drive::Drive;
+use crate::common::varint;
 use crate::support::example::{Example, Reading, Status};
 use crate::support::pb;
 use tinyklv::codecs::ber::BerLength;
@@ -59,7 +60,7 @@ impl Limits {
     ///
     /// `Ok(Status)`, or an error on truncation or an unknown discriminant
     fn decode_consuming(input: &mut &[u8]) -> tinyklv::Result<Status> {
-        let value = pb::dec_varint_u64(input)?;
+        let value = varint::dec_u64(input)?;
         Status::try_from(value).map_err(|_| ContextError::from_input(input))
     }
 }
@@ -134,7 +135,7 @@ impl Wide {
 /// length prefix
 #[test]
 fn split_at_every_offset() {
-    Example::decoded().assert_every_split_completes(&Example::wire());
+    Example::decoded().assert_decodes_from(&Example::wire());
 }
 
 /// A header built from crate codecs still pauses at every split and completes, whether the
@@ -142,7 +143,7 @@ fn split_at_every_offset() {
 /// long-form length cut inside its length bytes)
 #[test]
 fn split_inside_crate_codec_header() {
-    Wide::decoded().assert_every_split_completes(&Wide::wire());
+    Wide::decoded().assert_decodes_from(&Wide::wire());
 }
 
 /// An `Inline` varint cut between its two bytes pauses with the frame unconsumed,
@@ -415,7 +416,7 @@ fn split_inside_long_form_ber_length_value() {
         size: Some(BerLength::new(200_u8)),
         ..Reading::count_only()
     };
-    expected.assert_every_split_completes(&wire);
+    expected.assert_decodes_from(&wire);
 }
 
 /// A two-byte BER-OID `Inline` value split anywhere, including between its continuation and
@@ -433,7 +434,7 @@ fn split_inside_ber_oid_value() {
         level: Some(255),
         ..Reading::count_only()
     };
-    expected.assert_every_split_completes(&wire);
+    expected.assert_decodes_from(&wire);
 }
 
 /// An `Inline` decoder that consumes a complete final value and then rejects it without

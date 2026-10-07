@@ -37,7 +37,7 @@ struct Telemetry {
     /// a width known only once encoded, back-filled into the length slot
     #[klv(
         key = 0x02,
-        size(var),
+        size(lengthed),
         dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8
     )]

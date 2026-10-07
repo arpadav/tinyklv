@@ -10,7 +10,9 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::support::drive::{ContextErrorExt, Drive};
+use crate::common::drive::Drive;
+use crate::common::error::ContextErrorExt;
+use crate::common::varint;
 use crate::support::pb;
 use tinyklv::dec::ber as decber;
 use tinyklv::prelude::*;
@@ -54,7 +56,7 @@ impl Probe {
     /// The varint, or an error labelled [`Probe::NONZERO`] and nothing else, with the cursor
     /// rewound to the varint
     fn nonzero(input: &mut &[u8]) -> tinyklv::Result<u64> {
-        pb::dec_varint_u64
+        varint::dec_u64
             .verify(|value| *value != 0)
             .context(StrContext::Label(Self::NONZERO))
             .parse_next(input)
@@ -71,7 +73,7 @@ impl Probe {
     /// The `u8`, or an error whose cause is the failed conversion and nothing else, with the
     /// cursor rewound to the varint
     fn narrow(input: &mut &[u8]) -> tinyklv::Result<u8> {
-        pb::dec_varint_u64.try_map(u8::try_from).parse_next(input)
+        varint::dec_u64.try_map(u8::try_from).parse_next(input)
     }
 }
 

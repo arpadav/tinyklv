@@ -2,8 +2,9 @@
 //!
 //! Defines [`Field`] (the raw parsed form of a single struct field's KLV
 //! annotations) and [`FieldParsed`] (the validated form that guarantees a
-//! `key` literal is present). Container-level `default(..)` xcoders are
-//! applied here when a field does not carry its own explicit encoder/decoder
+//! `key` literal is present). A container-level `default(..)` fills whichever of
+//! the encoder, decoder and size a field of its type leaves unset; `lengthed` goes with the
+//! decoder.
 //! The `trait_fallback` opt-in is also resolved at this stage, injecting
 //! placeholder paths that the expand phase replaces with fully-qualified
 //! `<T as EncodeValue>::encode_value` / `<T as DecodeValue<..>>::decode_value` calls
@@ -180,11 +181,11 @@ impl Field {
         // --------------------------------------------------
         let sizes = all_field_xcoders
             .iter()
-            .filter_map(|f| f.size)
+            .filter_map(|f| f.size.clone())
             .collect::<Vec<_>>();
         field_xcoder.size = match sizes.len() {
             0 => None,
-            1 => Some(sizes[0]),
+            1 => Some(sizes[0].clone()),
             _ => {
                 cx.error_spanned_by(field, err!(DuplicateSizeInField));
                 None
@@ -221,16 +222,21 @@ impl Field {
             }
         };
         // --------------------------------------------------
-        // set defaults, if no enc/dec was found
+        // a container default fills each of enc, dec and the size's byte count the field left
+        // unset; `lengthed` comes with whichever dec the field uses
         // --------------------------------------------------
         let typ_maybe_unwrapped = unwrap_option_type(&field.ty).unwrap_or(&field.ty);
         if let Some(default) = container_defaults.get(typ_maybe_unwrapped) {
-            if let (Some(default_enc), false) = (&default.enc, keep_enc_none) {
-                field_xcoder.enc = Some(default_enc.clone());
+            if field_xcoder.enc.is_none() && !keep_enc_none {
+                field_xcoder.enc.clone_from(&default.enc);
             }
-            if let (Some(default_dec), false) = (&default.dec, keep_dec_none) {
-                field_xcoder.dec = Some(default_dec.clone());
-                field_xcoder.size = default.size;
+            let default_dec = field_xcoder.dec.is_none() && !keep_dec_none && default.dec.is_some();
+            if default_dec {
+                field_xcoder.dec.clone_from(&default.dec);
+            }
+            match SizeSpec::filled(field_xcoder.size.take(), default.size.as_ref(), default_dec) {
+                Ok(size) => field_xcoder.size = size,
+                Err(err) => cx.syn_error(err),
             }
         }
         // --------------------------------------------------
@@ -262,11 +268,11 @@ impl Field {
             && !allow_unimplemented_decode
             && field_xcoder.dec.is_none()
         {
-            let takes_len = field_xcoder.size.is_some_and(SizeSpec::takes_len);
+            let takes_len = field_xcoder.size.as_ref().is_some_and(SizeSpec::takes_len);
             if takes_len {
                 cx.error_spanned_by(
                     name.clone(),
-                    err!(SizeVarFallbackRequiresExplicitDec(
+                    err!(SizeLengthedFallbackRequiresExplicitDec(
                         name,
                         typ_maybe_unwrapped
                     )),
@@ -369,11 +375,72 @@ impl FieldParsed {
             key: key.clone(),
             enc: f.contents.enc.clone(),
             dec: f.contents.dec.clone(),
-            size: f.contents.size,
+            size: f.contents.size.clone(),
             latebind: f.contents.latebind.clone(),
             default: f.contents.default.clone(),
             fallback_enc: f.contents.fallback_enc,
             fallback_dec: f.contents.fallback_dec,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        Ctxt,
+        ast::attr::{MainContainer, size::SizeSpec},
+    };
+
+    use quote::ToTokens;
+
+    #[test]
+    /// Verifies a container `default(typ = ..)` fills only what a field of its type leaves unset,
+    /// with `lengthed` coming from whichever side's `dec` the field uses
+    ///
+    /// The default is `lengthed` with `exact = 4`. A field with its own `dec` takes the default's
+    /// `exact` but not its `lengthed`; a field without one takes the default's `dec` and
+    /// `lengthed`; a field's own `exact` stays
+    fn a_default_fills_what_the_field_leaves_unset() {
+        let item: syn::DeriveInput = syn::parse_quote! {
+            #[klv(
+                key(dec = decb::u8),
+                len(dec = decb::u8_as_usize),
+                default(typ = Name, dec = name_lengthed, size(lengthed, exact = 4)),
+                allow_unimplemented_encode,
+            )]
+            struct Reading {
+                #[klv(key = 0x01, dec = name_fixed)]
+                own_dec: Name,
+                #[klv(key = 0x02)]
+                no_dec: Name,
+                #[klv(key = 0x03, size(exact = 8))]
+                own_exact: Name,
+            }
+        };
+        let cx = Ctxt::new();
+        let container = MainContainer::from_ast(&cx, &item);
+        cx.check().expect("the input parses");
+        let container = container.expect("the input is a container");
+        let filled: Vec<String> = container
+            .klv_fields()
+            .map(|(field, attrs)| {
+                let size = attrs.size.as_ref();
+                format!(
+                    "{}: dec = {}, lengthed = {}, exact = {:?}",
+                    field.name,
+                    attrs.dec.to_token_stream(),
+                    size.is_some_and(SizeSpec::takes_len),
+                    size.and_then(SizeSpec::exact_width),
+                )
+            })
+            .collect();
+        assert_eq!(
+            filled,
+            [
+                "own_dec: dec = name_fixed, lengthed = false, exact = Some(4)",
+                "no_dec: dec = name_lengthed, lengthed = true, exact = Some(4)",
+                "own_exact: dec = name_lengthed, lengthed = true, exact = Some(8)",
+            ],
+        );
     }
 }

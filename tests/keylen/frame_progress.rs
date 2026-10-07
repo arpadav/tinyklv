@@ -10,7 +10,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::support::drive::Drive;
+use crate::common::drive::Drive;
 use crate::support::header_budget::HeaderBudget;
 use crate::support::pb;
 use tinyklv::prelude::*;
@@ -182,7 +182,7 @@ fn header_consuming_nothing_then_inline_value_decodes() {
 /// and its value
 #[test]
 fn header_consuming_nothing_splits_anywhere() {
-    Peeked::decoded().assert_every_split_completes(&Peeked::wire());
+    Peeked::decoded().assert_decodes_from(&Peeked::wire());
 }
 
 /// A header that consumes nothing framing `Sliced(0)` makes no progress, for a known key and

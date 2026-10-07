@@ -1,5 +1,5 @@
-error: Unknown field `encoder` in key/len/keylen.
-       Expected `enc = <..>`, `dec = <..>`, or `size(..)`.
+error: Unknown field `encoder` in keylen.
+       Expected `enc = <..>` or `dec = <..>`.
  --> tests/ui/fail/header/keylen_unknown_field.rs:8:28
   |
 8 | #[klv(keylen(dec = header, encoder = header_enc))]

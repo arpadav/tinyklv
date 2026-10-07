@@ -31,6 +31,10 @@ name = "edge_cases"
 path = "tests/edge_cases/main.rs"
 
 [[test]]
+name = "framing"
+path = "tests/framing/main.rs"
+
+[[test]]
 name = "keylen"
 path = "tests/keylen/main.rs"
 

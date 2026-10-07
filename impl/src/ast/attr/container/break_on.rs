@@ -2,10 +2,14 @@
 //!
 //! `break_on` accepts two forms, distinguished by the right-hand side of the name-value:
 //!
-//! * a **literal** (e.g. `break_on = 0xFF`) - codegen lowers it to "stop the loop when the decoded
-//!   key equals this literal" ([`crate::BreakType::Done`] on match, else `Proceed`)
-//! * a **function path** (e.g. `break_on = classify`) - codegen calls `path(key, len)`, which the
-//!   user writes as `fn(key, len) -> tinyklv::BreakType`
+//! * a **literal** (e.g. `break_on = 0xFF`) - the loop stops right after a header whose key
+//!   equals it
+//!   * `key` + `len`: lowered to `tinyklv::BreakType::Done` on a match, else `Proceed`
+//!   * `keylen`: lowered to a bare `break` on a match
+//! * a **function path** (e.g. `break_on = classify`) - the user's
+//!   `fn(key, len) -> tinyklv::BreakType`
+//!   * `key` + `len`: called as `path(key, len)` after each header
+//!   * `keylen`: a compile error, since an `Inline` frame has no length to pass
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -20,9 +24,8 @@ use quote::ToTokens;
 
 /// The two forms a `break_on = ..` right-hand side may take
 ///
-/// Consumed by the decode codegen to build the per-iteration break decision: a literal lowers to a
-/// key-equality check yielding [`crate::BreakType::Done`]; a function path is called directly with
-/// the concrete `(key, len)`
+/// A `key` + `len` container's mode holds either; a `keylen` container's holds only the literal
+#[derive(Clone)]
 pub(crate) enum BreakOnSpec {
     /// `break_on = <literal>` - a decoded key equal to this literal stops the loop
     Literal(syn::Lit),

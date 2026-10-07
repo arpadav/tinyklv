@@ -45,12 +45,15 @@ impl DecodeCtx<'_> {
     /// A [`proc_macro2::TokenStream`] containing the sentinel constant, static, and
     /// `SeekSentinel` impl block, or `None` when the container declares no sentinel
     pub(super) fn sentinel_impl(&self) -> Option<proc_macro2::TokenStream> {
-        let sentinel = self.input.attrs.sentinel.as_ref()?;
         // --------------------------------------------------
-        // a fused container rejects `sentinel` at parse time, so a sentinel always comes with the
-        // separate length decoder its scan needs
+        // the sentinel, and the separate length decoder that reads the frame length after it
         // --------------------------------------------------
-        let DecodeFraming::Separate { len_decoder, .. } = self.framing else {
+        let DecodeFraming::Separate {
+            len_decoder,
+            sentinel: Some(sentinel),
+            ..
+        } = self.framing
+        else {
             return None;
         };
         let name = &self.input.ident;

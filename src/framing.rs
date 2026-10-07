@@ -7,8 +7,8 @@
 //!
 //! On encode, each value is staged first, then the `keylen` encoder is handed `(key, value_len)`
 //! and writes the frame header: the key, and the length only when the key implies one. A `keylen`
-//! container does not support `sentinel` or `break_on`. Here key `0x01` is length-prefixed and
-//! key `0x02` is an `Inline` BER-OID varint:
+//! container does not support `sentinel`, and its `break_on` takes a key literal only. Here key
+//! `0x01` is length-prefixed and key `0x02` is an `Inline` BER-OID varint:
 //!
 //! ```rust
 //! use tinyklv::{
@@ -93,6 +93,10 @@ pub enum Framing {
     /// value decoder against the resulting sub-slice. This is the framing every classic
     /// `key`+`len` field uses, and the one wire types that carry a length prefix (or a fixed width)
     /// resolve to
+    ///
+    /// For a field declaring `size(exact = N)`, a length other than `N` is malformed: both decodes
+    /// return an error naming `` `<Struct>::<field>` ``, even when the value runs past the end of
+    /// the input
     Sliced(usize),
 
     /// The value is self-delimiting and carries no length on the wire
@@ -126,5 +130,9 @@ pub enum Framing {
     /// The converse also holds: a decoder that consumes a complete value and then rejects it
     /// without rewinding fails at the end of the input when that value is the last one, so its
     /// malformed value reads as truncation. Rewind to the start of the value before rejecting it
+    ///
+    /// A `size(lengthed)` field's decoder takes the value's length, which an `Inline` frame does
+    /// not carry. Its value is malformed wherever the cursor is: both decodes return an error
+    /// naming `` `<Struct>::<field>` `` without running the decoder, the cursor at the value start
     Inline,
 }

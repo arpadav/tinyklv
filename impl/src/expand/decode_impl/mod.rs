@@ -13,7 +13,8 @@
 //!   impls (`DecodeValue`/`DecodeFrame` decode directly; the streaming `decoder()` path uses the
 //!   resumable `Partial` machinery). Both loops are assembled from `framing` (the frame header
 //!   and body per framing mode), `loop_driver` (the exits per entry point) and `key_match_gen`
-//!   (the per-field arms)
+//!   (the per-field arms, and the checks that reject a frame length other than a field's
+//!   `size(exact = N)`)
 //! * this module - the `decoder()` constructor ([`DecodeCtx::decoder_fn`])
 //!
 //! Author: aav
@@ -32,7 +33,7 @@ mod sentinel_gen;
 // --------------------------------------------------
 use crate::ast::attr::MainContainer;
 use framing::DecodeFraming;
-use loop_driver::LoopDriver;
+use loop_driver::{CursorSite, LoopDriver};
 
 // --------------------------------------------------
 // external
@@ -50,6 +51,9 @@ struct DecodeCtx<'a> {
 
     /// The frame header codec(s)
     framing: DecodeFraming<'a>,
+
+    /// Which cursor the one-shot loop advances, from the fields and the stream
+    cursor: CursorSite,
 
     /// The stream type the impls are parameterised over: the container's `stream`, else `&[u8]`
     stream: syn::Type,
@@ -123,6 +127,10 @@ impl<'a> DecodeCtx<'a> {
         // default stream -> &[u8]
         // --------------------------------------------------
         let stream = input.attrs.stream.clone().unwrap_or_else(u8_slice);
+        // --------------------------------------------------
+        // which cursor the one-shot loop advances
+        // --------------------------------------------------
+        let cursor = CursorSite::of(input, &stream);
         let lifetime = syn::Lifetime::new("'z", proc_macro2::Span::call_site());
         let stream_lifetimed = insert_lifetime(&stream, lifetime.clone());
         // --------------------------------------------------
@@ -134,6 +142,7 @@ impl<'a> DecodeCtx<'a> {
         Some(Self {
             input,
             framing,
+            cursor,
             stream,
             lifetime,
             stream_lifetimed,

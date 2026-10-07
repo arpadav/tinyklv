@@ -36,11 +36,13 @@ impl EncodeCtx<'_> {
     /// container declares no sentinel
     pub(super) fn encode_frame_impl(&self) -> Option<proc_macro2::TokenStream> {
         // --------------------------------------------------
-        // a fused container rejects `sentinel` at parse time, so a sentinel always comes with the
-        // separate length encoder that writes the frame length
+        // the sentinel, and the separate length encoder that writes the frame length
         // --------------------------------------------------
-        let (Some(sentinel), EncodeFraming::Separate { len, .. }) =
-            (self.input.attrs.sentinel.as_ref(), self.framing)
+        let EncodeFraming::Separate {
+            len,
+            sentinel: Some(sentinel),
+            ..
+        } = self.framing
         else {
             return None;
         };

@@ -3,7 +3,8 @@
 //! These are ordinary tinyklv codecs that live entirely test-side: tinyklv never
 //! learns the word "protobuf". They mirror the protobuf wire format - a tag
 //! varint whose low 3 bits carry the wire type - so the fused `keylen` codec can
-//! return `(tag, Framing)` and drive both `Sliced` and `Inline` value framing. The
+//! return `(tag, Framing)` and drive both `Sliced` and `Inline` value framing;
+//! [`dec_field_keylen`] returns the field number in place of the tag. The
 //! `enc_*` encoders are the inverses the fused encode path writes with. [`dec_u8_keylen`] and
 //! [`enc_u8_keylen`] are the bare header of the tests that need no protobuf: a `u8` key, every
 //! value `Inline`
@@ -16,6 +17,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use crate::common::varint;
 use tinyklv::Result;
 use tinyklv::dec::binary as decb;
 use tinyklv::framing::Framing;
@@ -24,7 +26,6 @@ use tinyklv::framing::Framing;
 // external
 // --------------------------------------------------
 use winnow::{
-    Parser,
     error::{ContextError, ParserError},
     stream::Stream,
 };
@@ -35,76 +36,20 @@ use winnow::{
 /// Mask selecting the wire type from a tag's low 3 bits
 const WIRE_TYPE_MASK: u32 = 0x07;
 
+/// Width of the wire type in a tag's low bits; the field number sits above it
+const WIRE_TYPE_BITS: u32 = 3;
+
 /// Wire type 0 VARINT: self-delimiting
-const WIRE_VARINT: u32 = 0;
+pub(crate) const WIRE_VARINT: u32 = 0;
 
 /// Wire type 1 I64: fixed 8 bytes
-const WIRE_I64: u32 = 1;
+pub(crate) const WIRE_I64: u32 = 1;
 
 /// Wire type 2 LEN: a varint length prefix, then that many bytes
-const WIRE_LEN: u32 = 2;
+pub(crate) const WIRE_LEN: u32 = 2;
 
 /// Wire type 5 I32: fixed 4 bytes
 const WIRE_I32: u32 = 5;
-
-/// Decodes one LEB128 varint as a `u64`, consuming continuation bytes
-///
-/// # Arguments
-///
-/// * `input` - the byte stream to read from; advanced past the varint on success
-///
-/// # Returns
-///
-/// `Ok(u64)` with the decoded value, or an error on truncation or on a 10th byte
-/// carrying bits past the 64th
-pub(crate) fn dec_varint_u64(input: &mut &[u8]) -> Result<u64> {
-    let mut result: u64 = 0;
-    let mut shift: u32 = 0;
-    loop {
-        let Some((&byte, rest)) = input.split_first() else {
-            return Err(ContextError::from_input(input));
-        };
-        // --------------------------------------------------
-        // the 10th byte holds only bit 63: anything above 1 overflows
-        // rejected before advancing, so the cursor sits on the bad byte
-        // --------------------------------------------------
-        if shift == 63 && byte > 1 {
-            return Err(ContextError::from_input(input));
-        }
-        *input = rest;
-        result |= u64::from(byte & 0x7F) << shift;
-        if byte & 0x80 == 0 {
-            return Ok(result);
-        }
-        shift += 7;
-    }
-}
-
-/// Decodes one LEB128 varint as a `u32` (the protobuf tag width)
-///
-/// # Arguments
-///
-/// * `input` - the byte stream to read from; advanced past the varint on success
-///
-/// # Returns
-///
-/// `Ok(u32)`, or an error on truncation or if the value does not fit in a `u32`
-fn dec_varint_u32(input: &mut &[u8]) -> Result<u32> {
-    dec_varint_u64.try_map(u32::try_from).parse_next(input)
-}
-
-/// Decodes one LEB128 varint as a `usize` length prefix
-///
-/// # Arguments
-///
-/// * `input` - the byte stream to read from; advanced past the varint on success
-///
-/// # Returns
-///
-/// `Ok(usize)`, or an error on truncation or if the value does not fit in a `usize`
-fn dec_varint_usize(input: &mut &[u8]) -> Result<usize> {
-    dec_varint_u64.try_map(usize::try_from).parse_next(input)
-}
 
 /// Decodes one protobuf frame header: the tag varint (the key), then the framing
 ///
@@ -125,11 +70,11 @@ fn dec_varint_usize(input: &mut &[u8]) -> Result<usize> {
 /// `Ok((tag, framing))`, or an error on truncation or an unsupported wire type
 pub(crate) fn dec_tag_keylen(input: &mut &[u8]) -> Result<(u32, Framing)> {
     let start = input.checkpoint();
-    let tag = dec_varint_u32(input)?;
+    let tag = varint::dec_u32(input)?;
     let framing = match tag & WIRE_TYPE_MASK {
         WIRE_VARINT => Framing::Inline,
         WIRE_I64 => Framing::Sliced(8),
-        WIRE_LEN => Framing::Sliced(dec_varint_usize(input)?),
+        WIRE_LEN => Framing::Sliced(varint::dec_usize(input)?),
         WIRE_I32 => Framing::Sliced(4),
         _ => {
             input.reset(&start);
@@ -137,6 +82,20 @@ pub(crate) fn dec_tag_keylen(input: &mut &[u8]) -> Result<(u32, Framing)> {
         }
     };
     Ok((tag, framing))
+}
+
+/// Decodes one protobuf frame header keyed by field number: [`dec_tag_keylen`] with the wire type
+/// shifted off the tag, so one key frames `Sliced` or `Inline` by the wire type it arrives with
+///
+/// # Arguments
+///
+/// * `input` - the byte stream positioned at a frame header; advanced past the header on success
+///
+/// # Returns
+///
+/// `Ok((field_number, framing))`, or the error of [`dec_tag_keylen`]
+pub(crate) fn dec_field_keylen(input: &mut &[u8]) -> Result<(u32, Framing)> {
+    dec_tag_keylen(input).map(|(tag, framing)| (tag >> WIRE_TYPE_BITS, framing))
 }
 
 /// Decodes a frame header: a `u8` key, every value `Inline`
@@ -176,7 +135,7 @@ pub(crate) fn enc_u8_keylen((key, _): (u8, usize), out: &mut Vec<u8>) {
 ///
 /// `Ok(i32)`, or an error on truncation
 pub(crate) fn dec_varint_i32(input: &mut &[u8]) -> Result<i32> {
-    dec_varint_u64(input).map(|value| value as u32 as i32)
+    varint::dec_u64(input).map(|value| value as u32 as i32)
 }
 
 /// Decodes a wire-2 LEN value as a UTF-8 `String`, consuming the whole sub-slice
@@ -214,40 +173,6 @@ pub(crate) fn dec_packed_i32(input: &mut &[u8]) -> Result<Vec<i32>> {
     Ok(out)
 }
 
-/// Encodes one `u64` as a LEB128 varint, the inverse of [`dec_varint_u64`]
-///
-/// # Arguments
-///
-/// * `input` - the value to encode
-/// * `out` - the buffer the varint bytes are appended to
-pub(crate) fn enc_varint_u64(mut input: u64, out: &mut Vec<u8>) {
-    while input >= 0x80 {
-        out.push((input as u8) | 0x80);
-        input >>= 7;
-    }
-    out.push(input as u8);
-}
-
-/// Encodes one `u32` as a LEB128 varint (the protobuf tag width), the inverse of [`dec_varint_u32`]
-///
-/// # Arguments
-///
-/// * `input` - the value to encode
-/// * `out` - the buffer the varint bytes are appended to
-fn enc_varint_u32(input: u32, out: &mut Vec<u8>) {
-    enc_varint_u64(u64::from(input), out);
-}
-
-/// Encodes one `usize` length prefix as a LEB128 varint, the inverse of [`dec_varint_usize`]
-///
-/// # Arguments
-///
-/// * `input` - the length to encode
-/// * `out` - the buffer the varint bytes are appended to
-fn enc_varint_usize(input: usize, out: &mut Vec<u8>) {
-    enc_varint_u64(input as u64, out);
-}
-
 /// Encodes one protobuf frame header, the inverse of [`dec_tag_keylen`] for wire types 0/1/2/5
 ///
 /// Writes the tag varint, then the value length as a varint only for wire 2 LEN: every
@@ -265,10 +190,27 @@ pub(crate) fn enc_tag_keylen((tag, value_len): (u32, usize), out: &mut Vec<u8>) 
         matches!(wire_type, WIRE_VARINT | WIRE_I64 | WIRE_LEN | WIRE_I32),
         "unsupported wire type {wire_type} in tag {tag}"
     );
-    enc_varint_u32(tag, out);
+    varint::enc_u32(tag, out);
     if wire_type == WIRE_LEN {
-        enc_varint_usize(value_len, out);
+        varint::enc_usize(value_len, out);
     }
+}
+
+/// Encodes one protobuf frame header keyed by field number, the inverse of
+/// [`dec_field_keylen`]: [`enc_tag_keylen`] with the tag built from the field number and the wire
+/// type the field is sent as
+///
+/// # Arguments
+///
+/// * `wire_type` - the wire type the field is sent as
+/// * `(field, value_len)` - the field number and the byte length of the value that follows
+/// * `out` - the buffer the header bytes are appended to
+pub(crate) fn enc_field_keylen(
+    wire_type: u32,
+    (field, value_len): (u32, usize),
+    out: &mut Vec<u8>,
+) {
+    enc_tag_keylen(((field << WIRE_TYPE_BITS) | wire_type, value_len), out);
 }
 
 /// Encodes a protobuf `int32` as a wire-0 VARINT, the inverse of [`dec_varint_i32`]
@@ -281,7 +223,7 @@ pub(crate) fn enc_tag_keylen((tag, value_len): (u32, usize), out: &mut Vec<u8>) 
 /// * `input` - the value to encode
 /// * `out` - the buffer the varint bytes are appended to
 pub(crate) fn enc_varint_i32(input: i32, out: &mut Vec<u8>) {
-    enc_varint_u64(i64::from(input) as u64, out);
+    varint::enc_u64(i64::from(input) as u64, out);
 }
 
 /// Encodes a wire-2 LEN packed-repeated field of varint `int32`s, the inverse of [`dec_packed_i32`]

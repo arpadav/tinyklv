@@ -8,7 +8,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::support::drive::Drive;
+use crate::common::drive::Drive;
 use crate::support::example::{Example, Inner, Reading, Status};
 use crate::support::pb;
 use tinyklv::codecs::ber::BerLength;

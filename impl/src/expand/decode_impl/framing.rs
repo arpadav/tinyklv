@@ -5,7 +5,7 @@
 //! ([`LoopCtx::body`]), both from the loop's own [`DecodeFraming`]:
 //!
 //! * [`DecodeFraming::Separate`] reads `key` then `len`, takes `len` bytes and dispatches every
-//!   field against them ([`ValueSrc::HeaderSliced`])
+//!   field against them
 //! * [`DecodeFraming::Fused`] reads `(key, Framing)` from the `keylen` codec and branches on the
 //!   framing at run time: `Sliced` is the separate body, `Inline` dispatches every field
 //!   against the main stream ([`ValueSrc::Inline`]). A frame that moved the cursor nowhere is
@@ -42,6 +42,8 @@ pub(super) enum DecodeFraming<'a> {
         key_decoder: &'a types::XcoderType,
         /// Token expression decoding each frame's length
         len_decoder: &'a types::XcoderType,
+        /// The sentinel the `SeekSentinel` impl scans for ahead of the frame length, if any
+        sentinel: Option<&'a syn::Lit>,
     },
     /// One decoder returning `(key, Framing)`, so the framing can depend on the key
     Fused {
@@ -64,11 +66,14 @@ impl<'a> DecodeFraming<'a> {
     /// case no decode impl is generated
     pub(super) fn from_mode(mode: &'a ContainerMode) -> Option<Self> {
         match mode {
-            ContainerMode::Separate { key, len } => Some(Self::Separate {
+            ContainerMode::Separate {
+                key, len, sentinel, ..
+            } => Some(Self::Separate {
                 key_decoder: key.dec.as_ref()?,
                 len_decoder: len.dec.as_ref()?,
+                sentinel: sentinel.as_ref(),
             }),
-            ContainerMode::Fused(keylen) => Some(Self::Fused {
+            ContainerMode::Fused { keylen, .. } => Some(Self::Fused {
                 keylen_decoder: keylen.dec.as_ref()?,
             }),
         }
@@ -85,7 +90,7 @@ impl<'a> DecodeFraming<'a> {
     }
 
     /// The binding the frame's value length is put in, which every `take` of the value and every
-    /// `var`-sized decoder reads
+    /// `size(exact = N)` check reads, and which a `lengthed` decoder without `exact` is passed
     ///
     /// # Returns
     ///
@@ -186,6 +191,7 @@ impl LoopCtx<'_> {
                 DecodeFraming::Separate {
                     key_decoder,
                     len_decoder,
+                    ..
                 },
                 LoopDriver::Streaming,
             ) => {
@@ -216,8 +222,9 @@ impl LoopCtx<'_> {
                 DecodeFraming::Separate {
                     key_decoder,
                     len_decoder,
+                    ..
                 },
-                LoopDriver::OneShot,
+                LoopDriver::OneShot(_),
             ) => quote! {
                 let ::core::result::Result::Ok(#key) = #key_decoder.parse_next(input) else {
                     #truncated
@@ -255,15 +262,19 @@ impl LoopCtx<'_> {
     ///
     /// ```text
     /// // Separate
-    /// #take
+    /// #take(Subinput)
     /// match key { #arms(HeaderSliced) _ => (), }
     /// // Fused
     /// match __framing {
-    ///     Sliced(__len) => { #take match __key { #arms(HeaderSliced) _ => (), } }
+    ///     Sliced(__len) => { #sliced, as Separate with `__key` },
     ///     Inline => match __key { #arms(Inline) _ => { reset; break; } },
     /// }
     /// if input.eof_offset() == __frame_offset { #reject }
     /// ```
+    ///
+    /// A `size(exact = N)` field's frame length is checked in its arm before its value is decoded
+    /// ([`ValueSrc::HeaderSliced`]), or, when the frame runs past the end of the input, before it
+    /// is classed as truncation ([`LoopCtx::take`]); an `Inline` frame has no length to check
     ///
     /// An unknown key follows the rule stated on `tinyklv::Framing`: a `Sliced` one is dropped
     /// with its bytes, an `Inline` one ends the loop ([`LoopDriver::rewind_and_break`]), which is
@@ -280,14 +291,14 @@ impl LoopCtx<'_> {
     pub(super) fn body(self) -> TokenStream {
         let key = self.framing.key();
         // --------------------------------------------------
-        // the sliced form: bound the value bytes, then dispatch the key to its field
+        // the sliced form: take the value bytes, and dispatch the key to its field
         // --------------------------------------------------
         let take = self.take(TakeInto::Subinput);
-        let sliced_arms = self.items_match(|_| ValueSrc::HeaderSliced);
+        let arms = self.items_match(|_| ValueSrc::HeaderSliced);
         let sliced = quote! {
             #take
             match #key {
-                #sliced_arms
+                #arms
                 _ => (),
             }
         };
@@ -307,14 +318,9 @@ impl LoopCtx<'_> {
                 // --------------------------------------------------
                 // a frame whose header and value consumed no input would repeat forever
                 // --------------------------------------------------
-                let container = &self.input.ident;
-                let empty = self.driver.reject_label(&quote! {
-                    ::core::concat!(
-                        "`",
-                        ::core::stringify!(#container),
-                        "` frame (its header and value together consumed no input)",
-                    )
-                });
+                let empty = self.driver.reject_label(
+                    &self.label(None, "its header and value together consumed no input"),
+                );
                 // --------------------------------------------------
                 // dispatch on the framing, then reject a frame that moved nothing
                 // --------------------------------------------------

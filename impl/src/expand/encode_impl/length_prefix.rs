@@ -19,7 +19,7 @@
 // local
 // --------------------------------------------------
 use super::{field_length_plan::ValueWidth, staging::Staging};
-use crate::ast::{attr::size::SizeSpec, types};
+use crate::ast::{attr::size::SizeBytes, types};
 
 // --------------------------------------------------
 // external
@@ -31,7 +31,7 @@ use quote::{ToTokens, quote, quote_spanned};
 pub(super) enum LengthPrefix<'a> {
     /// A fixed-width slot declared by `len(size(exact = N))`
     Fixed(FixedLengthSlot<'a>),
-    /// A variable-width length from `len(size(var))`, omitted size, or hint-only size
+    /// A variable-width length from an omitted, empty or reserve-only `len(size(..))`
     Variable(VariableLength<'a>),
 }
 
@@ -40,7 +40,7 @@ impl<'a> LengthPrefix<'a> {
     /// Resolves the length prefix from the `len(..)` encoder and its `size(..)`
     ///
     /// Converts exact size declarations into fixed-width length slots and
-    /// treats all other declarations as variable-width. Hint-only sizes stay
+    /// treats all other declarations as variable-width. Reserve-only sizes stay
     /// variable because they cannot reserve an exact number of bytes for a
     /// later back-fill operation
     ///
@@ -53,11 +53,11 @@ impl<'a> LengthPrefix<'a> {
     ///
     /// `LengthPrefix::Fixed` when an exact byte width is declared, or
     /// `LengthPrefix::Variable` for every non-exact length form
-    pub(super) fn new(len_encoder: &'a types::XcoderType, size: Option<SizeSpec>) -> Self {
+    pub(super) fn new(len_encoder: &'a types::XcoderType, size: Option<&SizeBytes>) -> Self {
         // --------------------------------------------------
         // exact sizes become fixed-width length slots
         // --------------------------------------------------
-        match size.and_then(SizeSpec::exact_width) {
+        match size.and_then(SizeBytes::exact_width) {
             Some(width) => Self::Fixed(FixedLengthSlot { len_encoder, width }),
             None => Self::Variable(VariableLength(len_encoder)),
         }

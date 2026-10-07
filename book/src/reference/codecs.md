@@ -18,13 +18,13 @@ use tinyklv::enc::string as encs;
 Every codec path satisfies one of the shapes below. These are the
 canonical contracts a `dec = ...` / `enc = ...` value must match.
 
-A decoder takes one of two shapes, selected by `size(var)` on the field:
+A decoder takes one of two shapes, selected by `size(lengthed)` on the field:
 
 ```rust,ignore
-// standard: no size(var). Reads from the stream cursor directly.
+// standard: no size(lengthed). Reads from the stream cursor directly.
 fn(input: &mut S) -> tinyklv::Result<T>
 
-// length-parameterized: with size(var). The derive calls
+// length-parameterized: with size(lengthed). The derive calls
 // dec_fn(len)(input), passing the runtime KLV length as an extra input,
 // which enables variable-length reads.
 fn(len: usize) -> impl Fn(&mut S) -> tinyklv::Result<T>
@@ -101,7 +101,7 @@ Each numeric type also has a `_lengthed` variant that reads a
 variable number of bytes (up to the type width) and zero-extends:
 
 ```rust,ignore
-#[klv(key = 0x01, size(var), dec = decb::be_u32_lengthed)]
+#[klv(key = 0x01, size(lengthed), dec = decb::be_u32_lengthed)]
 value: u32,
 ```
 
@@ -124,7 +124,7 @@ Edge cases:
 
 ## Strings (`tinyklv::dec::string` / `tinyklv::enc::string`)
 
-Variable-length string codecs. Use with `size(var)` on the field.
+Variable-length string codecs. Use with `size(lengthed)` on the field.
 
 | Decoder | Encoder | Produces |
 |---------|---------|----------|

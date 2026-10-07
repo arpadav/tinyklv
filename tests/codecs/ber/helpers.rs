@@ -1,14 +1,18 @@
 //! Shared helpers for the BER codec tests
 //!
-//! [`ContextErrorExt`] pins which `Expected` context a BER error carries, and [`DecoderExt`]
-//! asserts a decoder's outcome on one wire: the value and where it leaves the cursor
+//! [`DecoderExt`] asserts a decoder's outcome on one wire: the value and where it leaves the
+//! cursor
 //!
 //! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
+use crate::common::error::ContextErrorExt;
+
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use std::fmt::Debug;
-use winnow::error::{ContextError, StrContext, StrContextValue};
 
 // --------------------------------------------------
 // constants
@@ -98,37 +102,5 @@ where
             cursor.is_empty(),
             "the cursor after {wire:02X?}: {cursor:02X?}"
         );
-    }
-}
-
-/// `Expected`-context queries on a decoder's error
-pub(super) trait ContextErrorExt {
-    /// Whether the error's context chain carries `Expected(description)`
-    ///
-    /// # Arguments
-    ///
-    /// * `description` - the expected-value description to look for
-    fn expects(&self, description: &str) -> bool;
-
-    /// Whether a BER overflow error's context chain expects a value that fits the target type
-    fn expects_fits_target(&self) -> bool {
-        self.expects("a value that fits the target integer type")
-    }
-
-    /// Whether a BER length error's context chain expects the bytes its long form claims
-    fn expects_length_bytes(&self) -> bool {
-        self.expects("enough bytes in stream for length encoding")
-    }
-}
-
-/// [`ContextError`] implementation of [`ContextErrorExt`]
-impl ContextErrorExt for ContextError {
-    fn expects(&self, description: &str) -> bool {
-        self.context().any(|context| {
-            matches!(
-                context,
-                StrContext::Expected(StrContextValue::Description(expected)) if *expected == description
-            )
-        })
     }
 }

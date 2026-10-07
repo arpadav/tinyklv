@@ -224,13 +224,14 @@ Use either `{kl}` OR `{k}`+`{l}`, not both.",
     KeylenWithSentinel,
 
     #[error("\
-        `{b}` is not supported with `{kl}`. Remove `{b}`, or use `{k}(..)` + `{l}(..)`.",
+        `{b} = <fn>` is not supported with `{kl}`: it takes the frame's length, which an \
+`Inline` frame does not have; use a key literal (`{b} = 0xFF`), or `{k}(..)` + `{l}(..)`.",
         b = symbol::BREAK_ON,
         kl = symbol::KEYLEN,
         k = symbol::KEY,
         l = symbol::LENGTH,
     )]
-    KeylenWithBreakOn,
+    KeylenWithBreakOnFn,
 
     #[error("\
         Duplicate `{s}` attribute. Only one method of encoding and decoding keys is allowed.",
@@ -251,16 +252,24 @@ Use either `{kl}` OR `{k}`+`{l}`, not both.",
     DuplicateKeylen,
 
     #[error("\
-        Unknown field `{0}` in {k}/{l}/{kl}.
+        Unknown field `{0}` in {k}/{l}.
 Expected `{e} = <..>`, `{d} = <..>`, or `{s}(..)`.",
         k = symbol::KEY,
         l = symbol::LENGTH,
-        kl = symbol::KEYLEN,
         e = symbol::ENCODER,
         d = symbol::DECODER,
         s = symbol::SIZE,
     )]
     UnknownHeaderField(String),
+
+    #[error("\
+        Unknown field `{0}` in {kl}.
+Expected `{e} = <..>` or `{d} = <..>`.",
+        kl = symbol::KEYLEN,
+        e = symbol::ENCODER,
+        d = symbol::DECODER,
+    )]
+    UnknownKeylenField(String),
 
     #[error("\
         Duplicate `{e}` field. Only one method of encoding {k}/{l}/{kl} is allowed.",
@@ -291,13 +300,34 @@ The derive passes the key and length by value; sigils apply to field encoders on
     DuplicateDecoderInHeader,
 
     #[error("\
-        Duplicate `{s}` field. Only one {s} per {k}/{l}/{kl} is allowed.",
+        Duplicate `{s}` field. Only one {s} per {k}/{l} is allowed.",
         s = symbol::SIZE,
         k = symbol::KEY,
         l = symbol::LENGTH,
-        kl = symbol::KEYLEN,
     )]
     DuplicateSizeInHeader,
+
+    #[error("\
+        Unknown `{s}` sub-attribute in {k}/{l}: `{0}`.
+Expected `{e} = <..>` or `{r} = <..>`; `{lt}` goes in a field's `{s}(..)`.",
+        s = symbol::SIZE,
+        k = symbol::KEY,
+        l = symbol::LENGTH,
+        e = symbol::EXACT,
+        r = symbol::RESERVE,
+        lt = symbol::LENGTHED,
+    )]
+    UnknownSizeFieldInHeader(String),
+
+    #[error("\
+        `{s}(..)` is not supported in `{kl}(..)`: the `{kl}` codec decides each frame's framing; \
+put `{s}(..)` on a field, or on `{k}(..)`/`{l}(..)` in place of `{kl}(..)`.",
+        s = symbol::SIZE,
+        kl = symbol::KEYLEN,
+        k = symbol::KEY,
+        l = symbol::LENGTH,
+    )]
+    SizeInKeylen,
 
     #[error("\
         Missing required `{e}` field for `{0}`.
@@ -372,7 +402,17 @@ To add ways to decode said type, they must be done on a field-by-field basis and
     DuplicateSizeInDefault,
 
     #[error("\
-        Duplicate '{1}' found for `{d}({t} = {0})`. Only one default {1} is allowed per type.",
+        `{l}` belongs to the decoder, and this `{df}(..)` has no `{d}`; add a `{d}` here, or \
+remove `{l}`.",
+        l = symbol::LENGTHED,
+        d = symbol::DECODER,
+        df = symbol::DEFAULT,
+    )]
+    SizeLengthedWithoutDecInDefault,
+
+    #[error("\
+        Duplicate '{1}' found for `{d}({t} = {0})`. Only one default {1} is allowed per type; \
+remove one.",
         d = symbol::DEFAULT,
         t = symbol::TYPE,
     )]
@@ -430,13 +470,13 @@ Expected {sf}.",
     UnknownSizeField(String),
 
     #[error("\
-        Conflicting `{s}` byte count. `{e}` and `{h}` are mutually exclusive - a `{s}` is either an \
+        Conflicting `{s}` byte count. `{e}` and `{r}` are mutually exclusive - a `{s}` is either an \
 exact width or a soft capacity estimate, not both.",
         s = symbol::SIZE,
         e = symbol::EXACT,
-        h = symbol::HINT,
+        r = symbol::RESERVE,
     )]
-    SizeExactHintConflict,
+    SizeExactReserveConflict,
 
     #[error("\
         Duplicate `{s}` field.",
@@ -493,13 +533,24 @@ Otherwise, you can:
     UnimplementedDecode(String, String),
 
     #[error("\
-Field `{0}: {1}` has `{s}(var)` but no `{d} = ..` was set.
+Field `{0}: {1}` has `{s}({l})` but no `{d} = ..` was set.
 The trait fallback (`<{1} as ::tinyklv::DecodeValue<..>>::decode_value`) has no length argument - \
 supply an explicit `{d}` or change the `{s}`.",
         s = symbol::SIZE,
+        l = symbol::LENGTHED,
         d = symbol::DECODER,
     )]
-    SizeVarFallbackRequiresExplicitDec(String, String),
+    SizeLengthedFallbackRequiresExplicitDec(String, String),
+
+    #[error("\
+        `{l}` belongs to the decoder; give this field its own `{d}`, or put `{s}({l})` on the \
+`{df}`.",
+        l = symbol::LENGTHED,
+        d = symbol::DECODER,
+        s = symbol::SIZE,
+        df = symbol::DEFAULT,
+    )]
+    SizeLengthedOnDefaultDec,
 
     #[error("\
         The value of field `{field}` is {value_bytes} bytes but `{l}({s}({e} = {width}))` can \
@@ -523,7 +574,7 @@ impl Error {
     /// [`thiserror`]) and wraps it in [`std::borrow::Cow::Owned`]. The result
     /// is passed to [`crate::Ctxt::error_spanned_by`] so the diagnostic message
     /// is attached to the correct source span
-    fn as_str(&self) -> std::borrow::Cow<'_, str> {
+    fn as_str(&self) -> std::borrow::Cow<'static, str> {
         std::borrow::Cow::Owned(self.to_string())
     }
 }

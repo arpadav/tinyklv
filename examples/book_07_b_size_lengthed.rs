@@ -1,10 +1,10 @@
 #![cfg_attr(rustfmt, rustfmt_skip)]
 #![allow(clippy::unwrap_used)]
-//! Book tutorial 07b - `size(var)` for length-parameterised value decoders
+//! Book tutorial 07b - `size(lengthed)` for length-parameterised value decoders
 //! See `book/tutorial/07-val-lengths.md` for the full narrative
 //!
 //! Shows how to add a variable-length `String` field to an existing struct
-//! The `size(var)` annotation tells the generated loop to pass the decoded
+//! The `size(lengthed)` annotation tells the generated loop to pass the decoded
 //! length into `decs::to_string_utf8` so it reads exactly that many bytes -
 //! the standard fixed-width `fn(&mut Stream) -> Result<T>` signature cannot
 //! do this on its own
@@ -35,9 +35,9 @@ struct Heartbeat {
     #[klv(
         key = 0x07,
         dec = decs::to_string_utf8,
-        size(var),
+        size(lengthed),
     )]
-    /// Variable-length UTF-8 station identifier; `size(var)` threads the
+    /// Variable-length UTF-8 station identifier; `size(lengthed)` threads the
     /// decoded length into the string decoder
     station_id: String,
 }

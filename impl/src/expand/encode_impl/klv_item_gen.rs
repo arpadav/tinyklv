@@ -295,7 +295,7 @@ impl<'a> PlannedItemWrite<'a> {
         // --------------------------------------------------
         // explicit exact field sizes can be written immediately
         // --------------------------------------------------
-        if let Some(size) = self.attrs.size
+        if let Some(size) = &self.attrs.size
             && let Some(bytes) = size.exact_width()
         {
             return FieldLengthPlan::KnownValueWidth(ValueWidth {

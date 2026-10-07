@@ -13,6 +13,7 @@
 // local
 // --------------------------------------------------
 use super::pb;
+use crate::common::varint;
 use tinyklv::codecs::ber::BerLength;
 use tinyklv::dec::ber as decber;
 use tinyklv::dec::binary as decb;
@@ -92,7 +93,7 @@ impl DecodeValue<&[u8]> for Status {
     /// `Ok(Status)`, or an error on truncation or an unknown discriminant; an unknown
     /// discriminant rewinds the cursor to the start of the varint
     fn decode_value(input: &mut &[u8]) -> tinyklv::Result<Self> {
-        pb::dec_varint_u64
+        varint::dec_u64
             .verify_map(|value| Self::try_from(value).ok())
             .parse_next(input)
     }
@@ -104,7 +105,7 @@ impl EncodeValue for Status {
     ///
     /// * `out` - the buffer the varint bytes are appended to
     fn encode_value(&self, out: &mut Vec<u8>) {
-        pb::enc_varint_u64(u64::from(*self), out);
+        varint::enc_u64(u64::from(*self), out);
     }
 }
 

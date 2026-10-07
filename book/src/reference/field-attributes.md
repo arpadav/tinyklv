@@ -60,36 +60,36 @@ write your own.
 ## `size(..)`
 
 ```rust,ignore
-#[klv(key = 0x07, size(var), dec = decs::to_string_utf8)]
+#[klv(key = 0x07, size(lengthed), dec = decs::to_string_utf8)]
 station_id: String,
 
 #[klv(key = 0x08, size(exact = 8))]
 fixed_nested: FixedNested,
 
-#[klv(key = 0x09, size(hint = 64))]
+#[klv(key = 0x09, size(reserve = 64))]
 notes: Vec<Note>,
 ```
 
-Controls the value length contract. `size(var)` selects the length-taking decoder
+Controls the value length contract. `size(lengthed)` selects the length-taking decoder
 shape: instead of `fn(&mut S) -> Result<T>`, the derive calls `dec_fn(len)(input)`
 where `dec_fn` matches `fn(len: usize) -> impl Fn(&mut S) -> Result<T>`.
 
-`size(exact = N)` declares that the encoded value is exactly `N` bytes, allowing
-the encoder to use the fixed-width path even for custom types. `size(hint = N)`
-is only a reserve hint; the value remains dynamically sized.
+`size(exact = N)` declares that the value is exactly `N` bytes: decode rejects
+any other length, and the encoder uses the fixed-width path even for custom types.
+`size(reserve = N)` is only an encode reserve; the value remains dynamically sized.
 
 `size(..)` has two independent axes:
 
 | Axis | Keyword | Effect |
 |------|---------|--------|
-| Decode arity | `var` | The decoder receives the runtime KLV length. |
-| Byte count | `exact = N` | The encoder treats the value as exactly `N` bytes. |
-| Reserve estimate | `hint = N` | The encoder reserves around `N` bytes but still measures the actual output. |
+| Decode arity | `lengthed` | The decoder receives the runtime KLV length. |
+| Byte count | `exact = N` | Exactly `N` bytes; decode rejects any other length. |
+| Reserve estimate | `reserve = N` | The encoder reserves around `N` bytes but still measures the actual output. |
 
-The decode fn signature is determined solely by whether `var` is present
-(`exact` / `hint` only affect the encode path):
+The decode fn signature depends only on `lengthed` (neither `exact` nor
+`reserve` changes it):
 
-| `var` | Decode fn signature |
+| `lengthed` | Decode fn signature |
 |-------|---------------------|
 | present | Length decoder [`fn(len) -> impl Fn(&mut S) -> Result<T>`](./codecs.md#function-signatures) |
 | absent | Standard decoder [`fn(&mut S) -> Result<T>`](./codecs.md#function-signatures) |
@@ -99,11 +99,11 @@ The common forms, with their encode paths, are:
 | Attribute | Decode fn signature | Encode path |
 |-----------|---------------------|-------------|
 | none | Standard decoder | Fixed-width for known primitives, otherwise dynamic. |
-| `size(var)` | Length decoder | Dynamic. |
+| `size(lengthed)` | Length decoder | Dynamic. |
 | `size(exact = N)` | Standard decoder | Fixed-width `N`. |
-| `size(hint = N)` | Standard decoder | Dynamic with a reserve hint. |
-| `size(var, exact = N)` | Length decoder | Fixed-width `N`. |
-| `size(var, hint = N)` | Length decoder | Dynamic with a reserve hint. |
+| `size(reserve = N)` | Standard decoder | Dynamic with an encode reserve. |
+| `size(lengthed, exact = N)` | Length decoder | Fixed-width `N`. |
+| `size(lengthed, reserve = N)` | Length decoder | Dynamic with an encode reserve. |
 
 ## `default` / `default = <expr>`
 
@@ -163,7 +163,7 @@ function patches the decoded value in place.
 | `enc = <path>` | [09 - Encoding & sigils](../tutorial/fundamentals/09-encode-sigil.md) |
 | `enc = &<path>` | [09 - Encoding & sigils](../tutorial/fundamentals/09-encode-sigil.md) |
 | `enc = *<path>` | [09 - Encoding & sigils](../tutorial/fundamentals/09-encode-sigil.md) |
-| `size(var)` | [07 - Variable-length fields](../tutorial/fundamentals/07-val-lengths.md) |
+| `size(lengthed)` | [07 - Variable-length fields](../tutorial/fundamentals/07-val-lengths.md) |
 | `default` | [11 - Optional fields & default](../tutorial/fundamentals/11-default-fallback.md) |
 | `default = <expr>` | [11 - Optional fields & default](../tutorial/fundamentals/11-default-fallback.md) |
 | `latebind = <path>` | [08 - Latebind transforms](../tutorial/fundamentals/08-latebind.md) |

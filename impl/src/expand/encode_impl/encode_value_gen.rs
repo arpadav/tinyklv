@@ -19,7 +19,7 @@ use quote::quote;
 impl EncodeCtx<'_> {
     /// Generates the `EncodeValue` trait implementation for a container
     ///
-    /// Builds the derived value encoder body, including the reserve hint, optional
+    /// Builds the derived value encoder body, including the encode reserve, optional
     /// scratch buffer declaration, and one generated KLV item write for each
     /// attributed field. The generated impl writes directly into the caller's
     /// output buffer and does not emit any frame sentinel bytes
