@@ -1,5 +1,5 @@
 error: Unknown `size` sub-attribute: `hint`.
-       Expected `reserve` `lengthed` `exact` .
+       Expected `reserve` `lengthed` `implicit` `exact` .
   --> tests/ui/fail/size/field_size_hint.rs:10:64
    |
 10 |     #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u64, size(hint = 8))]

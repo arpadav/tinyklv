@@ -5,19 +5,21 @@
 //! decoder and writing the result into the partial-packet accumulator. Each field reads its value
 //! from the [`ValueSrc`] the caller picks for it. A sliced arm of a `size(exact = N)` field first
 //! rejects a frame length other than `N`; [`LoopCtx::exact_guards`] runs the same checks on a frame
-//! that runs past the end of the input, before it is classed as truncation
+//! that runs past the end of the input, before it is classed as truncation. A
+//! `size(implicit, exact = N)` arm cuts its own `N` bytes. A field's `break_on` decides what
+//! happens to each value it decodes ([`LoopCtx::field_break`])
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{LoopCtx, loop_driver::ParseSite};
+use super::{
+    LoopCtx,
+    loop_driver::{ParseSite, TakeInto},
+};
 use crate::{
     ast::{
-        attr::{
-            MainField,
-            size::{LenSource, SizeSpec},
-        },
+        attr::size::{LenSource, SizeSpec},
         symbol,
     },
     expand::helpers,
@@ -39,12 +41,34 @@ pub(super) enum ValueSrc {
     /// `input` itself, because the value delimits itself; a decode error goes to
     /// [`LoopDriver::on_parse_fail`](super::loop_driver::LoopDriver::on_parse_fail)
     Inline,
+    /// `&mut subinput`, the `N` bytes the arm itself cuts off `input` for a
+    /// `size(implicit, exact = N)` value, whose frame has no length; a decode error is swallowed
+    /// via `.ok()`
+    Exact(usize),
+}
+
+/// [`ValueSrc`] implementation
+impl ValueSrc {
+    /// The source of a `size(implicit)` value, which its arm reads with no length read before it
+    ///
+    /// # Arguments
+    ///
+    /// * `size` - The field's `size(..)`
+    ///
+    /// # Returns
+    ///
+    /// [`Self::Exact`] under `exact = N`, else [`Self::Inline`], or `None` when the value has a
+    /// length prefix
+    pub(super) fn implicit(size: Option<&SizeSpec>) -> Option<Self> {
+        let size = size.filter(|size| size.implicit().is_some())?;
+        Some(size.exact_width().map_or(Self::Inline, Self::Exact))
+    }
 }
 
 /// [`LoopCtx`] implementation of the known-key arms
 impl LoopCtx<'_> {
-    /// Generates one arm per KLV field of the `match` on the frame's key, each reading from the
-    /// source `src_of` picks
+    /// Generates one arm per KLV field of the `match` on the frame's key that `src_of` gives a
+    /// source, each reading from that source
     ///
     /// `__acc` is the in-flight `XxxPartialPacket` accumulator; each arm writes `Some(value)` into
     /// its field. A duplicate key is LAST-WINS: a later successful decode overwrites the earlier
@@ -56,7 +80,8 @@ impl LoopCtx<'_> {
     ///
     /// # Arguments
     ///
-    /// * `src_of` - Picks each field's value source
+    /// * `src_of` - Picks each field's value source from its `size(..)`, or `None` to leave the
+    ///   field out of this `match`
     ///
     /// # Returns
     ///
@@ -66,8 +91,12 @@ impl LoopCtx<'_> {
     ///
     /// When a field has no decoder. [`DecodeCtx::new`](super::DecodeCtx::new) returns before arm
     /// generation unless every field has one
-    pub(super) fn items_match(self, mut src_of: impl FnMut(&MainField) -> ValueSrc) -> TokenStream {
-        let arms = self.input.klv_fields().map(|(f, attrs)| {
+    pub(super) fn items_match(
+        self,
+        mut src_of: impl FnMut(Option<&SizeSpec>) -> Option<ValueSrc>,
+    ) -> TokenStream {
+        let arms = self.input.klv_fields().filter_map(|(f, attrs)| {
+            let src = src_of(attrs.size.as_ref())?;
             // --------------------------------------------------
             // decoder - the explicit codec, or the field type's `DecodeValue` impl
             // --------------------------------------------------
@@ -97,16 +126,17 @@ impl LoopCtx<'_> {
                 }
                 None => quote! {},
             };
-            ArmParts {
+            let arm = ArmParts {
                 ctx: self,
                 name: &f.name,
                 key: &attrs.key,
                 dec,
                 size: attrs.size.as_ref(),
                 latebind,
-                src: src_of(f),
-            }
-            .emit()
+                break_on: attrs.break_on.as_ref(),
+                src,
+            };
+            Some(arm.emit())
         });
         quote! { #(#arms)* }
     }
@@ -135,10 +165,72 @@ impl LoopCtx<'_> {
         self.driver.reject_exact(&self.label(Some(name), &reason))
     }
 
+    /// Emits the check of a field's `break_on` on the value it just decoded, bound as `__val`
+    ///
+    /// ```text
+    /// match #break_on(&__val) {
+    ///     Skip => (),
+    ///     Done => {
+    ///         #write
+    ///         break;
+    ///     }
+    ///     Abort(__msg) => {
+    ///         #reject
+    ///     }
+    ///     _ => {
+    ///         #write
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// `Skip` discards the value, `Done` keeps it and ends the loop, whose tail finalizes the
+    /// accumulator, `Abort` rejects naming the field ([`LoopDriver::reject_aborted_value`]), and
+    /// `Proceed`, like any later variant, keeps it
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The field
+    /// * `break_on` - Its `fn(&value) -> BreakType`
+    /// * `write` - The statement storing `__val` in the accumulator
+    ///
+    /// # Returns
+    ///
+    /// The `match`
+    ///
+    /// [`LoopDriver::reject_aborted_value`]: super::loop_driver::LoopDriver::reject_aborted_value
+    fn field_break(
+        self,
+        name: &syn::Ident,
+        break_on: &syn::Path,
+        write: &TokenStream,
+    ) -> TokenStream {
+        let reason = format!("its `{}` returned `Abort`", symbol::BREAK_ON);
+        let reject = self
+            .driver
+            .reject_aborted_value(&self.label(Some(name), &reason));
+        quote! {
+            match #break_on(&__val) {
+                ::tinyklv::BreakType::Skip => (),
+                ::tinyklv::BreakType::Done => {
+                    #write
+                    break;
+                }
+                ::tinyklv::BreakType::Abort(__msg) => {
+                    #reject
+                }
+                // `Proceed`, and any later `BreakType` variant, keeps the value
+                _ => {
+                    #write
+                }
+            }
+        }
+    }
+
     /// Emits the checks a frame running past the end of the input meets before it is classed as
-    /// truncation: one per distinct `size(exact = N)` width, in field order, rejecting a key of
-    /// that width with a length other than `N`. A width that fields share tells the rejected
-    /// field apart only once its check fails
+    /// truncation: one per distinct `size(exact = N)` width of a field with a length prefix
+    /// ([`SizeSpec::len_check`]), in field order, rejecting a key of that width with a length
+    /// other than `N`. A width that fields share tells the rejected field apart only once its
+    /// check fails
     ///
     /// ```text
     /// if matches!(#key, K1) && #len != N1 { #reject(K1) }
@@ -162,7 +254,7 @@ impl LoopCtx<'_> {
         // --------------------------------------------------
         let mut groups: Vec<(usize, Vec<_>)> = Vec::new();
         for (f, attrs) in self.input.klv_fields() {
-            let Some((width, lit)) = attrs.size.as_ref().and_then(SizeSpec::exact) else {
+            let Some((width, lit)) = attrs.size.as_ref().and_then(SizeSpec::len_check) else {
                 continue;
             };
             let field = (&attrs.key, &f.name, lit);
@@ -216,6 +308,9 @@ struct ArmParts<'a> {
     /// The `.map(..)` latebind transform, else empty
     latebind: TokenStream,
 
+    /// The field's `fn(&value) -> BreakType`, which decides what happens to a decoded value
+    break_on: Option<&'a syn::Path>,
+
     /// Where the value bytes are read from
     src: ValueSrc,
 }
@@ -232,6 +327,11 @@ impl ArmParts<'_> {
     ///     #exact_check
     ///     __acc.#name = #dec #len_arg (&mut subinput).ok() #latebind .or(__acc.#name);
     /// },
+    /// // Exact(N)
+    /// #key => {
+    ///     #take(N)
+    ///     __acc.#name = #dec #len_arg (&mut subinput).ok() #latebind .or(__acc.#name);
+    /// },
     /// // Inline
     /// #key => {
     ///     let #val = #dec (input);
@@ -242,6 +342,12 @@ impl ArmParts<'_> {
     /// },
     /// // Inline, `lengthed`
     /// #key => { #reject },
+    /// // HeaderSliced or Exact(N), `break_on`
+    /// #key => {
+    ///     #prelude
+    ///     if let Ok(__val) = #dec #len_arg (&mut subinput) #latebind { #field_break }
+    /// },
+    /// // Inline, `break_on`: as Inline, matching `#val #latebind` and the `Ok` arm `#field_break`
     /// ```
     ///
     /// `#val` is [`DecodeFraming::val`](super::framing::DecodeFraming::val). With `debug` set,
@@ -260,7 +366,17 @@ impl ArmParts<'_> {
             // --------------------------------------------------
             // sliced: decode the bounded slice, once its length is checked
             // --------------------------------------------------
-            ValueSrc::HeaderSliced => self.sliced(),
+            ValueSrc::HeaderSliced => {
+                let check = self.exact_check();
+                self.sliced(check)
+            }
+            // --------------------------------------------------
+            // exact: decode the `N` bytes the arm takes, a short frame being truncation
+            // --------------------------------------------------
+            ValueSrc::Exact(width) => {
+                let take = self.ctx.take(TakeInto::Exact(width));
+                self.sliced(Some(take))
+            }
             // --------------------------------------------------
             // inline, lengthed: no length to pass the decoder, so the value is malformed
             // --------------------------------------------------
@@ -300,7 +416,7 @@ impl ArmParts<'_> {
     ///
     /// The check, `None` without `size(exact = N)`
     fn exact_check(&self) -> Option<TokenStream> {
-        let (width, lit) = self.size.and_then(SizeSpec::exact)?;
+        let (width, lit) = self.size.and_then(SizeSpec::len_check)?;
         let ctx = self.ctx;
         let len = ctx.framing.len();
         let reject = ctx.exact_reject(self.name, lit);
@@ -311,18 +427,23 @@ impl ArmParts<'_> {
         })
     }
 
-    /// Emits a sliced arm, which decodes `subinput` after its length check ([`Self::exact_check`])
+    /// Emits a sliced arm, which decodes `subinput` after `prelude`: the frame's length check
+    /// ([`Self::exact_check`]), or the `take` that cuts an `implicit` value's `N` bytes
     ///
     /// `#len_arg` is the length a `lengthed` decoder is passed ([`SizeSpec::len_source`]): the
     /// frame's length, or `N` under `size(exact = N)`, which the arm's check made the frame's
-    /// length. The value expression and `#len_arg` are located at the decoder, so a decoder of
-    /// another value type, or one that takes no length under `size(lengthed)`, is reported there
+    /// length or its `take` cut. The value expression and `#len_arg` are located at the decoder,
+    /// so a decoder of another value type, or one that takes no length under `size(lengthed)`, is
+    /// reported there
+    ///
+    /// # Arguments
+    ///
+    /// * `prelude` - What runs before the decode, if anything
     ///
     /// # Returns
     ///
     /// The single match arm
-    fn sliced(self) -> TokenStream {
-        let check = self.exact_check();
+    fn sliced(self, prelude: Option<TokenStream>) -> TokenStream {
         let log = self.log();
         let Self {
             ctx,
@@ -331,6 +452,7 @@ impl ArmParts<'_> {
             dec,
             size,
             latebind,
+            break_on,
             ..
         } = self;
         let at_dec = helpers::call_site_at(&dec);
@@ -346,15 +468,13 @@ impl ArmParts<'_> {
             quote_spanned! {at_dec=> (#len) }
         });
         // --------------------------------------------------
-        // the decode, bound and logged first under `debug`
+        // the decode result, bound and logged first under `debug`
         // --------------------------------------------------
-        let (bind, value) = match log {
-            None => {
-                let value = quote_spanned! {at_dec=>
-                    #dec #len_arg (&mut subinput).ok() #latebind .or(__acc.#name)
-                };
-                (None, value)
-            }
+        let (bind, decoded) = match log {
+            None => (
+                None,
+                quote_spanned! {at_dec=> #dec #len_arg (&mut subinput) },
+            ),
             Some(log) => {
                 let val = ctx.framing.val();
                 let mut val_at_dec = val.clone();
@@ -363,22 +483,39 @@ impl ArmParts<'_> {
                     let #val = #dec #len_arg (&mut subinput);
                     #log
                 };
-                let value = quote_spanned! {at_dec=>
-                    #val_at_dec.ok() #latebind .or(__acc.#name)
-                };
-                (Some(bind), value)
+                (Some(bind), quote! { #val_at_dec })
             }
         };
         // --------------------------------------------------
+        // a decoded value goes where the field's `break_on` decides
+        // --------------------------------------------------
+        if let Some(break_on) = break_on {
+            let write = quote_spanned! {at_dec=>
+                __acc.#name = ::core::option::Option::Some(__val);
+            };
+            let check = ctx.field_break(name, break_on, &write);
+            let mapped = quote_spanned! {at_dec=> #decoded #latebind };
+            return quote! {
+                #key => {
+                    #prelude
+                    #bind
+                    if let ::core::result::Result::Ok(__val) = #mapped {
+                        #check
+                    }
+                },
+            };
+        }
+        let value = quote_spanned! {at_dec=> #decoded.ok() #latebind .or(__acc.#name) };
+        // --------------------------------------------------
         // a bare write when nothing runs before it, else a block
         // --------------------------------------------------
-        match (check, bind) {
+        match (prelude, bind) {
             (None, None) => quote! {
                 #key => __acc.#name = #value,
             },
-            (check, bind) => quote! {
+            (prelude, bind) => quote! {
                 #key => {
-                    #check
+                    #prelude
                     #bind
                     __acc.#name = #value;
                 },
@@ -399,6 +536,7 @@ impl ArmParts<'_> {
             key,
             dec,
             latebind,
+            break_on,
             ..
         } = self;
         let at_dec = helpers::call_site_at(&dec);
@@ -409,13 +547,24 @@ impl ArmParts<'_> {
             let __err: ::tinyklv::__export::winnow::error::ContextError = __err;
         };
         let some_val = quote_spanned! {at_dec=> ::core::option::Option::Some(__val) };
+        // --------------------------------------------------
+        // the decoded value is written, or goes where the field's `break_on` decides once the
+        // latebind has mapped it
+        // --------------------------------------------------
+        let (mapped, on_ok) = match break_on {
+            None => (None, quote! { __acc.#name = #some_val #latebind; }),
+            Some(break_on) => {
+                let write = quote! { __acc.#name = #some_val; };
+                (Some(latebind), ctx.field_break(name, break_on, &write))
+            }
+        };
         quote! {
             #key => {
                 let #val = #dec (input);
                 #log
-                match #val {
+                match #val #mapped {
                     ::core::result::Result::Ok(__val) => {
-                        __acc.#name = #some_val #latebind;
+                        #on_ok
                     }
                     ::core::result::Result::Err(__err) => {
                         #err_ty

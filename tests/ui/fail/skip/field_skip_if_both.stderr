@@ -1,0 +1,5 @@
+error: Only one of `skip_if_default` and `skip_if = <fn>` is allowed, once; remove the other.
+  --> tests/ui/fail/skip/field_skip_if_both.rs:14:19
+   |
+14 |         skip_if = Reading::is_unset,
+   |                   ^^^^^^^^^^^^^^^^^

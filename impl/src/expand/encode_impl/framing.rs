@@ -5,7 +5,8 @@
 //! * [`EncodeFraming::Separate`] writes each field's key with the key encoder and its length with
 //!   the length encoder. A variable-width length prefix stages every value; a fixed-width one
 //!   ([`FixedLengthSlot`](crate::expand::encode_impl::length_prefix::FixedLengthSlot)) writes each
-//!   value at a known width or back-fills its length
+//!   value at a known width or back-fills its length. A `size(implicit)` value has no length, so
+//!   it is written straight after its key
 //! * [`EncodeFraming::Fused`] stages every value, then hands `(key, value_len)` to the `keylen`
 //!   encoder, which writes the key and, when the key implies one, the length
 //!
@@ -51,8 +52,10 @@ pub(super) enum EncodeFraming<'a> {
         key_encoder: KeyEncoder<'a>,
         /// The length prefix written after each field's key and, under a sentinel, the frame length
         len: LengthPrefix<'a>,
-        /// The estimated bytes of one field's key and length, for the encode reserve
-        header_bytes: usize,
+        /// The estimated bytes of one field's key, for the encode reserve
+        key_bytes: usize,
+        /// The estimated bytes of one field's length, for the encode reserve
+        len_bytes: usize,
         /// The sentinel the `EncodeFrame` impl writes ahead of the frame length, if any
         sentinel: Option<&'a syn::Lit>,
     },
@@ -112,7 +115,8 @@ impl<'a> EncodeFraming<'a> {
                 Some(Self::Separate {
                     key_encoder: KeyEncoder(key_encoder),
                     len: LengthPrefix::new(len.enc.as_ref()?, len.size.as_ref()),
-                    header_bytes: key_bytes.saturating_add(len_bytes),
+                    key_bytes,
+                    len_bytes,
                     sentinel: sentinel.as_ref(),
                 })
             }
@@ -132,11 +136,16 @@ impl<'a> EncodeFraming<'a> {
     ///
     /// # Returns
     ///
-    /// The per-field key plus length byte estimate
-    fn header_reserve_bytes(self) -> usize {
+    /// The per-field key byte estimate, and the length byte estimate a value with a length prefix
+    /// adds to it
+    fn header_reserve_bytes(self) -> (usize, usize) {
         match self {
-            Self::Separate { header_bytes, .. } => header_bytes,
-            Self::Fused { .. } => DEFAULT_KEY_BYTES + DEFAULT_LEN_BYTES,
+            Self::Separate {
+                key_bytes,
+                len_bytes,
+                ..
+            } => (key_bytes, len_bytes),
+            Self::Fused { .. } => (DEFAULT_KEY_BYTES, DEFAULT_LEN_BYTES),
         }
     }
 
@@ -144,7 +153,8 @@ impl<'a> EncodeFraming<'a> {
     ///
     /// Estimates the number of bytes the generated `encode_value` method should reserve before
     /// writing field items: per `#[klv(..)]` field, the frame header estimate
-    /// ([`Self::header_reserve_bytes`]) plus any statically known value width. Unknown widths
+    /// ([`Self::header_reserve_bytes`]) plus any statically known value width. A `size(implicit)`
+    /// value adds no length, and its width is its `exact = N` or `reserve = N`. Unknown widths
     /// contribute zero for the value portion, so the result is an estimate rather than a
     /// wire-format contract. Every sum saturates at `usize::MAX`
     ///
@@ -159,35 +169,50 @@ impl<'a> EncodeFraming<'a> {
         // --------------------------------------------------
         // estimate per-field key and length bytes
         // --------------------------------------------------
-        let header_bytes = self.header_reserve_bytes();
+        let (key_bytes, len_bytes) = self.header_reserve_bytes();
         // --------------------------------------------------
         // sum known field widths into the encode reserve
         // --------------------------------------------------
         input
             .klv_fields()
             .map(|(field, attrs)| {
-                let value_bytes = fixed_width::fixed_value_type_width(field.ty)
-                    .or_else(|| attrs.size.as_ref().and_then(SizeSpec::capacity_bytes))
-                    .unwrap_or(0);
-                header_bytes.saturating_add(value_bytes)
+                let size = attrs.size.as_ref();
+                let (len, value) = match size.filter(|size| size.implicit().is_some()) {
+                    Some(size) => (0, size.capacity_bytes()),
+                    None => (
+                        len_bytes,
+                        fixed_width::fixed_value_type_width(field.ty)
+                            .or_else(|| size.and_then(SizeSpec::capacity_bytes)),
+                    ),
+                };
+                key_bytes
+                    .saturating_add(len)
+                    .saturating_add(value.unwrap_or(0))
             })
             .fold(0, usize::saturating_add)
     }
 
-    /// Declares the scratch buffer, when field values are staged before their header is written
+    /// Declares the scratch buffer, when a field value is staged before its header is written
     ///
     /// A variable-width length prefix or a fused header encodes each field value into a scratch
-    /// buffer before its frame header is written. A fixed-width prefix writes directly to the
-    /// caller output, so it declares nothing and keeps generated methods free of unused locals
+    /// buffer before its frame header is written. A fixed-width prefix, or a `size(implicit)`
+    /// value, writes directly to the caller output, so a container with no staged value declares
+    /// nothing and keeps generated methods free of unused locals
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - Parsed container metadata whose attributed fields are written
     ///
     /// # Returns
     ///
-    /// [`Staging::Scratch`]'s empty `Vec<u8>` declaration when values are staged, else `None`
-    pub(super) fn declare_scratch(self) -> Option<proc_macro2::TokenStream> {
+    /// [`Staging::Scratch`]'s empty `Vec<u8>` declaration when a value is staged, else `None`
+    pub(super) fn declare_scratch(self, input: &MainContainer) -> Option<proc_macro2::TokenStream> {
         let staged = match self {
             Self::Separate { len, .. } => match len {
                 LengthPrefix::Fixed(_) => false,
-                LengthPrefix::Variable(_) => true,
+                LengthPrefix::Variable(_) => input
+                    .klv_fields()
+                    .any(|(_, attrs)| attrs.size.as_ref().and_then(SizeSpec::implicit).is_none()),
             },
             Self::Fused { .. } => true,
         };

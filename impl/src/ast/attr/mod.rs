@@ -13,6 +13,7 @@
 pub(crate) mod container;
 mod field;
 pub(crate) mod size;
+pub(crate) mod skip_if;
 
 // --------------------------------------------------
 // re-exports
@@ -23,7 +24,7 @@ pub(crate) use field::FieldParsed;
 // local
 // --------------------------------------------------
 use crate::Ctxt;
-use container::{ContainerParsed, DefaultXcoder};
+use container::{BreakOnSpec, ContainerMode, ContainerParsed, DefaultXcoder};
 
 // --------------------------------------------------
 // external
@@ -88,9 +89,11 @@ impl<'a> MainContainer<'a> {
     /// (named-field structs are supported; tuple structs and unit structs emit
     /// errors), parses all fields, resolves container-level `default(..)` xcoders
     /// and the `trait_fallback` flag, and resolves exactly one framing mode, `key` +
-    /// `len` or a fused `keylen` ([`ContainerParsed::from_cont`]). Returns `None` and
-    /// records diagnostics in `cx` if any required attributes are absent or the
-    /// struct variant is unsupported
+    /// `len` or a fused `keylen` ([`ContainerParsed::from_cont`]). A `size(implicit)` field is an
+    /// error under `keylen`, whose codec decides each frame's framing, and beside a
+    /// `break_on = <fn>`, which its frame has no length to pass. Returns `None` and records
+    /// diagnostics in `cx` if any required attributes are absent or the struct variant is
+    /// unsupported
     ///
     /// # Arguments
     ///
@@ -138,11 +141,42 @@ impl<'a> MainContainer<'a> {
             }
         }?;
         // --------------------------------------------------
-        // validate the container attributes and build the container
+        // validate the container attributes
+        // --------------------------------------------------
+        let attrs = ContainerParsed::from_cont(cx, &item.ident, attrs)?;
+        // --------------------------------------------------
+        // each field's `implicit`, after its default fills it
+        // --------------------------------------------------
+        let mut implicit = data
+            .iter()
+            .filter_map(|field| field.attrs.as_ref()?.size.as_ref()?.implicit())
+            .peekable();
+        match &attrs.mode {
+            // --------------------------------------------------
+            // the `keylen` codec decides each frame's framing, so no field is `implicit`
+            // --------------------------------------------------
+            ContainerMode::Fused { .. } => {
+                for span in implicit {
+                    cx.syn_error(syn::Error::new(span, err!(ImplicitInKeylen)));
+                }
+            }
+            // --------------------------------------------------
+            // an `implicit` field's frame has no length to pass a `break_on` fn
+            // --------------------------------------------------
+            ContainerMode::Separate {
+                break_on: Some(BreakOnSpec::Func(path)),
+                ..
+            } if implicit.peek().is_some() => {
+                cx.error_spanned_by(path, err!(ImplicitWithBreakOnFn));
+            }
+            ContainerMode::Separate { .. } => (),
+        }
+        // --------------------------------------------------
+        // build the container
         // --------------------------------------------------
         Some(MainContainer {
             ident: item.ident.clone(),
-            attrs: ContainerParsed::from_cont(cx, &item.ident, attrs)?,
+            attrs,
             data,
             generics: &item.generics,
             _original: item,

@@ -2,14 +2,14 @@
 //!
 //! Defines [`DefaultXcoder`], which represents one entry in a `#[klv(default(..))]`
 //! annotation on a struct. Each entry supplies a type together with an optional
-//! encoder, decoder and size, each used for any field of that type that leaves it unset; the
-//! size's `lengthed` goes with the decoder
+//! encoder, decoder, size and skip, each used for any field of that type that leaves it unset;
+//! the size's `lengthed` goes with the decoder
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::ast::attr::size::SizeSpec;
+use crate::ast::attr::{size::SizeSpec, skip_if::SkipIf};
 use crate::ast::symbol;
 use crate::ast::types::{SiguledXcoder, TypeType, XcoderType};
 
@@ -24,13 +24,16 @@ use tk_syn_macros::handle_unique_nested_meta_values;
 ///
 /// # Syntax
 ///
-/// `default(typ = <type>, enc = <path>, dec = <path>, size(lengthed, exact = N | reserve = N))`
+/// `default(typ = <type>, enc = <path>, dec = <path>,
+/// size(implicit, lengthed, exact = N | reserve = N), skip_if_default | skip_if = <path>)`
 ///
 /// Both `enc` and `dec` are optional, however at least one must be provided
 ///
 /// `size` is optional; a matched field takes its `exact` / `reserve` where the field's own
-/// `size(..)` has neither, and its `lengthed` when the field uses this `dec`. A `lengthed`
-/// requires a `dec` in the same `default(..)`
+/// `size(..)` has neither, its `implicit` where the field's own has none, and its `lengthed`
+/// when the field uses this `dec`. A `lengthed` requires a `dec` in the same `default(..)`
+///
+/// The skip is optional; a matched field takes it unless it sets its own
 pub(crate) struct DefaultXcoder {
     /// The type associated with the encoder / decoder
     pub typ: Option<TypeType>,
@@ -44,12 +47,15 @@ pub(crate) struct DefaultXcoder {
     /// The value size shape propagated to matched fields; see [`SizeSpec`]
     pub size: Option<SizeSpec>,
 
+    /// When a matched field's frame is left out of the encode; see [`SkipIf`]
+    pub skip_if: Option<SkipIf>,
+
     /// syn errors
     pub errors: Option<syn::Error>,
 }
 /// [`DefaultXcoder`] implementation of [`From`] for [`syn::MetaList`]
 ///
-/// Parses the nested meta arguments from a `default(typ = .., enc = .., dec = .., size(..))`
+/// Parses the nested meta arguments from a `default(typ = .., enc = .., dec = .., size(..), ..)`
 /// attribute list into a [`DefaultXcoder`]
 ///
 /// Validation errors (missing type, missing both enc and dec, duplicate fields) are
@@ -64,6 +70,8 @@ impl From<&syn::MetaList> for DefaultXcoder {
         let mut enc: Option<SiguledXcoder> = None;
         let mut dec: Option<XcoderType> = None;
         let mut size: Option<SizeSpec> = None;
+        let mut skip_if_default: Option<proc_macro2::Span> = None;
+        let mut skip_if: Option<syn::Path> = None;
         // --------------------------------------------------
         // parse nested meta
         // --------------------------------------------------
@@ -74,11 +82,13 @@ impl From<&syn::MetaList> for DefaultXcoder {
             handle_unique_nested_meta_values! {
                 meta;
                 err!(UnknownDefaultField(meta.path));
-                4;
+                6;
                 enc: symbol::pnm_parse_maybestr_encoder => err!(DuplicateEncoderInDefault(maybe_typ)),
                 dec: symbol::pnm_parse_maybestr_decoder => err!(DuplicateDecoderInDefault(maybe_typ)),
                 typ: symbol::pnm_parse_maybestr_type    => err!(DuplicateTypeInDefault),
                 size: symbol::parse_pnm_size            => err!(DuplicateSizeInDefault),
+                skip_if_default: symbol::parse_pnm_skip_if_default => err!(SkipIfConflict),
+                skip_if: symbol::pnm_parse_maybestr_skip_if => err!(SkipIfConflict),
             }
         }).err();
         // --------------------------------------------------
@@ -114,6 +124,19 @@ impl From<&syn::MetaList> for DefaultXcoder {
             }
         }
         // --------------------------------------------------
+        // the two skip forms contradict
+        // --------------------------------------------------
+        let skip_if = match SkipIf::from_items(skip_if_default, skip_if) {
+            Ok(skip_if) => skip_if,
+            Err(e) => {
+                match errors {
+                    None => errors = Some(e),
+                    Some(ref mut errors) => errors.combine(e),
+                }
+                None
+            }
+        };
+        // --------------------------------------------------
         // return
         // --------------------------------------------------
         DefaultXcoder {
@@ -121,6 +144,7 @@ impl From<&syn::MetaList> for DefaultXcoder {
             enc,
             dec,
             size,
+            skip_if,
             errors,
         }
     }

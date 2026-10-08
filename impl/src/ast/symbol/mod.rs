@@ -47,6 +47,8 @@ pub(crate) const DECODER: Symbol = Symbol("dec");
 /// [`SizeSpec`](crate::ast::attr::size::SizeSpec) and
 /// [`SizeBytes`](crate::ast::attr::size::SizeBytes)
 pub(crate) const SIZE: Symbol = Symbol("size");
+/// The `implicit` inner keyword of a field's `size(..)`
+pub(crate) const IMPLICIT: Symbol = Symbol("implicit");
 /// The `lengthed` inner keyword of a field's `size(..)`
 pub(crate) const LENGTHED: Symbol = Symbol("lengthed");
 /// The `exact = N` inner keyword of `size(..)`
@@ -59,10 +61,11 @@ pub(crate) const STREAM: Symbol = Symbol("stream");
 pub(crate) const DEFAULT: Symbol = Symbol("default");
 /// The `sentinel` sub-attribute identifier
 pub(crate) const SENTINEL: Symbol = Symbol("sentinel");
-/// The `break_on` container sub-attribute identifier
+/// The `break_on` sub-attribute identifier
 ///
-/// Accepts either a key literal (a decoded key equal to it stops the loop -
-/// [`tinyklv::BreakType::Done`]) or a function path `fn(key, len) -> BreakType`
+/// On the container, either a key literal (a decoded key equal to it stops the loop -
+/// [`tinyklv::BreakType::Done`]) or a function path `fn(key, len) -> BreakType`. On a field, a
+/// function path `fn(&value) -> BreakType`
 pub(crate) const BREAK_ON: Symbol = Symbol("break_on");
 /// The field-level `default` sub-attribute identifier
 ///
@@ -72,6 +75,12 @@ pub(crate) const BREAK_ON: Symbol = Symbol("break_on");
 pub(crate) const DEFAULT_VALUE: Symbol = Symbol("default");
 /// The `latebind` sub-attribute identifier for post-decode conversion/mutation
 pub(crate) const LATEBIND: Symbol = Symbol("latebind");
+/// The `skip_if_default` flag of a field or a `default(..)`: the field's frame is left out of
+/// the encode when the field equals its type's `Default::default()`
+pub(crate) const SKIP_IF_DEFAULT: Symbol = Symbol("skip_if_default");
+/// The `skip_if` sub-attribute of a field or a `default(..)`: the field's frame is left out of
+/// the encode when the user's `fn(&T) -> bool` returns `true`
+pub(crate) const SKIP_IF: Symbol = Symbol("skip_if");
 /// The `deny_unknown_keys` sub-attribute identifier
 pub(crate) const DENY_UNKNOWN_KEYS: Symbol = Symbol("deny_unknown_keys");
 /// The `allow_unimplemented_decode` sub-attribute identifier
@@ -109,18 +118,28 @@ pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
 pub(crate) static CONT_LIST_SYMBOLS: Symbols = Symbols(&[KEY, LENGTH, KEYLEN, DEFAULT]);
 
 /// Container-level default list symbols (type, encoder, decoder, value size)
-pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols = Symbols(&[TYPE, ENCODER, DECODER, SIZE]);
+pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols =
+    Symbols(&[TYPE, ENCODER, DECODER, SIZE, SKIP_IF_DEFAULT, SKIP_IF]);
 
 /// Container-level name-value symbols (e.g. `stream = ..`)
 pub(crate) static CONT_NV_SYMBOLS: Symbols = Symbols(&[STREAM, SENTINEL, BREAK_ON]);
 
 /// All valid field-level symbols accepted by the `#[klv(..)]` attribute
-pub(crate) static FIELD_SYMBOLS: Symbols =
-    Symbols(&[KEY, ENCODER, DECODER, SIZE, LATEBIND, DEFAULT_VALUE]);
+pub(crate) static FIELD_SYMBOLS: Symbols = Symbols(&[
+    KEY,
+    ENCODER,
+    DECODER,
+    SIZE,
+    LATEBIND,
+    DEFAULT_VALUE,
+    BREAK_ON,
+    SKIP_IF_DEFAULT,
+    SKIP_IF,
+]);
 
-/// Valid inner keywords of a field's or a `default(..)`'s `size(..)` list (`lengthed`,
-/// `exact = N`, `reserve = N`)
-pub(crate) static SIZE_FIELDS: Symbols = Symbols(&[LENGTHED, EXACT, RESERVE]);
+/// Valid inner keywords of a field's or a `default(..)`'s `size(..)` list (`implicit`,
+/// `lengthed`, `exact = N`, `reserve = N`)
+pub(crate) static SIZE_FIELDS: Symbols = Symbols(&[IMPLICIT, LENGTHED, EXACT, RESERVE]);
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 /// A symbol for KLV attributes
@@ -153,6 +172,7 @@ const KNOWN: &[Symbol] = &[
     ENCODER,
     DECODER,
     SIZE,
+    IMPLICIT,
     LENGTHED,
     EXACT,
     RESERVE,
@@ -162,6 +182,8 @@ const KNOWN: &[Symbol] = &[
     BREAK_ON,
     DEFAULT_VALUE,
     LATEBIND,
+    SKIP_IF_DEFAULT,
+    SKIP_IF,
     DENY_UNKNOWN_KEYS,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,

@@ -3,8 +3,9 @@
 //! Defines [`Field`] (the raw parsed form of a single struct field's KLV
 //! annotations) and [`FieldParsed`] (the validated form that guarantees a
 //! `key` literal is present). A container-level `default(..)` fills whichever of
-//! the encoder, decoder and size a field of its type leaves unset; `lengthed` goes with the
-//! decoder.
+//! the encoder, decoder, size and skip a field of its type leaves unset; `lengthed` goes with the
+//! decoder. A skipped field that sets no `default` of its own decodes a missing frame to its
+//! type's `Default::default()`.
 //! The `trait_fallback` opt-in is also resolved at this stage, injecting
 //! placeholder paths that the expand phase replaces with fully-qualified
 //! `<T as EncodeValue>::encode_value` / `<T as DecodeValue<..>>::decode_value` calls
@@ -21,10 +22,10 @@ mod xcoder;
 use crate::{
     Ctxt,
     ast::{
-        attr::{container::DefaultXcoder, size::SizeSpec},
+        attr::{container::DefaultXcoder, size::SizeSpec, skip_if::SkipIf},
         types::{
             DefaultValue, LatebindXcoder, SiguledXcoder, XcoderLike, XcoderSigil, XcoderType,
-            unwrap_option_type,
+            is_option, unwrap_option_type,
         },
     },
     symbol,
@@ -222,22 +223,70 @@ impl Field {
             }
         };
         // --------------------------------------------------
-        // a container default fills each of enc, dec and the size's byte count the field left
-        // unset; `lengthed` comes with whichever dec the field uses
+        // get all klv attr break_on's
+        // --------------------------------------------------
+        let break_ons = all_field_xcoders
+            .iter()
+            .filter_map(|f| f.break_on.clone())
+            .collect::<Vec<_>>();
+        field_xcoder.break_on = match break_ons.len() {
+            0 => None,
+            1 => Some(break_ons[0].clone()),
+            _ => {
+                cx.error_spanned_by(field, err!(DuplicateBreakOnInField));
+                None
+            }
+        };
+        // --------------------------------------------------
+        // get all klv attr skips
+        // --------------------------------------------------
+        let skips = all_field_xcoders
+            .iter()
+            .filter_map(|f| f.skip_if.clone())
+            .collect::<Vec<_>>();
+        field_xcoder.skip_if = match skips.len() {
+            0 => None,
+            1 => Some(skips[0].clone()),
+            _ => {
+                cx.error_spanned_by(field, err!(SkipIfConflict));
+                None
+            }
+        };
+        // --------------------------------------------------
+        // a container default fills each of enc, dec, the skip, `implicit` and the size's byte
+        // count the field left unset; `lengthed` comes with whichever dec the field uses
         // --------------------------------------------------
         let typ_maybe_unwrapped = unwrap_option_type(&field.ty).unwrap_or(&field.ty);
-        if let Some(default) = container_defaults.get(typ_maybe_unwrapped) {
+        let default = container_defaults.get(typ_maybe_unwrapped);
+        let default_dec = field_xcoder.dec.is_none()
+            && !keep_dec_none
+            && default.is_some_and(|default| default.dec.is_some());
+        if let Some(default) = default {
             if field_xcoder.enc.is_none() && !keep_enc_none {
                 field_xcoder.enc.clone_from(&default.enc);
             }
-            let default_dec = field_xcoder.dec.is_none() && !keep_dec_none && default.dec.is_some();
             if default_dec {
                 field_xcoder.dec.clone_from(&default.dec);
             }
-            match SizeSpec::filled(field_xcoder.size.take(), default.size.as_ref(), default_dec) {
-                Ok(size) => field_xcoder.size = size,
-                Err(err) => cx.syn_error(err),
+            if field_xcoder.skip_if.is_none() {
+                field_xcoder.skip_if.clone_from(&default.skip_if);
             }
+        }
+        // --------------------------------------------------
+        // a skipped field's missing frame decodes to its type's default, unless the field sets
+        // its own; an `Option` field's already decodes to `None`
+        // --------------------------------------------------
+        if field_xcoder.skip_if.is_some() && field_xcoder.default.is_none() && !is_option(&field.ty)
+        {
+            field_xcoder.default = Some(DefaultValue::Call);
+        }
+        // --------------------------------------------------
+        // the size is filled, and checked, with or without a default
+        // --------------------------------------------------
+        let default_size = default.and_then(|default| default.size.as_ref());
+        match SizeSpec::filled(field_xcoder.size.take(), default_size, default_dec) {
+            Ok(size) => field_xcoder.size = size,
+            Err(err) => cx.syn_error(err),
         }
         // --------------------------------------------------
         // fallback to trait impls (opt-in via `trait_fallback`)
@@ -342,6 +391,12 @@ pub(crate) struct FieldParsed {
 
     /// `true` when `dec` holds a trait-fallback placeholder rather than a real path
     pub fallback_dec: bool,
+
+    /// The `fn(&value) -> BreakType` consulted right after the field's value decodes, if any
+    pub break_on: Option<syn::Path>,
+
+    /// When the field's frame is left out of the encode, its own or its default's
+    pub skip_if: Option<SkipIf>,
 }
 /// [`FieldParsed`] implementation
 impl FieldParsed {
@@ -380,6 +435,8 @@ impl FieldParsed {
             default: f.contents.default.clone(),
             fallback_enc: f.contents.fallback_enc,
             fallback_dec: f.contents.fallback_dec,
+            break_on: f.contents.break_on.clone(),
+            skip_if: f.contents.skip_if.clone(),
         })
     }
 }

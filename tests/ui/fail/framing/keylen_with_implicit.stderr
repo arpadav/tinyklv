@@ -1,0 +1,5 @@
+error: `size(implicit)` is not supported with `keylen`: the `keylen` codec decides each frame's framing; remove `implicit`, or use `key(..)` + `len(..)` in place of `keylen(..)`.
+  --> tests/ui/fail/framing/keylen_with_implicit.rs:10:48
+   |
+10 |     #[klv(key = 0x01, dec = decb::be_u16, size(implicit))]
+   |                                                ^^^^^^^^

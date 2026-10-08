@@ -184,20 +184,7 @@ impl FixedLengthSlot<'_> {
         // prefix, length, then value
         // --------------------------------------------------
         let len_write = self.write_len(&bytes, span);
-        let value_write = value_write(&quote_spanned! { span => out });
-        quote_spanned! { span =>
-            {
-                #prefix_write
-                #len_write
-                let __value_start = out.len();
-                #value_write
-                ::core::debug_assert_eq!(
-                    out.len() - __value_start,
-                    #bytes,
-                    "tinyklv: fixed-width value encoder wrote a different byte count than its detected width",
-                );
-            }
-        }
+        value.write_after(quote! { #prefix_write #len_write }, value_write, span)
     }
 
     /// Writes a prefix, reserves the slot, writes the body, then back-fills the slot

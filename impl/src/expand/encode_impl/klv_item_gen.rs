@@ -2,7 +2,7 @@
 //!
 //! Turns each `#[klv(..)]` field into a complete key-length-value write. The
 //! module resolves the encoder call shape, picks the write the container's framing
-//! selects for the field, applies optional-field guards, and hands the header write to
+//! selects for the field, applies optional-field and skip guards, and hands the header write to
 //! the container framing
 //!
 //! Author: aav
@@ -17,9 +17,12 @@ use super::{
     length_prefix::LengthPrefix,
     staging::Staging,
 };
-use crate::ast::{
-    attr::{FieldParsed, MainField},
-    types::{self, XcoderSigil},
+use crate::{
+    ast::{
+        attr::{FieldParsed, MainField, size::SizeSpec, skip_if::SkipIf},
+        types::{self, XcoderSigil},
+    },
+    expand::helpers,
 };
 
 // --------------------------------------------------
@@ -55,10 +58,12 @@ impl EncodeCtx<'_> {
 
     /// Generates one `#[klv(..)]` field's complete KLV item write
     ///
-    /// Picks the field write: staged, known or reserved. A fused `keylen` encoder, or a
-    /// variable-width length prefix, stages the value in the scratch buffer. Under a fixed-width
-    /// length prefix the [`FieldLengthPlan`] picks a known-width or a reserved-slot write, and the
-    /// fixed-width length slot writes it
+    /// Picks the field write: implicit, staged, known or reserved. A `size(implicit)` value is
+    /// written straight after its key with no length ([`PlannedItemWrite::write_implicit`]). A
+    /// fused `keylen` encoder, or a variable-width length prefix, stages the value in the scratch
+    /// buffer. Under a fixed-width length prefix the [`FieldLengthPlan`] picks a known-width or a
+    /// reserved-slot write, and the fixed-width length slot writes it. A skipped field's whole
+    /// write sits under its skip guard ([`PlannedItemWrite::skip_guard`])
     ///
     /// # Arguments
     ///
@@ -71,6 +76,11 @@ impl EncodeCtx<'_> {
         let span = item.span();
         let key = &item.attrs.key;
         let value_write = |dst: &proc_macro2::TokenStream| item.value_write(dst);
+        let implicit = item
+            .attrs
+            .size
+            .as_ref()
+            .filter(|size| size.implicit().is_some());
         // --------------------------------------------------
         // emit the item write the container framing selects
         // --------------------------------------------------
@@ -79,8 +89,9 @@ impl EncodeCtx<'_> {
                 key_encoder, len, ..
             } => {
                 let key_write = key_encoder.write(key, span);
-                match len {
-                    LengthPrefix::Fixed(len) => match item.length_plan() {
+                match (implicit, len) {
+                    (Some(size), _) => item.write_implicit(size, key_write),
+                    (None, LengthPrefix::Fixed(len)) => match item.length_plan() {
                         FieldLengthPlan::KnownValueWidth(value) => {
                             len.write_known(key_write, value, value_write, span)
                         }
@@ -88,7 +99,7 @@ impl EncodeCtx<'_> {
                             len.write_backfilled(key_write, value_write, span)
                         }
                     },
-                    LengthPrefix::Variable(len) => {
+                    (None, LengthPrefix::Variable(len)) => {
                         len.write_staged(Staging::Scratch, key_write, value_write, span)
                     }
                 }
@@ -98,9 +109,10 @@ impl EncodeCtx<'_> {
             }
         };
         // --------------------------------------------------
-        // wrap optional fields with their `Some` guard
+        // wrap optional fields with their `Some` guard, then skipped fields with their skip
+        // guard
         // --------------------------------------------------
-        item.access().guard(item_write)
+        item.skip_guard(item.access().guard(item_write))
     }
 }
 
@@ -242,6 +254,46 @@ impl<'a> PlannedItemWrite<'a> {
         ValueAccess::new(self.field)
     }
 
+    /// Wraps the field's whole item write in its skip guard, when it has a [`SkipIf`]
+    ///
+    /// ```text
+    /// // skip_if_default
+    /// if self.#name != <#ty as Default>::default() { #item_write }
+    /// // skip_if = #path
+    /// if !#path(&self.#name) { #item_write }
+    /// ```
+    ///
+    /// `#ty` is the field's declared type, so an `Option` field's `None` is its default. The
+    /// guard is located at the field, so a type without `Default` or `PartialEq`, or a fn of
+    /// another signature, is reported there
+    ///
+    /// # Arguments
+    ///
+    /// * `item_write` - The field's item write: key, length and value, under its `Some` guard
+    ///
+    /// # Returns
+    ///
+    /// The guarded write, or `item_write` unchanged without a skip
+    fn skip_guard(&self, item_write: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+        let Some(skip_if) = &self.attrs.skip_if else {
+            return item_write;
+        };
+        let name = &self.field.name;
+        let at = helpers::call_site_at(name);
+        let written = match skip_if {
+            SkipIf::Default(_) => {
+                let ty = self.field.ty;
+                quote_spanned! {at=> self.#name != <#ty as ::core::default::Default>::default() }
+            }
+            SkipIf::Path(path) => quote_spanned! {at=> !#path(&self.#name) },
+        };
+        quote_spanned! {at=>
+            if #written {
+                #item_write
+            }
+        }
+    }
+
     /// The field's value encoder
     ///
     /// # Returns
@@ -325,6 +377,49 @@ impl<'a> PlannedItemWrite<'a> {
         // otherwise reserve the container's fixed length slot
         // --------------------------------------------------
         FieldLengthPlan::ReservedLengthSlot
+    }
+
+    /// Writes a prefix, then the `size(implicit)` value straight into `out`, with no length
+    ///
+    /// Under `exact = N` the value write is checked in debug builds to be `N` bytes
+    /// ([`ValueWidth::write_after`])
+    ///
+    /// # Arguments
+    ///
+    /// * `size` - The field's `size(..)`
+    /// * `prefix_write` - Generated statements that write the field key
+    ///
+    /// # Returns
+    ///
+    /// A block writing the complete frame into `out`
+    fn write_implicit(
+        &self,
+        size: &SizeSpec,
+        prefix_write: proc_macro2::TokenStream,
+    ) -> proc_macro2::TokenStream {
+        let span = self.span();
+        let value_write = |dst: &proc_macro2::TokenStream| self.value_write(dst);
+        // --------------------------------------------------
+        // a value of no declared width is written unchecked
+        // --------------------------------------------------
+        let Some(bytes) = size.exact_width() else {
+            let value_write = value_write(&quote_spanned! { span => out });
+            return quote_spanned! { span =>
+                {
+                    #prefix_write
+                    #value_write
+                }
+            };
+        };
+        // --------------------------------------------------
+        // an `exact = N` value is checked to be `N` bytes
+        // --------------------------------------------------
+        let value = ValueWidth {
+            field: &self.field.name,
+            bytes,
+            declared_at: size.span(),
+        };
+        value.write_after(prefix_write, value_write, span)
     }
 
     /// The value encoder call writing the field value into `dst`

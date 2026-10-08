@@ -78,7 +78,9 @@ impl DecodeCtx<'_> {
     /// 1. Leaves the loop through [`LoopDriver::clean_eof`] when the input is empty
     /// 2. Checkpoints the frame start as `checkpoint_inner`
     /// 3. Reads the frame header ([`LoopCtx::header`])
-    /// 4. Evaluates `break_on`, when set ([`LoopCtx::break_on`])
+    /// 4. Evaluates `break_on`, when set ([`LoopCtx::break_on`]); then a separate frame of a
+    ///    `size(implicit)` field's key decodes its value and skips the steps below
+    ///    ([`LoopCtx::after_key`])
     /// 5. Logs the header, when `debug` is set
     /// 6. Rejects a key outside the known set ([`LoopDriver::reject`]), when `deny_unknown_keys`
     ///    is set; this runs before any value byte is consumed, in both framing modes
@@ -120,6 +122,14 @@ impl DecodeCtx<'_> {
         // --------------------------------------------------
         let finish = self.breaks(driver, break_on.as_ref()).then(|| lp.finish());
         // --------------------------------------------------
+        // the stages after `break_on`, once the frame's length is read
+        // --------------------------------------------------
+        let frame = lp.after_key(quote! {
+            #debug_key_val
+            #gate
+            #body
+        });
+        // --------------------------------------------------
         // emit the loop: the clean end of input, a checkpoint, then each stage
         // --------------------------------------------------
         quote! {
@@ -130,9 +140,7 @@ impl DecodeCtx<'_> {
                 let checkpoint_inner = input.checkpoint();
                 #header
                 #break_on
-                #debug_key_val
-                #gate
-                #body
+                #frame
             }
             #finish
         }
@@ -141,8 +149,9 @@ impl DecodeCtx<'_> {
     /// Whether the loop emitted for `driver` contains a `break`
     ///
     /// ORs the report of each emitter that can put a `break` into the loop:
-    /// [`LoopDriver::clean_eof_breaks`], a `Some` from [`LoopCtx::break_on`], and
-    /// [`DecodeFraming::unknown_key_breaks`](super::framing::DecodeFraming::unknown_key_breaks)
+    /// [`LoopDriver::clean_eof_breaks`], a `Some` from [`LoopCtx::break_on`],
+    /// [`DecodeFraming::unknown_key_breaks`](super::framing::DecodeFraming::unknown_key_breaks),
+    /// and a field's `break_on`, whose `Done` breaks
     ///
     /// # Arguments
     ///
@@ -153,7 +162,13 @@ impl DecodeCtx<'_> {
     ///
     /// `true` when the loop can `break` to the [`LoopCtx::finish`] tail
     fn breaks(&self, driver: LoopDriver, break_on: Option<&TokenStream>) -> bool {
-        driver.clean_eof_breaks() || break_on.is_some() || self.framing.unknown_key_breaks()
+        driver.clean_eof_breaks()
+            || break_on.is_some()
+            || self.framing.unknown_key_breaks()
+            || self
+                .input
+                .klv_fields()
+                .any(|(_, attrs)| attrs.break_on.is_some())
     }
 
     /// Emits the `deny_unknown_keys` gate, `if !matches!(#key, #pattern) { #reject }`, where
@@ -717,7 +732,9 @@ mod tests {
     #[test]
     /// Verifies one `take` comes before the one `match` on a sliced frame's key, with or without
     /// a `size(exact = N)` field, and that no arm takes its own bytes. A fused frame's `Inline`
-    /// `match` takes nothing
+    /// `match` takes nothing. With a `size(implicit)` field, a `match` on the key comes first:
+    /// its `implicit, exact = N` arm takes its own `N` bytes, and its `_` arm takes once, ahead of
+    /// the `match` every prefixed field shares
     fn one_take_precedes_the_one_match_on_the_key() {
         let separate = Input(syn::parse_quote! {
             #[klv(key(dec = decb::u8), len(dec = decb::u8_as_usize), allow_unimplemented_encode)]
@@ -735,6 +752,19 @@ mod tests {
                 id: u8,
                 #[klv(key = 0x02, dec = decb::be_u16, size(exact = 2))]
                 mode: Option<u16>,
+            }
+        });
+        let separate_implicit = Input(syn::parse_quote! {
+            #[klv(key(dec = decb::u8), len(dec = decb::u8_as_usize), allow_unimplemented_encode)]
+            struct Reading {
+                #[klv(key = 0x01, dec = decb::u8, size(implicit))]
+                id: u8,
+                #[klv(key = 0x02, dec = decb::be_u16, size(implicit, exact = 2))]
+                mode: Option<u16>,
+                #[klv(key = 0x03, dec = decb::be_u32)]
+                count: u32,
+                #[klv(key = 0x04, dec = decb::be_u32, size(exact = 4))]
+                total: u32,
             }
         });
         let fused = Input(syn::parse_quote! {
@@ -763,12 +793,22 @@ mod tests {
             hoisted: false,
             takes: 0,
         };
+        let implicit = KeyMatch {
+            hoisted: false,
+            takes: 2,
+        };
         // --------------------------------------------------
         // (name, input, the frame's key binding, every `match` on it)
         // --------------------------------------------------
         let cases = [
             ("separate", separate, "key", vec![hoisted]),
             ("separate exact", separate_exact, "key", vec![hoisted]),
+            (
+                "separate implicit",
+                separate_implicit,
+                "key",
+                vec![implicit, hoisted],
+            ),
             ("fused", fused, "__key", vec![hoisted, inline]),
             ("fused exact", fused_exact, "__key", vec![hoisted, inline]),
         ];

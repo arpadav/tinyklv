@@ -23,14 +23,18 @@
 //! The emitted tokens assume the loop's bindings: `input`, `checkpoint` (fn entry),
 //! `checkpoint_inner` (frame start), `__acc` (the partial accumulator), the frame's value length
 //! (`DecodeFraming::len`, wherever a `take` is cut or a `size(exact = N)` check reads it),
-//! inside a failed `Inline` value arm, `__err` (the value decoder's error) and, in a one-shot loop
+//! inside a failed `Inline` value arm, `__err` (the value decoder's error), inside the `Abort` arm
+//! of a field's `break_on`, `__msg` (its message) and, in a one-shot loop
 //! over a [`CursorSite::Local`] cursor, `__exact_reject` (the held `size(exact = N)` rejection)
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::LoopCtx;
+use super::{
+    LoopCtx,
+    framing::{DecodeFraming, LenRead},
+};
 use crate::ast::attr::{
     MainContainer,
     container::{BreakOnSpec, ContainerMode},
@@ -40,7 +44,7 @@ use crate::ast::attr::{
 // external
 // --------------------------------------------------
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{ToTokens, quote};
 
 /// Which decode entry point a loop is emitted for, and therefore how it exits
 #[derive(Debug, Clone, Copy)]
@@ -74,14 +78,15 @@ impl CursorSite {
     ///
     /// # Returns
     ///
-    /// [`Self::Local`] when a field declares `size(exact = N)` and the stream is `&[u8]`, else
-    /// [`Self::Caller`]: a container without an exact field decodes over the caller's cursor in
-    /// fewer instructions, and any other stream need not be `Clone`
+    /// [`Self::Local`] when a field's frame length is checked against its `size(exact = N)`
+    /// ([`SizeSpec::len_check`](crate::ast::attr::size::SizeSpec::len_check)) and the stream is
+    /// `&[u8]`, else [`Self::Caller`]: a container without such a field decodes over the caller's
+    /// cursor in fewer instructions, and any other stream need not be `Clone`
     pub(super) fn of(input: &MainContainer, stream: &syn::Type) -> Self {
         let exact = input
             .klv_fields()
             .filter_map(|(_, attrs)| attrs.size.as_ref())
-            .any(|size| size.exact_width().is_some());
+            .any(|size| size.len_check().is_some());
         if exact && *stream == super::u8_slice() {
             Self::Local
         } else {
@@ -102,14 +107,17 @@ impl CursorSite {
     }
 }
 
-/// What [`LoopCtx::take`] does with the bytes it cuts off the input
+/// How many bytes [`LoopCtx::take`] cuts off the input, and what it does with them
 #[derive(Debug, Clone, Copy)]
 pub(super) enum TakeInto {
-    /// Bind them as `subinput`, the bounded slice a known-key arm decodes from; a frame running
-    /// past the end of the input first meets the `size(exact = N)` checks
+    /// Bind the frame's length in bytes as `subinput`, the bounded slice a known-key arm decodes
+    /// from; a frame running past the end of the input first meets the `size(exact = N)` checks
     /// ([`LoopCtx::exact_guards`])
     Subinput,
-    /// Drop them (`break_on` returned `Skip`)
+    /// Bind `N` bytes as `subinput` for a `size(implicit, exact = N)` value, whose frame has no
+    /// length to check
+    Exact(usize),
+    /// Drop the frame's length in bytes (`break_on` returned `Skip`, or no field reads them)
     Discard,
 }
 
@@ -214,9 +222,9 @@ impl LoopDriver {
 
     /// Emits a fatal exit carrying `msg`, with no finalize
     ///
-    /// This is the `break_on` `Abort` arm too. `Abort` is documented to *guarantee* an `Err` with
-    /// no partially-decoded value surfaced, so this exit honors that contract rather than
-    /// finalizing what was accumulated; both drivers leave with `Err` without finalizing
+    /// This is the container `break_on`'s `Abort` arm too. `Abort` is documented to *guarantee*
+    /// an `Err` with no partially-decoded value surfaced, so this exit honors that contract rather
+    /// than finalizing what was accumulated; both drivers leave with `Err` without finalizing
     ///
     /// # Arguments
     ///
@@ -351,15 +359,43 @@ impl LoopDriver {
             }
         }
     }
+
+    /// Emits the fatal exit for a field whose `break_on` returned `Abort(__msg)`, with no
+    /// finalize
+    ///
+    /// Both drivers name the field first, as for a malformed `Inline` value
+    /// ([`Self::reject_value`]); one-shot keeps `__msg` as the label after it
+    ///
+    /// # Arguments
+    ///
+    /// * `label` - Names the field (a [`Self::reject_label`] label)
+    ///
+    /// # Returns
+    ///
+    /// `return Err(concat!("invalid ", #label));` (streaming) or a `ContextError` labelled
+    /// `__msg`, relabelled with `label` (one-shot)
+    pub(super) fn reject_aborted_value(self, label: &TokenStream) -> TokenStream {
+        match self {
+            Self::Streaming => self.reject_label(label),
+            Self::OneShot(_) => {
+                let reject = self.reject_value(label);
+                quote! {
+                    let __err = ::tinyklv::__export::labeled_error(input, &checkpoint_inner, __msg);
+                    #reject
+                }
+            }
+        }
+    }
 }
 
 /// [`LoopCtx`] implementation
 impl LoopCtx<'_> {
-    /// Emits a pre-checked `take` of the frame's value length in bytes off the main input
+    /// Emits a pre-checked `take` of the frame's value length in bytes, or of an `implicit`
+    /// value's `N`, off the main input
     ///
     /// The pre-check classes a short frame as truncation before `take` runs, so the `take` failure
-    /// arm of [`TakeInto::Subinput`] is unreachable in practice; it finalizes (streaming) or
-    /// rewinds and stops (one-shot). A short frame bound for `subinput` first meets the
+    /// arm of a bound `subinput` is unreachable in practice; it finalizes (streaming) or rewinds
+    /// and stops (one-shot). A short frame bound for `subinput` by its length first meets the
     /// `size(exact = N)` checks ([`Self::exact_guards`]), so a wrong length is rejected rather than
     /// classed as truncation. The rewind comes before them, so either exit leaves the cursor at
     /// the frame start
@@ -375,15 +411,17 @@ impl LoopCtx<'_> {
     ///
     /// # Arguments
     ///
-    /// * `into` - Whether the bytes are bound as `subinput` or dropped
+    /// * `into` - How many bytes are cut, and whether they are bound as `subinput` or dropped
     ///
     /// # Returns
     ///
     /// The pre-check followed by the `take` statement
     pub(super) fn take(self, into: TakeInto) -> TokenStream {
         let Self { driver, stream, .. } = self;
-        let len = self.framing.len();
-        let truncated = driver.truncated();
+        let len = match into {
+            TakeInto::Subinput | TakeInto::Discard => self.framing.len().into_token_stream(),
+            TakeInto::Exact(width) => width.into_token_stream(),
+        };
         // --------------------------------------------------
         // the `take` of the value bytes off the input
         // --------------------------------------------------
@@ -399,29 +437,9 @@ impl LoopCtx<'_> {
         // them
         // --------------------------------------------------
         let (guards, bind) = match into {
+            TakeInto::Subinput => (Some(self.exact_guards()), self.bind_subinput(&take)),
+            TakeInto::Exact(_) => (None, self.bind_subinput(&take)),
             TakeInto::Discard => (None, quote! { let _ = #take; }),
-            TakeInto::Subinput => {
-                // --------------------------------------------------
-                // a failed `take` finalizes (streaming) or rewinds and stops (one-shot)
-                // --------------------------------------------------
-                let fail_arm = match driver {
-                    LoopDriver::Streaming => {
-                        let finish = self.finish();
-                        quote! { return #finish, }
-                    }
-                    LoopDriver::OneShot(_) => quote! { { #truncated } },
-                };
-                // --------------------------------------------------
-                // bind the bytes, taking the failure arm if `take` fails
-                // --------------------------------------------------
-                let bind = quote! {
-                    let mut subinput: <#stream as ::tinyklv::__export::winnow::stream::Stream>::Slice = match #take {
-                        ::core::result::Result::Ok(s) => s,
-                        ::core::result::Result::Err(_) => #fail_arm
-                    };
-                };
-                (Some(self.exact_guards()), bind)
-            }
         };
         // --------------------------------------------------
         // pre-check the length, so a short frame is rewound and then rejected or truncation,
@@ -439,12 +457,45 @@ impl LoopCtx<'_> {
         }
     }
 
+    /// Emits the binding of a pre-checked `take`'s bytes as `subinput`
+    ///
+    /// A failed `take` finalizes (streaming) or rewinds and stops (one-shot)
+    ///
+    /// # Arguments
+    ///
+    /// * `take` - The `take` expression
+    ///
+    /// # Returns
+    ///
+    /// The `let mut subinput` statement
+    fn bind_subinput(self, take: &TokenStream) -> TokenStream {
+        let Self { driver, stream, .. } = self;
+        let fail_arm = match driver {
+            LoopDriver::Streaming => {
+                let finish = self.finish();
+                quote! { return #finish, }
+            }
+            LoopDriver::OneShot(_) => {
+                let truncated = driver.truncated();
+                quote! { { #truncated } }
+            }
+        };
+        quote! {
+            let mut subinput: <#stream as ::tinyklv::__export::winnow::stream::Stream>::Slice = match #take {
+                ::core::result::Result::Ok(s) => s,
+                ::core::result::Result::Err(_) => #fail_arm
+            };
+        }
+    }
+
     /// Emits the `break_on` check that runs right after the frame header, when `break_on` is set
     ///
     /// * separate frame - a `match` on the `BreakType` that the key literal (`Done` when the key
     ///   equals it, else `Proceed`) or the user's `fn(key, len)` returns ([`Self::break_match`])
-    /// * fused frame - `if __key == #lit { break; }`: the loop ends where a separate frame's `Done`
-    ///   ends it, right after the header, which stays consumed, before any value byte is read
+    /// * fused frame, or a separate frame of a container with a `size(implicit)` field - only a
+    ///   key literal, as `if #key == #lit { break; }`: the loop ends where a separate frame's
+    ///   `Done` ends it, right after the header, which stays consumed, before any value byte is
+    ///   read. Some of these frames have no length, so a `break_on` fn is rejected at parse time
     ///
     /// Every form can `break`, so a `Some` is the report
     /// [`DecodeCtx::breaks`](super::DecodeCtx::breaks) ORs
@@ -454,28 +505,35 @@ impl LoopCtx<'_> {
     /// The check, or `None` when `break_on` is unset
     pub(super) fn break_on(self) -> Option<TokenStream> {
         let key = self.framing.key();
+        let stop_at = |lit: &syn::Lit| {
+            quote! {
+                if #key == #lit {
+                    break;
+                }
+            }
+        };
         match &self.input.attrs.mode {
-            ContainerMode::Separate { break_on, .. } => match break_on.as_ref()? {
-                BreakOnSpec::Literal(lit) => Some(self.break_match(&quote! {
+            ContainerMode::Separate { break_on, .. } => match (break_on.as_ref()?, self.framing) {
+                (
+                    BreakOnSpec::Literal(lit),
+                    DecodeFraming::Separate {
+                        len_read: LenRead::UnlessImplicit,
+                        ..
+                    },
+                ) => Some(stop_at(lit)),
+                (BreakOnSpec::Literal(lit), _) => Some(self.break_match(&quote! {
                     if #key == #lit {
                         ::tinyklv::BreakType::Done
                     } else {
                         ::tinyklv::BreakType::Proceed
                     }
                 })),
-                BreakOnSpec::Func(path) => {
+                (BreakOnSpec::Func(path), _) => {
                     let len = self.framing.len();
                     Some(self.break_match(&quote! { #path(#key, #len) }))
                 }
             },
-            ContainerMode::Fused { break_on, .. } => {
-                let lit = break_on.as_ref()?;
-                Some(quote! {
-                    if #key == #lit {
-                        break;
-                    }
-                })
-            }
+            ContainerMode::Fused { break_on, .. } => break_on.as_ref().map(stop_at),
         }
     }
 

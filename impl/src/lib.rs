@@ -234,6 +234,25 @@ Use either `{kl}` OR `{k}`+`{l}`, not both.",
     KeylenWithBreakOnFn,
 
     #[error("\
+        `{s}({i})` is not supported with `{kl}`: the `{kl}` codec decides each frame's framing; \
+remove `{i}`, or use `{k}(..)` + `{l}(..)` in place of `{kl}(..)`.",
+        s = symbol::SIZE,
+        i = symbol::IMPLICIT,
+        kl = symbol::KEYLEN,
+        k = symbol::KEY,
+        l = symbol::LENGTH,
+    )]
+    ImplicitInKeylen,
+
+    #[error("\
+        `{b} = <fn>` takes the frame's length, which an `{i}` field's frame does not have; use a \
+key literal (`{b} = 0x..`).",
+        b = symbol::BREAK_ON,
+        i = symbol::IMPLICIT,
+    )]
+    ImplicitWithBreakOnFn,
+
+    #[error("\
         Duplicate `{s}` attribute. Only one method of encoding and decoding keys is allowed.",
         s = symbol::KEY,
     )]
@@ -486,6 +505,19 @@ exact width or a soft capacity estimate, not both.",
 
     #[error("\
         Duplicate `{s}` field.",
+        s = symbol::BREAK_ON,
+    )]
+    DuplicateBreakOnInField,
+
+    #[error("\
+        Only one of `{d}` and `{s} = <fn>` is allowed, once; remove the other.",
+        d = symbol::SKIP_IF_DEFAULT,
+        s = symbol::SKIP_IF,
+    )]
+    SkipIfConflict,
+
+    #[error("\
+        Duplicate `{s}` field.",
         s = symbol::DEFAULT_VALUE,
     )]
     DuplicateDefaultInField,
@@ -551,6 +583,15 @@ supply an explicit `{d}` or change the `{s}`.",
         df = symbol::DEFAULT,
     )]
     SizeLengthedOnDefaultDec,
+
+    #[error("\
+        A `{l}` decoder is passed the value's length, and an `{i}` value has none; add \
+`{e} = N` to pass it `N`, or remove `{l}`.",
+        l = symbol::LENGTHED,
+        i = symbol::IMPLICIT,
+        e = symbol::EXACT,
+    )]
+    SizeImplicitLengthedWithoutExact,
 
     #[error("\
         The value of field `{field}` is {value_bytes} bytes but `{l}({s}({e} = {width}))` can \

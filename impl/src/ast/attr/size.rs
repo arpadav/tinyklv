@@ -1,14 +1,14 @@
 //! Parsing of the shared `size(..)` sub-attribute
 //!
 //! Defines [`SizeSpec`], the declared size shape of a field value parsed from a
-//! `size(lengthed, exact = N | reserve = N)` list, and [`SizeBytes`], its byte count, which is also
-//! the whole `size(exact = N | reserve = N)` of a `key(..)` or `len(..)`. Unlike every other attr
-//! parser this one is shared by BOTH field-level (`attr/field`, `attr/container/default`) and frame
-//! header (`attr/container/header`) scopes, so it lives one tier up, directly under `attr`. Each
-//! type's [`TryFrom<&syn::meta::ParseNestedMeta>`] drives the `parse_nested_meta` loop via
-//! [`handle_unique_nested_meta_values!`], matching the [`FieldXcoder`](super::field) /
-//! `container::header::HeaderXcoder` / [`DefaultXcoder`](super::container::DefaultXcoder)
-//! convention
+//! `size(implicit, lengthed, exact = N | reserve = N)` list, and [`SizeBytes`], its byte count,
+//! which is also the whole `size(exact = N | reserve = N)` of a `key(..)` or `len(..)`. Unlike
+//! every other attr parser this one is shared by BOTH field-level (`attr/field`,
+//! `attr/container/default`) and frame header (`attr/container/header`) scopes, so it lives one
+//! tier up, directly under `attr`. Each type's [`TryFrom<&syn::meta::ParseNestedMeta>`] drives the
+//! `parse_nested_meta` loop via [`handle_unique_nested_meta_values!`], matching the
+//! [`FieldXcoder`](super::field) / `container::header::HeaderXcoder` /
+//! [`DefaultXcoder`](super::container::DefaultXcoder) convention
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -147,15 +147,22 @@ pub(crate) enum LenSource {
 #[derive(Debug, Clone)]
 /// The declared size shape of a field value, parsed from `size(..)`
 ///
-/// Two orthogonal axes:
+/// Three orthogonal axes:
 ///
-/// * `lengthed` - the decoder is passed the frame's runtime `len`. Absent ⇒ no `len` arg
+/// * `implicit` - no length prefix is written or read for the value: it delimits itself, or is
+///   `exact = N` bytes
+/// * `lengthed` - the decoder is passed the frame's runtime `len`, or `N` under `exact = N`.
+///   Absent ⇒ no `len` arg
 /// * `bytes` ([`SizeBytes`]) - the value's byte count: `exact = N` (decode rejects any other
-///   length, encode takes the fast path) or `reserve = N` (an encode reserve), or unset
+///   length, or takes `N` bytes of an `implicit` value; encode takes the fast path) or
+///   `reserve = N` (an encode reserve), or unset
 ///
-/// Forms: `size(lengthed)`, `size(exact = N)`, `size(reserve = N)`, `size(lengthed, exact = N)`,
-/// `size(lengthed, reserve = N)`. `size(exact = N, reserve = N)` is rejected at parse time
+/// `size(exact = N, reserve = N)` is rejected at parse time, and an `implicit`, `lengthed` value
+/// without `exact = N` once the field's size is filled ([`Self::filled`])
 pub(crate) struct SizeSpec {
+    /// the `implicit` keyword, if written: the value has no length prefix
+    implicit: Option<proc_macro2::Span>,
+
     /// the `lengthed` keyword, if written: the field decoder is passed the frame's length
     lengthed: Option<proc_macro2::Span>,
 
@@ -167,10 +174,11 @@ pub(crate) struct SizeSpec {
 }
 /// [`SizeSpec`] implementation
 impl SizeSpec {
-    /// The size of a field whose type has a container `default(typ = ..)`
+    /// The size of a field, filled from its type's container `default(typ = ..)`, if any
     ///
     /// `lengthed` describes the decoder's shape, so it comes from the side whose `dec` the field
-    /// uses. The byte count is the field's own unless it left it unset
+    /// uses. `implicit` is the field's own, else the default's. The byte count is the field's own
+    /// unless it left it unset
     ///
     /// # Arguments
     ///
@@ -184,14 +192,18 @@ impl SizeSpec {
     ///
     /// # Errors
     ///
-    /// The field's own `lengthed` on the default's `dec` that is not `lengthed`, spanned at the
-    /// field's `lengthed`
+    /// * The field's own `lengthed` on the default's `dec` that is not `lengthed`, spanned at the
+    ///   field's `lengthed`
+    /// * An `implicit`, `lengthed` value without `exact = N`, which has no length to pass its
+    ///   decoder, spanned at the field's own `implicit` when its `lengthed` comes with the
+    ///   default's `dec`, else at the `lengthed`
     pub(crate) fn filled(
         own: Option<Self>,
         default: Option<&Self>,
         default_dec: bool,
     ) -> syn::Result<Option<Self>> {
         let own_lengthed = own.as_ref().and_then(|own| own.lengthed);
+        let own_implicit = own.as_ref().and_then(|own| own.implicit);
         let lengthed = if default_dec {
             let default_lengthed = default.and_then(|default| default.lengthed);
             if let (Some(span), None) = (own_lengthed, default_lengthed) {
@@ -201,16 +213,43 @@ impl SizeSpec {
         } else {
             own_lengthed
         };
+        let implicit = own_implicit.or_else(|| default.and_then(|default| default.implicit));
         let bytes_side = match (own, default) {
             (Some(own), _) if own.bytes != SizeBytes::Unset => Some(own),
             (_, Some(default)) => Some(default.clone()),
             (own, None) => own,
         };
-        Ok(bytes_side.map(|Self { bytes, span, .. }| Self {
+        let filled = bytes_side.map(|Self { bytes, span, .. }| Self {
+            implicit,
             lengthed,
             bytes,
             span,
-        }))
+        });
+        // --------------------------------------------------
+        // an `implicit` value has no length to pass a `lengthed` decoder unless it is
+        // `exact = N`; the error points at the field's own keyword over its default's
+        // --------------------------------------------------
+        if let Some(Self {
+            implicit: Some(_),
+            lengthed: Some(lengthed),
+            bytes,
+            ..
+        }) = &filled
+            && bytes.exact().is_none()
+        {
+            let at = if default_dec {
+                own_implicit.unwrap_or(*lengthed)
+            } else {
+                *lengthed
+            };
+            return Err(syn::Error::new(at, err!(SizeImplicitLengthedWithoutExact)));
+        }
+        Ok(filled)
+    }
+
+    /// The span of the `implicit` keyword, if written: the value has no length prefix
+    pub(crate) fn implicit(&self) -> Option<proc_macro2::Span> {
+        self.implicit
     }
 
     /// Whether the field decoder takes the runtime `len` (the length-parameterised decode arity)
@@ -228,9 +267,10 @@ impl SizeSpec {
         self.bytes.exact_width()
     }
 
-    /// The exact wire width this declares and the literal it is written as, if any (`exact = N`)
-    pub(crate) fn exact(&self) -> Option<(usize, &syn::LitInt)> {
-        self.bytes.exact()
+    /// The width a frame's length must equal, and the literal it is written as: `N` of
+    /// `exact = N` on a value with a length prefix, none for an `implicit` one
+    pub(crate) fn len_check(&self) -> Option<(usize, &syn::LitInt)> {
+        self.bytes.exact().filter(|_| self.implicit.is_none())
     }
 
     /// The span of the `size(..)` that declared the byte count
@@ -257,12 +297,12 @@ impl SizeSpec {
 }
 /// [`SizeSpec`] implementation of [`TryFrom`] for [`syn::meta::ParseNestedMeta`]
 ///
-/// Parses the `size(lengthed, exact = N | reserve = N)` group via
+/// Parses the `size(implicit, lengthed, exact = N | reserve = N)` group via
 /// [`handle_unique_nested_meta_values!`], recursing into the parenthesised list with
 /// [`ParseNestedMeta::parse_nested_meta`] - the same idiom every other list attribute uses, but
 /// one tier deeper since `size(..)` is itself nested inside a `#[klv(..)]` entry rather than the
-/// top-level list: `lengthed` is a bare-path flag, `exact`/`reserve` are `= N`. The macro rejects
-/// a duplicate of any one keyword; [`SizeBytes`] resolves the byte count
+/// top-level list: `implicit` and `lengthed` are bare-path flags, `exact`/`reserve` are `= N`.
+/// The macro rejects a duplicate of any one keyword; [`SizeBytes`] resolves the byte count
 ///
 /// [`ParseNestedMeta::parse_nested_meta`]: syn::meta::ParseNestedMeta::parse_nested_meta
 impl TryFrom<&syn::meta::ParseNestedMeta<'_>> for SizeSpec {
@@ -271,6 +311,7 @@ impl TryFrom<&syn::meta::ParseNestedMeta<'_>> for SizeSpec {
         // --------------------------------------------------
         // init
         // --------------------------------------------------
+        let mut implicit: Option<proc_macro2::Span> = None;
         let mut lengthed: Option<proc_macro2::Span> = None;
         let mut exact: Option<syn::LitInt> = None;
         let mut reserve: Option<syn::LitInt> = None;
@@ -281,7 +322,8 @@ impl TryFrom<&syn::meta::ParseNestedMeta<'_>> for SizeSpec {
             handle_unique_nested_meta_values! {
                 meta;
                 err!(UnknownSizeField(meta.path));
-                3;
+                4;
+                implicit: symbol::parse_pnm_implicit,
                 lengthed: symbol::parse_pnm_lengthed,
                 exact: symbol::parse_pnm_exact,
                 reserve: symbol::parse_pnm_reserve,
@@ -291,6 +333,7 @@ impl TryFrom<&syn::meta::ParseNestedMeta<'_>> for SizeSpec {
         // return
         // --------------------------------------------------
         Ok(SizeSpec {
+            implicit,
             lengthed,
             bytes: SizeBytes::from_items(exact, reserve)?,
             span: input.path.span(),

@@ -38,7 +38,7 @@ impl EncodeCtx<'_> {
         // --------------------------------------------------
         // build scratch and field item emission
         // --------------------------------------------------
-        let scratch_decl = self.framing.declare_scratch();
+        let scratch_decl = self.framing.declare_scratch(self.input);
         let klv_items = self.klv_items();
         // --------------------------------------------------
         // assemble the trait impl

@@ -1,0 +1,5 @@
+error: `break_on = <fn>` takes the frame's length, which an `implicit` field's frame does not have; use a key literal (`break_on = 0x..`).
+  --> tests/ui/fail/framing/break_on_fn_with_implicit.rs:17:16
+   |
+17 |     break_on = stop
+   |                ^^^^

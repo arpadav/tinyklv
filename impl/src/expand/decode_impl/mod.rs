@@ -122,7 +122,7 @@ impl<'a> DecodeCtx<'a> {
         // --------------------------------------------------
         // frame header codec(s); none means no decode impl
         // --------------------------------------------------
-        let framing = DecodeFraming::from_mode(&input.attrs.mode)?;
+        let framing = DecodeFraming::of(input)?;
         // --------------------------------------------------
         // default stream -> &[u8]
         // --------------------------------------------------

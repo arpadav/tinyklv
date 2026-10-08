@@ -224,6 +224,16 @@ impl Container {
                                         (None, _) => old.size = new.size,
                                         _ => (),
                                     }
+                                    match (&old.skip_if, &new.skip_if) {
+                                        (Some(_), Some(skip_if)) => {
+                                            cx.syn_error(syn::Error::new(
+                                                skip_if.span(),
+                                                err!(DuplicateDefault(new.typ; "skip")),
+                                            ));
+                                        }
+                                        (None, _) => old.skip_if = new.skip_if,
+                                        _ => (),
+                                    }
                                 }
 
                                 None => {

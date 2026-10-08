@@ -11,10 +11,10 @@
 //! * `Some(Err(e))` - keyword matched but value was malformed
 //!
 //! The `parse_pnm_default_value` function is hand-written because the bare
-//! `default` form (no `=` token) cannot be expressed via the macro. `parse_pnm_lengthed`
-//! (the bare `lengthed` flag), `parse_pnm_size` (a field's `size(..)` group, delegated to
-//! [`SizeSpec`]) and `parse_pnm_header_size` (a `key(..)`/`len(..)` `size(..)` group, delegated to
-//! [`SizeBytes`]) are hand-written too
+//! `default` form (no `=` token) cannot be expressed via the macro. `parse_pnm_size` (a field's
+//! `size(..)` group, delegated to [`SizeSpec`]) and `parse_pnm_header_size` (a `key(..)`/`len(..)`
+//! `size(..)` group, delegated to [`SizeBytes`]) are hand-written too; the bare `implicit`,
+//! `lengthed` and `skip_if_default` flags share `pnm_parse_flag`
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -124,37 +124,48 @@ create_parser!(
 create_parser!(KEY: syn::Lit; pnm);
 create_parser!(SENTINEL: syn::Lit; nv);
 
-// size (field size shape: `size(lengthed, exact = N | reserve = N)`; key/len byte count:
-// `size(exact = N | reserve = N)`) and its inner keywords
+// size (field size shape: `size(implicit, lengthed, exact = N | reserve = N)`; key/len byte
+// count: `size(exact = N | reserve = N)`) and its inner keywords
 // the `exact = N` / `reserve = N` byte counts (kept as `LitInt` so a conflict can be spanned)
 create_parser!(EXACT: syn::LitInt; pnm);
 create_parser!(RESERVE: syn::LitInt; pnm);
 
-/// Parses the bare `lengthed` flag inside a field's `size(..)` list (a path, no `= value`)
+/// Parses a bare flag (a path, no `= value`) inside a list
 ///
 /// Modelled on [`parse_pnm_default_value`]'s bare form: an `Err` from `value()` means the flag was
-/// present with no value (the valid form); an `Ok` means the user wrote `lengthed = ..`, which is
+/// present with no value (the valid form); an `Ok` means the user wrote `<flag> = ..`, which is
 /// rejected
 ///
 /// # Arguments
 ///
-/// * `input` - the nested meta entry, positioned at the `lengthed` keyword
+/// * `input` - the nested meta entry, positioned at the flag
 ///
 /// # Returns
 ///
-/// [`None`] if the keyword is not [`LENGTHED`]; `Some(Ok(span))` of a bare `lengthed`;
-/// `Some(Err(..))` otherwise
-pub(crate) fn parse_pnm_lengthed(
-    input: &syn::meta::ParseNestedMeta,
-) -> Option<syn::Result<proc_macro2::Span>> {
-    if input.path != LENGTHED {
-        return None;
-    }
-    Some(match input.value() {
-        Ok(_) => Err(input.error(format!("`{LENGTHED}` is a flag and takes no value"))),
+/// The span of the flag
+///
+/// # Errors
+///
+/// The flag written with a value
+fn pnm_parse_flag(input: &syn::meta::ParseNestedMeta) -> syn::Result<proc_macro2::Span> {
+    match input.value() {
+        Ok(_) => Err(input.error(format!(
+            "`{}` is a flag and takes no value",
+            input.path.to_token_stream(),
+        ))),
         Err(_) => Ok(input.path.span()),
-    })
+    }
 }
+
+// the bare `implicit` / `lengthed` flags
+create_parser!(
+    IMPLICIT: proc_macro2::Span;
+    parse_pnm_implicit, pnm_parse_flag => syn::meta::ParseNestedMeta
+);
+create_parser!(
+    LENGTHED: proc_macro2::Span;
+    parse_pnm_lengthed, pnm_parse_flag => syn::meta::ParseNestedMeta
+);
 
 /// Parses a field's [`SizeSpec`] from the `size(..)` group on a [`syn::meta::ParseNestedMeta`]
 ///
@@ -238,6 +249,23 @@ pub(crate) fn parse_pnm_default_value(
 // latebind
 create_parser!(
     LATEBIND: LatebindXcoder;
+    pnm_parse_maybestr => syn::meta::ParseNestedMeta
+);
+
+// a field's `break_on`, the path of its `fn(&value) -> BreakType`
+create_parser!(
+    BREAK_ON: syn::Path;
+    pnm_parse_maybestr => syn::meta::ParseNestedMeta
+);
+
+// a field's or a `default(..)`'s skip: the bare `skip_if_default` flag, or the path of its
+// `skip_if` fn
+create_parser!(
+    SKIP_IF_DEFAULT: proc_macro2::Span;
+    parse_pnm_skip_if_default, pnm_parse_flag => syn::meta::ParseNestedMeta
+);
+create_parser!(
+    SKIP_IF: syn::Path;
     pnm_parse_maybestr => syn::meta::ParseNestedMeta
 );
 create_parser!(

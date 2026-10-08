@@ -3,7 +3,7 @@
 //! Defines [`FieldXcoder`], which accumulates every recognized sub-attribute
 //! from one `#[klv(..)]` annotation on a struct field: the key literal, the
 //! optional encoder and decoder, the value size shape, the `latebind`
-//! post-decode step, and field-level `default`. The [`From<&syn::MetaList>`]
+//! post-decode step, field-level `default`, `break_on`, and the skip. The [`From<&syn::MetaList>`]
 //! impl drives the actual `parse_nested_meta` parse; duplicate-field errors
 //! are stored in `FieldXcoder::errors` so the caller can forward them to
 //! the [`crate::Ctxt`] accumulator
@@ -12,7 +12,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::ast::attr::size::SizeSpec;
+use crate::ast::attr::{size::SizeSpec, skip_if::SkipIf};
 use crate::ast::symbol;
 use crate::ast::types::{DefaultValue, LatebindXcoder, SiguledXcoder, XcoderType};
 
@@ -47,12 +47,16 @@ pub(crate) struct FieldXcoder {
     /// `true` if `dec` was synthesized from the `trait_fallback` container flag
     /// rather than supplied by the user or a container `default(..)` match
     pub fallback_dec: bool,
+    /// The `fn(&value) -> BreakType` consulted right after the field's value decodes
+    pub break_on: Option<syn::Path>,
+    /// When the field's frame is left out of the encode; see [`SkipIf`]
+    pub skip_if: Option<SkipIf>,
 }
 /// [`FieldXcoder`] implementation of [`From`] for [`syn::MetaList`]
 ///
 /// Parses the nested meta arguments from a field-level `#[klv(key = .., enc =
-/// .., dec = .., size(..), latebind = .., default = ..)]` attribute list
-/// into a [`FieldXcoder`]
+/// .., dec = .., size(..), latebind = .., default = .., break_on = .., skip_if_default |
+/// skip_if = ..)]` attribute list into a [`FieldXcoder`]
 ///
 /// Duplicate-field errors and unknown-field errors are stored in
 /// `FieldXcoder::errors` rather than returned directly, so that the caller
@@ -69,24 +73,43 @@ impl From<&syn::MetaList> for FieldXcoder {
         let mut size: Option<SizeSpec> = None;
         let mut latebind: Option<LatebindXcoder> = None;
         let mut default: Option<DefaultValue> = None;
+        let mut break_on: Option<syn::Path> = None;
+        let mut skip_if_default: Option<proc_macro2::Span> = None;
+        let mut skip_if: Option<syn::Path> = None;
         // --------------------------------------------------
         // parse nested meta
         // --------------------------------------------------
-        let errors = input
+        let mut errors = input
             .parse_nested_meta(|meta| {
                 handle_unique_nested_meta_values! {
                     meta;
                     err!(UnknownFieldField(meta.path));
-                    6;
+                    9;
                     key: symbol::parse_pnm_key                      => err!(DuplicateKeyInField),
                     enc: symbol::pnm_parse_maybestr_encoder         => err!(DuplicateEncoderInField),
                     dec: symbol::pnm_parse_maybestr_decoder         => err!(DuplicateDecoderInField),
                     size: symbol::parse_pnm_size                    => err!(DuplicateSizeInField),
                     latebind: symbol::pnm_parse_maybestr_latebind   => err!(DuplicateLatebindInField),
                     default: symbol::parse_pnm_default_value        => err!(DuplicateDefaultInField),
+                    break_on: symbol::pnm_parse_maybestr_break_on   => err!(DuplicateBreakOnInField),
+                    skip_if_default: symbol::parse_pnm_skip_if_default => err!(SkipIfConflict),
+                    skip_if: symbol::pnm_parse_maybestr_skip_if     => err!(SkipIfConflict),
                 }
             })
             .err();
+        // --------------------------------------------------
+        // the two skip forms contradict
+        // --------------------------------------------------
+        let skip_if = match SkipIf::from_items(skip_if_default, skip_if) {
+            Ok(skip_if) => skip_if,
+            Err(e) => {
+                match errors {
+                    None => errors = Some(e),
+                    Some(ref mut errors) => errors.combine(e),
+                }
+                None
+            }
+        };
         // --------------------------------------------------
         // return
         // --------------------------------------------------
@@ -100,6 +123,8 @@ impl From<&syn::MetaList> for FieldXcoder {
             default,
             fallback_enc: false,
             fallback_dec: false,
+            break_on,
+            skip_if,
         }
     }
 }
