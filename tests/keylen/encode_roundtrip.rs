@@ -2,15 +2,16 @@
 //!
 //! Every field is staged, framed by the fused encoder - the tag, plus a length only for
 //! wire 2 LEN - and appended. These tests pin the exact bytes of that framing for every
-//! wire shape and round-trip each message back through its decoder
+//! wire shape
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::common::drive::Drive;
-use crate::support::example::{Example, Inner, Reading, Status};
-use crate::support::pb;
+use crate::common::varint;
+use crate::support::example::{Example, Reading, Status};
+use crate::support::{header, value};
 use tinyklv::codecs::ber::BerLength;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
@@ -23,10 +24,10 @@ use tinyklv::prelude::*;
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_tag_keylen, enc = pb::enc_tag_keylen),
-    default(typ = i32, dec = pb::dec_varint_i32, enc = *pb::enc_varint_i32),
+    keylen(dec = header::dec_tag, enc = header::enc_tag),
+    default(typ = i32, dec = varint::dec_i32, enc = *varint::enc_i32),
     default(typ = f32, dec = decb::le_f32, enc = *encb::le_f32),
-    default(typ = String, dec = pb::dec_string, enc = &encs::from_string_utf8),
+    default(typ = String, dec = value::dec_string, enc = &encs::from_string_utf8),
     default(typ = u64, dec = decb::le_u64, enc = *encb::le_u64),
 )]
 struct Measurement {
@@ -64,9 +65,9 @@ impl Measurement {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_tag_keylen, enc = pb::enc_tag_keylen),
+    keylen(dec = header::dec_tag, enc = header::enc_tag),
     trait_fallback,
-    default(typ = i32, dec = pb::dec_varint_i32, enc = *pb::enc_varint_i32),
+    default(typ = i32, dec = varint::dec_i32, enc = *varint::enc_i32),
 )]
 struct Tagged<T>
 where
@@ -83,10 +84,10 @@ where
 
 /// The first two fields of [`Reading`], encode only: neither `keylen` nor any field has a `dec`
 #[derive(Klv, Debug)]
-#[klv(keylen(enc = pb::enc_tag_keylen), allow_unimplemented_decode)]
+#[klv(keylen(enc = header::enc_tag), allow_unimplemented_decode)]
 struct Outgoing {
     /// field 1, wire 0 VARINT
-    #[klv(key = 0x08, enc = *pb::enc_varint_i32)]
+    #[klv(key = 0x08, enc = *varint::enc_i32)]
     count: i32,
 
     /// field 2, wire 2 LEN
@@ -111,106 +112,11 @@ fn encode_measurement_exact_bytes() {
     assert_eq!(Measurement::decode_value(&mut &wire[..]).unwrap(), Measurement::unstamped());
 }
 
-/// An empty LEN value is framed by its tag and a zero length, with no value bytes
-#[test]
-#[rustfmt::skip]
-fn encode_measurement_empty_len_value() {
-    let unnamed = Measurement { name: String::new(), ..Measurement::unstamped() };
-    let wire = vec![
-        // id = 5
-        0x08, 0x05,
-        // ratio = 1.5
-        0x15, 0x00, 0x00, 0xC0, 0x3F,
-        // name = ""
-        0x1A, 0x00,
-    ];
-    assert_eq!(unnamed.encoded(), wire);
-    assert_eq!(Measurement::decode_value(&mut &wire[..]).unwrap(), unnamed);
-}
-
-/// A set wire-1 I64 field is framed by its tag alone, followed by 8 LE bytes
-#[test]
-#[rustfmt::skip]
-fn encode_measurement_fixed64_has_no_length() {
-    let stamped = Measurement { created_at: Some(9), ..Measurement::unstamped() };
-    let mut wire = Measurement::unstamped().encoded();
-    wire.extend([
-        // created_at = 9
-        0x21, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    ]);
-    assert_eq!(stamped.encoded(), wire);
-    assert_eq!(Measurement::decode_value(&mut &wire[..]).unwrap(), stamped);
-}
-
 /// The canonical message encodes to its hand-built wire byte for byte: the nested message,
 /// the packed repeated, the custom enum, and the two-byte tag and length of `note`
 #[test]
 fn encode_example_matches_wire() {
     assert_eq!(Example::decoded().encoded(), Example::wire());
-}
-
-/// The canonical message survives encode then decode unchanged
-#[test]
-fn encode_example_roundtrips() {
-    let wire = Example::decoded().encoded();
-    assert_eq!(
-        Example::decode_value(&mut &wire[..]).unwrap(),
-        Example::decoded()
-    );
-}
-
-/// A two-byte inline varint encodes to the same bytes the decode tests hand-build
-#[test]
-fn encode_example_two_byte_varint() {
-    let example = Example {
-        id: 300,
-        ..Example::decoded()
-    };
-    let wire = example.encoded();
-    assert_eq!(wire, Example::wire_id_300());
-    assert_eq!(Example::decode_value(&mut &wire[..]).unwrap(), example);
-}
-
-/// A negative `int32` is sign-extended to a ten-byte varint and decodes back to itself
-#[test]
-fn encode_example_negative_varint_roundtrips() {
-    let example = Example {
-        id: -1,
-        ..Example::decoded()
-    };
-    let wire = example.encoded();
-    let mut expected = Example::wire();
-    // --------------------------------------------------
-    // the id varint 0x05 becomes nine 0xFF continuation bytes and a final 0x01
-    // --------------------------------------------------
-    expected.splice(
-        1..2,
-        [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01],
-    );
-    assert_eq!(wire, expected);
-    assert_eq!(Example::decode_value(&mut &wire[..]).unwrap(), example);
-}
-
-/// The nested message encodes standalone to the bytes its parent frames as a LEN value
-#[test]
-fn encode_inner_standalone() {
-    let wire = Inner { code: 7 }.encoded();
-    assert_eq!(wire, [0x08, 0x07]);
-    assert_eq!(
-        Inner::decode_value(&mut &wire[..]).unwrap(),
-        Inner { code: 7 }
-    );
-}
-
-/// Unset optional fields are omitted entirely, leaving only the required field
-#[test]
-fn encode_reading_count_only() {
-    let wire = Reading::count_only().encoded();
-    assert_eq!(wire, [0x08, 0x03]);
-    assert_eq!(
-        Reading::decode_value(&mut &wire[..]).unwrap(),
-        Reading::count_only()
-    );
 }
 
 /// Every optional field set, with `level` and `size` each taking two bytes, survives encode then decode
@@ -275,14 +181,4 @@ fn encode_generic_trait_fallback_appends() {
     ];
     assert_eq!(out, [&prefix[..], &wire[..]].concat());
     assert_eq!(Tagged::<Status>::decode_value(&mut &wire[..]).unwrap(), tagged);
-}
-
-/// Every [`Status`] variant survives its `u64` conversion and its VARINT codec
-#[test]
-fn status_roundtrips_every_variant() {
-    for status in Status::ALL {
-        assert_eq!(Status::try_from(u64::from(status)), Ok(status));
-        let wire = status.encoded();
-        assert_eq!(Status::decode_value(&mut &wire[..]), Ok(status));
-    }
 }

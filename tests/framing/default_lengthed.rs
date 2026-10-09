@@ -1,9 +1,8 @@
 //! A container `default(typ = T, ..)`'s `lengthed` goes with its decoder
 //!
 //! A field of `T` that brings its own decoder is `lengthed` only if it says so, so a decoder that
-//! takes no length works under a `lengthed` default, and still takes the default's width. A field
-//! on the default's decoder takes the default's `lengthed`, whatever width of its own it sets, and
-//! may write `lengthed` itself
+//! takes no length works under a `lengthed` default. A field on the default's decoder takes the
+//! default's `lengthed`, whatever width of its own it sets, and may write `lengthed` itself
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -97,9 +96,12 @@ impl RadioLog {
     /// relay = "W1AW" (field 3, 4 bytes)
     const RELAY: &[u8] = &[0x1A, 0x04, b'W', b'1', b'A', b'W'];
 
+    /// witness = "VE3XYZ" (field 4, 6 bytes)
+    const WITNESS: &[u8] = &[0x22, 0x06, b'V', b'E', b'3', b'X', b'Y', b'Z'];
+
     /// The full wire [`RadioLog::decoded`] decodes from
     fn wire() -> Vec<u8> {
-        [Self::CALLER, Self::CALLEE, Self::RELAY].concat()
+        [Self::CALLER, Self::CALLEE, Self::RELAY, Self::WITNESS].concat()
     }
 
     /// The canonical decoded [`RadioLog`] matching [`RadioLog::wire`]
@@ -108,29 +110,17 @@ impl RadioLog {
             caller: Callsign("N0CALL".to_owned()),
             callee: Callsign("DL1ABC".to_owned()),
             relay: Some(Callsign("W1AW".to_owned())),
-            witness: None,
+            witness: Some(Callsign("VE3XYZ".to_owned())),
         }
     }
 }
 
 /// A field whose own decoder takes no length decodes under a `lengthed` default, beside fields on
-/// the default's `lengthed` decoder, in both drivers and at every chunk split
+/// the default's `lengthed` decoder, one of which writes `lengthed` itself, in both drivers and at
+/// every chunk split
 #[test]
 fn des27_a_field_with_its_own_dec_is_not_lengthed() {
     RadioLog::decoded().assert_decodes_from(&RadioLog::wire());
-}
-
-/// A field with its own decoder still takes the default's width
-#[test]
-fn des27_a_field_with_its_own_dec_takes_the_defaults_exact() {
-    #[rustfmt::skip]
-    let wire = [
-        RadioLog::CALLER,
-        // callee = "DL1AB" (field 2, 5 bytes)
-        &[0x12, 0x05, b'D', b'L', b'1', b'A', b'B'],
-    ]
-    .concat();
-    RadioLog::assert_rejects_naming(&wire, &["`RadioLog::callee`", "size(exact = 6)"]);
 }
 
 /// A field on the default's decoder stays `lengthed` under a width of its own, which replaces the
@@ -146,24 +136,4 @@ fn des27_a_field_on_the_defaults_dec_keeps_lengthed_under_its_own_exact() {
     ]
     .concat();
     RadioLog::assert_rejects_naming(&wire, &["`RadioLog::relay`", "size(exact = 4)"]);
-}
-
-/// A field on the default's decoder that writes `lengthed` itself, as the default does, decodes
-/// at the default's width
-#[test]
-fn des27_a_field_on_the_defaults_dec_may_write_lengthed_too() {
-    #[rustfmt::skip]
-    let wire = [
-        RadioLog::CALLER,
-        RadioLog::CALLEE,
-        RadioLog::RELAY,
-        // witness = "VE3XYZ" (field 4, 6 bytes)
-        &[0x22, 0x06, b'V', b'E', b'3', b'X', b'Y', b'Z'],
-    ]
-    .concat();
-    RadioLog {
-        witness: Some(Callsign("VE3XYZ".to_owned())),
-        ..RadioLog::decoded()
-    }
-    .assert_decodes_from(&wire);
 }

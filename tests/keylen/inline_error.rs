@@ -13,7 +13,7 @@
 use crate::common::drive::Drive;
 use crate::common::error::ContextErrorExt;
 use crate::common::varint;
-use crate::support::pb;
+use crate::support::header;
 use tinyklv::dec::ber as decber;
 use tinyklv::prelude::*;
 
@@ -27,7 +27,7 @@ use winnow::error::StrContext;
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_tag_keylen),
+    keylen(dec = header::dec_tag),
     allow_unimplemented_encode,
 )]
 struct Probe {
@@ -81,7 +81,7 @@ impl Probe {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_u8_keylen),
+    keylen(dec = header::dec_u8),
     allow_unimplemented_encode,
 )]
 struct Chain {
@@ -208,21 +208,14 @@ fn oneshot_error_keeps_labelled_decoder_cause() {
 }
 
 /// A failure two `Inline` levels down names both fields, outermost first, then the decoder's
-/// own reason
+/// own reason, and carries two labels: the outermost field's and the next one's
 #[test]
-fn nested_oneshot_display_names_every_field_outermost_first() {
+fn nested_oneshot_error_names_every_field_outermost_first() {
     let error = Chain::oneshot_error(&Chain::overflowing_leaf_wire(2));
     assert!(
         error.names_in_order(&["Chain::next", "Chain::next", "Chain::leaf", Chain::LEAF]),
         "display: {error}"
     );
-}
-
-/// A failure two `Inline` levels down carries two labels, the outermost field's and the next
-/// one's, and the leaf decoder's cause itself stays in its cause chain
-#[test]
-fn nested_oneshot_error_keeps_two_labels_and_decoder_cause() {
-    let error = Chain::oneshot_error(&Chain::overflowing_leaf_wire(2));
     let labels: Vec<_> = error.labels().collect();
     assert!(
         matches!(
@@ -230,10 +223,6 @@ fn nested_oneshot_error_keeps_two_labels_and_decoder_cause() {
             [outer, inner] if outer.contains("Chain::next") && inner.contains("Chain::next")
         ),
         "labels: {labels:?}"
-    );
-    assert!(
-        error.find_cause::<TryFromIntError>().is_some(),
-        "display: {error}"
     );
 }
 

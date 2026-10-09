@@ -14,7 +14,7 @@
 //! `default` form (no `=` token) cannot be expressed via the macro. `parse_pnm_size` (a field's
 //! `size(..)` group, delegated to [`SizeSpec`]) and `parse_pnm_header_size` (a `key(..)`/`len(..)`
 //! `size(..)` group, delegated to [`SizeBytes`]) are hand-written too; the bare `implicit`,
-//! `lengthed` and `skip_if_default` flags share `pnm_parse_flag`
+//! `lengthed`, `skip_if_default` and `unknown` flags share `pnm_parse_flag`
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -267,6 +267,12 @@ create_parser!(
 create_parser!(
     SKIP_IF: syn::Path;
     pnm_parse_maybestr => syn::meta::ParseNestedMeta
+);
+
+// the bare `unknown` flag of the field that keeps the frames whose key no field declares
+create_parser!(
+    UNKNOWN_FRAMES: proc_macro2::Span;
+    parse_pnm_unknown, pnm_parse_flag => syn::meta::ParseNestedMeta
 );
 create_parser!(
     LATEBIND: LatebindXcoder;

@@ -2,7 +2,7 @@
 //!
 //! Generates the value-body encoder for a container: reserve capacity, declare
 //! the scratch buffer only when the framing stages values, then emit one
-//! complete KLV item write per attributed field
+//! complete KLV item write per attributed field, then the retained unknown frames
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -20,9 +20,9 @@ impl EncodeCtx<'_> {
     /// Generates the `EncodeValue` trait implementation for a container
     ///
     /// Builds the derived value encoder body, including the encode reserve, optional
-    /// scratch buffer declaration, and one generated KLV item write for each
-    /// attributed field. The generated impl writes directly into the caller's
-    /// output buffer and does not emit any frame sentinel bytes
+    /// scratch buffer declaration, one generated KLV item write for each
+    /// attributed field, and the retained unknown frames' writes after them. The generated impl
+    /// writes directly into the caller's output buffer and does not emit any frame sentinel bytes
     ///
     /// # Returns
     ///
@@ -36,10 +36,11 @@ impl EncodeCtx<'_> {
         let reserve_bytes = self.reserve_bytes;
         let (impl_generics, ty_generics, where_clause) = self.input.generics.split_for_impl();
         // --------------------------------------------------
-        // build scratch and field item emission
+        // build scratch, field item and unknown frame emission
         // --------------------------------------------------
         let scratch_decl = self.framing.declare_scratch(self.input);
         let klv_items = self.klv_items();
+        let unknown_items = self.unknown_items();
         // --------------------------------------------------
         // assemble the trait impl
         // --------------------------------------------------
@@ -50,6 +51,7 @@ impl EncodeCtx<'_> {
                     out.reserve(#reserve_bytes);
                     #scratch_decl
                     #klv_items
+                    #unknown_items
                 }
             }
         }

@@ -1,15 +1,15 @@
 //! Parsing of the container-level fused `keylen(..)` sub-attribute
 //!
-//! Defines [`KeylenXcoder`], which holds the optional encoder and decoder of the fused key+length
-//! codec. [`TryFrom<&syn::MetaList>`] drives the `parse_nested_meta` parse for `enc = ..` and
-//! `dec = ..`; the codec decides each frame's framing at run time, so `keylen(..)` takes no
-//! `size(..)`
+//! Defines [`KeylenXcoder`], the [`Codec`] of the fused key+length frame header, whose encoder
+//! takes no sigil. [`TryFrom<&syn::MetaList>`] drives the `parse_nested_meta` parse for
+//! `enc = ..` and `dec = ..`; the codec decides each frame's framing at run time, so `keylen(..)`
+//! takes no `size(..)`
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::header::HeaderFields;
+use super::codec::Codec;
 use crate::ast::{
     symbol,
     types::{HeaderEncoder, XcoderType},
@@ -20,18 +20,9 @@ use crate::ast::{
 // --------------------------------------------------
 use quote::ToTokens;
 
-#[derive(Debug, Clone)]
 /// The encoder and decoder of a fused key+length frame header
-///
-/// Both are optional because `allow_unimplemented_encode` or `allow_unimplemented_decode` may be
-/// set on the container, in which case a missing encoder or decoder is not an error
-pub(crate) struct KeylenXcoder {
-    /// The encoder, or `None` when unimplemented encoding is allowed
-    pub(crate) enc: Option<XcoderType>,
+pub(crate) type KeylenXcoder = Codec<XcoderType>;
 
-    /// The decoder, or `None` when unimplemented decoding is allowed
-    pub(crate) dec: Option<XcoderType>,
-}
 /// [`KeylenXcoder`] implementation of [`TryFrom`] for [`syn::MetaList`]
 ///
 /// Parses the `enc = ..` and `dec = ..` sub-fields from a `keylen(..)` attribute list into a
@@ -69,15 +60,5 @@ impl TryFrom<&syn::MetaList> for KeylenXcoder {
             enc: enc.map(|HeaderEncoder(enc)| enc),
             dec,
         })
-    }
-}
-/// [`KeylenXcoder`] implementation of [`HeaderFields`]
-impl HeaderFields for KeylenXcoder {
-    fn has_enc(&self) -> bool {
-        self.enc.is_some()
-    }
-
-    fn has_dec(&self) -> bool {
-        self.dec.is_some()
     }
 }

@@ -58,10 +58,12 @@ const ATTR_NAME: &str = "klv";
 /// [`syn::Error::into_compile_error`]
 ///
 /// The generated implementations depend on which `#[klv(..)]` attributes are
-/// present. A missing encoder, on a field or on the framing attribute (the
-/// `key(..)` + `len(..)` pair or the fused `keylen(..)` codec), is a compile
-/// error unless the container sets `allow_unimplemented_encode`, in which case no
-/// encode impl is generated. Missing decoders behave the same under
+/// present. A missing encoder, on a field, on the framing attribute (the
+/// `key(..)` + `len(..)` pair or the fused `keylen(..)` codec) or on the
+/// `unknown(..)` codec of a struct whose `#[klv(unknown)]` field keeps its
+/// frames, is a compile error unless the container sets
+/// `allow_unimplemented_encode`, in which case no encode impl is generated.
+/// Missing decoders, `unknown(..)`'s included, behave the same under
 /// `allow_unimplemented_decode`, suppressing the decode impls
 #[proc_macro_derive(Klv, attributes(klv))]
 pub fn klv_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -245,12 +247,14 @@ remove `{i}`, or use `{k}(..)` + `{l}(..)` in place of `{kl}(..)`.",
     ImplicitInKeylen,
 
     #[error("\
-        `{b} = <fn>` takes the frame's length, which an `{i}` field's frame does not have; use a \
-key literal (`{b} = 0x..`).",
+        `{b} = <fn>` takes the frame's length, which the derive does not read for an `{i}` \
+field's frame, nor, with `{u}(..)`, for a frame whose key no field declares; use a key literal \
+(`{b} = 0x..`), or remove every `{i}` and `{u}(..)`.",
         b = symbol::BREAK_ON,
         i = symbol::IMPLICIT,
+        u = symbol::UNKNOWN_FRAMES,
     )]
-    ImplicitWithBreakOnFn,
+    BreakOnFnWithoutLength,
 
     #[error("\
         Duplicate `{s}` attribute. Only one method of encoding and decoding keys is allowed.",
@@ -355,7 +359,7 @@ If no encoding is required, use `#[{a}({aue})]`.",
         a = symbol::KLV_ATTR,
         aue = symbol::ALLOW_UNIMPLEMENTED_ENCODE,
     )]
-    MissingEncInHeader(String),
+    MissingEncInCodec(String),
 
     #[error("\
         Missing required `{d}` field for `{0}`.
@@ -364,7 +368,83 @@ If no decoding is required, use `#[{a}({aud})]`.",
         a = symbol::KLV_ATTR,
         aud = symbol::ALLOW_UNIMPLEMENTED_DECODE,
     )]
-    MissingDecInHeader(String),
+    MissingDecInCodec(String),
+
+    // --------------------------------------------------
+    // unknown
+    // --------------------------------------------------
+    #[error("\
+        Duplicate `{u}` attribute. Only one codec for unknown frames per struct is allowed.",
+        u = symbol::UNKNOWN_FRAMES,
+    )]
+    DuplicateUnknown,
+
+    #[error("\
+        Unknown field `{0}` in `{u}(..)`.
+Expected `{e} = <..>` or `{d} = <..>`.",
+        u = symbol::UNKNOWN_FRAMES,
+        e = symbol::ENCODER,
+        d = symbol::DECODER,
+    )]
+    UnknownFieldInUnknown(String),
+
+    #[error("\
+        Duplicate `{e}` field in `{u}(..)`. Only one method of encoding unknown frames is \
+allowed.",
+        e = symbol::ENCODER,
+        u = symbol::UNKNOWN_FRAMES,
+    )]
+    DuplicateEncoderInUnknown,
+
+    #[error("\
+        Duplicate `{d}` field in `{u}(..)`. Only one method of decoding unknown frames is \
+allowed.",
+        d = symbol::DECODER,
+        u = symbol::UNKNOWN_FRAMES,
+    )]
+    DuplicateDecoderInUnknown,
+
+    #[error("\
+        `{dk}` rejects a frame whose key no field declares, and `{u}(..)` decodes it; remove \
+one of them.",
+        dk = symbol::DENY_UNKNOWN_KEYS,
+        u = symbol::UNKNOWN_FRAMES,
+    )]
+    UnknownWithDenyUnknownKeys,
+
+    #[error("\
+        `{u}` is set twice on this field; remove one.",
+        u = symbol::UNKNOWN_FRAMES,
+    )]
+    DuplicateUnknownInField,
+
+    #[error("\
+        Only one field per struct may be `#[{k}({u})]`: it keeps every frame whose key no field \
+declares. Remove `{u}` from this field or from the earlier one.",
+        k = symbol::KLV_ATTR,
+        u = symbol::UNKNOWN_FRAMES,
+    )]
+    MultipleUnknownFields,
+
+    #[error("\
+        An `{u}` field takes no other setting: the struct's `{u}({d} = <..>, {e} = <..>)` decodes \
+and encodes its frames. Remove the other settings from this field.",
+        u = symbol::UNKNOWN_FRAMES,
+        d = symbol::DECODER,
+        e = symbol::ENCODER,
+    )]
+    UnknownFieldWithSetting,
+
+    #[error("\
+        An `{u}` field keeps the frames the struct's `{u}({d} = <..>, {e} = <..>)` decodes, and \
+this struct has no `{u}(..)`. Add one to the struct's `#[{k}(..)]`, or remove `{u}` from this \
+field.",
+        u = symbol::UNKNOWN_FRAMES,
+        d = symbol::DECODER,
+        e = symbol::ENCODER,
+        k = symbol::KLV_ATTR,
+    )]
+    UnknownFieldWithoutCodec,
 
     // --------------------------------------------------
     // default

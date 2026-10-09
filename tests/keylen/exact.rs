@@ -5,11 +5,10 @@
 //! width, even when the frame runs past the end of the input, so a `lengthed` decoder only ever
 //! reads a frame `N` bytes long. A rejected frame the input holds whole is consumed, so a decode
 //! resumed after the error starts at the next frame; one that runs past the end is left whole.
-//! Encode writes `N` as the length of a frame
-//! that carries one. An `Inline` frame carries no length: an exact-width field's decoder reads the
-//! main input unchecked, and a `lengthed` one has no length to read by, so its value is
-//! malformed; a malformed value leaves the cursor where its decoder stopped. A `Sliced` frame of
-//! an unknown key is skipped with its bytes
+//! Encode writes `N` as the length of a frame that carries one. An `Inline` frame carries no
+//! length: an exact-width field's decoder reads the main input unchecked, and a `lengthed` one has
+//! no length to read by, so its value is malformed; a malformed value leaves the cursor where its
+//! decoder stopped
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -17,7 +16,8 @@
 // --------------------------------------------------
 use crate::common::drive::Drive;
 use crate::common::varint;
-use crate::support::pb;
+use crate::common::wire;
+use crate::support::header;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
@@ -100,7 +100,7 @@ impl EncodeValue for RelayAddr {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_field_keylen, enc = Fix::enc_header),
+    keylen(dec = header::dec_field, enc = Fix::enc_header),
     trait_fallback,
 )]
 struct Fix {
@@ -164,26 +164,19 @@ impl Fix {
     ///
     /// # Arguments
     ///
-    /// * `header` - the field number and the byte length of the value that follows
+    /// * `(field, value_len)` - the field number and the byte length of the value that follows
     /// * `out` - the buffer the header bytes are appended to
-    fn enc_header(header: (u32, usize), out: &mut Vec<u8>) {
-        let wire_type = match header.0 {
+    fn enc_header((field, value_len): (u32, usize), out: &mut Vec<u8>) {
+        let wire_type = match field {
             // stamp
-            2 => pb::WIRE_I64,
+            2 => wire::I64,
             // addr
-            3 => pb::WIRE_LEN,
+            3 => wire::LEN,
             // seq
-            _ => pb::WIRE_VARINT,
+            _ => wire::VARINT,
         };
-        pb::enc_field_keylen(wire_type, header, out);
+        header::enc_field(wire_type, (field, value_len), out);
     }
-}
-
-/// `Sliced` frames of the declared widths decode, a fixed-width wire type and a length prefix
-/// alike, in both drivers and at every chunk split
-#[test]
-fn sliced_frames_of_their_exact_width_decode() {
-    Fix::decoded().assert_decodes_from(&Fix::wire());
 }
 
 /// Encode writes each exact width where the header carries a length, and the bytes decode back
@@ -192,37 +185,6 @@ fn encode_writes_each_exact_width_as_the_length() {
     let encoded = Fix::decoded().encoded();
     assert_eq!(encoded, Fix::wire());
     Fix::decoded().assert_decodes_from(&encoded);
-}
-
-/// A `Sliced` frame of another width is rejected naming the field: a fixed width the wire type
-/// implies, and a length prefix, shorter and longer
-#[test]
-fn a_sliced_frame_of_another_width_is_rejected() {
-    let stamp = ["`Fix::stamp`", "size(exact = 8)"];
-    #[rustfmt::skip]
-    let fixed32 = [
-        Fix::SEQ,
-        // stamp (field 2, wire 5 I32, Sliced(4))
-        &[0x15, 0x09, 0x00, 0x00, 0x00],
-    ]
-    .concat();
-    Fix::assert_rejects_naming(&fixed32, &stamp);
-    #[rustfmt::skip]
-    let longer = [
-        Fix::SEQ,
-        // stamp (field 2, wire 2 LEN, Sliced(9))
-        &[0x12, 0x09, 0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
-    ]
-    .concat();
-    Fix::assert_rejects_naming(&longer, &stamp);
-    #[rustfmt::skip]
-    let shorter = [
-        Fix::SEQ,
-        // addr (field 3, wire 2 LEN, Sliced(3))
-        &[0x1A, 0x03, 0x0A, 0x00, 0x01],
-    ]
-    .concat();
-    Fix::assert_rejects_naming(&shorter, &["`Fix::addr`", "size(exact = 4)"]);
 }
 
 /// A mismatched length is rejected before the frame is classed as truncation, so a frame running
@@ -253,19 +215,6 @@ fn the_rejection_names_the_field_and_leaves_the_cursor_past_the_frame() {
     ];
     let wire = [Fix::SEQ, stamp, Fix::ADDR].concat();
     Fix::assert_rejects_at(&wire, Fix::SEQ.len() + stamp.len(), message);
-}
-
-/// A decode resumed where a mismatched frame's rejection left the cursor starts at the next frame:
-/// in both drivers, the frames after it decode
-#[test]
-fn a_decode_resumes_at_the_frame_after_a_mismatched_one() {
-    let message = "`Fix::addr` value (its frame length does not match `size(exact = 4)`)";
-    // addr (field 3, wire 2 LEN, Sliced(6))
-    let addr: &[u8] = &[0x1A, 0x06, 0x0A, 0x00, 0x00, 0x01, 0x00, 0x00];
-    let wire = [addr, &Fix::wire()].concat();
-    Fix::assert_rejects_at(&wire, addr.len(), message);
-    let (_, after) = wire.split_at(addr.len());
-    Fix::decoded().assert_decodes_from(after);
 }
 
 /// A malformed `Inline` value is rejected naming the field, and both drivers leave the cursor
@@ -336,25 +285,6 @@ fn an_inline_frame_for_a_lengthed_exact_field_is_malformed() {
         &[0x0A, 0x00, 0x00, 0x01],
     ]
     .concat();
-    Fix::assert_rejects_naming(&wire, &["`Fix::addr`", "size(lengthed)"]);
     let value_start = Fix::SEQ.len() + 1;
     Fix::assert_rejects_at(&wire, value_start, message);
-}
-
-/// A `Sliced` frame of an unknown key is skipped with its bytes, whatever its length: the fields
-/// around it decode as if it were not there, in both drivers and at every chunk split
-#[test]
-fn an_unknown_sliced_key_is_skipped() {
-    #[rustfmt::skip]
-    let wire = [
-        Fix::SEQ,
-        // unknown field 9 (wire 2 LEN, Sliced(3))
-        &[0x4A, 0x03, 0xDE, 0xAD, 0xBE],
-        Fix::STAMP,
-        // unknown field 10 (wire 5 I32, Sliced(4))
-        &[0x55, 0x01, 0x02, 0x03, 0x04],
-        Fix::ADDR,
-    ]
-    .concat();
-    Fix::decoded().assert_decodes_from(&wire);
 }

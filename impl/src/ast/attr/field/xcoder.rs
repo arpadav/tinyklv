@@ -3,7 +3,8 @@
 //! Defines [`FieldXcoder`], which accumulates every recognized sub-attribute
 //! from one `#[klv(..)]` annotation on a struct field: the key literal, the
 //! optional encoder and decoder, the value size shape, the `latebind`
-//! post-decode step, field-level `default`, `break_on`, and the skip. The [`From<&syn::MetaList>`]
+//! post-decode step, field-level `default`, `break_on`, the skip, and the `unknown` flag of the
+//! field that keeps the frames whose key no field declares. The [`From<&syn::MetaList>`]
 //! impl drives the actual `parse_nested_meta` parse; duplicate-field errors
 //! are stored in `FieldXcoder::errors` so the caller can forward them to
 //! the [`crate::Ctxt`] accumulator
@@ -20,6 +21,7 @@ use crate::ast::types::{DefaultValue, LatebindXcoder, SiguledXcoder, XcoderType}
 // external
 // --------------------------------------------------
 use quote::ToTokens;
+use syn::spanned::Spanned;
 use tk_syn_macros::handle_unique_nested_meta_values;
 
 #[derive(Debug, Default)]
@@ -51,12 +53,17 @@ pub(crate) struct FieldXcoder {
     pub break_on: Option<syn::Path>,
     /// When the field's frame is left out of the encode; see [`SkipIf`]
     pub skip_if: Option<SkipIf>,
+    /// The span of the `unknown` flag, set on the field that keeps the unknown frames
+    pub unknown: Option<proc_macro2::Span>,
+    /// The span of the first setting the list names other than `unknown`, which a keyed field
+    /// has and the field that keeps the unknown frames may not
+    pub keyed_setting: Option<proc_macro2::Span>,
 }
 /// [`FieldXcoder`] implementation of [`From`] for [`syn::MetaList`]
 ///
 /// Parses the nested meta arguments from a field-level `#[klv(key = .., enc =
 /// .., dec = .., size(..), latebind = .., default = .., break_on = .., skip_if_default |
-/// skip_if = ..)]` attribute list into a [`FieldXcoder`]
+/// skip_if = ..)]` attribute list, or the bare `#[klv(unknown)]`, into a [`FieldXcoder`]
 ///
 /// Duplicate-field errors and unknown-field errors are stored in
 /// `FieldXcoder::errors` rather than returned directly, so that the caller
@@ -76,15 +83,20 @@ impl From<&syn::MetaList> for FieldXcoder {
         let mut break_on: Option<syn::Path> = None;
         let mut skip_if_default: Option<proc_macro2::Span> = None;
         let mut skip_if: Option<syn::Path> = None;
+        let mut unknown: Option<proc_macro2::Span> = None;
+        let mut keyed_setting: Option<proc_macro2::Span> = None;
         // --------------------------------------------------
         // parse nested meta
         // --------------------------------------------------
         let mut errors = input
             .parse_nested_meta(|meta| {
+                if meta.path != symbol::UNKNOWN_FRAMES {
+                    keyed_setting.get_or_insert_with(|| meta.path.span());
+                }
                 handle_unique_nested_meta_values! {
                     meta;
                     err!(UnknownFieldField(meta.path));
-                    9;
+                    10;
                     key: symbol::parse_pnm_key                      => err!(DuplicateKeyInField),
                     enc: symbol::pnm_parse_maybestr_encoder         => err!(DuplicateEncoderInField),
                     dec: symbol::pnm_parse_maybestr_decoder         => err!(DuplicateDecoderInField),
@@ -94,6 +106,7 @@ impl From<&syn::MetaList> for FieldXcoder {
                     break_on: symbol::pnm_parse_maybestr_break_on   => err!(DuplicateBreakOnInField),
                     skip_if_default: symbol::parse_pnm_skip_if_default => err!(SkipIfConflict),
                     skip_if: symbol::pnm_parse_maybestr_skip_if     => err!(SkipIfConflict),
+                    unknown: symbol::parse_pnm_unknown              => err!(DuplicateUnknownInField),
                 }
             })
             .err();
@@ -125,6 +138,8 @@ impl From<&syn::MetaList> for FieldXcoder {
             fallback_dec: false,
             break_on,
             skip_if,
+            unknown,
+            keyed_setting,
         }
     }
 }

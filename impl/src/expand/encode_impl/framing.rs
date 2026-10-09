@@ -6,7 +6,8 @@
 //!   the length encoder. A variable-width length prefix stages every value; a fixed-width one
 //!   ([`FixedLengthSlot`](crate::expand::encode_impl::length_prefix::FixedLengthSlot)) writes each
 //!   value at a known width or back-fills its length. A `size(implicit)` value has no length, so
-//!   it is written straight after its key
+//!   it is written straight after its key; so is a retained unknown frame, whose encoder writes
+//!   the frame's own length
 //! * [`EncodeFraming::Fused`] stages every value, then hands `(key, value_len)` to the `keylen`
 //!   encoder, which writes the key and, when the key implies one, the length
 //!
@@ -48,9 +49,10 @@ const DEFAULT_LEN_BYTES: usize = 1;
 pub(super) enum EncodeFraming<'a> {
     /// Separate key and length encoders
     Separate {
-        /// Encoder writing each field's key
+        /// Encoder writing each frame's key
         key_encoder: KeyEncoder<'a>,
-        /// The length prefix written after each field's key and, under a sentinel, the frame length
+        /// The length prefix written after each prefixed field's key and, under a sentinel, the
+        /// frame length; a kept unknown frame's `unknown(..)` encoder writes its own
         len: LengthPrefix<'a>,
         /// The estimated bytes of one field's key, for the encode reserve
         key_bytes: usize,
@@ -152,11 +154,12 @@ impl<'a> EncodeFraming<'a> {
     /// Computes the `encode_value` encode reserve in bytes
     ///
     /// Estimates the number of bytes the generated `encode_value` method should reserve before
-    /// writing field items: per `#[klv(..)]` field, the frame header estimate
+    /// writing field items: per keyed `#[klv(..)]` field, the frame header estimate
     /// ([`Self::header_reserve_bytes`]) plus any statically known value width. A `size(implicit)`
     /// value adds no length, and its width is its `exact = N` or `reserve = N`. Unknown widths
     /// contribute zero for the value portion, so the result is an estimate rather than a
-    /// wire-format contract. Every sum saturates at `usize::MAX`
+    /// wire-format contract. Retained unknown frames add nothing: their count and widths are
+    /// known only at run time. Every sum saturates at `usize::MAX`
     ///
     /// # Arguments
     ///
@@ -197,7 +200,8 @@ impl<'a> EncodeFraming<'a> {
     /// A variable-width length prefix or a fused header encodes each field value into a scratch
     /// buffer before its frame header is written. A fixed-width prefix, or a `size(implicit)`
     /// value, writes directly to the caller output, so a container with no staged value declares
-    /// nothing and keeps generated methods free of unused locals
+    /// nothing and keeps generated methods free of unused locals. A retained unknown frame is
+    /// staged only under a fused header, which always declares the buffer
     ///
     /// # Arguments
     ///
@@ -218,6 +222,38 @@ impl<'a> EncodeFraming<'a> {
         };
         staged.then(|| Staging::Scratch.declare())
     }
+
+    /// Writes one frame: under a separate header, its key through the key encoder, then what
+    /// `separate` writes after it; under a fused header, its value staged and the `keylen` header
+    /// written from `(key, staged_len)` ([`KeylenEncoder::write_staged`])
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The frame's key expression
+    /// * `value_write` - Builds the statements encoding the value into the buffer it is given
+    /// * `span` - Span of the emitted write
+    /// * `separate` - Builds the rest of a separate frame from its key write and the length
+    ///   prefix
+    ///
+    /// # Returns
+    ///
+    /// The frame write
+    pub(super) fn write_frame(
+        self,
+        key: &impl ToTokens,
+        value_write: impl FnOnce(&proc_macro2::TokenStream) -> proc_macro2::TokenStream,
+        span: proc_macro2::Span,
+        separate: impl FnOnce(proc_macro2::TokenStream, LengthPrefix<'a>) -> proc_macro2::TokenStream,
+    ) -> proc_macro2::TokenStream {
+        match self {
+            Self::Separate {
+                key_encoder, len, ..
+            } => separate(key_encoder.write(key, span), len),
+            Self::Fused { keylen_encoder } => {
+                keylen_encoder.write_staged(Staging::Scratch, key, value_write, span)
+            }
+        }
+    }
 }
 
 /// The key encoder of a separate frame header
@@ -226,11 +262,11 @@ pub(super) struct KeyEncoder<'a>(&'a types::XcoderType);
 
 /// [`KeyEncoder`] implementation
 impl KeyEncoder<'_> {
-    /// Writes a field's key into `out`
+    /// Writes a frame's key into `out`
     ///
     /// # Arguments
     ///
-    /// * `key` - The field's key expression
+    /// * `key` - The frame's key expression
     /// * `span` - Span of the emitted write
     ///
     /// # Returns

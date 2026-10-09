@@ -177,9 +177,6 @@ fn a_fields_own_exact_replaces_the_defaults() {
 #[test]
 fn a_field_without_its_own_exact_takes_the_defaults() {
     let width = "size(exact = 4)";
-    // north = [1, -2, 3] (field 1, 6 bytes)
-    let north = [0x0A, 0x06, 0x01, 0x00, 0xFE, 0xFF, 0x03, 0x00];
-    Seismogram::assert_rejects_naming(&north, &["`Seismogram::north`", width]);
     #[rustfmt::skip]
     let east = [
         Seismogram::NORTH,

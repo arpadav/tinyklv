@@ -1,10 +1,10 @@
 //! Top-level parsed AST types for a `#[derive(Klv)]`-annotated struct
 //!
-//! Defines [`MainContainer`] (the fully parsed and validated view of an
-//! annotated struct) and [`MainField`] (a single named field within that
-//! struct). These types are the bridge between the attribute-parsing pass
-//! (`container` and `field` sub-modules) and the code-generation pass
-//! (`expand`)
+//! Defines [`MainContainer`] (the fully parsed and validated view of an annotated struct),
+//! [`MainField`] (a single named field within that struct) and [`UnknownFrames`] (the codec of the
+//! frames whose key no field declares, and the [`UnknownField`] that keeps them). These types are
+//! the bridge between the attribute-parsing pass (`container` and `field` sub-modules) and the
+//! code-generation pass (`expand`)
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -24,7 +24,10 @@ pub(crate) use field::FieldParsed;
 // local
 // --------------------------------------------------
 use crate::Ctxt;
-use container::{BreakOnSpec, ContainerMode, ContainerParsed, DefaultXcoder};
+use container::{
+    BreakOnSpec, CodecAttr, ContainerMode, ContainerParsed, DefaultXcoder, UnknownXcoder,
+};
+use size::SizeSpec;
 
 // --------------------------------------------------
 // external
@@ -37,20 +40,24 @@ use syn::{Token, punctuated::Punctuated};
 /// Produced by [`MainContainer::from_ast`] after the full attribute-parsing
 /// pass. Holds the validated container attributes (key/length xcoders, stream
 /// type, sentinel, break condition, defaults, and flags), the ordered list of
-/// parsed fields, and references back to the original [`syn`] generics and
-/// derive input. The `expand` pass consumes this type to emit the final
-/// token stream
+/// parsed fields but the `#[klv(unknown)]` one, the frames whose key no field
+/// declares (the `unknown(..)` codec and that field), and references back to
+/// the original [`syn`] generics and derive input. The `expand` pass consumes
+/// this type to emit the final token stream
 pub(crate) struct MainContainer<'a> {
     /// The struct name without generic parameters
     pub ident: syn::Ident,
 
     /// Validated container-level `#[klv(..)]` attributes, including key/len
-    /// xcoders and all optional settings
+    /// xcoders and all optional settings but `unknown(..)`, held in [`Self::unknown`]
     pub attrs: container::ContainerParsed,
 
-    /// Parsed representation of every field in the struct, in declaration order, read through
-    /// [`Self::klv_fields`] and [`Self::plain_fields`]
+    /// Parsed representation of every field in the struct but the `#[klv(unknown)]` one, in
+    /// declaration order, read through [`Self::klv_fields`] and [`Self::plain_fields`]
     data: Vec<MainField<'a>>,
+
+    /// The frames whose key no field declares, when the container sets `unknown(..)`
+    pub unknown: Option<UnknownFrames<'a>>,
 
     /// Generic parameters from the original struct definition
     pub generics: &'a syn::Generics,
@@ -81,6 +88,38 @@ pub(crate) struct MainField<'a> {
     pub _original: &'a syn::Field,
 }
 
+/// The frames whose key no field declares: the container's `unknown(..)` codec and the field
+/// that keeps them, built once per container
+///
+/// The codec's decoder reads every such frame but two: a keylen `Sliced` one no field keeps, whose
+/// bytes go with its `take`, and the container's `break_on` key's, which ends the loop first. The
+/// codec's encoder re-emits a kept frame, so it is needed only beside [`Self::keep`]
+#[derive(Debug)]
+pub(crate) struct UnknownFrames<'a> {
+    /// The `unknown(dec = .., enc = ..)` codec
+    pub codec: UnknownXcoder,
+
+    /// The field each decoded frame is pushed into, or `None` when the frames are dropped
+    pub keep: Option<UnknownField<'a>>,
+}
+
+/// The `#[klv(unknown)]` field of a `#[derive(Klv)]` struct, a `Vec<(Key, U)>` of the frames
+/// whose key no field declares
+///
+/// It has no key, and the container's `unknown(dec = .., enc = ..)` is its codec, so it is
+/// neither one of [`MainContainer::klv_fields`] nor one of [`MainContainer::plain_fields`]
+#[derive(Debug)]
+pub(crate) struct UnknownField<'a> {
+    /// The field identifier
+    pub name: syn::Ident,
+
+    /// The declared Rust type of the field
+    pub ty: &'a syn::Type,
+
+    /// The span of the field's `unknown` flag
+    pub at: proc_macro2::Span,
+}
+
 /// [`MainContainer`] implementation
 impl<'a> MainContainer<'a> {
     /// Parses a `#[derive(Klv)]` input into a [`MainContainer`]
@@ -90,8 +129,11 @@ impl<'a> MainContainer<'a> {
     /// errors), parses all fields, resolves container-level `default(..)` xcoders
     /// and the `trait_fallback` flag, and resolves exactly one framing mode, `key` +
     /// `len` or a fused `keylen` ([`ContainerParsed::from_cont`]). A `size(implicit)` field is an
-    /// error under `keylen`, whose codec decides each frame's framing, and beside a
-    /// `break_on = <fn>`, which its frame has no length to pass. Returns `None` and records
+    /// error under `keylen`, whose codec decides each frame's framing. The container's
+    /// `unknown(..)` and the `#[klv(unknown)]` field that keeps its frames become one
+    /// [`UnknownFrames`]: the field is an error without the codec, and the codec's `enc` is
+    /// required only beside the field. A key + len `break_on = <fn>` is an error unless the
+    /// derive reads every frame's length ([`Self::reads_every_len`]). Returns `None` and records
     /// diagnostics in `cx` if any required attributes are absent or the struct variant is
     /// unsupported
     ///
@@ -109,17 +151,19 @@ impl<'a> MainContainer<'a> {
         // parse the container attributes
         // --------------------------------------------------
         let attrs = container::Container::from_ast(cx, item);
+        let allow_encode = attrs.allow_unimplemented_encode.is_some();
+        let allow_decode = attrs.allow_unimplemented_decode.is_some();
         // --------------------------------------------------
         // only a named struct carries klv fields; any other form is reported
         // --------------------------------------------------
-        let data = match &item.data {
+        let (data, keep) = match &item.data {
             syn::Data::Struct(data) => match &data.fields {
                 syn::Fields::Named(fields) => Some(fields_from_ast(
                     cx,
                     &fields.named,
                     &attrs.defaults,
-                    attrs.allow_unimplemented_encode.is_some(),
-                    attrs.allow_unimplemented_decode.is_some(),
+                    allow_encode,
+                    allow_decode,
                     attrs.trait_fallback.is_some(),
                 )),
                 syn::Fields::Unnamed(fields) => {
@@ -143,51 +187,67 @@ impl<'a> MainContainer<'a> {
         // --------------------------------------------------
         // validate the container attributes
         // --------------------------------------------------
-        let attrs = ContainerParsed::from_cont(cx, &item.ident, attrs)?;
+        let (attrs, codec) = ContainerParsed::from_cont(cx, &item.ident, attrs)?;
         // --------------------------------------------------
-        // each field's `implicit`, after its default fills it
+        // the frames whose key no field declares: `unknown(..)` decodes each one but a keylen
+        // `Sliced` one no field keeps and the `break_on` key's, which ends the loop first, and
+        // its encoder re-emits the ones the `unknown` field keeps; an unusable codec already
+        // reported its error
         // --------------------------------------------------
-        let mut implicit = data
-            .iter()
-            .filter_map(|field| field.attrs.as_ref()?.size.as_ref()?.implicit())
-            .peekable();
-        match &attrs.mode {
+        codec.report_missing(cx, allow_encode || keep.is_none(), allow_decode);
+        let unknown = match (codec, keep) {
+            (CodecAttr::Parsed(_, codec), keep) => Some(UnknownFrames {
+                codec: *codec,
+                keep,
+            }),
+            (CodecAttr::Absent, Some(field)) => {
+                cx.syn_error(syn::Error::new(field.at, err!(UnknownFieldWithoutCodec)));
+                None
+            }
+            (CodecAttr::Absent, None) | (CodecAttr::Invalid(_), _) => None,
+        };
+        // --------------------------------------------------
+        // build the container
+        // --------------------------------------------------
+        let container = MainContainer {
+            ident: item.ident.clone(),
+            attrs,
+            data,
+            unknown,
+            generics: &item.generics,
+            _original: item,
+        };
+        match &container.attrs.mode {
             // --------------------------------------------------
-            // the `keylen` codec decides each frame's framing, so no field is `implicit`
+            // the `keylen` codec decides each frame's framing, so no field is `implicit`, after
+            // its default fills it
             // --------------------------------------------------
             ContainerMode::Fused { .. } => {
-                for span in implicit {
-                    cx.syn_error(syn::Error::new(span, err!(ImplicitInKeylen)));
+                for (_, attrs) in container.klv_fields() {
+                    if let Some(span) = attrs.size.as_ref().and_then(SizeSpec::implicit) {
+                        cx.syn_error(syn::Error::new(span, err!(ImplicitInKeylen)));
+                    }
                 }
             }
             // --------------------------------------------------
-            // an `implicit` field's frame has no length to pass a `break_on` fn
+            // a `break_on` fn is passed each frame's length, which the derive must read
             // --------------------------------------------------
             ContainerMode::Separate {
                 break_on: Some(BreakOnSpec::Func(path)),
                 ..
-            } if implicit.peek().is_some() => {
-                cx.error_spanned_by(path, err!(ImplicitWithBreakOnFn));
+            } if !container.reads_every_len() => {
+                cx.error_spanned_by(path, err!(BreakOnFnWithoutLength));
             }
             ContainerMode::Separate { .. } => (),
         }
-        // --------------------------------------------------
-        // build the container
-        // --------------------------------------------------
-        Some(MainContainer {
-            ident: item.ident.clone(),
-            attrs,
-            data,
-            generics: &item.generics,
-            _original: item,
-        })
+        Some(container)
     }
 
-    /// The struct's `#[klv(..)]` fields, in declaration order
+    /// The struct's keyed fields, in declaration order
     ///
     /// # Returns
     ///
-    /// Every field that carries `#[klv(..)]`, paired with its parsed attributes
+    /// Every keyed field, paired with its parsed attributes
     pub(crate) fn klv_fields(&self) -> impl Iterator<Item = (&MainField<'a>, &FieldParsed)> {
         self.data
             .iter()
@@ -203,10 +263,35 @@ impl<'a> MainContainer<'a> {
         self.data.iter().filter(|field| field.attrs.is_none())
     }
 
-    /// Whether the struct has at least one `#[klv(..)]` field and every one of them passes `has`
+    /// The `#[klv(unknown)]` field that keeps the [`Self::unknown`] frames
     ///
-    /// Gates each generated half: a decode or encode impl needs a codec on every KLV field, and
-    /// a struct without one has nothing to generate
+    /// # Returns
+    ///
+    /// The field, or `None` when the struct sets no `unknown(..)` or drops its frames
+    pub(crate) fn kept(&self) -> Option<&UnknownField<'a>> {
+        self.unknown.as_ref()?.keep.as_ref()
+    }
+
+    /// Whether the derive reads the length of every key + len frame, which a `break_on = <fn>`
+    /// is passed and which decides where the length is read
+    ///
+    /// # Returns
+    ///
+    /// `false` when a `size(implicit)` field's frame has no length, or when `unknown(..)` is set,
+    /// whose decoder reads an unknown key's length itself
+    pub(crate) fn reads_every_len(&self) -> bool {
+        self.unknown.is_none()
+            && !self
+                .klv_fields()
+                .any(|(_, attrs)| attrs.size.as_ref().and_then(SizeSpec::implicit).is_some())
+    }
+
+    /// Whether the struct has a field to generate for, keyed or the one that keeps
+    /// [`Self::unknown`] frames, and every keyed one passes `has`
+    ///
+    /// Gates each generated half: a decode or encode impl needs a codec on every keyed field, and
+    /// a struct without a field has nothing to generate. The frames' codec is the container's
+    /// `unknown(..)`, which each half checks itself
     ///
     /// # Arguments
     ///
@@ -214,10 +299,10 @@ impl<'a> MainContainer<'a> {
     ///
     /// # Returns
     ///
-    /// `true` when some field carries `#[klv(..)]` and `has` holds for every such field
-    pub(crate) fn every_klv_field(&self, has: impl FnMut(&FieldParsed) -> bool) -> bool {
+    /// `true` when a keyed or `#[klv(unknown)]` field exists and `has` holds for every keyed one
+    pub(crate) fn every_keyed_field(&self, has: impl FnMut(&FieldParsed) -> bool) -> bool {
         let mut attrs = self.klv_fields().map(|(_, attrs)| attrs).peekable();
-        attrs.peek().is_some() && attrs.all(has)
+        (self.kept().is_some() || attrs.peek().is_some()) && attrs.all(has)
     }
 }
 
@@ -233,12 +318,13 @@ impl<'a> MainField<'a> {
     }
 }
 
-/// Parses a punctuated list of [`syn::Field`]s into [`MainField`] entries
+/// Parses a punctuated list of [`syn::Field`]s into [`MainField`] entries and the
+/// [`UnknownField`]
 ///
 /// Filters out unnamed fields (those without an ident), then for each named
 /// field invokes [`field::Field::from_ast`] to parse and validate its
 /// `#[klv(..)]` attributes, applying container-level `default(..)` xcoders
-/// and the `trait_fallback` flag as needed
+/// and the `trait_fallback` flag as needed. A second `#[klv(unknown)]` field is an error
 ///
 /// # Arguments
 ///
@@ -251,7 +337,8 @@ impl<'a> MainField<'a> {
 ///
 /// # Returns
 ///
-/// A [`Vec<MainField>`] in declaration order, one entry per named field
+/// A [`Vec<MainField>`] in declaration order, one entry per named field but the
+/// `#[klv(unknown)]` one, and that one, if any
 fn fields_from_ast<'a>(
     cx: &Ctxt,
     fields: &'a Punctuated<syn::Field, Token![,]>,
@@ -259,18 +346,40 @@ fn fields_from_ast<'a>(
     aue: bool,
     aud: bool,
     fi: bool,
-) -> Vec<MainField<'a>> {
-    fields
+) -> (Vec<MainField<'a>>, Option<UnknownField<'a>>) {
+    let mut data = Vec::with_capacity(fields.len());
+    let mut unknown = None;
+    for (field, name) in fields
         .iter()
         .filter_map(|field| field.ident.as_ref().map(|name| (field, name)))
-        .map(|(field, name)| MainField {
+    {
+        let attrs = match field::Field::from_ast(cx, field, name, container_defaults, aue, aud, fi)
+        {
+            Some(field::Field::Keyed(x)) => FieldParsed::from_field(cx, field, &x),
+            // --------------------------------------------------
+            // the field that keeps the unknown frames is held apart from the keyed ones
+            // --------------------------------------------------
+            Some(field::Field::Unknown(at)) => {
+                match unknown {
+                    Some(_) => cx.syn_error(syn::Error::new(at, err!(MultipleUnknownFields))),
+                    None => {
+                        unknown = Some(UnknownField {
+                            name: name.clone(),
+                            ty: &field.ty,
+                            at,
+                        });
+                    }
+                }
+                continue;
+            }
+            None => None,
+        };
+        data.push(MainField {
             name: name.clone(),
-            attrs: match field::Field::from_ast(cx, field, name, container_defaults, aue, aud, fi) {
-                Some(x) => FieldParsed::from_field(cx, field, &x),
-                None => None,
-            },
+            attrs,
             ty: &field.ty,
             _original: field,
-        })
-        .collect()
+        });
+    }
+    (data, unknown)
 }

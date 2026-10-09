@@ -1,9 +1,9 @@
 //! `#[klv(break_on = <key literal>)]` on a fused `#[klv(keylen(..))]` container, through both
 //! drivers
 //!
-//! The literal ends the loop right after the header of the frame carrying that key, whichever
-//! framing the header resolved to: the header stays consumed, its value is never read, the frames
-//! before it decode and the frames after it do not. That holds for a key a field declares too,
+//! The literal ends the loop right after the header of the frame carrying that key: the header
+//! stays consumed, its value is never read, the frames before it decode and the frames after it
+//! do not. That holds for a key a field declares too,
 //! even one whose `size(exact = N)` the frame's length breaks. Without the terminator, every
 //! frame decodes and streaming waits for more
 //!
@@ -12,8 +12,9 @@
 // local
 // --------------------------------------------------
 use crate::common::drive::Drive;
+use crate::common::varint;
 use crate::support::example::Status;
-use crate::support::pb;
+use crate::support::{header, value};
 use tinyklv::dec::binary as decb;
 use tinyklv::prelude::*;
 
@@ -50,12 +51,12 @@ trait Terminated {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_field_keylen),
+    keylen(dec = header::dec_field),
     allow_unimplemented_encode,
     deny_unknown_keys,
     break_on = 15,
-    default(typ = i32, dec = pb::dec_varint_i32),
-    default(typ = String, dec = pb::dec_string),
+    default(typ = i32, dec = varint::dec_i32),
+    default(typ = String, dec = value::dec_string),
 )]
 struct Logbook {
     /// field 1, wire 0 VARINT - `Inline`
@@ -118,10 +119,10 @@ impl DecodeValue<&[u8]> for Crc32 {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_field_keylen),
+    keylen(dec = header::dec_field),
     allow_unimplemented_encode,
     break_on = 1,
-    default(typ = String, dec = pb::dec_string),
+    default(typ = String, dec = value::dec_string),
 )]
 struct Sealed {
     /// field 1, a fixed32 of `size(exact = 4)` - the terminator, so its value is never read
@@ -178,20 +179,6 @@ fn sliced_terminator_stops_after_its_header() {
     Logbook::before().assert_stops_at(&wire, stop);
 }
 
-/// A terminator framed `Inline` stops the decode after its header, before its value decoder
-/// would run
-#[test]
-fn inline_terminator_stops_after_its_header() {
-    #[rustfmt::skip]
-    let (wire, stop) = Logbook::wire(
-        // end (field 15, wire 0 VARINT, Inline)
-        &[0x78],
-        // the value, never read
-        &[0x05],
-    );
-    Logbook::before().assert_stops_at(&wire, stop);
-}
-
 /// Without the terminator the decode runs to the end of the input: one-shot decodes every frame,
 /// and streaming, at every chunk split, waits for more
 #[test]
@@ -204,27 +191,9 @@ fn a_terminator_that_never_arrives_stops_nothing() {
     expected.assert_decodes_from(&wire);
 }
 
-/// A terminator that is a declared field's key stops the decode after its header, whichever
-/// framing it arrives with: the field's value is never read
-#[test]
-fn a_declared_key_terminator_stops_before_its_value() {
-    #[rustfmt::skip]
-    let headers: [&[u8]; 2] = [
-        // checksum (field 1, wire 5 I32, Sliced(4))
-        &[0x0D],
-        // checksum (field 1, wire 0 VARINT, Inline)
-        &[0x08],
-    ];
-    for header in headers {
-        // the value, never read
-        let (wire, stop) = Sealed::wire(header, &[0xEF, 0xBE, 0xAD, 0xDE]);
-        Sealed::before().assert_stops_at(&wire, stop);
-    }
-}
-
-/// The terminator stops the decode before its field's `size(exact = 4)` check runs: a frame of
-/// another length, even one running past the end of the input, ends the decode rather than being
-/// rejected
+/// A terminator that is a declared field's key stops the decode after its header, before its
+/// field's value or `size(exact = 4)` check: a frame of another length, even one running past the
+/// end of the input, ends the decode rather than being rejected
 #[test]
 fn a_terminator_stops_before_its_exact_check() {
     #[rustfmt::skip]

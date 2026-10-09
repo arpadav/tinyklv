@@ -1,0 +1,10 @@
+error[E0599]: no method named `push` found for enum `Option<T>` in the current scope
+  --> tests/ui/fail/codec/unknown_field_without_push.rs:18:5
+   |
+ 7 | #[derive(Klv)]
+   |          --- in this derive macro expansion
+...
+18 |     extra: Option<(u8, Vec<u8>)>,
+   |     ^^^^^ method not found in `Option<(u8, Vec<u8>)>`
+   |
+   = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)

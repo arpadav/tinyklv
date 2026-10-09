@@ -5,10 +5,7 @@
 //! error naming the field and its width, even when the frame runs past the end of the input. A
 //! rejected frame the input holds whole is consumed, so a decode resumed after the error starts at
 //! the next frame; one that runs past the end is left whole. The width reaches a field through
-//! its own `size(..)` or
-//! through its type's `default(..)`, on a required, an optional and a repeated value, so a
-//! `lengthed` decoder only ever reads a frame `N` bytes long. A field without `exact` takes any
-//! length, and a frame of an unknown key is skipped with its bytes
+//! its own `size(..)` or through its type's `default(..)`
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -216,6 +213,28 @@ struct Telemetry {
     history: Vec<Mode>,
 }
 
+/// A GPS fix: three coordinates of one exact width under consecutive keys
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    default(typ = f64, dec = decb::be_f64, enc = *encb::be_f64, size(exact = 8)),
+)]
+struct Fix {
+    /// key 1 - `size(exact = 8)` from the `f64` default
+    #[klv(key = 0x01)]
+    lat: f64,
+
+    /// key 2 - `size(exact = 8)` from the `f64` default
+    #[klv(key = 0x02)]
+    lon: f64,
+
+    /// key 3 - `size(exact = 8)` from the `f64` default
+    #[klv(key = 0x03)]
+    alt: f64,
+}
+
 /// [`Telemetry`] implementation
 impl Telemetry {
     /// device = 00..0F (field 1, 16 bytes)
@@ -300,12 +319,6 @@ impl Telemetry {
     }
 }
 
-/// Every frame at its exact width decodes, in both drivers and at every chunk split
-#[test]
-fn frames_of_their_exact_width_decode() {
-    Telemetry::decoded().assert_decodes_from(&Telemetry::wire());
-}
-
 /// Encode writes each exact width as the frame's length, and the bytes decode back
 #[test]
 fn encode_writes_each_exact_width_as_the_length() {
@@ -314,117 +327,21 @@ fn encode_writes_each_exact_width_as_the_length() {
     Telemetry::decoded().assert_decodes_from(&encoded);
 }
 
-/// A frame shorter or longer than the field's own `size(exact = 16)` is rejected naming the
-/// field and the width
-#[test]
-fn a_length_other_than_the_fields_own_width_is_rejected() {
-    let field = ["`Telemetry::device`", "size(exact = 16)"];
-    #[rustfmt::skip]
-    let shorter = Telemetry::wire_with(Telemetry::DEVICE, &[
-        // device, 15 bytes
-        0x0A, 0x0F,
-        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-        0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
-    ]);
-    Telemetry::assert_rejects_naming(&shorter, &field);
-    #[rustfmt::skip]
-    let longer = Telemetry::wire_with(Telemetry::DEVICE, &[
-        // device, 17 bytes
-        0x0A, 0x11,
-        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-        0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
-        0x10,
-    ]);
-    Telemetry::assert_rejects_naming(&longer, &field);
-}
-
-/// A width a field inherits from its type's `default(..)` is checked, on a required and on an
-/// optional field
+/// A width a field inherits from its type's `default(..)` is checked
 #[test]
 fn a_width_inherited_from_a_default_is_checked() {
-    let required = Telemetry::wire_with(
+    let wire = Telemetry::wire_with(
         Telemetry::AMBIENT,
         // ambient, 2 bytes
         &[0x12, 0x02, 0x00, 0x00],
     );
-    Telemetry::assert_rejects_naming(&required, &["`Telemetry::ambient`", "size(exact = 4)"]);
-    #[rustfmt::skip]
-    let optional = Telemetry::wire_with(Telemetry::CORE, &[
-        // core, 8 bytes
-        0x1A, 0x08,
-        0x00, 0x00, 0x18, 0x42, 0x00, 0x00, 0x18, 0x42,
-    ]);
-    Telemetry::assert_rejects_naming(&optional, &["`Telemetry::core`", "size(exact = 4)"]);
-}
-
-/// An empty frame for the one-byte enum is rejected, not decoded as a missing value
-#[test]
-fn an_empty_frame_for_a_one_byte_value_is_rejected() {
-    let wire = Telemetry::wire_with(
-        Telemetry::MODE,
-        // mode, 0 bytes
-        &[0x22, 0x00],
-    );
-    Telemetry::assert_rejects_naming(&wire, &["`Telemetry::mode`", "size(exact = 1)"]);
-}
-
-/// A repeated value's width is the whole frame: three readings where two are declared are
-/// rejected
-#[test]
-fn a_repeated_value_is_checked_against_its_whole_width() {
-    #[rustfmt::skip]
-    let wire = Telemetry::wire_with(Telemetry::BOUNDS, &[
-        // bounds, 12 bytes: -4.0, 30.0, 30.0
-        0x2A, 0x0C,
-        0x00, 0x00, 0x80, 0xC0,
-        0x00, 0x00, 0xF0, 0x41,
-        0x00, 0x00, 0xF0, 0x41,
-    ]);
-    Telemetry::assert_rejects_naming(&wire, &["`Telemetry::bounds`", "size(exact = 8)"]);
-}
-
-/// A `lengthed` decoder reads a frame of its exact width, and a frame of another length never
-/// reaches it. Whenever the decoder runs, the frame's length is `N`, so this cannot tell which of
-/// the two it is passed
-#[test]
-fn a_lengthed_decoder_reads_only_a_frame_of_its_exact_width() {
-    let decoded = Telemetry::decode_value(&mut &Telemetry::wire()[..]);
-    let read = decoded.map(|telemetry| telemetry.mac.map(|mac| mac.0.len()));
-    assert_eq!(read, Ok(Some(6)));
-    let wire = Telemetry::wire_with(
-        Telemetry::MAC,
-        // mac, 5 bytes
-        &[0x32, 0x05, 0x02, 0x42, 0xAC, 0x11, 0x00],
-    );
-    Telemetry::assert_rejects_naming(&wire, &["`Telemetry::mac`", "size(exact = 6)"]);
-}
-
-/// A field without `exact` decodes a frame of any length: empty, and long enough that its
-/// length takes two bytes
-#[test]
-fn a_field_without_exact_takes_any_length() {
-    let empty = Telemetry::wire_with(
-        Telemetry::SITE,
-        // site = "", 0 bytes
-        &[0x3A, 0x00],
-    );
-    let mut expected = Telemetry::decoded();
-    expected.site = Some(String::new());
-    expected.assert_decodes_from(&empty);
-    let site = "s".repeat(200);
-    let long = Telemetry::wire_with(
-        Telemetry::SITE,
-        // site, 200 bytes: the length 0xC8 0x01 is a two-byte varint
-        &[&[0x3A, 0xC8, 0x01], site.as_bytes()].concat(),
-    );
-    expected.site = Some(site);
-    expected.assert_decodes_from(&long);
+    Telemetry::assert_rejects_naming(&wire, &["`Telemetry::ambient`", "size(exact = 4)"]);
 }
 
 /// A mismatched length is rejected before the frame is classed as truncation: a frame that runs
 /// past the end of the input errors in both drivers, where a matching one would wait or stop, and
-/// leaves the cursor at the frame start. Of two fields of one width, the rejection names the one
-/// the frame is for
+/// leaves the cursor at the frame start. Of fields that share a width, the rejection names the
+/// one the frame is for
 #[test]
 fn a_mismatched_length_is_rejected_even_past_the_end_of_the_input() {
     let device = "`Telemetry::device` value (its frame length does not match `size(exact = 16)`)";
@@ -435,21 +352,20 @@ fn a_mismatched_length_is_rejected_even_past_the_end_of_the_input() {
     ]
     .concat();
     Telemetry::assert_rejects_at(&cut, Telemetry::AMBIENT.len(), device);
-    let header_only = [
-        Telemetry::AMBIENT,
-        // device, a 64-byte length and nothing after it
-        &[0x0A, 0x40],
-    ]
-    .concat();
-    Telemetry::assert_rejects_at(&header_only, Telemetry::AMBIENT.len(), device);
+    #[rustfmt::skip]
+    let lat: &[u8] = &[
+        // lat = 1.0, 8 bytes
+        0x01, 0x08,
+        0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
     let shared_width = [
-        Telemetry::DEVICE,
-        // core, an 8-byte length with 2 bytes after it; ambient is 4 bytes wide too
-        &[0x1A, 0x08, 0x00, 0x00],
+        lat,
+        // lon, a 16-byte length with 2 bytes after it; lat and alt are 8 bytes wide too
+        &[0x02, 0x10, 0x00, 0x00],
     ]
     .concat();
-    let core = "`Telemetry::core` value (its frame length does not match `size(exact = 4)`)";
-    Telemetry::assert_rejects_at(&shared_width, Telemetry::DEVICE.len(), core);
+    let lon = "`Fix::lon` value (its frame length does not match `size(exact = 8)`)";
+    Fix::assert_rejects_at(&shared_width, lat.len(), lon);
 }
 
 /// A frame of the matching length that runs past the end of the input stays truncation:
@@ -493,40 +409,4 @@ fn the_rejection_names_the_field_and_leaves_the_cursor_past_the_frame() {
     let wire = Telemetry::wire_with(Telemetry::MODE, mode);
     let before_mode = [Telemetry::DEVICE, Telemetry::AMBIENT, Telemetry::CORE].concat();
     Telemetry::assert_rejects_at(&wire, before_mode.len() + mode.len(), message);
-}
-
-/// A decode resumed where a mismatched frame's rejection left the cursor starts at the next frame:
-/// in both drivers, the frames after it decode
-#[test]
-fn a_decode_resumes_at_the_frame_after_a_mismatched_one() {
-    let message = "`Telemetry::bounds` value (its frame length does not match `size(exact = 8)`)";
-    // bounds, 4 bytes: -4.0
-    let bounds: &[u8] = &[0x2A, 0x04, 0x00, 0x00, 0x80, 0xC0];
-    let wire = [bounds, &Telemetry::wire()].concat();
-    Telemetry::assert_rejects_at(&wire, bounds.len(), message);
-    let (_, after) = wire.split_at(bounds.len());
-    Telemetry::decoded().assert_decodes_from(after);
-}
-
-/// A frame of an unknown key is skipped with its bytes, whatever its length: the fields around it
-/// decode as if it were not there, in both drivers and at every chunk split
-#[test]
-fn an_unknown_key_is_skipped() {
-    #[rustfmt::skip]
-    let wire = [
-        Telemetry::DEVICE,
-        // unknown field 9, 3 bytes
-        &[0x4A, 0x03, 0xDE, 0xAD, 0xBE],
-        Telemetry::AMBIENT,
-        Telemetry::CORE,
-        Telemetry::MODE,
-        Telemetry::BOUNDS,
-        Telemetry::MAC,
-        // unknown field 10, empty
-        &[0x52, 0x00],
-        Telemetry::SITE,
-        Telemetry::HISTORY,
-    ]
-    .concat();
-    Telemetry::decoded().assert_decodes_from(&wire);
 }

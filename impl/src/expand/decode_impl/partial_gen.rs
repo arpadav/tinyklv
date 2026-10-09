@@ -4,8 +4,9 @@
 //! [`DecodeCtx`]:
 //!
 //! * [`DecodeCtx::partial_struct`] - emits the hidden `XxxPartialPacket` struct (a
-//!   mirror of the user struct with every KLV field as `Option<T>`) and its
-//!   manual [`Default`] impl seeded by any field-level `default` attributes
+//!   mirror of the user struct with every KLV field as `Option<T>`, and the `#[klv(unknown)]`
+//!   field as its own type) and its manual [`Default`] impl seeded by any field-level `default`
+//!   attributes
 //! * [`DecodeCtx::partial_impl`] - emits the [`tinyklv::traits::Partial`] impl,
 //!   which validates required fields and constructs the final struct via
 //!   `Partial::finalize`
@@ -18,7 +19,10 @@
 // --------------------------------------------------
 use super::DecodeCtx;
 use crate::{
-    ast::{attr::MainField, types},
+    ast::{
+        attr::{MainField, UnknownField},
+        types,
+    },
     symbol,
 };
 
@@ -33,9 +37,10 @@ impl DecodeCtx<'_> {
     ///
     /// The emitted struct mirrors the main struct with one `Option<T>` field per
     /// KLV-annotated field; non-KLV fields are omitted from the partial and filled
-    /// via `<T>::default()` only at finalization time. Generic parameters are
-    /// forwarded as-is; a `PhantomData` field is added when the original struct
-    /// carries type or lifetime parameters so the compiler does not reject the
+    /// via `<T>::default()` only at finalization time. The `#[klv(unknown)]` field keeps its own
+    /// type, starting at its type's default, the empty `Vec` the decode loop pushes each unknown
+    /// frame into. Generic parameters are forwarded as-is; a `PhantomData` field is added when the
+    /// original struct carries type or lifetime parameters so the compiler does not reject the
     /// partial struct for unused generics
     ///
     /// The `Default` impl seeds each field according to its `default` attribute:
@@ -158,15 +163,34 @@ impl DecodeCtx<'_> {
             quote! { #field_name: #init, }
         });
         // --------------------------------------------------
+        // the `unknown` field as its own type, starting at its type's default, which the
+        // struct's doc names
+        // --------------------------------------------------
+        let unknown = self.input.kept();
+        let (unknown_decl, unknown_init) = unknown
+            .map(|UnknownField { name, ty, .. }| {
+                (
+                    quote! { pub #name: #ty, },
+                    quote! { #name: <#ty as ::core::default::Default>::default(), },
+                )
+            })
+            .unzip();
+        let mirror = if unknown.is_some() {
+            quote! { "`]. Mirror of the struct with every keyed klv field as `Option<T>` and its `#[klv(unknown)]` field as its own type, so the decode loop can fill it incrementally and resume across `Packet::NeedMore` boundaries via [`tinyklv::Decoder`]" }
+        } else {
+            quote! { "`]. Mirror of the struct with every klv field as `Option<T>` so the decode loop can fill it incrementally and resume across `Packet::NeedMore` boundaries via [`tinyklv::Decoder`]" }
+        };
+        // --------------------------------------------------
         // construct, both the struct, and the default impl
         // --------------------------------------------------
         quote! {
             #[doc(hidden)]
             #[automatically_derived]
-            #[doc = concat!(" In-flight partial packet for [`", stringify!(#name), "`]. Mirror of the struct with every klv field as `Option<T>` so the decode loop can fill it incrementally and resume across `Packet::NeedMore` boundaries via [`tinyklv::Decoder`]")]
+            #[doc = concat!(" In-flight partial packet for [`", stringify!(#name), #mirror)]
             #[derive(::core::fmt::Debug)]
             #vis struct #partial_name #impl_generics #where_clause {
                 #(#field_decls)*
+                #unknown_decl
                 #phantom_field
             }
 
@@ -176,6 +200,7 @@ impl DecodeCtx<'_> {
                 fn default() -> Self {
                     Self {
                         #(#default_inits)*
+                        #unknown_init
                         #phantom_default
                     }
                 }
@@ -194,8 +219,8 @@ impl DecodeCtx<'_> {
     ///
     /// Fields without a `#[klv(..)]` attribute are filled via
     /// `<T as Default>::default()`; the generated code will not compile if their
-    /// type does not implement [`Default`]. A missing required field's error message names the
-    /// main struct
+    /// type does not implement [`Default`]. The `#[klv(unknown)]` field is moved from the partial
+    /// unchanged. A missing required field's error message names the main struct
     ///
     /// Emission shape (sketch):
     ///
@@ -214,6 +239,7 @@ impl DecodeCtx<'_> {
     ///         Ok(Xxx {
     ///             #klv_field_name,                  // each klv field by name
     ///             #non_klv_field: <#ty>::default(), // each non-klv field
+    ///             #unknown_field: self.#unknown_field,
     ///         })
     ///     }
     /// }
@@ -288,6 +314,13 @@ impl DecodeCtx<'_> {
             quote! { #name: <#ty as ::core::default::Default>::default(), }
         });
         // --------------------------------------------------
+        // the `unknown` field, which the decode loop filled: `#name: self.#name`
+        // --------------------------------------------------
+        let unknown_field = self
+            .input
+            .kept()
+            .map(|UnknownField { name, .. }| quote! { #name: self.#name, });
+        // --------------------------------------------------
         // emit Partial impl
         // --------------------------------------------------
         quote! {
@@ -304,6 +337,7 @@ impl DecodeCtx<'_> {
                     ::core::result::Result::Ok(#struct_name {
                         #(#klv_field_names,)*
                         #(#default_fields)*
+                        #unknown_field
                     })
                 }
             }

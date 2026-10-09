@@ -1,0 +1,5 @@
+error: Only one field per struct may be `#[klv(unknown)]`: it keeps every frame whose key no field declares. Remove `unknown` from this field or from the earlier one.
+  --> tests/ui/fail/unknown/two_fields.rs:19:11
+   |
+19 |     #[klv(unknown)]
+   |           ^^^^^^^

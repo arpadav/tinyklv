@@ -234,14 +234,6 @@ impl Beacon {
             ..Self::default()
         }
     }
-
-    /// Asserts `self` encodes to exactly `wire`, and decodes back from it in both drivers and at
-    /// every chunk split
-    #[track_caller]
-    fn assert_round_trips(&self, wire: &[u8]) {
-        assert_eq!(self.encoded(), wire);
-        self.assert_decodes_from(wire);
-    }
 }
 
 /// A beacon log ended by key `0x03`, which is also its implicit callsign's key
@@ -278,23 +270,11 @@ fn the_worked_example_round_trips_to_the_plans_bytes() {
     Reading::decoded().assert_decodes_from(Reading::WIRE);
 }
 
-/// D2 row 5: a value that delimits itself is written after its key with no length, and decoded
-/// straight from the input
-#[test]
-fn an_implicit_value_follows_its_key() {
-    Beacon::uptime().assert_round_trips(Beacon::UPTIME);
-}
-
-/// D2 row 6: an `exact = N` value is the `N` bytes after its key
-#[test]
-fn an_implicit_exact_value_is_its_width_after_the_key() {
-    Beacon::position().assert_round_trips(Beacon::POSITION);
-}
-
 /// D2 row 7: a `lengthed` decoder of an `exact = N` value is passed `N`
 #[test]
 fn an_implicit_lengthed_decoder_is_passed_its_width() {
-    Beacon::callsign().assert_round_trips(Beacon::CALLSIGN);
+    assert_eq!(Beacon::callsign().encoded(), Beacon::CALLSIGN);
+    Beacon::callsign().assert_decodes_from(Beacon::CALLSIGN);
 }
 
 /// An unknown key's frame has a length, and is skipped by it

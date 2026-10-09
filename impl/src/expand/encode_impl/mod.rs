@@ -9,7 +9,7 @@
 //! * `field_length_plan` - the fixed-prefix field length kinds
 //! * `fixed_width` - compile-time byte-width resolution
 //! * `framing` - the frame header written around each field value, per the container's framing mode
-//! * `klv_item_gen` - field-level KLV item emission
+//! * `klv_item_gen` - field-level KLV item emission, the retained unknown frames included
 //! * `length_prefix` - the container's length prefix: a fixed-width slot or a variable-width length
 //! * `sentinel_gen` - the `EncodeFrame` impl (only when a sentinel is declared)
 //! * `staging` - the staged write: a value encoded into a buffer before its frame header
@@ -26,7 +26,7 @@ mod field_length_plan;
 mod fixed_width;
 /// Writes the frame header around each field value, per the container's framing mode
 mod framing;
-/// Generates per-field KLV item writes
+/// Generates per-field KLV item writes and the retained unknown frames' writes
 mod klv_item_gen;
 /// The container's length prefix: a fixed-width slot or a variable-width length
 mod length_prefix;
@@ -38,7 +38,10 @@ mod staging;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::ast::attr::MainContainer;
+use crate::ast::{
+    attr::{MainContainer, UnknownField},
+    types::SiguledXcoder,
+};
 use framing::EncodeFraming;
 
 // --------------------------------------------------
@@ -61,6 +64,21 @@ struct EncodeCtx<'a> {
     /// The `EncodeValue` body's encode reserve ([`EncodeFraming::value_reserve_bytes`]), which a
     /// back-filled sentinel frame's reserve includes
     reserve_bytes: usize,
+
+    /// The frames the `#[klv(unknown)]` field keeps, and their encoder
+    unknown: Option<UnknownEncoder<'a>>,
+}
+
+/// The [`UnknownFrames`](crate::ast::attr::UnknownFrames) of a container that gets an encode
+/// impl, as its encode re-emits them
+#[derive(Debug, Clone, Copy)]
+struct UnknownEncoder<'a> {
+    /// Token expression of the `unknown(enc = ..)` encoder, which writes each kept frame after
+    /// its key
+    encoder: &'a SiguledXcoder,
+
+    /// The field whose frames are re-emitted
+    keep: &'a UnknownField<'a>,
 }
 
 /// [`EncodeCtx`] implementation
@@ -73,15 +91,29 @@ impl<'a> EncodeCtx<'a> {
     ///
     /// # Returns
     ///
-    /// The context, or `None` when the struct has no KLV field, or a field or framing encoder is
-    /// missing (`allow_unimplemented_encode`), in which case no encode impl is generated
+    /// The context, or `None` when the struct has no KLV field, or a field, unknown-frame or framing
+    /// encoder is missing (`allow_unimplemented_encode`), in which case no encode impl is generated
     fn new(input: &'a MainContainer<'a>) -> Option<Self> {
         // --------------------------------------------------
         // an encoder on every field, and at least one field; else no encode impl
         // --------------------------------------------------
-        if !input.every_klv_field(|f| f.enc.is_some()) {
+        if !input.every_keyed_field(|f| f.enc.is_some()) {
             return None;
         }
+        // --------------------------------------------------
+        // an encoder for the retained unknown frames; else no encode impl. Frames no field
+        // keeps are not re-emitted
+        // --------------------------------------------------
+        let unknown = match input.kept() {
+            Some(keep) => Some(UnknownEncoder {
+                encoder: input
+                    .unknown
+                    .as_ref()
+                    .and_then(|frames| frames.codec.enc.as_ref())?,
+                keep,
+            }),
+            None => None,
+        };
         // --------------------------------------------------
         // frame header encoder(s); none means no encode impl
         // --------------------------------------------------
@@ -90,6 +122,7 @@ impl<'a> EncodeCtx<'a> {
             input,
             framing,
             reserve_bytes: framing.value_reserve_bytes(input),
+            unknown,
         })
     }
 }
@@ -97,9 +130,11 @@ impl<'a> EncodeCtx<'a> {
 /// Generates all encode trait implementation tokens for a container
 ///
 /// Emits an `EncodeValue` impl when the container's framing mode carries its encoder(s) and
-/// every `#[klv]` field carries an encoder, with at least one such field. Without
-/// `allow_unimplemented_encode` a missing encoder is a compile error reported during parsing;
-/// with it, a missing field or framing encoder suppresses the encode impls entirely. If a
+/// every keyed `#[klv]` field carries an encoder, with at least one KLV field, the
+/// `#[klv(unknown)]` one included, and `unknown(..)` carries one when a `#[klv(unknown)]` field
+/// keeps unknown frames. Without `allow_unimplemented_encode` a missing encoder is a compile error
+/// reported during parsing; with it, a missing field,
+/// unknown-frame or framing encoder suppresses the encode impls entirely. If a
 /// sentinel is present, also emits an `EncodeFrame` impl that wraps the value encoding in a KLV
 /// packet consisting of the sentinel key, encoded frame length, and encoded value body
 ///
@@ -111,7 +146,8 @@ impl<'a> EncodeCtx<'a> {
 ///
 /// A token stream containing the generated `EncodeValue` impl followed by the generated
 /// `EncodeFrame` impl when the container declares a sentinel, or `None` when the struct has no
-/// KLV field, or a field or framing encoder is missing under `allow_unimplemented_encode`
+/// KLV field, or a field, unknown-frame or framing encoder is missing under
+/// `allow_unimplemented_encode`
 pub(super) fn gen_encode_impl(input: &MainContainer) -> Option<TokenStream> {
     let ctx = EncodeCtx::new(input)?;
     // --------------------------------------------------

@@ -5,10 +5,11 @@
 //! container declares and what they conflict with, `header/` the form and fields inside one of
 //! them, `size/` a field's or a `key`/`len` slot's `size(..)`, `skip/` a field's
 //! `skip_if_default` / `skip_if`, `default/` a container `default(typ = ..)` and the `size(..)` it
-//! fills into a field, and `codec/` the header and field
-//! codecs a container names: a signature that does not fit the code the derive generates around
-//! it, or a missing encoder that leaves `EncodeValue` unimplemented. Regenerate the snapshots with
-//! `TRYBUILD=overwrite cargo +1.95.0 test --test ui`
+//! fills into a field, `unknown/` a container's `unknown(..)` and the `#[klv(unknown)]` field that
+//! keeps its frames, and `codec/` the header, field and unknown-frame codecs a container names: a
+//! signature that does not fit the code the derive generates around it, a `#[klv(unknown)]`
+//! field type it cannot push a frame into, or a missing encoder that leaves `EncodeValue`
+//! unimplemented. Regenerate the snapshots with `TRYBUILD=overwrite cargo +1.95.0 test --test ui`
 //!
 //! Author: aav
 

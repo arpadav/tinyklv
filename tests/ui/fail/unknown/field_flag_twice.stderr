@@ -1,0 +1,5 @@
+error: `unknown` is set twice on this field; remove one.
+  --> tests/ui/fail/unknown/field_flag_twice.rs:17:20
+   |
+17 |     #[klv(unknown, unknown)]
+   |                    ^^^^^^^

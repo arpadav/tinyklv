@@ -10,9 +10,10 @@
 //!   `invalid <label>` for a rejection the derive labels ([`LoopDriver::reject_label`])
 //! * [`LoopDriver::OneShot`] - `decode_value`: truncation rewinds and `break`s to the finalize
 //!   tail, an error leaves the fn with a `ContextError` labelled at the input position, except a
-//!   malformed `Inline` value, whose error names the field first, then the value decoder's own
-//!   error ([`LoopDriver::reject_value`]). Its [`CursorSite`] says which cursor the loop advances,
-//!   and so how an error leaves the fn
+//!   malformed value read from the main stream or kept from a `Sliced` unknown frame, whose error
+//!   names the field (or an unknown frame) first, then the value decoder's own error
+//!   ([`LoopDriver::reject_value`]). Its
+//!   [`CursorSite`] says which cursor the loop advances, and so how an error leaves the fn
 //!
 //! The rules that decide truncation against malformed are stated once, on `tinyklv::Framing`
 //! and `tinyklv::Framing::Inline`
@@ -23,9 +24,10 @@
 //! The emitted tokens assume the loop's bindings: `input`, `checkpoint` (fn entry),
 //! `checkpoint_inner` (frame start), `__acc` (the partial accumulator), the frame's value length
 //! (`DecodeFraming::len`, wherever a `take` is cut or a `size(exact = N)` check reads it),
-//! inside a failed `Inline` value arm, `__err` (the value decoder's error), inside the `Abort` arm
-//! of a field's `break_on`, `__msg` (its message) and, in a one-shot loop
-//! over a [`CursorSite::Local`] cursor, `__exact_reject` (the held `size(exact = N)` rejection)
+//! inside a failed main-stream or kept `Sliced` unknown value arm, `__err` (the value decoder's
+//! error), inside the `Abort` arm of a field's `break_on`, `__msg` (its message) and, in a
+//! one-shot loop over a [`CursorSite::Local`] cursor, `__exact_reject` (the held
+//! `size(exact = N)` rejection)
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -35,10 +37,7 @@ use super::{
     LoopCtx,
     framing::{DecodeFraming, LenRead},
 };
-use crate::ast::attr::{
-    MainContainer,
-    container::{BreakOnSpec, ContainerMode},
-};
+use crate::ast::attr::{MainContainer, container::BreakOnSpec};
 
 // --------------------------------------------------
 // external
@@ -110,9 +109,9 @@ impl CursorSite {
 /// How many bytes [`LoopCtx::take`] cuts off the input, and what it does with them
 #[derive(Debug, Clone, Copy)]
 pub(super) enum TakeInto {
-    /// Bind the frame's length in bytes as `subinput`, the bounded slice a known-key arm decodes
-    /// from; a frame running past the end of the input first meets the `size(exact = N)` checks
-    /// ([`LoopCtx::exact_guards`])
+    /// Bind the frame's length in bytes as `subinput`, the bounded slice a known-key arm, or the
+    /// `unknown` decoder of a kept `Sliced` frame, decodes from; a frame running past the end of
+    /// the input first meets the `size(exact = N)` checks ([`LoopCtx::exact_guards`])
     Subinput,
     /// Bind `N` bytes as `subinput` for a `size(implicit, exact = N)` value, whose frame has no
     /// length to check
@@ -126,10 +125,10 @@ pub(super) enum TakeInto {
 pub(super) enum ParseSite<'a> {
     /// The fused `keylen` frame header
     Header,
-    /// An `Inline` value read straight from the main stream
+    /// A value read straight from the main stream: an `Inline` one, or an unknown key's
     Value {
-        /// Names the field, which a malformed value is rejected with (a
-        /// [`LoopDriver::reject_label`] label)
+        /// Names the field, or for an unknown key with no `#[klv(unknown)]` field the struct's
+        /// frame, which a malformed value is rejected with (a [`LoopDriver::reject_label`] label)
         label: &'a TokenStream,
     },
 }
@@ -297,7 +296,45 @@ impl LoopDriver {
         }
     }
 
-    /// Emits the handling of a failed fused-header or `Inline` value parse
+    /// Emits the `unknown(..)` decoder's read of the main stream, `read` given the cursor it
+    /// advances
+    ///
+    /// A one-shot loop over a [`CursorSite::Local`] cursor hands `read` a copy of that cursor and
+    /// writes the copy back after it, so a decoder that is not inlined takes the copy's address,
+    /// not the loop cursor's, which stays in a register; any other loop hands it `input`
+    ///
+    /// ```text
+    /// // one-shot, local cursor
+    /// { let mut __input = *input; let __read = #read(&mut __input); *input = __input; __read }
+    /// // any other loop
+    /// #read(input)
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `read` - Emits the read, given the cursor it advances
+    ///
+    /// # Returns
+    ///
+    /// The read expression
+    pub(super) fn read_input(self, read: impl FnOnce(&TokenStream) -> TokenStream) -> TokenStream {
+        match self {
+            Self::OneShot(CursorSite::Local) => {
+                let read = read(&quote! { &mut __input });
+                quote! {
+                    {
+                        let mut __input = *input;
+                        let __read = #read;
+                        *input = __input;
+                        __read
+                    }
+                }
+            }
+            Self::Streaming | Self::OneShot(CursorSite::Caller) => read(&quote! { input }),
+        }
+    }
+
+    /// Emits the handling of a failed fused-header parse, or of a value read from the main stream
     ///
     /// Encodes the rules stated on `tinyklv::Framing` (header) and `tinyklv::Framing::Inline`
     /// (value):
@@ -329,21 +366,23 @@ impl LoopDriver {
         }
     }
 
-    /// Emits the fatal exit for a malformed `Inline` value, with no finalize
+    /// Emits the fatal exit for a malformed value, with no finalize: one read from the main stream
+    /// ([`Self::on_parse_fail`]), or the bounded value of a `Sliced` unknown frame that the
+    /// `#[klv(unknown)]` field keeps
     ///
-    /// Both drivers name the field first. Streaming rejects with `label`
+    /// Both drivers name what `label` names first. Streaming rejects with `label`
     /// ([`Self::reject_label`]). One-shot relabels the value decoder's error with `label` through
     /// `tinyklv::__export::relabeled_error`, where the rule is stated
     ///
     /// # Arguments
     ///
-    /// * `label` - Names the field (see [`ParseSite::Value`])
+    /// * `label` - Names what is rejected (see [`ParseSite::Value`])
     ///
     /// # Returns
     ///
     /// `return Err(concat!("invalid ", #label));` (streaming) or `__err` relabelled with `label`,
     /// after the [`CursorSite`]'s error exit (one-shot)
-    fn reject_value(self, label: &TokenStream) -> TokenStream {
+    pub(super) fn reject_value(self, label: &TokenStream) -> TokenStream {
         match self {
             Self::Streaming => self.reject_label(label),
             Self::OneShot(cursor) => {
@@ -490,12 +529,17 @@ impl LoopCtx<'_> {
 
     /// Emits the `break_on` check that runs right after the frame header, when `break_on` is set
     ///
-    /// * separate frame - a `match` on the `BreakType` that the key literal (`Done` when the key
-    ///   equals it, else `Proceed`) or the user's `fn(key, len)` returns ([`Self::break_match`])
-    /// * fused frame, or a separate frame of a container with a `size(implicit)` field - only a
-    ///   key literal, as `if #key == #lit { break; }`: the loop ends where a separate frame's
-    ///   `Done` ends it, right after the header, which stays consumed, before any value byte is
-    ///   read. Some of these frames have no length, so a `break_on` fn is rejected at parse time
+    /// * separate frame whose header reads the length ([`LenRead::Hoisted`]) - a `match` on the
+    ///   `BreakType` that the key literal (`Done` when the key equals it, else `Proceed`) or the
+    ///   user's `fn(key, len)` returns ([`Self::break_match`]); `Done` ends the loop with the
+    ///   key and length consumed, before any value byte is read
+    /// * separate frame of a container with a `size(implicit)` field or `unknown(..)` - only a key
+    ///   literal, as `if #key == #lit { break; }`, checked right after the key: the loop ends
+    ///   before the frame's length, if it has one, is read. The derive does not read every such
+    ///   frame's length, so a `break_on` fn is rejected at parse time
+    ///   ([`MainContainer::reads_every_len`])
+    /// * fused frame - only a key literal, as above, checked once the header is consumed, before
+    ///   any value byte is read
     ///
     /// Every form can `break`, so a `Some` is the report
     /// [`DecodeCtx::breaks`](super::DecodeCtx::breaks) ORs
@@ -512,28 +556,30 @@ impl LoopCtx<'_> {
                 }
             }
         };
-        match &self.input.attrs.mode {
-            ContainerMode::Separate { break_on, .. } => match (break_on.as_ref()?, self.framing) {
-                (
-                    BreakOnSpec::Literal(lit),
-                    DecodeFraming::Separate {
-                        len_read: LenRead::UnlessImplicit,
-                        ..
-                    },
-                ) => Some(stop_at(lit)),
-                (BreakOnSpec::Literal(lit), _) => Some(self.break_match(&quote! {
+        match self.framing {
+            DecodeFraming::Separate {
+                break_on, len_read, ..
+            } => match (break_on?, len_read) {
+                (BreakOnSpec::Literal(lit), LenRead::Hoisted) => Some(self.break_match(&quote! {
                     if #key == #lit {
                         ::tinyklv::BreakType::Done
                     } else {
                         ::tinyklv::BreakType::Proceed
                     }
                 })),
-                (BreakOnSpec::Func(path), _) => {
+                (BreakOnSpec::Func(path), LenRead::Hoisted) => {
                     let len = self.framing.len();
                     Some(self.break_match(&quote! { #path(#key, #len) }))
                 }
+                (BreakOnSpec::Literal(lit), LenRead::UnlessImplicit | LenRead::IfPrefixed(_)) => {
+                    Some(stop_at(lit))
+                }
+                // --------------------------------------------------
+                // rejected at parse time: the derive does not read every frame's length
+                // --------------------------------------------------
+                (BreakOnSpec::Func(_), LenRead::UnlessImplicit | LenRead::IfPrefixed(_)) => None,
             },
-            ContainerMode::Fused { break_on, .. } => break_on.as_ref().map(stop_at),
+            DecodeFraming::Fused { break_on, .. } => break_on.map(stop_at),
         }
     }
 

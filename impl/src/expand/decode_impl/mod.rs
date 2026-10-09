@@ -41,6 +41,13 @@ use loop_driver::{CursorSite, LoopDriver};
 use proc_macro2::TokenStream;
 use quote::quote;
 
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+/// The fewest alternatives of a `K1 | K2 | ..` pattern that `clippy::manual_range_patterns` reads
+/// as a range, a repeated key counted each time
+const RANGE_LINT_KEYS: usize = 3;
+
 /// A container that gets decode impls, with everything those impls derive from it
 ///
 /// Built once per derive by [`DecodeCtx::new`]. Each decode impl is a method, defined in the
@@ -49,7 +56,7 @@ struct DecodeCtx<'a> {
     /// The parsed container, providing the name, generics, fields and attributes
     input: &'a MainContainer<'a>,
 
-    /// The frame header codec(s)
+    /// The frame header codec(s) and the `unknown(..)` decoder
     framing: DecodeFraming<'a>,
 
     /// Which cursor the one-shot loop advances, from the fields and the stream
@@ -83,13 +90,14 @@ struct DecodeCtx<'a> {
 /// arms in `key_match_gen`
 #[derive(Clone, Copy)]
 struct LoopCtx<'a> {
-    /// The struct being decoded; each of its `#[klv(..)]` fields gets one arm
+    /// The struct being decoded; each of its keyed fields gets one arm
     input: &'a MainContainer<'a>,
 
     /// The loop exit policy
     driver: LoopDriver,
 
-    /// The frame header codec(s), which the header reads and whose length binding `take` cuts
+    /// The frame header codec(s), which the header reads and whose length binding `take` cuts,
+    /// and the `unknown(..)` decoder
     framing: DecodeFraming<'a>,
 
     /// The stream type the impl is parameterised over, which `take` is instantiated over
@@ -110,17 +118,19 @@ impl<'a> DecodeCtx<'a> {
     ///
     /// # Returns
     ///
-    /// The context, or `None` when the struct has no KLV field, or a field or framing decoder is
-    /// missing (`allow_unimplemented_decode`), in which case no decode impl is generated
+    /// The context, or `None` when the struct has no KLV field, or a field, framing or
+    /// `unknown(..)` decoder is missing (`allow_unimplemented_decode`), in which case no decode
+    /// impl is generated
     fn new(input: &'a MainContainer<'a>) -> Option<Self> {
         // --------------------------------------------------
         // a decoder on every field, and at least one field; else no decode impl
         // --------------------------------------------------
-        if !input.every_klv_field(|f| f.dec.is_some()) {
+        if !input.every_keyed_field(|f| f.dec.is_some()) {
             return None;
         }
         // --------------------------------------------------
-        // frame header codec(s); none means no decode impl
+        // frame header codec(s) and the `unknown(..)` decoder; a missing one means no decode
+        // impl
         // --------------------------------------------------
         let framing = DecodeFraming::of(input)?;
         // --------------------------------------------------
@@ -211,8 +221,8 @@ impl<'a> DecodeCtx<'a> {
 ///
 /// A [`proc_macro2::TokenStream`] containing all decode-related impl blocks,
 /// concatenated in dependency order (sentinel first, then partial struct, then impls), or
-/// `None` when the struct has no KLV field, or a field or framing decoder is missing
-/// (`allow_unimplemented_decode`)
+/// `None` when the struct has no KLV field, or a field, framing or `unknown(..)` decoder is
+/// missing (`allow_unimplemented_decode`)
 pub(super) fn gen_decode_impl(input: &MainContainer) -> Option<TokenStream> {
     let ctx = DecodeCtx::new(input)?;
     // --------------------------------------------------
@@ -284,6 +294,53 @@ fn insert_lifetime(ty: &syn::Type, lifetime: syn::Lifetime) -> syn::Type {
     }
 }
 
+/// Emits the `K1 | K2 | ..` pattern of `keys`, and the `clippy::manual_range_patterns` allow the
+/// arm or statement holding it needs, if any
+///
+/// The pattern is the keys as the fields declare them, which the lint reads as a range when they
+/// are [`RANGE_LINT_KEYS`] or more integers, each within `i128`, whose distinct values are
+/// consecutive in any order; only then is the allow emitted
+///
+/// # Arguments
+///
+/// * `keys` - The keys, in field order
+///
+/// # Returns
+///
+/// The pattern, and the allow, `None` when the lint does not read the keys as a range
+fn key_pattern(keys: &[&syn::Lit]) -> (TokenStream, Option<TokenStream>) {
+    // --------------------------------------------------
+    // the key values, when every key is an integer within `i128`, the lint's own key type
+    // --------------------------------------------------
+    let values: Option<Vec<i128>> = keys
+        .iter()
+        .map(|key| match key {
+            syn::Lit::Int(int) => int.base10_parse().ok(),
+            _ => None,
+        })
+        .collect();
+    // --------------------------------------------------
+    // the allow, for enough alternatives whose distinct values are consecutive
+    // --------------------------------------------------
+    let run = keys.len() >= RANGE_LINT_KEYS
+        && values.is_some_and(|mut values| {
+            values.sort_unstable();
+            values.dedup();
+            values
+                .windows(2)
+                .all(|pair| matches!(pair, [low, high] if low.checked_add(1) == Some(*high)))
+        });
+    let allow = run.then(|| {
+        quote! {
+            #[allow(
+                clippy::manual_range_patterns,
+                reason = "the pattern is the keys as the fields declare them, which this lint reads as a range",
+            )]
+        }
+    });
+    (quote! { #(#keys)|* }, allow)
+}
+
 /// Constructs the default stream type `&[u8]` as a [`syn::Type`]
 ///
 /// Used when the container's `stream = ..` attribute is absent. Builds the type programmatically
@@ -305,4 +362,36 @@ fn u8_slice() -> syn::Type {
             })),
         })),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::key_pattern;
+
+    #[test]
+    /// Verifies the `clippy::manual_range_patterns` allow is emitted exactly for the keys the lint
+    /// reads as a range: three or more integer alternatives, repeats counted, whose distinct values
+    /// are consecutive, negative ones included
+    fn key_pattern_allows_only_a_lint_range() {
+        // --------------------------------------------------
+        // each key list as written, and whether it gets the allow
+        // --------------------------------------------------
+        let cases: [(&[&str], bool); 7] = [
+            (&["1", "2", "3"], true),
+            (&["3", "1", "2"], true),
+            (&["1", "1", "2"], true),
+            (&["-1", "0", "1"], true),
+            (&["1", "2"], false),
+            (&["1", "3", "4"], false),
+            (&[r#"b"KLV1""#, r#"b"KLV2""#, r#"b"KLV3""#], false),
+        ];
+        for (written, allowed) in cases {
+            let keys: Vec<syn::Lit> = written
+                .iter()
+                .map(|key| syn::parse_str(key).expect("a literal key"))
+                .collect();
+            let (_, allow) = key_pattern(&keys.iter().collect::<Vec<_>>());
+            assert_eq!(allow.is_some(), allowed, "keys {written:?}");
+        }
+    }
 }

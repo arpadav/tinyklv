@@ -1,0 +1,5 @@
+error: `deny_unknown_keys` rejects a frame whose key no field declares, and `unknown(..)` decodes it; remove one of them.
+  --> tests/ui/fail/unknown/with_deny_unknown_keys.rs:12:5
+   |
+12 |     deny_unknown_keys,
+   |     ^^^^^^^^^^^^^^^^^

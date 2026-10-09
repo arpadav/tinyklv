@@ -12,7 +12,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::pb;
+use super::{header, value};
 use crate::common::varint;
 use tinyklv::codecs::ber::BerLength;
 use tinyklv::dec::ber as decber;
@@ -34,12 +34,6 @@ pub(crate) enum Status {
     Active,
     /// Wire value `2`
     Error,
-}
-
-/// [`Status`] implementation
-impl Status {
-    /// Every variant, in discriminant order
-    pub(crate) const ALL: [Self; 3] = [Self::Idle, Self::Active, Self::Error];
 }
 
 /// [`Status`] implementation of [`TryFrom<u64>`]: a decoded VARINT to its variant
@@ -113,58 +107,58 @@ impl EncodeValue for Status {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_tag_keylen, enc = pb::enc_tag_keylen),
-    default(typ = i32, dec = pb::dec_varint_i32, enc = *pb::enc_varint_i32),
+    keylen(dec = header::dec_tag, enc = header::enc_tag),
+    default(typ = i32, dec = varint::dec_i32, enc = *varint::enc_i32),
 )]
-pub(crate) struct Inner {
+struct Inner {
     /// field 1, wire 0 VARINT - decoded `Inline`
     #[klv(key = 0x08)]
-    pub(crate) code: i32,
+    code: i32,
 }
 
 /// proto3 message exercising every wire shape through the fused `keylen` codec
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_tag_keylen, enc = pb::enc_tag_keylen),
-    default(typ = i32, dec = pb::dec_varint_i32, enc = *pb::enc_varint_i32),
+    keylen(dec = header::dec_tag, enc = header::enc_tag),
+    default(typ = i32, dec = varint::dec_i32, enc = *varint::enc_i32),
     default(typ = i64, dec = decb::le_i64, enc = *encb::le_i64),
     default(typ = f32, dec = decb::le_f32, enc = *encb::le_f32),
-    default(typ = String, dec = pb::dec_string, enc = &encs::from_string_utf8),
-    default(typ = Vec<i32>, dec = pb::dec_packed_i32, enc = &pb::enc_packed_i32),
+    default(typ = String, dec = value::dec_string, enc = &encs::from_string_utf8),
+    default(typ = Vec<i32>, dec = value::dec_packed_i32, enc = &value::enc_packed_i32),
 )]
 pub(crate) struct Example {
     /// field 1, wire 0 VARINT - `Inline`, read without `take`
     #[klv(key = 0x08)]
-    pub(crate) id: i32,
+    id: i32,
 
     /// field 2, wire 5 I32 - `Sliced(4)`, fixed 4 bytes, no length on the wire
     #[klv(key = 0x15)]
-    pub(crate) ratio: f32,
+    ratio: f32,
 
     /// field 3, wire 2 LEN - `Sliced(n)`, the only shape that carries a length prefix
     #[klv(key = 0x1A)]
-    pub(crate) name: String,
+    name: String,
 
     /// field 4, wire 2 LEN - nested message; its own `decode_value` runs on the sub-slice
     #[klv(key = 0x22, dec = Inner::decode_value, enc = Inner::encode_value)]
-    pub(crate) inner: Inner,
+    inner: Inner,
 
     /// field 5, wire 2 LEN - packed repeated; the `Vec<i32>` codec loops to sub-slice eof
     #[klv(key = 0x2A)]
-    pub(crate) samples: Vec<i32>,
+    samples: Vec<i32>,
 
     /// field 6, wire 1 I64 - `Sliced(8)`, fixed 8 bytes, no length on the wire
     #[klv(key = 0x31)]
-    pub(crate) created_at: i64,
+    created_at: i64,
 
     /// field 7, wire 0 VARINT - inline-framed custom enum
     #[klv(key = 0x38, dec = Status::decode_value, enc = Status::encode_value)]
-    pub(crate) status: Status,
+    status: Status,
 
     /// field 16, wire 2 LEN - tag 130 and length 128, both two-byte varints
     #[klv(key = 0x82)]
-    pub(crate) note: String,
+    note: String,
 }
 
 /// [`Example`] implementation
@@ -174,7 +168,7 @@ impl Example {
 
     /// The frames of [`Example::wire`], one per field in declaration order
     #[rustfmt::skip]
-    pub(crate) fn frames() -> Vec<Vec<u8>> {
+    fn frames() -> Vec<Vec<u8>> {
         vec![
             // id = 5 (field 1, wire 0 VARINT, Inline)
             vec![0x08, 0x05],
@@ -212,16 +206,6 @@ impl Example {
         frame
     }
 
-    /// [`Example::wire`] with `id = 300`, a two-byte inline varint
-    pub(crate) fn wire_id_300() -> Vec<u8> {
-        let mut wire = Self::wire();
-        // --------------------------------------------------
-        // the id varint 0x05 becomes 0xAC 0x02
-        // --------------------------------------------------
-        wire.splice(1..2, [0xAC, 0x02]);
-        wire
-    }
-
     /// The canonical decoded [`Example`] matching [`Example::wire`]
     pub(crate) fn decoded() -> Self {
         Self {
@@ -246,9 +230,9 @@ impl Example {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_tag_keylen, enc = pb::enc_tag_keylen),
-    default(typ = i32, dec = pb::dec_varint_i32, enc = *pb::enc_varint_i32),
-    default(typ = String, dec = pb::dec_string, enc = &encs::from_string_utf8),
+    keylen(dec = header::dec_tag, enc = header::enc_tag),
+    default(typ = i32, dec = varint::dec_i32, enc = *varint::enc_i32),
+    default(typ = String, dec = value::dec_string, enc = &encs::from_string_utf8),
 )]
 pub(crate) struct Reading {
     /// field 1, wire 0 VARINT - `Inline`

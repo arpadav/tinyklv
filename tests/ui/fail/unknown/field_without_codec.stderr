@@ -1,0 +1,5 @@
+error: An `unknown` field keeps the frames the struct's `unknown(dec = <..>, enc = <..>)` decodes, and this struct has no `unknown(..)`. Add one to the struct's `#[klv(..)]`, or remove `unknown` from this field.
+  --> tests/ui/fail/unknown/field_without_codec.rs:12:11
+   |
+12 |     #[klv(unknown)]
+   |           ^^^^^^^

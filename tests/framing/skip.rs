@@ -9,6 +9,7 @@
 // local
 // --------------------------------------------------
 use crate::common::drive::Drive;
+use crate::common::frames;
 use crate::common::varint;
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
@@ -72,15 +73,6 @@ struct Reading {
 
 /// [`Reading`] implementation
 impl Reading {
-    /// id: tag, varint 5, no length
-    const ID: &[u8] = &[0x08, 0x05];
-
-    /// ratio: tag, 1.5f32 little-endian, no length
-    const RATIO: &[u8] = &[0x15, 0x00, 0x00, 0xC0, 0x3F];
-
-    /// name: tag, length 2, "hi"
-    const NAME: &[u8] = &[0x1A, 0x02, b'h', b'i'];
-
     /// The plan's value, `Reading { id: 5, ratio: 1.5, name: "hi", created_at: 0 }`
     fn decoded() -> Self {
         Self {
@@ -135,7 +127,7 @@ impl Thermostat {
 /// frame for `created_at`, and decodes back from them
 #[test]
 fn the_worked_example_round_trips_to_the_plans_bytes() {
-    let wire = [Reading::ID, Reading::RATIO, Reading::NAME].concat();
+    let wire = [frames::ID, frames::RATIO, frames::NAME].concat();
     assert_eq!(Reading::decoded().encoded(), wire);
     Reading::decoded().assert_decodes_from(&wire);
 }
@@ -148,7 +140,7 @@ fn a_skip_if_predicate_leaves_its_frame_out() {
         name: String::new(),
         ..Reading::decoded()
     };
-    let wire = [Reading::ID, Reading::RATIO].concat();
+    let wire = [frames::ID, frames::RATIO].concat();
     assert_eq!(unnamed.encoded(), wire);
     unnamed.assert_decodes_from(&wire);
 }

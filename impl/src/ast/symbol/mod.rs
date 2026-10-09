@@ -81,6 +81,11 @@ pub(crate) const SKIP_IF_DEFAULT: Symbol = Symbol("skip_if_default");
 /// The `skip_if` sub-attribute of a field or a `default(..)`: the field's frame is left out of
 /// the encode when the user's `fn(&T) -> bool` returns `true`
 pub(crate) const SKIP_IF: Symbol = Symbol("skip_if");
+/// The `unknown` sub-attribute identifier
+///
+/// On the container, the `unknown(dec = .., enc = ..)` codec of the frames whose key no field
+/// declares. On a field, the flag of the one field that keeps them
+pub(crate) const UNKNOWN_FRAMES: Symbol = Symbol("unknown");
 /// The `deny_unknown_keys` sub-attribute identifier
 pub(crate) const DENY_UNKNOWN_KEYS: Symbol = Symbol("deny_unknown_keys");
 /// The `allow_unimplemented_decode` sub-attribute identifier
@@ -108,6 +113,7 @@ pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
     DEFAULT,
     SENTINEL,
     BREAK_ON,
+    UNKNOWN_FRAMES,
     DENY_UNKNOWN_KEYS,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,
@@ -115,7 +121,8 @@ pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
 ]);
 
 /// Container-level symbols that accept list syntax (e.g. `key(..)`)
-pub(crate) static CONT_LIST_SYMBOLS: Symbols = Symbols(&[KEY, LENGTH, KEYLEN, DEFAULT]);
+pub(crate) static CONT_LIST_SYMBOLS: Symbols =
+    Symbols(&[KEY, LENGTH, KEYLEN, DEFAULT, UNKNOWN_FRAMES]);
 
 /// Container-level default list symbols (type, encoder, decoder, value size)
 pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols =
@@ -135,6 +142,7 @@ pub(crate) static FIELD_SYMBOLS: Symbols = Symbols(&[
     BREAK_ON,
     SKIP_IF_DEFAULT,
     SKIP_IF,
+    UNKNOWN_FRAMES,
 ]);
 
 /// Valid inner keywords of a field's or a `default(..)`'s `size(..)` list (`implicit`,
@@ -184,6 +192,7 @@ const KNOWN: &[Symbol] = &[
     LATEBIND,
     SKIP_IF_DEFAULT,
     SKIP_IF,
+    UNKNOWN_FRAMES,
     DENY_UNKNOWN_KEYS,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,

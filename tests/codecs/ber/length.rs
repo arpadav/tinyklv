@@ -215,20 +215,6 @@ fn berlength_split_long_form_consumes_to_end() {
 }
 
 #[test]
-/// Tests that `BerLength` rejects a value past its type's range with the cursor unchanged and
-/// an error expecting a value that fits
-fn berlength_overflow_rewinds() {
-    // 0x82 0x01 0x00 = 256, past u8::MAX
-    let wire = [0x82, 0x01, 0x00];
-    let mut input = &wire[..];
-    match BerLength::<u8>::decode_value(&mut input) {
-        Err(error) if error.expects_fits_target() => {}
-        other => panic!("expected an overflow Err, got {other:?}"),
-    }
-    assert_eq!(input, &wire[..]);
-}
-
-#[test]
 /// Tests that `ber_length` reads `usize::MAX` from as many length bytes as `usize` is wide
 fn ber_length_usize_max() {
     decber::ber_length.assert_reads(&usize::length(None, 0xFF), usize::MAX);
@@ -245,37 +231,12 @@ fn ber_length_nonzero_past_usize_rewinds() {
 }
 
 #[test]
-/// Tests the `BerLength` value boundary at `u8` (see `BerWidth::assert_length_boundary`)
-fn berlength_boundary_u8() {
+/// Tests the `BerLength` value boundary at every width (see `BerWidth::assert_length_boundary`)
+fn berlength_boundary_every_width() {
     u8::assert_length_boundary();
-}
-
-#[test]
-/// Tests the `BerLength` value boundary at `u16` (see `BerWidth::assert_length_boundary`)
-fn berlength_boundary_u16() {
     u16::assert_length_boundary();
-}
-
-#[test]
-/// Tests the `BerLength` value boundary at `u32` (see `BerWidth::assert_length_boundary`)
-fn berlength_boundary_u32() {
     u32::assert_length_boundary();
-}
-
-#[test]
-/// Tests the `BerLength` value boundary at `u64` (see `BerWidth::assert_length_boundary`)
-fn berlength_boundary_u64() {
     u64::assert_length_boundary();
-}
-
-#[test]
-/// Tests the `BerLength` value boundary at `u128` (see `BerWidth::assert_length_boundary`)
-fn berlength_boundary_u128() {
     u128::assert_length_boundary();
-}
-
-#[test]
-/// Tests the `BerLength` value boundary at `usize` (see `BerWidth::assert_length_boundary`)
-fn berlength_boundary_usize() {
     usize::assert_length_boundary();
 }

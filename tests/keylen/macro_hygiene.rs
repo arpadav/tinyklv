@@ -9,7 +9,7 @@
 // local
 // --------------------------------------------------
 use crate::common::drive::Drive;
-use crate::support::pb;
+use crate::support::header;
 use tinyklv::dec::ber as decber;
 use tinyklv::enc::ber as encber;
 use tinyklv::prelude::*;
@@ -29,8 +29,8 @@ macro_rules! reading {
 }
 reading!(
     Counter,
-    pb::dec_u8_keylen,
-    pb::enc_u8_keylen,
+    header::dec_u8,
+    header::enc_u8,
     decber::ber_oid,
     encber::ber_oid
 );

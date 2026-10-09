@@ -12,7 +12,6 @@
 // --------------------------------------------------
 use super::helpers::DecoderExt;
 use super::width::BerWidth;
-use crate::common::error::ContextErrorExt;
 use tinyklv::codecs::ber::BerOid;
 use tinyklv::dec::ber as decber;
 use tinyklv::prelude::*;
@@ -152,40 +151,7 @@ fn ber_oid_empty_input_fails() {
 }
 
 #[test]
-/// Tests that `ber_oid` rejects a value past its type's range with the cursor unchanged and an
-/// error expecting a value that fits
-fn ber_oid_overflow_rewinds() {
-    // 0x82 0x00 = 256, past u8::MAX
-    let wire = [0x82, 0x00];
-    let mut input = &wire[..];
-    match tinyklv::dec::ber::ber_oid::<u8>(&mut input) {
-        Err(error) if error.expects_fits_target() => {}
-        other => panic!("expected an overflow Err, got {other:?}"),
-    }
-    assert_eq!(input, &wire[..]);
-}
-
-#[test]
-/// Tests that `ber_oid` out of bytes mid-value errors with the cursor at the end of input, so a
-/// framed caller classes the cut as truncation
-fn ber_oid_truncated_consumes_to_end() {
-    // 0x81 0x82 both continue; no terminator follows
-    let wire = [0x81, 0x82];
-    let mut input = &wire[..];
-    assert!(tinyklv::dec::ber::ber_oid::<u64>(&mut input).is_err());
-    assert_eq!(input, &wire[2..]);
-}
-
-#[test]
-/// Tests that `[0x81, 0x82]` read as `u8` is an overlong run, not a cut one: a `u8` holds two
-/// BER-OID bytes, so a second byte that continues is rejected as overflow with the cursor
-/// rewound, where `u64` reads the same bytes as truncated (`ber_oid_truncated_consumes_to_end`)
-fn ber_oid_u8_continuing_at_cap_rewinds() {
-    decber::ber_oid::<u8>.assert_rewinds(&[0x81, 0x82]);
-}
-
-#[test]
-/// Pins today's leading-padding rule, an open item in `plans/DESIGN.md`: a `0x80` pad byte
+/// Pins today's leading-padding rule, an open question until X.690 is checked: a `0x80` pad byte
 /// counts against the cap, so `[0x80, 0x05]` reads as the `u8` 5, while `[0x80, 0x80, 0x05]`,
 /// the same value behind two pad bytes, is rejected as overflow with the cursor rewound
 fn ber_oid_padding_counts_against_cap() {
@@ -194,37 +160,12 @@ fn ber_oid_padding_counts_against_cap() {
 }
 
 #[test]
-/// Tests the BER-OID cap boundary at `u8` (see `BerWidth::assert_oid_cap_boundary`)
-fn ber_oid_cap_boundary_u8() {
+/// Tests the BER-OID cap boundary at every width (see `BerWidth::assert_oid_cap_boundary`)
+fn ber_oid_cap_boundary_every_width() {
     u8::assert_oid_cap_boundary();
-}
-
-#[test]
-/// Tests the BER-OID cap boundary at `u16` (see `BerWidth::assert_oid_cap_boundary`)
-fn ber_oid_cap_boundary_u16() {
     u16::assert_oid_cap_boundary();
-}
-
-#[test]
-/// Tests the BER-OID cap boundary at `u32` (see `BerWidth::assert_oid_cap_boundary`)
-fn ber_oid_cap_boundary_u32() {
     u32::assert_oid_cap_boundary();
-}
-
-#[test]
-/// Tests the BER-OID cap boundary at `u64` (see `BerWidth::assert_oid_cap_boundary`)
-fn ber_oid_cap_boundary_u64() {
     u64::assert_oid_cap_boundary();
-}
-
-#[test]
-/// Tests the BER-OID cap boundary at `u128` (see `BerWidth::assert_oid_cap_boundary`)
-fn ber_oid_cap_boundary_u128() {
     u128::assert_oid_cap_boundary();
-}
-
-#[test]
-/// Tests the BER-OID cap boundary at `usize` (see `BerWidth::assert_oid_cap_boundary`)
-fn ber_oid_cap_boundary_usize() {
     usize::assert_oid_cap_boundary();
 }

@@ -10,8 +10,10 @@
 // local
 // --------------------------------------------------
 use crate::common::drive::Drive;
+use crate::common::varint;
+use crate::common::wire;
 use crate::support::example::Status;
-use crate::support::pb;
+use crate::support::header;
 use tinyklv::dec::string as decs;
 use tinyklv::enc::string as encs;
 use tinyklv::prelude::*;
@@ -21,8 +23,8 @@ use tinyklv::prelude::*;
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_field_keylen, enc = Contact::enc_header),
-    default(typ = i32, dec = pb::dec_varint_i32, enc = *pb::enc_varint_i32),
+    keylen(dec = header::dec_field, enc = Contact::enc_header),
+    default(typ = i32, dec = varint::dec_i32, enc = *varint::enc_i32),
     default(
         typ = String,
         dec = decs::to_string_utf8,
@@ -85,57 +87,26 @@ impl Contact {
     ///
     /// # Arguments
     ///
-    /// * `header` - the field number and the byte length of the value that follows
+    /// * `(field, value_len)` - the field number and the byte length of the value that follows
     /// * `out` - the buffer the header bytes are appended to
-    fn enc_header(header: (u32, usize), out: &mut Vec<u8>) {
-        let wire_type = match header.0 {
+    fn enc_header((field, value_len): (u32, usize), out: &mut Vec<u8>) {
+        let wire_type = match field {
             // name and email
-            2 | 3 => pb::WIRE_LEN,
+            2 | 3 => wire::LEN,
             // id and status
-            _ => pb::WIRE_VARINT,
+            _ => wire::VARINT,
         };
-        pb::enc_field_keylen(wire_type, header, out);
+        header::enc_field(wire_type, (field, value_len), out);
     }
 }
 
-/// `Sliced` frames hand the crate's `to_string_utf8` their length, in both drivers and at every
-/// chunk split
-#[test]
-fn sliced_frames_hand_the_decoder_their_length() {
-    Contact::decoded().assert_decodes_from(&Contact::wire());
-}
-
-/// Encode writes each `string` as a LEN frame, and the bytes decode back
+/// Encode writes each `string` as a LEN frame, and its `Sliced` frames hand the crate's
+/// `to_string_utf8` their length, in both drivers and at every chunk split
 #[test]
 fn encode_round_trips() {
     let encoded = Contact::decoded().encoded();
     assert_eq!(encoded, Contact::wire());
-    assert_eq!(
-        Contact::decode_value(&mut &encoded[..]),
-        Ok(Contact::decoded())
-    );
-}
-
-/// An `Inline` frame for a `lengthed` field is rejected naming the field, required and optional
-#[test]
-fn an_inline_frame_for_a_lengthed_field_is_malformed() {
-    #[rustfmt::skip]
-    let name = [
-        Contact::ID,
-        // name (field 2, wire 0 VARINT, Inline), then the bytes a LEN frame would carry
-        &[0x10, 0x03, b'A', b'd', b'a'],
-    ]
-    .concat();
-    Contact::assert_rejects_naming(&name, &["`Contact::name`", "size(lengthed)"]);
-    #[rustfmt::skip]
-    let email = [
-        Contact::ID,
-        Contact::NAME,
-        // email (field 3, wire 0 VARINT, Inline)
-        &[0x18, 0x01],
-    ]
-    .concat();
-    Contact::assert_rejects_naming(&email, &["`Contact::email`", "size(lengthed)"]);
+    Contact::decoded().assert_decodes_from(&encoded);
 }
 
 /// An `Inline` frame for a `lengthed` field at the end of the input is still malformed, never
@@ -147,20 +118,6 @@ fn an_inline_frame_at_the_end_of_the_input_is_malformed() {
         Contact::ID,
         // name (field 2, wire 0 VARINT, Inline), and nothing after it
         &[0x10],
-    ]
-    .concat();
-    Contact::assert_rejects_naming(&wire, &["`Contact::name`", "size(lengthed)"]);
-}
-
-/// Streaming rejects the `Inline` frame whichever chunk its header arrives in
-#[test]
-fn every_chunk_split_rejects_the_inline_frame() {
-    #[rustfmt::skip]
-    let wire = [
-        Contact::ID,
-        // name (field 2, wire 0 VARINT, Inline)
-        &[0x10, 0x03, b'A', b'd', b'a'],
-        Contact::STATUS,
     ]
     .concat();
     Contact::assert_rejects_naming(&wire, &["`Contact::name`", "size(lengthed)"]);

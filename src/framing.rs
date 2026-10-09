@@ -1,9 +1,10 @@
 //! The [`Framing`] returned by a fused `#[klv(keylen(dec = ..))]` decoder to describe a value frame
 //!
-//! Classic `#[klv(key(..), len(..))]` always slices each value via `take(len)`. The opt-in fused
-//! `keylen` codec instead decodes one frame header and returns `(key, Framing)`, letting the framing
-//! decision depend on the key. [`Framing`] tells the derive-generated decode loop how to bound the
-//! value bytes that follow the header, and states the rules the loop applies to each frame
+//! Classic `#[klv(key(..), len(..))]` slices a value with a length prefix via `take(len)`. The
+//! opt-in fused `keylen` codec instead decodes one frame header and returns `(key, Framing)`,
+//! letting the framing decision depend on the key. [`Framing`] tells the derive-generated decode
+//! loop how to bound the value bytes that follow the header, and states the rules the loop applies
+//! to each frame
 //!
 //! On encode, each value is staged first, then the `keylen` encoder is handed `(key, value_len)`
 //! and writes the frame header: the key, and the length only when the key implies one. A `keylen`
@@ -83,8 +84,18 @@
 ///
 /// Without `deny_unknown_keys`, a key with no field is skipped when [`Framing::Sliced`]. When
 /// [`Framing::Inline`] it has no length to skip it by, so the loop rewinds to the start of its
-/// frame and ends. With `deny_unknown_keys`, an unknown key is rejected in either framing, before
-/// any of its value bytes are read
+/// frame and ends. With `unknown(dec = ..)`, an [`Framing::Inline`] one goes to that decoder
+/// instead, which reads it from the main stream; a [`Framing::Sliced`] one goes to it only when a
+/// `#[klv(unknown)]` field keeps it, the decoder reading the bounded value, and is skipped
+/// otherwise. With `deny_unknown_keys`, an unknown key is rejected in either framing, before any of
+/// its value bytes are read
+///
+/// In a `key(..)` + `len(..)` struct, the `unknown(dec = ..)` decoder reads an unknown frame from
+/// the main stream, its length included, and its failure follows the rule on [`Framing::Inline`].
+/// A decoder that reads the length and then finds the value short must leave the cursor at the end
+/// of the input, or a frame split across chunks reads as malformed. The decoder must advance its
+/// input only within the slice it is given, as `*input = &input[input.len()..]` does to consume
+/// the rest, and never reassign it to another slice: `*input = &[]` panics in a debug build
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Framing {
     /// The value occupies exactly `usize` bytes, bounded by an explicit length
@@ -97,6 +108,10 @@ pub enum Framing {
     /// For a field declaring `size(exact = N)`, a length other than `N` is malformed: both decodes
     /// return an error naming `` `<Struct>::<field>` ``, even when the value runs past the end of
     /// the input
+    ///
+    /// For an unknown key whose frame the `#[klv(unknown)]` field keeps, a value the
+    /// `unknown(dec = ..)` decoder fails on is malformed: both decodes return an error naming that
+    /// field, the cursor past the frame
     Sliced(usize),
 
     /// The value is self-delimiting and carries no length on the wire
@@ -115,8 +130,9 @@ pub enum Framing {
     ///   frame, then streaming decode returns `Packet::NeedMore` and one-shot decode finalizes
     ///   what it has
     /// * anywhere else, the value is malformed. Streaming decode returns an error naming
-    ///   `` `<Struct>::<field>` ``. One-shot decode returns an error whose display names
-    ///   `` `<Struct>::<field>` `` first, then why the decoder failed: the decoder's own error
+    ///   `` `<Struct>::<field>` ``: for an unknown key's value, the `#[klv(unknown)]` field, or
+    ///   `` `<Struct>` frame `` when no field keeps it. One-shot decode returns an error whose
+    ///   display names that first, then why the decoder failed: the decoder's own error
     ///   gains the field as its label, or, when the decoder labelled it already, becomes the cause
     ///   of a new error labelled with the field, then the decoder's label. Either way, this
     ///   error's chain (its `cause`, then each `source`) holds every cause the decoder's error

@@ -1,0 +1,5 @@
+error: Duplicate `unknown` attribute. Only one codec for unknown frames per struct is allowed.
+  --> tests/ui/fail/unknown/duplicate.rs:12:5
+   |
+12 |     unknown(dec = unknown_frame),
+   |     ^^^^^^^

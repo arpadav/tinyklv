@@ -3,17 +3,17 @@
 //! Turns each `#[klv(..)]` field into a complete key-length-value write. The
 //! module resolves the encoder call shape, picks the write the container's framing
 //! selects for the field, applies optional-field and skip guards, and hands the header write to
-//! the container framing
+//! the container framing. The frames a `#[klv(unknown)]` field retains are written after the known
+//! fields, through the same framing
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use super::{
-    EncodeCtx,
+    EncodeCtx, UnknownEncoder,
     field_length_plan::{FieldLengthPlan, ValueWidth},
     fixed_width,
-    framing::EncodeFraming,
     length_prefix::LengthPrefix,
     staging::Staging,
 };
@@ -36,8 +36,9 @@ impl EncodeCtx<'_> {
     /// Generates all field KLV item writes for an `EncodeValue` body
     ///
     /// Walks the parsed container fields and emits one planned KLV item write for
-    /// each field that carries KLV metadata. Fields without KLV attributes are
-    /// ignored so ordinary Rust fields remain outside the generated wire output
+    /// each keyed field. The `#[klv(unknown)]` field's frames are written by
+    /// [`Self::unknown_items`], and fields without KLV attributes are ignored so ordinary Rust
+    /// fields remain outside the generated wire output
     ///
     /// # Returns
     ///
@@ -84,11 +85,9 @@ impl EncodeCtx<'_> {
         // --------------------------------------------------
         // emit the item write the container framing selects
         // --------------------------------------------------
-        let item_write = match self.framing {
-            EncodeFraming::Separate {
-                key_encoder, len, ..
-            } => {
-                let key_write = key_encoder.write(key, span);
+        let item_write = self
+            .framing
+            .write_frame(key, value_write, span, |key_write, len| {
                 match (implicit, len) {
                     (Some(size), _) => item.write_implicit(size, key_write),
                     (None, LengthPrefix::Fixed(len)) => match item.length_plan() {
@@ -103,20 +102,64 @@ impl EncodeCtx<'_> {
                         len.write_staged(Staging::Scratch, key_write, value_write, span)
                     }
                 }
-            }
-            EncodeFraming::Fused { keylen_encoder } => {
-                keylen_encoder.write_staged(Staging::Scratch, key, value_write, span)
-            }
-        };
+            });
         // --------------------------------------------------
         // wrap optional fields with their `Some` guard, then skipped fields with their skip
         // guard
         // --------------------------------------------------
         item.skip_guard(item.access().guard(item_write))
     }
+
+    /// Generates the writes of the retained unknown frames, after the known fields, in the order the
+    /// field holds them
+    ///
+    /// One loop over the `#[klv(unknown)]` field writes each `(key, value)` frame. Under a separate
+    /// header the key encoder writes the key and the `unknown(enc = ..)` encoder writes the rest of
+    /// the frame, its length included when the frame has one, straight into `out`. Under a fused
+    /// header the value is staged and the `keylen` encoder writes the header from `(key,
+    /// staged_len)` ([`KeylenEncoder::write_staged`](super::framing::KeylenEncoder::write_staged)).
+    /// The key is passed by value, as a field's literal key is, so the key type is `Copy`. The
+    /// loop is located at the field and the encoder call at the encoder, so a wrong element type
+    /// or encoder signature is reported where it is written
+    ///
+    /// # Returns
+    ///
+    /// The loop, or `None` when the struct keeps no unknown frames
+    pub(super) fn unknown_items(&self) -> Option<proc_macro2::TokenStream> {
+        let UnknownEncoder { encoder, keep } = self.unknown?;
+        let name = &keep.name;
+        let span = helpers::call_site_at(name);
+        let at = helpers::call_site_at(&encoder.inner);
+        let key = quote_spanned! { span => *__key };
+        let value = ValueAccess::Frame {
+            at,
+            binding: format_ident!("__val", span = at),
+        }
+        .argument(encoder.sigil);
+        let inner = &encoder.inner;
+        let value_write =
+            |dst: &proc_macro2::TokenStream| quote_spanned! { at => #inner(#value, #dst); };
+        // --------------------------------------------------
+        // the frame write the container framing selects
+        // --------------------------------------------------
+        let frame_write = self
+            .framing
+            .write_frame(&key, value_write, span, |key_write, _| {
+                let value_write = value_write(&quote_spanned! { span => out });
+                quote! { #key_write #value_write }
+            });
+        // --------------------------------------------------
+        // one frame per retained `(key, value)`
+        // --------------------------------------------------
+        Some(quote_spanned! { span =>
+            for (__key, __val) in &self.#name {
+                #frame_write
+            }
+        })
+    }
 }
 
-/// How the generated write reaches a field's value
+/// How the generated write reaches the value it encodes
 enum ValueAccess<'a> {
     /// A required field, read through `self`
     Required {
@@ -128,6 +171,13 @@ enum ValueAccess<'a> {
         /// The field's identifier
         name: &'a syn::Ident,
         /// The local the guard binds the inner value to
+        binding: syn::Ident,
+    },
+    /// A retained unknown frame, whose re-emit loop binds the value to a local
+    Frame {
+        /// Where the argument is located: the `unknown(enc = ..)` encoder
+        at: proc_macro2::Span,
+        /// The local the loop binds the value to
         binding: syn::Ident,
     },
 }
@@ -159,7 +209,7 @@ impl<'a> ValueAccess<'a> {
     ///
     /// The sigil controls whether the encoder receives a reference, an `EncodeAs` projection, or a
     /// dereferenced value: of `self.field` for a required field, of the guard's local for an
-    /// optional one
+    /// optional one, of the loop's local for a retained unknown frame
     ///
     /// # Arguments
     ///
@@ -172,31 +222,34 @@ impl<'a> ValueAccess<'a> {
         // --------------------------------------------------
         // build the argument form for the sigil
         // --------------------------------------------------
-        match self {
+        let (span, binding) = match self {
             Self::Required { name } => {
                 let span = name.span();
-                match sigil {
+                return match sigil {
                     XcoderSigil::None => quote_spanned! { span => &self.#name },
                     XcoderSigil::Ref => quote_spanned! { span =>
                         ::tinyklv::traits::EncodeAs::encode_as(&self.#name)
                     },
                     XcoderSigil::Deref => quote_spanned! { span => self.#name },
-                }
+                };
             }
-            Self::Optional { name, binding } => {
-                let span = name.span();
-                match sigil {
-                    XcoderSigil::None => quote_spanned! { span => #binding },
-                    XcoderSigil::Ref => quote_spanned! { span =>
-                        ::tinyklv::traits::EncodeAs::encode_as(#binding)
-                    },
-                    XcoderSigil::Deref => quote_spanned! { span => *#binding },
-                }
-            }
+            Self::Optional { name, binding } => (name.span(), binding),
+            Self::Frame { at, binding } => (*at, binding),
+        };
+        // --------------------------------------------------
+        // a bound local is already a reference
+        // --------------------------------------------------
+        match sigil {
+            XcoderSigil::None => quote_spanned! { span => #binding },
+            XcoderSigil::Ref => quote_spanned! { span =>
+                ::tinyklv::traits::EncodeAs::encode_as(#binding)
+            },
+            XcoderSigil::Deref => quote_spanned! { span => *#binding },
         }
     }
 
-    /// Wraps an optional field's write in its `Some` guard; a required field's is unchanged
+    /// Wraps an optional field's write in its `Some` guard; a required field's or an unknown
+    /// frame's is unchanged
     ///
     /// Optional fields emit no KLV item when their value is `None`. The guard is spanned at the
     /// field, so diagnostics on it point back to the source field
@@ -207,14 +260,13 @@ impl<'a> ValueAccess<'a> {
     ///
     /// # Returns
     ///
-    /// A token stream containing either the guarded optional write or the original
-    /// required-field write
+    /// A token stream containing either the guarded optional write or the original write
     fn guard(&self, item_write: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         // --------------------------------------------------
         // guard optional fields and write required fields directly
         // --------------------------------------------------
         match self {
-            Self::Required { .. } => item_write,
+            Self::Required { .. } | Self::Frame { .. } => item_write,
             Self::Optional { name, binding } => quote_spanned! { name.span() =>
                 if let ::core::option::Option::Some(ref #binding) = self.#name {
                     #item_write

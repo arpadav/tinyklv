@@ -1,8 +1,8 @@
-//! Per-field framing integration-test harness
+//! Key + len framing integration-test harness
 //!
 //! Declares the framing test sub-modules so `cargo test` can discover them. `common` is the
 //! test-support library the suites share; the remaining sub-modules each cover one framing
-//! feature of a key + len struct
+//! feature of a key + len struct, of its fields' frames or of the frames no field declares
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -18,3 +18,4 @@ mod exact_stateful;
 mod field_break_on;
 mod implicit;
 mod skip;
+mod unknown;

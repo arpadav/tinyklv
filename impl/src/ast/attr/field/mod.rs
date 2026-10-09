@@ -8,7 +8,9 @@
 //! type's `Default::default()`.
 //! The `trait_fallback` opt-in is also resolved at this stage, injecting
 //! placeholder paths that the expand phase replaces with fully-qualified
-//! `<T as EncodeValue>::encode_value` / `<T as DecodeValue<..>>::decode_value` calls
+//! `<T as EncodeValue>::encode_value` / `<T as DecodeValue<..>>::decode_value` calls.
+//! A `#[klv(unknown)]` field, which keeps the frames whose key no field declares, takes no other
+//! setting and is not keyed: none of the above applies to it
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -41,12 +43,13 @@ use std::collections::HashMap;
 #[derive(Debug)]
 /// Raw parsed form of a single struct field's `#[klv(..)]` annotations
 ///
-/// Holds a [`FieldXcoder`] that may have been enriched with container-level
-/// `default(..)` xcoders or `trait_fallback` placeholders. Fields with no
-/// `#[klv(..)]` attribute at all produce `None` from [`Field::from_ast`]
-pub(crate) struct Field {
-    /// The combined key, encoder, decoder, and auxiliary settings for this field
-    pub contents: FieldXcoder,
+/// Fields with no `#[klv(..)]` attribute at all produce `None` from [`Field::from_ast`]
+pub(crate) enum Field {
+    /// A keyed field's combined key, encoder, decoder, and auxiliary settings, which may have
+    /// been enriched with container-level `default(..)` xcoders or `trait_fallback` placeholders
+    Keyed(Box<FieldXcoder>),
+    /// The `#[klv(unknown)]` field, with the span of its `unknown` flag
+    Unknown(proc_macro2::Span),
 }
 /// [`Field`] implementation
 impl Field {
@@ -56,8 +59,10 @@ impl Field {
     /// collects all [`FieldXcoder`] entries, merges duplicates (emitting errors
     /// to `cx` for true conflicts), applies container-level `default(..)` xcoders
     /// for fields whose type matches, and injects `trait_fallback` placeholders
-    /// when the opt-in flag is set and no explicit xcoder was found. Returns
-    /// `None` when the field carries no `#[klv(..)]` attribute at all
+    /// when the opt-in flag is set and no explicit xcoder was found. A field flagged `unknown` is
+    /// [`Field::Unknown`] before any of that, and any other setting beside the flag is an error.
+    /// Returns `None` when the field carries no `#[klv(..)]` attribute at all, or one that failed
+    /// to parse, whose error is the field's only one
     ///
     /// # Arguments
     ///
@@ -71,8 +76,8 @@ impl Field {
     ///
     /// # Returns
     ///
-    /// `Some(Field)` if the field carried at least one `#[klv(..)]` attribute, or
-    /// `None` if no KLV annotation was found
+    /// `Some(Field)` if the field carried at least one `#[klv(..)]` attribute and each parsed, or
+    /// `None` if no KLV annotation was found or one failed to parse
     pub fn from_ast(
         cx: &Ctxt,
         field: &syn::Field,
@@ -121,6 +126,27 @@ impl Field {
             .iter()
             .filter_map(|f| f.errors.clone())
             .for_each(|e| cx.syn_error(e));
+        // --------------------------------------------------
+        // a list that failed to parse stopped at its error, so the settings it holds are
+        // incomplete and nothing more is checked on the field
+        // --------------------------------------------------
+        if all_field_xcoders.iter().any(|f| f.errors.is_some()) {
+            return None;
+        }
+        // --------------------------------------------------
+        // the field that keeps the unknown frames is not keyed: the container's `unknown(..)` is
+        // its codec, so it takes no other setting
+        // --------------------------------------------------
+        let mut unknowns = all_field_xcoders.iter().filter_map(|f| f.unknown);
+        if let Some(at) = unknowns.next() {
+            if let Some(again) = unknowns.next() {
+                cx.syn_error(syn::Error::new(again, err!(DuplicateUnknownInField)));
+            }
+            if let Some(setting) = all_field_xcoders.iter().find_map(|f| f.keyed_setting) {
+                cx.syn_error(syn::Error::new(setting, err!(UnknownFieldWithSetting)));
+            }
+            return Some(Field::Unknown(at));
+        }
         // --------------------------------------------------
         // init
         // --------------------------------------------------
@@ -355,9 +381,7 @@ impl Field {
         // --------------------------------------------------
         // return
         // --------------------------------------------------
-        Some(Field {
-            contents: field_xcoder,
-        })
+        Some(Field::Keyed(Box::new(field_xcoder)))
     }
 }
 
@@ -400,9 +424,9 @@ pub(crate) struct FieldParsed {
 }
 /// [`FieldParsed`] implementation
 impl FieldParsed {
-    /// Converts a raw [`Field`] into a validated [`FieldParsed`]
+    /// Converts a keyed field's raw settings ([`Field::Keyed`]) into a validated [`FieldParsed`]
     ///
-    /// Checks that a key literal is present in `f.contents`, records a
+    /// Checks that a key literal is present in `f`, records a
     /// missing-key error in `cx` if absent, and projects all remaining
     /// xcoder settings into the returned struct
     ///
@@ -410,16 +434,16 @@ impl FieldParsed {
     ///
     /// * `cx` - Error accumulation context for recording the missing-key diagnostic
     /// * `sf` - The syn field, used as a span anchor for error messages
-    /// * `f` - The raw parsed field to validate and project
+    /// * `f` - The raw parsed settings to validate and project
     ///
     /// # Returns
     ///
     /// `Some(FieldParsed)` when a key is present, or `None` if the key was absent
-    pub fn from_field(cx: &Ctxt, sf: &syn::Field, f: &Field) -> Option<FieldParsed> {
+    pub fn from_field(cx: &Ctxt, sf: &syn::Field, f: &FieldXcoder) -> Option<FieldParsed> {
         // --------------------------------------------------
         // check for required fields
         // --------------------------------------------------
-        let Some(key) = &f.contents.key else {
+        let Some(key) = &f.key else {
             cx.error_spanned_by(sf.ident.clone(), err!(MissingKeyInField));
             return None;
         };
@@ -428,15 +452,15 @@ impl FieldParsed {
         // --------------------------------------------------
         Some(FieldParsed {
             key: key.clone(),
-            enc: f.contents.enc.clone(),
-            dec: f.contents.dec.clone(),
-            size: f.contents.size.clone(),
-            latebind: f.contents.latebind.clone(),
-            default: f.contents.default.clone(),
-            fallback_enc: f.contents.fallback_enc,
-            fallback_dec: f.contents.fallback_dec,
-            break_on: f.contents.break_on.clone(),
-            skip_if: f.contents.skip_if.clone(),
+            enc: f.enc.clone(),
+            dec: f.dec.clone(),
+            size: f.size.clone(),
+            latebind: f.latebind.clone(),
+            default: f.default.clone(),
+            fallback_enc: f.fallback_enc,
+            fallback_dec: f.fallback_dec,
+            break_on: f.break_on.clone(),
+            skip_if: f.skip_if.clone(),
         })
     }
 }

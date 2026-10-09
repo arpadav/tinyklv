@@ -11,7 +11,8 @@
 // local
 // --------------------------------------------------
 use crate::common::drive::Drive;
-use crate::support::pb;
+use crate::common::varint;
+use crate::support::{header, value};
 use tinyklv::enc::string as encs;
 use tinyklv::prelude::*;
 
@@ -46,9 +47,9 @@ const WIRE: [u8; 6] = [
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_tag_keylen, enc = pb::enc_tag_keylen),
-    default(typ = i32, dec = pb::dec_varint_i32, enc = *pb::enc_varint_i32),
-    default(typ = String, dec = pb::dec_string, enc = &encs::from_string_utf8),
+    keylen(dec = header::dec_tag, enc = header::enc_tag),
+    default(typ = i32, dec = varint::dec_i32, enc = *varint::enc_i32),
+    default(typ = String, dec = value::dec_string, enc = &encs::from_string_utf8),
 )]
 struct Plain {
     /// field 1, wire 0 VARINT - `Inline`
@@ -64,10 +65,10 @@ struct Plain {
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
-    keylen(dec = pb::dec_tag_keylen, enc = pb::enc_tag_keylen),
+    keylen(dec = header::dec_tag, enc = header::enc_tag),
     debug,
-    default(typ = i32, dec = pb::dec_varint_i32, enc = *pb::enc_varint_i32),
-    default(typ = String, dec = pb::dec_string, enc = &encs::from_string_utf8),
+    default(typ = i32, dec = varint::dec_i32, enc = *varint::enc_i32),
+    default(typ = String, dec = value::dec_string, enc = &encs::from_string_utf8),
 )]
 struct Logged {
     /// field 1, wire 0 VARINT - `Inline`
@@ -86,12 +87,7 @@ fn const_locals_in_scope_decode_every_frame() {
         count: 3,
         label: Some("hi".to_owned()),
     };
-    let mut cursor = &WIRE[..];
-    assert_eq!(Plain::decode_value(&mut cursor).as_ref(), Ok(&plain));
-    assert!(cursor.is_empty(), "one-shot stops at {cursor:02X?}");
-    let mut cursor = &WIRE[..];
-    plain.assert_streams_to(&mut cursor);
-    assert!(cursor.is_empty(), "streaming stops at {cursor:02X?}");
+    plain.assert_decodes_from(&WIRE);
     assert_eq!(plain.encoded(), WIRE);
 }
 
@@ -103,11 +99,6 @@ fn const_locals_in_scope_decode_every_frame_with_debug() {
         count: 3,
         label: Some("hi".to_owned()),
     };
-    let mut cursor = &WIRE[..];
-    assert_eq!(Logged::decode_value(&mut cursor).as_ref(), Ok(&logged));
-    assert!(cursor.is_empty(), "one-shot stops at {cursor:02X?}");
-    let mut cursor = &WIRE[..];
-    logged.assert_streams_to(&mut cursor);
-    assert!(cursor.is_empty(), "streaming stops at {cursor:02X?}");
+    logged.assert_decodes_from(&WIRE);
     assert_eq!(logged.encoded(), WIRE);
 }

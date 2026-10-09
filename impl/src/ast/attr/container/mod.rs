@@ -3,33 +3,39 @@
 //! Defines [`Container`] (the raw parsed form of every recognised attribute on
 //! a `#[derive(Klv)]` struct) and [`ContainerParsed`] (the validated form that
 //! resolves exactly one framing mode, [`ContainerMode`]). Sub-modules handle the
-//! individual attribute parsers: `break_on`, `default`, `header` (the `key` and `len` lists, and
-//! the state of all three frame header attributes), `keylen` (the fused `keylen` list), `sentinel`
-//! and `stream`
+//! individual attribute parsers: `break_on`, `codec` (the state of every codec attribute),
+//! `default`, `header` (the `key` and `len` lists, and the three frame header states), `keylen`
+//! (the fused `keylen` list), `sentinel`, `stream` and `unknown` (the codec of the frames whose
+//! key no field declares)
 //!
 //! Author: aav
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
 mod break_on;
+mod codec;
 mod default;
 mod header;
 mod keylen;
 mod sentinel;
 mod stream;
+mod unknown;
 
 // --------------------------------------------------
 // re-exports
 // --------------------------------------------------
 pub(crate) use break_on::BreakOnSpec;
+pub(super) use codec::CodecAttr;
 pub(super) use default::DefaultXcoder;
+pub(super) use unknown::UnknownXcoder;
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::{Ctxt, symbol};
 use break_on::BreakOn;
-use header::{HeaderAttrs, HeaderXcoder, HeaderXcoderAttr};
+use codec::CodecSlot;
+use header::{HeaderAttrs, HeaderXcoder};
 use keylen::KeylenXcoder;
 use sentinel::Sentinel;
 use stream::Stream;
@@ -51,7 +57,8 @@ use syn::{Token, punctuated::Punctuated};
 /// header written around each encoded value, and the sentinel's packet framing, from it
 #[derive(Debug, Clone)]
 pub(crate) enum ContainerMode {
-    /// Classic mode: separate `key`/`len` xcoders; every value is sliced via `take(len)`
+    /// Classic mode: separate `key`/`len` xcoders; a value with a length prefix is sliced via
+    /// `take(len)`
     Separate {
         /// The key xcoder
         key: Box<HeaderXcoder>,
@@ -94,6 +101,10 @@ pub(crate) struct Container {
     /// The key and length xcoder pairs and the fused key+length codec (mutually exclusive with
     /// `key`/`len`): each absent, present but unusable, or parsed
     headers: HeaderAttrs,
+
+    /// The codec of the frames whose key no field declares: absent, present but unusable, or
+    /// parsed
+    unknown: CodecAttr<UnknownXcoder>,
 
     /// Per-type default xcoders keyed by the Rust type they apply to
     pub defaults: HashMap<syn::Type, DefaultXcoder>,
@@ -142,6 +153,7 @@ impl Container {
         let mut sentinel = None;
         let mut break_on = None;
         let mut headers = HeaderAttrs::default();
+        let mut unknown = CodecAttr::default();
         let mut defaults: HashMap<syn::Type, DefaultXcoder> = HashMap::new();
         let mut debug = None;
         let mut deny_unknown_keys = None;
@@ -173,13 +185,20 @@ impl Container {
             // loop through comma blocks
             // --------------------------------------------------
             for meta in nested {
+                let name = symbol::Symbol::from(meta.path());
                 // --------------------------------------------------
-                // the frame header attributes, `key`, `len` and `keylen`, in any form
+                // the codec attributes, `key`, `len`, `keylen` and `unknown`, in any form, each
+                // recorded on the state of its slot
                 // --------------------------------------------------
-                if headers.on_meta(cx, &meta) {
+                if let Some(slot) = CodecSlot::from_symbol(name) {
+                    match slot {
+                        CodecSlot::Key => headers.key.on_meta(cx, &meta, slot),
+                        CodecSlot::Length => headers.len.on_meta(cx, &meta, slot),
+                        CodecSlot::Keylen => headers.keylen.on_meta(cx, &meta, slot),
+                        CodecSlot::Unknown => unknown.on_meta(cx, &meta, slot),
+                    }
                     continue;
                 }
-                let name = symbol::Symbol::from(meta.path());
                 match meta {
                     // --------------------------------------------------
                     // handle all: `syn::MetaList`
@@ -373,7 +392,8 @@ impl Container {
         }
         // --------------------------------------------------
         // unimplemented encode / decode errors, spanned on the `key`/`len`/`keylen` path whose
-        // `enc`/`dec` is missing
+        // `enc`/`dec` is missing; `unknown(..)`'s are reported once the fields are read, since
+        // its `enc` is needed only to re-emit the frames the `#[klv(unknown)]` field keeps
         // --------------------------------------------------
         headers.report_missing(
             cx,
@@ -388,6 +408,7 @@ impl Container {
             sentinel: sentinel.and_then(|x| x.0),
             break_on: break_on.and_then(|x| x.0),
             headers,
+            unknown,
             defaults,
             debug,
             deny_unknown_keys,
@@ -437,13 +458,15 @@ impl ContainerParsed {
     /// Resolves the key/length framing into a [`ContainerMode`]: exactly one of
     /// the separate `key`+`len` pair or the fused `keylen` codec must be
     /// present. Records errors in `cx` for the conflicting, half-specified, or
-    /// absent cases, and for `sentinel` or a `break_on` function on a fused container, and
-    /// returns `None` if validation fails. The `sentinel`/`break_on` checks run
-    /// before any early return, so they surface in the same compile as a framing
+    /// absent cases and for `sentinel` or a `break_on` function on a fused container, and
+    /// returns `None` for them. It also records an error for `deny_unknown_keys` beside
+    /// `unknown(..)`, and still returns the container. The `sentinel`/`break_on`/`unknown`
+    /// checks run before any early return, so they surface in the same compile as a framing
     /// conflict. An attribute that is present but unusable (it failed to parse,
     /// or was not written as a list) counts as present: its own error is not
     /// joined by a missing-`key`/`len`/framing one, and a `keylen` beside any
-    /// `key`/`len` still reports the conflict
+    /// `key`/`len` still reports the conflict. The `unknown(..)` state is returned as parsed, to
+    /// be paired with the field that keeps its frames
     ///
     /// # Arguments
     ///
@@ -453,9 +476,14 @@ impl ContainerParsed {
     ///
     /// # Returns
     ///
-    /// `Some(ContainerParsed)` when exactly one framing mode is fully specified,
-    /// or `None` otherwise (errors are recorded in `cx`)
-    pub fn from_cont(cx: &Ctxt, name: &syn::Ident, cont: Container) -> Option<Self> {
+    /// The [`ContainerParsed`] and the `unknown(..)` state when exactly one framing mode is fully
+    /// specified, and a fused one has no `sentinel` and no `break_on` function, or `None`
+    /// otherwise (errors are recorded in `cx`)
+    pub fn from_cont(
+        cx: &Ctxt,
+        name: &syn::Ident,
+        cont: Container,
+    ) -> Option<(Self, CodecAttr<UnknownXcoder>)> {
         // --------------------------------------------------
         // `sentinel` / a `break_on` function beside any `keylen(..)`, reported before the
         // framing resolution can return early
@@ -469,6 +497,15 @@ impl ContainerParsed {
             }
         }
         // --------------------------------------------------
+        // `unknown(..)` decodes a frame whose key no field declares, which `deny_unknown_keys`
+        // rejects
+        // --------------------------------------------------
+        if cont.unknown.is_present()
+            && let Some(deny) = &cont.deny_unknown_keys
+        {
+            cx.error_spanned_by(deny, err!(UnknownWithDenyUnknownKeys));
+        }
+        // --------------------------------------------------
         // resolve the framing mode: `keylen` and `key`/`len` are mutually exclusive,
         // and exactly one side must be fully specified
         // --------------------------------------------------
@@ -477,9 +514,9 @@ impl ContainerParsed {
             // classic mode, both parsed
             // --------------------------------------------------
             HeaderAttrs {
-                keylen: HeaderXcoderAttr::Absent,
-                key: HeaderXcoderAttr::Parsed(_, key),
-                len: HeaderXcoderAttr::Parsed(_, len),
+                keylen: CodecAttr::Absent,
+                key: CodecAttr::Parsed(_, key),
+                len: CodecAttr::Parsed(_, len),
             } => ContainerMode::Separate {
                 key,
                 len,
@@ -490,16 +527,16 @@ impl ContainerParsed {
             // classic mode, one half missing
             // --------------------------------------------------
             HeaderAttrs {
-                keylen: HeaderXcoderAttr::Absent,
+                keylen: CodecAttr::Absent,
                 key,
-                len: HeaderXcoderAttr::Absent,
+                len: CodecAttr::Absent,
             } if key.is_present() => {
                 cx.error_spanned_by(name, err!(MissingLength));
                 return None;
             }
             HeaderAttrs {
-                keylen: HeaderXcoderAttr::Absent,
-                key: HeaderXcoderAttr::Absent,
+                keylen: CodecAttr::Absent,
+                key: CodecAttr::Absent,
                 len,
             } if len.is_present() => {
                 cx.error_spanned_by(name, err!(MissingKey));
@@ -509,9 +546,9 @@ impl ContainerParsed {
             // nothing specified
             // --------------------------------------------------
             HeaderAttrs {
-                keylen: HeaderXcoderAttr::Absent,
-                key: HeaderXcoderAttr::Absent,
-                len: HeaderXcoderAttr::Absent,
+                keylen: CodecAttr::Absent,
+                key: CodecAttr::Absent,
+                len: CodecAttr::Absent,
             } => {
                 cx.error_spanned_by(name, err!(MissingFraming));
                 return None;
@@ -521,13 +558,13 @@ impl ContainerParsed {
             // halves present and at least one unusable, or an unusable `keylen` alone
             // --------------------------------------------------
             HeaderAttrs {
-                keylen: HeaderXcoderAttr::Absent,
+                keylen: CodecAttr::Absent,
                 ..
             }
             | HeaderAttrs {
-                keylen: HeaderXcoderAttr::Invalid(_),
-                key: HeaderXcoderAttr::Absent,
-                len: HeaderXcoderAttr::Absent,
+                keylen: CodecAttr::Invalid(_),
+                key: CodecAttr::Absent,
+                len: CodecAttr::Absent,
             } => {
                 return None;
             }
@@ -536,9 +573,9 @@ impl ContainerParsed {
             // reported above
             // --------------------------------------------------
             HeaderAttrs {
-                keylen: HeaderXcoderAttr::Parsed(_, keylen),
-                key: HeaderXcoderAttr::Absent,
-                len: HeaderXcoderAttr::Absent,
+                keylen: CodecAttr::Parsed(_, keylen),
+                key: CodecAttr::Absent,
+                len: CodecAttr::Absent,
             } => match (&cont.sentinel, cont.break_on) {
                 (None, None) => ContainerMode::Fused {
                     keylen,
@@ -554,7 +591,7 @@ impl ContainerParsed {
             // fused codec alongside any separate key/len, usable or not: conflict
             // --------------------------------------------------
             HeaderAttrs {
-                keylen: HeaderXcoderAttr::Invalid(path) | HeaderXcoderAttr::Parsed(path, _),
+                keylen: CodecAttr::Invalid(path) | CodecAttr::Parsed(path, _),
                 ..
             } => {
                 cx.error_spanned_by(&path, err!(KeylenWithKeyOrLen));
@@ -562,9 +599,9 @@ impl ContainerParsed {
             }
         };
         // --------------------------------------------------
-        // return parsed container
+        // return parsed container, and the unknown-frame codec beside either mode
         // --------------------------------------------------
-        Some(ContainerParsed {
+        let parsed = ContainerParsed {
             stream: cont.stream,
             mode,
             debug: cont.debug,
@@ -572,6 +609,7 @@ impl ContainerParsed {
             _allow_unimplemented_decode: cont.allow_unimplemented_decode,
             _allow_unimplemented_encode: cont.allow_unimplemented_encode,
             _trait_fallback: cont.trait_fallback,
-        })
+        };
+        Some((parsed, cont.unknown))
     }
 }
