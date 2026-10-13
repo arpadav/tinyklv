@@ -12,6 +12,7 @@
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
+use tinyklv::traits::PartialError;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -49,7 +50,12 @@ fn strict_unknown_key_fails() {
                    remove `deny_unknown_keys`)";
     let result = Strict::decode_value(&mut &data[..]).map_err(|error| error.to_string());
     assert_eq!(result, Err(message.to_owned()));
-    assert_eq!(Strict::decode_partial(&mut &data[..]).err(), Some(message));
+    assert_eq!(
+        Strict::decode_partial(&mut &data[..])
+            .err()
+            .map(PartialError::label),
+        Some(message)
+    );
 }
 
 #[test]

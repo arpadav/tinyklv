@@ -78,14 +78,14 @@ fn unknown_key_under_decode_partial_is_err_label() {
     let mut cursor: &[u8] = stream.as_slice();
     match Strict::decode_partial(&mut cursor) {
         Err(label) => assert!(
-            label.contains("invalid key"),
+            label.label().contains("invalid key"),
             "label must mention 'invalid key'; got: {label}"
         ),
         other => panic!("expected Err(label), got {}", other_discriminant(&other)),
     }
 }
 
-fn other_discriminant<T, P>(p: &Result<Packet<T, P>, &'static str>) -> &'static str
+fn other_discriminant<T, P>(p: &Result<Packet<T, P>, tinyklv::traits::PartialError>) -> &'static str
 where
     P: tinyklv::Partial<Final = T>,
 {

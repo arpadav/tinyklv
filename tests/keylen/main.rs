@@ -25,4 +25,5 @@ mod inline_error;
 mod lengthed;
 mod macro_hygiene;
 mod oneof;
+mod strict;
 mod support;

@@ -1,6 +1,6 @@
 //! The [`Framing`] a fused `#[klv(keylen(dec = ..))]` decoder returns to describe an item's value
 //!
-//! Classic `#[klv(key(..), len(..))]` slices a value with a length prefix via `take(len)`. The
+//! Classic `#[klv(key(..), len(..))]` slices a field's length-prefixed value via `take(len)`. The
 //! opt-in fused `keylen` codec instead decodes one item header and returns `(key, Framing)`,
 //! letting the framing decision depend on the key. [`Framing`] tells the derive-generated decode
 //! loop how to bound the value bytes that follow the header, and states the rules the loop applies
@@ -8,8 +8,8 @@
 //!
 //! On encode, each value is staged first, then the `keylen` encoder is handed `(key, value_len)`
 //! and writes the item header: the key, and the length only when the key implies one. A `keylen`
-//! container does not support `sentinel`, and its `break_on` takes a key literal only. Here key
-//! `0x01` is length-prefixed and key `0x02` is an `Inline` BER-OID varint:
+//! container does not support `sentinel`, and its `break_on` runs right after each header. Here
+//! key `0x01` is length-prefixed and key `0x02` is an `Inline` BER-OID varint:
 //!
 //! ```rust
 //! use tinyklv::{
@@ -80,7 +80,7 @@
 ///
 /// After an item's value, the loop checks that the item moved the cursor. An item whose header and
 /// value together consumed no input would repeat forever, so it is rejected with an error naming
-/// `` `<Struct>` frame ``, in both decodes. A header that consumes nothing is fine when its value
+/// `` `<Struct>` item ``, in both decodes. A header that consumes nothing is fine when its value
 /// does, such as a header that peeks a type byte the value decoder then reads
 ///
 /// Without `deny_unknown_keys`, a key with no field is skipped when [`Framing::Sliced`]. When
@@ -95,16 +95,24 @@
 /// the main stream, its length included, and its failure follows the rule on [`Framing::Inline`].
 /// A decoder that reads the length and then finds the value short must leave the cursor at the end
 /// of the input, or an item split across chunks reads as malformed. The decoder must advance its
-/// input only within the slice it is given, as `*input = &input[input.len()..]` does to consume
-/// the rest, and never reassign it to another slice: `*input = &[]` panics in a debug build
+/// input only within the slice it is given, as `*input = &input[input.len()..]` and
+/// `input.finish()` do to consume the rest: a decoder that reassigns it to another slice, such as
+/// `*input = &[]`, and then returns `Ok` panics when debug assertions or overflow checks are on
+///
+/// In a `key(..)` + `len(..)` struct with `unknown(..)`, the length of a known key's item also
+/// follows the rule on [`Framing::Inline`], a malformed one rejected with an error naming
+/// `` `<Struct>` item ``, so the `len(dec = ..)` decoder must return [`crate::Result<usize>`],
+/// whose error is winnow's `ContextError`. A decoder with another error type is a compile error,
+/// reported at the decoder
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Framing {
     /// The value occupies exactly `usize` bytes, bounded by an explicit length
     ///
     /// The decode loop pre-checks that at least this many bytes remain, `take`s them, and runs the
-    /// value decoder against the resulting sub-slice. This is the framing every classic
-    /// `key`+`len` field uses, and the one wire types that carry a length prefix (or a fixed width)
-    /// resolve to
+    /// value decoder against the resulting sub-slice. This is the framing every length-prefixed
+    /// field of a classic `key`+`len` struct uses, and the one wire types that carry a length
+    /// prefix (or a fixed width) resolve to
     ///
     /// For a field declaring `size(exact = N)`, a length other than `N` is malformed: both decodes
     /// return an error naming `` `<Struct>::<field>` ``, even when the value runs past the end of
@@ -132,7 +140,7 @@ pub enum Framing {
     ///   what it has
     /// * anywhere else, the value is malformed. Streaming decode returns an error naming
     ///   `` `<Struct>::<field>` ``: for an unknown key's value, the `#[klv(unknown)]` field, or
-    ///   `` `<Struct>` frame `` when no field keeps it. One-shot decode returns an error whose
+    ///   `` `<Struct>` item `` when no field keeps it. One-shot decode returns an error whose
     ///   display names that first, then why the decoder failed: the decoder's own error
     ///   gains the field as its label, or, when the decoder labelled it already, becomes the cause
     ///   of a new error labelled with the field, then the decoder's label. Either way, this

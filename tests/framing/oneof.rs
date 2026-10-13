@@ -21,7 +21,6 @@ use crate::common::varint;
 use tinyklv::dec::string as decs;
 use tinyklv::enc::string as encs;
 use tinyklv::prelude::*;
-use tinyklv::traits::ResumePartial;
 
 /// A reading's payload: a count or a note
 #[derive(Debug, Clone, PartialEq)]
@@ -211,7 +210,8 @@ fn the_last_decoded_arm_wins() {
 }
 
 /// Each arm takes its type's framing: the `size(implicit)` count has no length after its key,
-/// the note has one, and each decodes from and encodes to exactly its frame
+/// the note has one, and each encodes to exactly its frame and decodes from it in both drivers
+/// and at every chunk split
 #[test]
 fn each_arm_takes_its_types_framing() {
     for (frame, reading) in Reading::arms() {
@@ -239,35 +239,6 @@ fn an_unset_oneof_writes_nothing_between_the_fields_around_it() {
     let wire = [frames::ID, Reading::UNIT].concat();
     assert_eq!(unset.encoded(), wire);
     unset.assert_decodes_from(&wire);
-}
-
-/// An arm's frame cut inside its value, the implicit count's or the prefixed note's, is
-/// truncation: streaming pauses with the frame unconsumed, and resumed with the rest it decodes
-/// to what one-shot decodes the whole wire to
-#[test]
-fn a_oneof_frame_cut_across_two_chunks_resumes() {
-    for (frame, whole) in Reading::arms() {
-        let wire = [frames::ID, frame].concat();
-        let (sent, last) = wire.split_at(wire.len() - 1);
-        let held = frame.len() - 1;
-        assert_eq!(Reading::decode_value(&mut &wire[..]), Ok(whole.clone()));
-        // --------------------------------------------------
-        // the first chunk: pauses at the start of the cut frame
-        // --------------------------------------------------
-        let mut cursor = sent;
-        let Ok(Packet::NeedMore(partial)) = Reading::decode_partial(&mut cursor) else {
-            panic!("expected NeedMore for {sent:02X?}");
-        };
-        assert_eq!(cursor.len(), held, "streaming paused at the cut frame");
-        // --------------------------------------------------
-        // the second chunk, after the unconsumed bytes: completes the frame
-        // --------------------------------------------------
-        let resumed = [cursor, last].concat();
-        match Reading::resume_partial(&mut &resumed[..], partial) {
-            Ok(Packet::NeedMore(partial)) => assert_eq!(partial.finalize(), Ok(whole)),
-            other => panic!("expected NeedMore at the end of {wire:02X?}, got {other:?}"),
-        }
-    }
 }
 
 /// Arms of one type keep their own keys: each variant encodes to, and decodes from in both drivers

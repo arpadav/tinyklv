@@ -130,7 +130,6 @@ float_cmp = "allow"                   # exact-roundtrip float eq in tests
 must_use_candidate = "allow"          # must_use applied deliberately
 too_many_lines = "allow"              # codegen/decode fns
 needless_for_each = "allow"           # for_each idiomatic in tests
-missing_errors_doc = "allow"          # decoders all return Result
 missing_panics_doc = "allow"          # decoders all return Result
 similar_names = "allow"               # short domain names (lat/lon)
 cast_precision_loss = "allow"         # scale/precision casts in codecs

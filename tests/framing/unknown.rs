@@ -350,7 +350,7 @@ fn a_malformed_unknown_value_before_the_end_of_the_input_is_rejected() {
 /// struct's frame, and leave the cursor where the decoder stopped
 #[test]
 fn a_malformed_known_length_before_the_end_of_the_input_is_rejected() {
-    let message = "`Reading` frame (its `len` decoder failed before the end of the input)";
+    let message = "`Reading` item (its `len` decoder failed before the end of the input)";
     #[rustfmt::skip]
     let name: &[u8] = &[
         // name: tag, 9 continuation bytes of its length
@@ -372,7 +372,7 @@ fn a_malformed_known_length_before_the_end_of_the_input_is_rejected() {
 /// at its start
 #[test]
 fn an_unknown_frame_that_consumed_nothing_is_rejected() {
-    let message = "`Peeked` frame (its header and value together consumed no input)";
+    let message = "`Peeked` item (its header and value together consumed no input)";
     let wire = [
         Peeked::SMALL,
         // type 0x07, no field's: its key is peeked and its value is empty

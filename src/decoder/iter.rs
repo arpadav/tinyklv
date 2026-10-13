@@ -25,25 +25,6 @@ use crate::{
 // --------------------------------------------------
 use winnow::error::ContextError;
 
-/// Wraps a `&'static str` label into a [`ContextError`] anchored at the supplied input slice
-///
-/// Single construction path used by [`Decoder::next_resume`], [`Decoder::next_fresh`],
-/// and [`Decoder::finish`] so that label-to-error translation is consistent
-/// and does not repeat boilerplate at each call site. The `$input` expression
-/// supplies the position context for winnow's error reporting machinery
-macro_rules! label_to_context_error {
-    ($input:expr, $label:expr) => {{
-        use winnow::stream::Stream as _;
-        let cp = $input.checkpoint();
-        winnow::error::AddContext::add_context(
-            winnow::error::ContextError::new(),
-            &$input,
-            &cp,
-            winnow::error::StrContext::Label($label),
-        )
-    }};
-}
-
 #[derive(Debug)]
 #[non_exhaustive]
 /// Error type returned by [`Decoder::next`] and the [`crate::traits::PartialIterator`] methods
@@ -112,7 +93,8 @@ impl core::fmt::Display for DecodeIterError {
 ///
 /// Created by [`Decoder::iter`] or via the [`IntoIterator`] impl on
 /// `&mut Decoder`. Yields `T` (the `Partial::Final` associated type) on each
-/// `next` call until the buffer is exhausted or a packet is incomplete
+/// `next` call until the buffer is exhausted, a packet is incomplete, or one is
+/// malformed
 ///
 /// Stopping iteration keeps every buffered byte that may still begin a packet; call
 /// [`Decoder::feed`] to add more data then iterate again to continue decoding
@@ -132,17 +114,15 @@ where
     ///
     /// Dispatches to resume mode or fresh mode depending on whether an in-flight
     /// partial is present. Resume mode continues a previously interrupted packet
-    /// without re-seeking the sentinel; fresh mode scans for the next sentinel,
-    /// reads the framed body length, and decodes from scratch
+    /// without seeking a sentinel; fresh mode scans for the next sentinel,
+    /// reads the framed body length, and decodes the body one-shot
     ///
     /// In resume mode a `NeedMore` result re-stores the updated partial and
-    /// returns `None` so the caller can feed more bytes. In fresh mode there are two
-    /// `NeedMore` paths: a packet that has not all arrived in the buffer yet (the seek
-    /// fails), which retains the bytes that may begin it for a later feed; versus a
-    /// `NeedMore` from inside a length-declared body, which is finalized best-effort - the body is
-    /// already framed to an exact length and is not resumable, so the assembled partial
-    /// is yielded as the value when all required fields are present, otherwise it is malformed
-    /// Malformed results always advance past the offending bytes to guarantee forward progress
+    /// returns `None` so the caller can feed more bytes. In fresh mode a packet that has not all
+    /// arrived in the buffer yet (the seek fails) retains the bytes that may begin it for a later
+    /// feed, while a complete body is decoded one-shot, which finalizes what the body holds: the
+    /// value when all required fields are present, otherwise malformed. Malformed results always
+    /// advance past the offending bytes to guarantee forward progress
     ///
     /// # Returns
     ///
@@ -238,9 +218,10 @@ where
         // compute consumed bytes and map the error
         // --------------------------------------------------
         let consumed = before - cursor.len();
-        let result = packet.map_err(|label| {
-            let ce = label_to_context_error!(self.buf.consumed_slice(start, consumed), label);
-            DecodeIterError::Malformed(ce)
+        let result = packet.map_err(|err| {
+            DecodeIterError::Malformed(
+                err.to_context_error(self.buf.consumed_slice(start, consumed)),
+            )
         });
         // --------------------------------------------------
         // advance past consumed bytes (O(1); no front drain)
@@ -263,13 +244,11 @@ where
     ///
     /// Runs [`crate::traits::SeekSentinel::seek_sentinel`] to locate and
     /// consume the packet framing (sentinel + length prefix), then calls
-    /// [`crate::traits::DecodePartial::decode_partial`] on the framed body
+    /// [`crate::traits::DecodeValue::decode_value`] on the framed body
     /// slice. The consumed bytes (framing + body) are advanced past in the buffer
     ///
-    /// A `NeedMore` result from `decode_partial` inside fresh mode means the parser
-    /// reached the end of the framed body without a definite end-of-packet. Because the
-    /// body was already framed to an exact length it is not resumable; instead the partial
-    /// is finalized best-effort - yielded as `T` when every required field is present,
+    /// The body is already framed to an exact length, so it is decoded one-shot rather than
+    /// resumed: what it holds is finalized, yielded as `T` when every required field is present,
     /// otherwise surfaced as [`DecodeIterError::Malformed`]
     ///
     /// Returns `Ok(T)` when decoding succeeds, or one of:
@@ -278,8 +257,8 @@ where
     ///   the cursor advances past the bytes the seek proved cannot begin a packet. A miss
     ///   keeps only the last `sentinel_len - 1` bytes, and a found sentinel whose length or
     ///   body is cut keeps the bytes from that sentinel on
-    /// * [`DecodeIterError::Malformed`] - the body decode failed, or a best-effort
-    ///   finalize of an incomplete framed body found required fields missing
+    /// * [`DecodeIterError::Malformed`] - the body decode failed, including a body
+    ///   missing a required field
     ///
     /// Stray bytes are scanned once and dropped, but a packet whose declared length never
     /// arrives keeps the buffer growing under repeated `feed` + `NeedMore`. Callers that must

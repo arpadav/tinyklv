@@ -11,13 +11,159 @@
 //!   from "malformed"
 //! * [`ResumePartial`] - the internal re-entry point that resumes a paused partial
 //!   decode from an existing [`DecodePartial::Partial`] state
+//! * [`PartialError`] - why a partial decode or a finalize failed: its [`ErrorKind`] and a label
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use super::DecodeValue;
-use crate::decoder::{DecodeIterError, Packet};
+use crate::{
+    ErrorKind,
+    decoder::{DecodeIterError, Packet},
+};
+
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use winnow::{error::ContextError, stream::Stream as _};
+
+/// Why [`DecodePartial::decode_partial`], [`ResumePartial::resume_partial`] or
+/// [`Partial::finalize`] failed: what the error is, and a label naming what was rejected
+///
+/// It displays as its label. A [`crate::Decoder`] turns it into the error of a
+/// [`DecodeIterError::Malformed`], which [`ErrorKind::of`] reads its kind back from
+///
+/// It is two words wide, as a `&'static str` is: a kind and a label fixed at compile time are
+/// held behind one reference, a [`BreakType::Abort`](crate::BreakType::Abort) message on its own
+///
+/// # Example
+///
+/// ```rust
+/// use tinyklv::{ErrorKind, traits::PartialError};
+///
+/// let error = PartialError::new(&(ErrorKind::MissingRequired, "`Reading::id` is missing"));
+/// assert_eq!(error.kind(), ErrorKind::MissingRequired);
+/// assert_eq!(error.to_string(), "`Reading::id` is missing");
+/// ```
+#[derive(Clone, Copy)]
+pub struct PartialError(Rejection);
+
+/// What a [`PartialError`] holds
+#[derive(Clone, Copy)]
+enum Rejection {
+    /// A kind and its label, both fixed at compile time
+    Fixed(&'static (ErrorKind, &'static str)),
+
+    /// A `break_on`'s `Abort` message, an [`ErrorKind::Aborted`] error
+    Aborted(&'static str),
+}
+
+/// [`PartialError`] implementation
+impl PartialError {
+    /// An error of the kind and label `rejection` pairs
+    ///
+    /// `rejection` is a constant, such as `&(ErrorKind::MissingRequired, "..")`, which the
+    /// compiler places in a `static`
+    ///
+    /// # Arguments
+    ///
+    /// * `rejection` - what the error is, and the label naming what was rejected, and why
+    ///
+    /// # Returns
+    ///
+    /// The error
+    #[inline]
+    #[must_use]
+    pub const fn new(rejection: &'static (ErrorKind, &'static str)) -> Self {
+        Self(Rejection::Fixed(rejection))
+    }
+
+    /// An [`ErrorKind::Aborted`] error labelled with the message of a `break_on`'s
+    /// [`BreakType::Abort`](crate::BreakType::Abort)
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - the `Abort` message
+    ///
+    /// # Returns
+    ///
+    /// The error
+    #[inline]
+    #[must_use]
+    pub const fn aborted(message: &'static str) -> Self {
+        Self(Rejection::Aborted(message))
+    }
+
+    /// What the error is, for a caller to match on instead of its label
+    #[inline]
+    #[must_use]
+    pub const fn kind(self) -> ErrorKind {
+        match self.0 {
+            Rejection::Fixed(&(kind, _)) => kind,
+            Rejection::Aborted(_) => ErrorKind::Aborted,
+        }
+    }
+
+    /// The label naming what was rejected, and why
+    #[inline]
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self.0 {
+            Rejection::Fixed(&(_, label)) | Rejection::Aborted(label) => label,
+        }
+    }
+
+    /// The [`ContextError`] this error is to a caller holding the input, anchored at `input`:
+    /// labelled with [`Self::label`] and tagged with [`Self::kind`]
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - the bytes the error is anchored to
+    ///
+    /// # Returns
+    ///
+    /// The error, whose display is its label's
+    // as `__export::with_kind`: `cold` keeps it out of the caller's body, `inline` compiles it in
+    // the calling crate
+    #[cold]
+    #[inline]
+    pub(crate) fn to_context_error(self, input: &[u8]) -> ContextError {
+        let error = crate::__export::labeled_error(&input, &input.checkpoint(), self.label());
+        crate::__export::with_kind(error, self.kind())
+    }
+}
+/// [`PartialError`] implementation of [`core::fmt::Debug`], as its kind and label
+impl core::fmt::Debug for PartialError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("PartialError")
+            .field("kind", &self.kind())
+            .field("label", &self.label())
+            .finish()
+    }
+}
+/// [`PartialError`] implementation of [`PartialEq`], equal when kind and label are
+impl PartialEq for PartialError {
+    fn eq(&self, other: &Self) -> bool {
+        (self.kind(), self.label()) == (other.kind(), other.label())
+    }
+}
+/// [`PartialError`] implementation of [`Eq`]
+impl Eq for PartialError {}
+/// [`PartialError`] implementation of [`core::hash::Hash`], over its kind and label
+impl core::hash::Hash for PartialError {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        (self.kind(), self.label()).hash(state);
+    }
+}
+/// [`PartialError`] implementation of [`core::fmt::Display`]
+impl core::fmt::Display for PartialError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(self.label())
+    }
+}
+/// [`PartialError`] implementation of [`std::error::Error`]
+impl std::error::Error for PartialError {}
 
 /// In-flight parse state that can be finalised into a complete value
 ///
@@ -35,19 +181,22 @@ pub trait Partial: Sized {
 
     /// Validates required fields and produces the final value
     ///
-    /// Missing required fields produce a `&'static str` label naming the
-    /// first missing field. The label is intentionally context-free: the
+    /// Missing required fields produce a [`PartialError`] whose label names the
+    /// first missing field. The error is intentionally context-free: the
     /// partial has zero knowledge of the live input stream, so a richer
     /// error type would have to fabricate input/checkpoint slots. The
-    /// [`crate::Decoder`] (or any caller with input access) wraps this
-    /// label into a [`winnow::error::ContextError`] with real input and
+    /// [`crate::Decoder`] (or any caller with input access) turns this
+    /// error into a [`winnow::error::ContextError`] with real input and
     /// checkpoint at the point of failure
     ///
     /// # Returns
     ///
-    /// `Ok(Self::Final)` when all required fields are present, or
-    /// `Err(&'static str)` naming the first missing required field
-    fn finalize(self) -> Result<Self::Final, &'static str>;
+    /// `Ok(Self::Final)` when all required fields are present
+    ///
+    /// # Errors
+    ///
+    /// - A required field is missing: [`ErrorKind::MissingRequired`], labelled with the first one
+    fn finalize(self) -> Result<Self::Final, PartialError>;
 }
 
 /// Low-level iterator interface for advancing a [`crate::decoder::Decoder`] one packet at a time
@@ -67,30 +216,39 @@ pub trait PartialIterator<P: Partial> {
     ///
     /// # Returns
     ///
-    /// `Ok(P::Final)` when the resumed packet completes, or a [`DecodeIterError`]
-    /// variant describing whether more bytes are needed, the buffer is empty,
-    /// or the bytes were malformed
+    /// `Ok(P::Final)` when the resumed packet completes
+    ///
+    /// # Errors
+    ///
+    /// - [`DecodeIterError::Eof`]: the buffer is empty and no partial is in flight
+    /// - [`DecodeIterError::NeedMore`]: the packet still needs more bytes; the updated partial is
+    ///   kept for the next call
+    /// - [`DecodeIterError::Malformed`]: the resumed decode failed
     fn next_resume(&mut self) -> Result<P::Final, DecodeIterError>;
 
     /// Seeks the next sentinel boundary and decodes the framed body from scratch
     ///
     /// This is the standard sentinel-framed flow: scan for the sentinel,
-    /// consume the declared body length, then run [`DecodePartial::decode_partial`]
-    /// on the body slice. The in-flight partial is `None` on entry
+    /// consume the declared body length, then decode the body slice one-shot
+    /// with [`DecodeValue::decode_value`]. The in-flight partial is `None` on entry
     ///
     /// # Returns
     ///
-    /// `Ok(P::Final)` when a complete packet is decoded, or a [`DecodeIterError`]
-    /// variant describing whether the sentinel has not yet arrived, more bytes
-    /// are needed for the body, or the framed bytes were malformed
+    /// `Ok(P::Final)` when a complete packet is decoded
+    ///
+    /// # Errors
+    ///
+    /// - [`DecodeIterError::Eof`]: the buffer is empty
+    /// - [`DecodeIterError::NeedMore`]: the sentinel, the length or the body has not all arrived
+    /// - [`DecodeIterError::Malformed`]: the body failed to decode, its packet's bytes drained
     fn next_fresh(&mut self) -> Result<P::Final, DecodeIterError>;
 }
 
 /// Streaming-aware counterpart to [`DecodeValue`]
 ///
 /// Returns a [`Packet<Self, Self::Partial>`] instead of `crate::Result<Self>`,
-/// so callers can distinguish "need more bytes" from "malformed." Drives
-/// [`crate::Decoder`], the user-facing streaming API
+/// so callers can distinguish "need more bytes" from "malformed." Parameterises
+/// [`crate::Decoder`], the user-facing streaming API, through [`Self::Partial`]
 ///
 /// Every implementor has an associated [`Self::Partial`] type: a mirror of
 /// the struct in which every KLV field is `Option<T>`, i.e. a parse state
@@ -99,11 +257,11 @@ pub trait PartialIterator<P: Partial> {
 ///
 /// Automatically implemented for structs deriving [`tinyklv::Klv`](crate::Klv)
 ///
-/// The outer `Result` carries a `&'static str` label when the codegen hits an
-/// unrecoverable parse condition and the partial-to-final conversion also fails
+/// The outer `Result` carries a [`PartialError`] when an item is malformed
+/// or rejected, or when the decode loop ends and the partial cannot finalize
 ///
-/// Successful conversion on give-up is `Ok(Packet::Ready(t))`. Recoverable
-/// truncation surfaces as `Ok(Packet::NeedMore(p))`
+/// A loop that ends and finalizes is `Ok(Packet::Ready(t))`. Input that runs
+/// out, between items or inside one, is `Ok(Packet::NeedMore(p))`
 pub trait DecodePartial<S>: Sized + DecodeValue<S>
 where
     S: winnow::stream::Stream,
@@ -117,11 +275,11 @@ where
     /// Attempts to decode `Self` from `input`, returning a [`Packet`] that
     /// distinguishes completion from a need-more-bytes pause
     ///
-    /// On clean completion, returns `Ok(Packet::Ready(value))` with the fully
-    /// decoded value. When the stream ends before all required fields are seen,
-    /// returns `Ok(Packet::NeedMore(partial))` so callers can feed more bytes and
-    /// resume. Returns `Err(label)` only for unrecoverable conditions such as
-    /// a parse error after consuming bytes
+    /// When the input runs out, between items or inside one, returns
+    /// `Ok(Packet::NeedMore(partial))` holding every field decoded so far, even
+    /// when every required field is present, so callers can feed more bytes and
+    /// resume. When the decode loop ends first, such as at a `break_on` stop,
+    /// the partial is finalized into `Ok(Packet::Ready(value))`
     ///
     /// # Arguments
     ///
@@ -130,8 +288,14 @@ where
     /// # Returns
     ///
     /// `Ok(Packet::Ready(Self))` on success, `Ok(Packet::NeedMore(Self::Partial))`
-    /// when more bytes are needed, or `Err(&'static str)` on an unrecoverable error
-    fn decode_partial(input: &mut S) -> Result<Packet<Self, Self::Partial>, &'static str>;
+    /// when more bytes are needed
+    ///
+    /// # Errors
+    ///
+    /// - An item is malformed or rejected: a [`PartialError`] naming it, returned at once
+    /// - The decode loop ends with a required field missing: [`ErrorKind::MissingRequired`],
+    ///   naming it
+    fn decode_partial(input: &mut S) -> Result<Packet<Self, Self::Partial>, PartialError>;
 }
 
 #[doc(hidden)]
@@ -143,16 +307,15 @@ where
 /// macro emits this impl alongside [`DecodePartial`]; [`DecodePartial::decode_partial`]
 /// itself is just `resume_partial(input, Self::Partial::default())`
 ///
-/// This is the canonical source-of-truth for the decoding implementation:
-/// it is called by [`DecodePartial::decode_partial`] and, by proxy, by
-/// [`DecodeValue::decode_value`]
+/// This holds the streaming decode loop, which the derive's
+/// [`DecodeValue::decode_value`] also runs, one-shot
 pub trait ResumePartial<S>: DecodePartial<S>
 where
     S: winnow::stream::Stream,
 {
     /// Continues a partial decode from `partial`, consuming bytes from `input`
     ///
-    /// Has the same outer `Result<Packet<...>, &'static str>` return shape as
+    /// Has the same outer `Result<Packet<...>, PartialError>` return shape as
     /// [`DecodePartial::decode_partial`]. This is the source-of-truth entry
     /// point; [`DecodePartial::decode_partial`] is just
     /// `resume_partial(input, Default::default())`
@@ -167,11 +330,11 @@ where
     ///
     /// `Ok(Packet::Ready(Self))` when all required fields are present,
     /// `Ok(Packet::NeedMore(Self::Partial))` when more bytes are needed,
-    /// or `Err(&'static str)` on an unrecoverable parse error
+    /// or `Err(PartialError)` on an unrecoverable parse error
     fn resume_partial(
         input: &mut S,
         partial: Self::Partial,
-    ) -> Result<Packet<Self, Self::Partial>, &'static str>;
+    ) -> Result<Packet<Self, Self::Partial>, PartialError>;
 }
 
 /// [`Vec`] implementation of [`Partial`] for element types that implement [`Partial`]
@@ -183,7 +346,7 @@ impl<P: Partial> Partial for Vec<P> {
     type Final = Vec<<P as Partial>::Final>;
 
     #[inline(always)]
-    fn finalize(self) -> Result<Self::Final, &'static str> {
+    fn finalize(self) -> Result<Self::Final, PartialError> {
         self.into_iter().map(P::finalize).collect()
     }
 }
@@ -206,7 +369,7 @@ where
 {
     type Partial = Vec<<T as DecodePartial<S>>::Partial>;
 
-    fn decode_partial(input: &mut S) -> Result<Packet<Self, Self::Partial>, &'static str> {
+    fn decode_partial(input: &mut S) -> Result<Packet<Self, Self::Partial>, PartialError> {
         let mut acc = Vec::new();
         loop {
             let before = input.eof_offset();
@@ -239,9 +402,9 @@ where
                     return Ok(Packet::Ready(acc));
                 }
                 // --------------------------------------------------
-                // bytes consumed: propagate the error label outward
+                // bytes consumed: propagate the error outward
                 // --------------------------------------------------
-                Err(label) => return Err(label),
+                Err(err) => return Err(err),
             }
         }
     }

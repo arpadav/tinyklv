@@ -1,5 +1,0 @@
-error: Expected `keylen` to be a list attribute: `#[klv(keylen(..),)]`.
- --> tests/ui/fail/header/keylen_bare.rs:4:7
-  |
-4 | #[klv(keylen, allow_unimplemented_encode)]
-  |       ^^^^^^

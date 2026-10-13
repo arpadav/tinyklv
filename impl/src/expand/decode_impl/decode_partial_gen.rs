@@ -22,7 +22,7 @@
 // local
 // --------------------------------------------------
 use super::{
-    DecodeCtx, LoopCtx,
+    DecodeCtx, ErrorKind, LoopCtx,
     loop_driver::{CursorSite, LoopDriver},
 };
 
@@ -184,13 +184,14 @@ impl DecodeCtx<'_> {
         } else {
             quote! { !::core::matches!(#key, #pattern) }
         };
-        let reject = driver.reject_label(&quote! {
+        let label = quote! {
             ::core::concat!(
                 "key (expected one of the keys defined on `",
                 ::core::stringify!(#name),
                 "`; to turn this off, remove `deny_unknown_keys`)",
             )
-        });
+        };
+        let reject = driver.reject_label(&label, ErrorKind::UnknownKey);
         quote! {
             #allow
             if #unknown {
@@ -222,8 +223,8 @@ impl DecodeCtx<'_> {
     ///
     /// Each call resumes decoding into the caller's `__acc` and returns `Packet::NeedMore(__acc)`
     /// when the input runs out mid-frame or between frames, `Packet::Ready` once the loop ends and
-    /// `finalize` succeeds, or `Err` with a `&'static str` label; a fused container's exits follow
-    /// the rules stated on `tinyklv::Framing`. The loop is [`Self::frame_loop`] with
+    /// `finalize` succeeds, or `Err` with a `tinyklv::traits::PartialError`; a fused container's
+    /// exits follow the rules stated on `tinyklv::Framing`. The loop is [`Self::frame_loop`] with
     /// [`LoopDriver::Streaming`]
     ///
     /// # Returns
@@ -263,7 +264,7 @@ impl DecodeCtx<'_> {
                     mut __acc: #partial_ty,
                 ) -> ::core::result::Result<
                     ::tinyklv::decoder::Packet<Self, #partial_ty>,
-                    &'static str,
+                    ::tinyklv::traits::PartialError,
                 > {
                     let checkpoint = input.checkpoint();
                     let _ = checkpoint;
@@ -328,7 +329,7 @@ impl DecodeCtx<'_> {
                     let input = &mut __cursor;
                     let checkpoint = input.checkpoint();
                     let mut __acc = <#partial_ty as ::core::default::Default>::default();
-                    let mut __exact_reject: ::core::option::Option<&'static str> = ::core::option::Option::None;
+                    let mut __exact_reject: ::core::option::Option<::tinyklv::traits::PartialError> = ::core::option::Option::None;
                     #frame_loop
                 };
                 *input = __cursor;
@@ -388,7 +389,7 @@ impl DecodeCtx<'_> {
                     input: &mut #stream,
                 ) -> ::core::result::Result<
                     ::tinyklv::decoder::Packet<Self, Self::Partial>,
-                    &'static str,
+                    ::tinyklv::traits::PartialError,
                 > {
                     <Self as ::tinyklv::traits::ResumePartial<#stream>>::resume_partial(
                         input,

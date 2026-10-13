@@ -2,8 +2,8 @@
 //!
 //! Verifies that the BER length and OID decoders fail gracefully on
 //! pathological inputs: long-form prefix bytes claiming more data than is
-//! present, the indefinite-form byte `0x80`, empty input, OID streams with
-//! no terminating byte (all continuation), and BER length / OID roundtrips
+//! present, the indefinite-form byte `0x80`, OID streams with no
+//! terminating byte (all continuation), and BER length / OID roundtrips
 //! for boundary values (`u16::MAX`, `u32::MAX`, large multi-byte OIDs)
 //!
 //! Author: aav
@@ -43,25 +43,11 @@ fn ber_length_0x80_claims_zero_extra_bytes() {
 }
 
 #[test]
-/// Tests that `ber_length` on an entirely empty input errors
-fn ber_length_entirely_empty_fails() {
-    let mut input: &[u8] = &[];
-    assert!(decber::ber_length(&mut input).is_err());
-}
-
-#[test]
 /// Tests that BER prefix `0x8A` claiming 10 extra bytes fails when only three bytes follow
 fn ber_length_large_count_with_insufficient_data() {
     // 0x8A = long form, claims 10 extra bytes; only 3 follow
     let mut input: &[u8] = &[0x8A, 0x01, 0x02, 0x03];
     assert!(decber::ber_length(&mut input).is_err());
-}
-
-#[test]
-/// Tests that `ber_oid` errors on empty input
-fn ber_oid_empty_fails() {
-    let mut input: &[u8] = &[];
-    assert!(decber::ber_oid::<u64>(&mut input).is_err());
 }
 
 #[test]

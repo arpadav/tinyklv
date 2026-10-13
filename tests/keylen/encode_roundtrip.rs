@@ -1,8 +1,8 @@
 //! Encode tests for the fused `#[klv(keylen(enc = ..))]` codec
 //!
-//! Every field is staged, framed by the fused encoder - the tag, plus a length only for
-//! wire 2 LEN - and appended; a skipped field writes no frame. These tests pin the exact bytes
-//! of that framing for every wire shape
+//! Every field is framed by the fused encoder - the tag, plus a length only for wire 2 LEN - in
+//! front of its value; a skipped field writes no frame. These tests pin the exact bytes of that
+//! framing for every wire shape
 //!
 //! Author: aav
 // --------------------------------------------------

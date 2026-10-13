@@ -6,7 +6,7 @@
 //! it:
 //!
 //! * `encode_value_gen` - the `EncodeValue` impl
-//! * `field_length_plan` - the fixed-prefix field length kinds
+//! * `field_length_plan` - the field length kinds
 //! * `fixed_width` - compile-time byte-width resolution
 //! * `framing` - the frame header written around each field value, per the container's framing mode
 //! * `klv_item_gen` - field-level KLV item emission, the retained unknown frames included
@@ -20,7 +20,7 @@
 // --------------------------------------------------
 /// Generates required `EncodeValue` impl bodies
 mod encode_value_gen;
-/// Holds the fixed-prefix field length kinds
+/// Holds the field length kinds
 mod field_length_plan;
 /// Resolves fixed byte widths for primitive encode paths
 mod fixed_width;

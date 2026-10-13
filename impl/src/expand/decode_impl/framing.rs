@@ -27,7 +27,7 @@
 // local
 // --------------------------------------------------
 use super::{
-    LoopCtx,
+    ErrorKind, LoopCtx,
     key_match_gen::ValueSrc,
     loop_driver::{LoopDriver, ParseSite, TakeInto},
 };
@@ -283,7 +283,7 @@ impl LoopCtx<'_> {
     /// Emits the read of a separate frame's length, binding [`DecodeFraming::len`]: any failure
     /// is truncation, except under [`LenRead::IfPrefixed`], where a failure follows the rule of a
     /// value read from the main stream, as the length the `unknown` decoder reads does
-    /// ([`Self::value_err_arm`] with [`ValueSrc::Inline`]), naming the struct's frame
+    /// ([`Self::value_err_arm`] with [`ValueSrc::Inline`]), naming the struct's item
     ///
     /// # Arguments
     ///
@@ -422,7 +422,7 @@ impl LoopCtx<'_> {
                 let keys: Vec<_> = self
                     .input
                     .klv_keys()
-                    .filter(|key| ValueSrc::header_sliced(key.codec.size.as_ref()).is_some())
+                    .filter(|key| ValueSrc::implicit(key.codec.size.as_ref()).is_none())
                     .map(|key| key.key)
                     .collect();
                 let (pattern, allow) = super::key_pattern(&keys);
@@ -466,6 +466,7 @@ impl LoopCtx<'_> {
     /// match __framing {
     ///     Sliced(__len) => { #sliced, as Separate with `__key` },
     ///     Inline => match __key { #arms(Inline) _ => { reset; break; } },
+    ///     _ => unreachable!(),
     /// }
     /// if input.eof_offset() == __frame_offset { #reject }
     /// // Fused, `unknown(..)`: the `_` arms read the unknown key's value
@@ -532,6 +533,8 @@ impl LoopCtx<'_> {
                     #inline_arms
                     #inline_unknown
                 },
+                // `Framing` is `#[non_exhaustive]`, and this derive matches each of its variants
+                _ => ::core::unreachable!(),
             }
             #progress
         }
@@ -563,9 +566,10 @@ impl LoopCtx<'_> {
     ///
     /// The check, rejecting through [`LoopDriver::reject_label`]
     pub(super) fn progress_check(self) -> TokenStream {
-        let empty = self
-            .driver
-            .reject_label(&self.label(None, "its header and value together consumed no input"));
+        let empty = self.driver.reject_label(
+            &self.label(None, "its header and value together consumed no input"),
+            ErrorKind::NoProgress,
+        );
         let consumed_nothing = match self.framing {
             DecodeFraming::Fused { .. } => quote! { input.eof_offset() == __frame_offset },
             DecodeFraming::Separate { .. } => quote! {
@@ -592,6 +596,8 @@ impl LoopCtx<'_> {
     /// #take(Discard)
     /// ```
     ///
+    /// Under the container's `strict` the arms are [`ValueSrc::StrictSliced`]
+    ///
     /// # Arguments
     ///
     /// * `unknown` - The decoder of an unknown key's value, with `unknown(..)`; an unknown key's
@@ -606,7 +612,7 @@ impl LoopCtx<'_> {
         // take the value bytes, and dispatch the key to its field or, when the field keeps the
         // frame, the `unknown` decoder; with neither to read them, the bytes are dropped
         // --------------------------------------------------
-        let arms = self.items_match(ValueSrc::header_sliced);
+        let arms = self.items_match(|size| ValueSrc::header_sliced(self.input, size));
         let unknown = match unknown {
             Some(UnknownDecoder {
                 decoder,

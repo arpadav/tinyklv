@@ -71,6 +71,43 @@ pub mod __export {
         )
     }
 
+    /// [`labeled_error`] tagged with `kind`, for [`crate::ErrorKind::of`] to read back, as
+    /// [`with_kind`] tags an error
+    ///
+    /// The label and the tag are added in one `extend`, so a derive-generated decoder's error path
+    /// stays about the size [`labeled_error`] alone makes it, which the inlining and register
+    /// allocation of its success path depend on
+    ///
+    /// Not part of the public API - may change without notice
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - the stream the error is anchored to
+    /// * `_checkpoint` - the position recorded before the failing step, which a
+    ///   [`winnow::error::ContextError`] does not keep
+    /// * `label` - a static description of what was being parsed
+    /// * `kind` - what the error is
+    ///
+    /// # Returns
+    ///
+    /// A fresh error labelled `label` and tagged with `kind`
+    #[must_use]
+    #[inline]
+    pub fn kinded_error<S>(
+        input: &S,
+        _checkpoint: &<S as winnow::stream::Stream>::Checkpoint,
+        label: &'static str,
+        kind: crate::ErrorKind,
+    ) -> winnow::error::ContextError
+    where
+        S: winnow::stream::Stream,
+    {
+        use winnow::error::{ContextError, ParserError, StrContext};
+        let mut err = ContextError::from_input(input);
+        err.extend([StrContext::Label(label), StrContext::Label(kind.tag())]);
+        err
+    }
+
     /// Names the site of a failed parse in `err`, so that its display shows `label` first, then
     /// why the parser failed
     ///
@@ -79,7 +116,7 @@ pub mod __export {
     /// keeping its context and cause. An `err` with one becomes the cause of a new error labelled
     /// `label`, then `err`'s first label, whose display prints `label`, then `err`'s own
     /// display. Neither path copies more than one label of `err`, so relabelling a value nested
-    /// `n` deep costs `O(n)`
+    /// `n` deep costs `O(n)`. Either path then tags the error with `kind` ([`with_kind`])
     ///
     /// Not part of the public API - may change without notice
     ///
@@ -89,17 +126,20 @@ pub mod __export {
     /// * `checkpoint` - the position recorded before the failing step
     /// * `label` - a static description of what was being parsed
     /// * `err` - the error of the parser that failed there
+    /// * `kind` - what the relabelled error is
     ///
     /// # Returns
     ///
     /// `err` with `label` added, when it carried no label of its own; otherwise a new error
-    /// labelled `label`, then `err`'s first label, with `err` as its cause
+    /// labelled `label`, then `err`'s first label, with `err` as its cause; either tagged with
+    /// `kind`
     #[must_use]
     pub fn relabeled_error<S>(
         input: &S,
         checkpoint: &<S as winnow::stream::Stream>::Checkpoint,
         label: &'static str,
         err: winnow::error::ContextError,
+        kind: crate::ErrorKind,
     ) -> winnow::error::ContextError
     where
         S: winnow::stream::Stream,
@@ -116,7 +156,10 @@ pub mod __export {
         // without a label of its own, `err` gains `label` in place
         // --------------------------------------------------
         let Some(own_label) = own_label else {
-            return err.add_context(input, checkpoint, StrContext::Label(label));
+            return with_kind(
+                err.add_context(input, checkpoint, StrContext::Label(label)),
+                kind,
+            );
         };
         // --------------------------------------------------
         // with one, `err` becomes the cause of a new error labelled `label`
@@ -131,7 +174,7 @@ pub mod __export {
         // `err`'s own first label follows `label`
         // --------------------------------------------------
         relabeled.push(own_label);
-        relabeled
+        with_kind(relabeled, kind)
     }
 
     /// Tags `err` with `kind`, for [`crate::ErrorKind::of`] to read back
@@ -199,11 +242,13 @@ pub mod __export {
 /// Convenience re-export of all traits and parser primitives needed to work with KLV streams
 ///
 /// Importing `tinyklv::prelude::*` brings into scope the [`Decoder`],
-/// [`Packet`], all codec traits ([`DecodeValue`], [`EncodeValue`],
-/// [`EncodeFrame`], [`DecodeFrame`]), the [`BreakType`] loop-control enum, the
-/// [`Framing`] fused-`keylen` item descriptor, the [`Klv`] derive macro, and
-/// the winnow combinators and stream utilities that the derive-generated code
-/// depends on
+/// [`Packet`], the codec traits [`DecodeValue`], [`DecodePartial`],
+/// [`EncodeValue`], [`EncodeAs`] and [`Partial`], the methods of
+/// [`DecodeFrame`], [`DrainFrames`], [`EncodeFrame`] and [`SeekSentinel`]
+/// (imported as `_`), the [`BreakType`] loop-control enum, the [`Framing`]
+/// fused-`keylen` item descriptor, the [`Klv`] derive macro, and winnow's
+/// `Parser`, `ModalParser` and `ModalResult`, with the methods of the error
+/// and stream traits that the derive-generated code depends on
 pub mod prelude {
     // --------------------------------------------------
     // local
@@ -316,8 +361,9 @@ macro_rules! cast {
 #[macro_export]
 /// Encodes a floating-point field by dividing by a scale factor, casting to the wire type, then encoding
 ///
-/// Applies `encoder((*input / $scale) as $data)`, which is the exact inverse
-/// of [`scale!`]. The result is a closure compatible with `#[klv(enc = ...)]`
+/// Applies `encoder((*input / $scale) as $data)`, the inverse of [`scale!`] up
+/// to the `as` cast, which rounds toward zero and saturates. The result is a
+/// closure compatible with `#[klv(enc = ...)]`
 ///
 /// Can be used directly in a `#[klv(enc = ...)]` attribute
 ///
@@ -344,8 +390,9 @@ macro_rules! scale_enc {
 #[macro_export]
 /// Encodes a field by casting to the wire type and encoding, without applying any scale factor
 ///
-/// Applies `encoder(*input as $data)`, which is the direct inverse of
-/// [`cast!`]. The result is a closure compatible with `#[klv(enc = ...)]`
+/// Applies `encoder(*input as $data)`, the inverse of [`cast!`] up to the `as`
+/// cast, which can round or saturate. The result is a closure compatible with
+/// `#[klv(enc = ...)]`
 ///
 /// Can be used directly in a `#[klv(enc = ...)]` attribute
 ///

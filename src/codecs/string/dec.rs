@@ -202,7 +202,7 @@ macro_rules! ascii_uint {
         pastey::paste! {
             #[cfg(feature = "ascii")]
             #[inline(always)]
-            #[doc = concat!("Decodes exactly `len` ASCII bytes as a base-10 [`", stringify!($ty), "`].")]
+            #[doc = concat!("Decodes exactly `len` ASCII bytes as a base-10 [`prim@", stringify!($ty), "`].")]
             #[doc = ""]
             #[doc = "The entire `len`-byte field must be the decimal numeral; any"]
             #[doc = "trailing or non-digit byte is rejected."]
@@ -223,7 +223,7 @@ macro_rules! ascii_int {
         pastey::paste! {
             #[cfg(feature = "ascii")]
             #[inline(always)]
-            #[doc = concat!("Decodes exactly `len` ASCII bytes as a base-10 [`", stringify!($ty), "`].")]
+            #[doc = concat!("Decodes exactly `len` ASCII bytes as a base-10 [`prim@", stringify!($ty), "`].")]
             #[doc = ""]
             #[doc = "Accepts an optional leading `+`/`-` sign. The entire `len`-byte"]
             #[doc = "field must be the numeral; any trailing byte is rejected."]
@@ -244,7 +244,7 @@ macro_rules! ascii_float {
         pastey::paste! {
             #[cfg(feature = "ascii")]
             #[inline(always)]
-            #[doc = concat!("Decodes exactly `len` ASCII bytes as an [`", stringify!($ty), "`].")]
+            #[doc = concat!("Decodes exactly `len` ASCII bytes as an [`prim@", stringify!($ty), "`].")]
             #[doc = ""]
             #[doc = "Accepts standard textual float syntax (sign, exponent, `inf`,"]
             #[doc = "`nan`). The entire `len`-byte field must be the number."]
@@ -265,7 +265,7 @@ macro_rules! ascii_hex {
         pastey::paste! {
             #[cfg(feature = "ascii")]
             #[inline(always)]
-            #[doc = concat!("Decodes exactly `len` ASCII hex bytes as a [`", stringify!($ty), "`].")]
+            #[doc = concat!("Decodes exactly `len` ASCII hex bytes as a [`prim@", stringify!($ty), "`].")]
             #[doc = ""]
             #[doc = "Accepts upper- or lower-case hex digits. The entire `len`-byte"]
             #[doc = "field must be hexadecimal; any trailing byte is rejected."]

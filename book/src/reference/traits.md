@@ -223,8 +223,8 @@ Documented in full at
 
 Loop control is a container attribute, not a trait. `#[klv(break_on = ..)]`
 wires a stop predicate into the derive-generated decode loop (shared by
-`decode_value`, `decode_frame`, and the streaming `decoder()`), consulted for
-each decoded `(key, len)`. It accepts either form:
+`decode_value`, `decode_frame`, and the streaming `decoder()`), consulted
+right after each key. It accepts either form:
 
 ```rust,ignore
 // key literal: stop (Done) when a decoded key equals the literal
@@ -232,21 +232,21 @@ each decoded `(key, len)`. It accepts either form:
 
 // function: full control, returning any BreakType
 #[klv(.., break_on = classify)]
-fn classify(key: u8, len: usize) -> BreakType { /* ... */ }
+fn classify(key: &u8, input: &mut &[u8]) -> BreakType { /* ... */ }
 ```
 
-The literal form lowers to `key == <lit>`, so it needs an integer-comparable key
-type; use the function form for any other key type.
+The literal form lowers to `key == <lit>`, so the key type must compare with
+the literal; use the function form otherwise.
 
-A container with no `break_on` always proceeds (the prior default). See
+A container with no `break_on` always proceeds. See
 [Tutorial 14 - Break conditions](../tutorial/advanced/14-break-condition.md).
 
 `BreakType` variants:
 
 | Variant | Meaning |
 |---------|---------|
-| `Proceed` | Run the normal decode step for this key (default) |
-| `Skip` | Consume the value bytes, continue the loop |
+| `Proceed` | Decode the frame from just after the key (default) |
+| `Skip` | Continue the loop where the function left the input |
 | `Done` | Stop looping, return accumulated fields |
 | `Abort(&'static str)` | Stop looping, return `Err` labelled with the message |
 

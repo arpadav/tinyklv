@@ -2,13 +2,15 @@
 //!
 //! Core decode-side traits:
 //! * [`DecodeValue`] - decodes the value portion of a KLV triple from stream `S`
-//! * [`DecodeFrame`] (re-exported from `frame`) - decodes a full key-length-value frame
-//! * [`DecodePartial`] / [`Partial`] / [`ResumePartial`] (re-exported from `partial`) -
-//!   support for incremental decode of a packet across multiple byte deliveries
+//! * [`DecodeFrame`] / [`DrainFrames`] (re-exported from `frame`) - seek a sentinel and decode
+//!   the packet body it frames, once or until one fails
+//! * [`DecodePartial`] / [`Partial`] / [`PartialIterator`] / [`ResumePartial`] (re-exported from
+//!   `partial`) - support for incremental decode of a packet across multiple byte deliveries, and
+//!   [`PartialError`], why one failed
 //! * [`SeekSentinel`] (re-exported from `sentinel`) - locate a packet boundary in a
 //!   continuous byte stream
-//! * [`BreakType`] (re-exported from `breaktype`) - the loop-control outcome a container's
-//!   `#[klv(break_on = ..)]` expression yields for the derive-generated decode loop
+//! * [`BreakType`] (re-exported from `breaktype`) - the loop-control outcome a container's or a
+//!   field's `#[klv(break_on = ..)]` function yields for the derive-generated decode loop
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -24,7 +26,7 @@ mod sentinel;
 // --------------------------------------------------
 pub use breaktype::BreakType;
 pub use frame::{DecodeFrame, DrainFrames};
-pub use partial::{DecodePartial, Partial, PartialIterator, ResumePartial};
+pub use partial::{DecodePartial, Partial, PartialError, PartialIterator, ResumePartial};
 pub use sentinel::SeekSentinel;
 
 // --------------------------------------------------
@@ -55,8 +57,9 @@ const DECODE_VEC_PREALLOC_BYTE_BUDGET: usize = 4096;
 /// you do **not** need to implement this trait. Instead, supply a free
 /// function with one of the following signatures:
 ///
-/// * Fixed-length field: `fn decoder(input: &mut S) -> tinyklv::Result<MyType>`
-/// * Variable-length field: `fn decoder(len: usize) -> impl Fn(&mut S) -> tinyklv::Result<MyType>`
+/// * A field without `size(lengthed)`: `fn decoder(input: &mut S) -> tinyklv::Result<MyType>`
+/// * A `size(lengthed)` field, handed its value length:
+///   `fn decoder(len: usize) -> impl Fn(&mut S) -> tinyklv::Result<MyType>`
 pub trait DecodeValue<S>: Sized
 where
     S: winnow::stream::Stream,
@@ -73,7 +76,14 @@ where
     ///
     /// # Returns
     ///
-    /// `Ok(Self)` on success, or a [`winnow::error::ContextError`] describing the failure
+    /// `Ok(Self)` on success
+    ///
+    /// # Errors
+    ///
+    /// - `input` does not hold a valid `Self`: a [`winnow::error::ContextError`] describing the
+    ///   failure, the cursor where the impl left it. For a derived struct that is a malformed or
+    ///   rejected item, a `break_on` `Abort`, or a required field missing once the loop ends;
+    ///   [`crate::Framing`] states which failures are truncation instead
     fn decode_value(input: &mut S) -> crate::Result<Self>;
 }
 

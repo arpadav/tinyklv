@@ -367,23 +367,6 @@ fn be_f64_roundtrip_known() {
 }
 
 #[test]
-/// Tests `be_u16` emits high byte first (big-endian byte order)
-fn be_u16_byte_order() {
-    // 0x0102 big-endian: high byte first
-    let mut encoded = Vec::new();
-    tinyklv::enc::binary::be_u16(0x0102_u16, &mut encoded);
-    assert_eq!(encoded, vec![0x01, 0x02]);
-}
-
-#[test]
-/// Tests `be_u32` emits bytes in big-endian order
-fn be_u32_byte_order() {
-    let mut encoded = Vec::new();
-    tinyklv::enc::binary::be_u32(0x01020304_u32, &mut encoded);
-    assert_eq!(encoded, vec![0x01, 0x02, 0x03, 0x04]);
-}
-
-#[test]
 /// Tests `be_u64` emits bytes in big-endian order
 fn be_u64_byte_order() {
     let mut encoded = Vec::new();

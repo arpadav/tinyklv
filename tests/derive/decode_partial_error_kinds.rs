@@ -1,7 +1,7 @@
 //! Direct `decode_partial` tests covering each return shape under the
 //! new 2-arm `Packet` design.
 //!
-//! `decode_partial` returns `Result<Packet<T, P>, &'static str>`:
+//! `decode_partial` returns `Result<Packet<T, P>, PartialError>`:
 //!
 //! * `Ok(Packet::NeedMore(p))` - the loop ran out of bytes mid-packet
 //!   OR exited via top-of-loop EOF without a `Done` break condition.
@@ -24,6 +24,7 @@
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
+use tinyklv::traits::PartialError;
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -121,7 +122,8 @@ fn decode_partial_missing_required_label_via_try_into() {
         other => panic!("expected NeedMore, got {}", kind(&other)),
     };
     let label: &'static str = <Pair as core::convert::TryFrom<_>>::try_from(p)
-        .expect_err("partial must fail finalisation: required `b` is missing");
+        .expect_err("partial must fail finalisation: required `b` is missing")
+        .label();
     assert!(
         label.contains("Pair::b"),
         "label must name the missing required field; got: {label}"
@@ -144,7 +146,7 @@ fn decode_value_one_shot_missing_required() {
     );
 }
 
-fn kind<T, P>(p: &Result<Packet<T, P>, &'static str>) -> &'static str
+fn kind<T, P>(p: &Result<Packet<T, P>, PartialError>) -> &'static str
 where
     P: tinyklv::Partial<Final = T>,
 {

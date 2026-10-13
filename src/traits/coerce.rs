@@ -1,4 +1,4 @@
-//! Field-value coercion for `#[klv(enc = *func)]` dispatch
+//! Field-value coercion for `#[klv(enc = &func)]` dispatch
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -11,9 +11,11 @@ use std::sync::Arc;
 /// Coerce a field value into the shape its encoder expects
 ///
 /// Used by `#[klv(enc = &func)]` to route field values through a zero-cost
-/// borrowed form - `Copy` scalars pass by value, `String` becomes `&str`,
-/// `Vec<T>` becomes `&[T]`, and smart-pointer wrappers resolve to inner refs
-/// No clones, no heap allocations
+/// borrowed form: primitive scalars pass as `&Self`, `String` becomes `&str`,
+/// `Vec<T>` becomes `&[T]`, and smart-pointer wrappers resolve to inner refs.
+/// No clones, no heap allocations. An encoder taking a primitive by value
+/// needs the `*` sigil (`enc = *func`), which passes the field by value
+/// without `EncodeAs`
 ///
 /// # When to implement
 ///
@@ -31,11 +33,13 @@ use std::sync::Arc;
 /// use tinyklv::prelude::*;
 ///
 /// // encoder takes &str, not &String
-/// fn encode_str(s: &str) -> Vec<u8> { s.as_bytes().to_vec() }
+/// fn encode_str(s: &str, out: &mut Vec<u8>) { out.extend_from_slice(s.as_bytes()) }
 ///
 /// let s = String::from("hi");
 /// let borrowed: &str = EncodeAs::encode_as(&s);
-/// assert_eq!(encode_str(borrowed), b"hi".to_vec());
+/// let mut out = Vec::new();
+/// encode_str(borrowed, &mut out);
+/// assert_eq!(out, b"hi");
 /// ```
 pub trait EncodeAs {
     /// The borrowed form produced for encoder consumption
@@ -48,8 +52,8 @@ pub trait EncodeAs {
 
 /// Implements [`EncodeAs`] for primitive `Copy` types, yielding `&Self` as the borrowed form
 ///
-/// These types are `Copy` so the encoder receives a shared reference to the
-/// stack value; no heap allocation or clone occurs
+/// The encoder receives a shared reference to the field, as with no sigil; no heap allocation or
+/// clone occurs
 macro_rules! impl_encode_as_ref {
     ($($t:ty),* $(,)?) => { $(
         impl EncodeAs for $t {
@@ -157,8 +161,8 @@ mod tests {
     use super::*;
 
     #[test]
-    /// Tests that `EncodeAs` on primitive types returns the value itself (copied, not borrowed)
-    fn primitives_are_copied_by_value() {
+    /// Tests that `EncodeAs` on primitive types yields `&Self`, holding the value
+    fn primitives_borrow_as_self() {
         let x: u32 = 42;
         let y: &u32 = EncodeAs::encode_as(&x);
         assert_eq!(x, *y);

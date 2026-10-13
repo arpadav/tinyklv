@@ -24,8 +24,7 @@ Run this example: `cargo run --example book_17_implicit`
 
 - `size(implicit)` drops the length prefix; `exact = N` gives the value its width.
 - `default(typ = T, .., size(implicit))` applies it to every `T` field.
-- Beside an `implicit` field, a container `break_on = <fn>` is a compile error,
-  and a key no field declares is read as length-prefixed, unless the struct has
-  [`unknown(..)`](./19-unknown.md).
+- Beside an `implicit` field, a key no field declares is read as
+  length-prefixed, unless the struct has [`unknown(..)`](./19-unknown.md).
 
 **Next:** [18 - Framing per key](./18-keylen.md)

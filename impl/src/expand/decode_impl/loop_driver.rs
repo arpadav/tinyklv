@@ -6,14 +6,15 @@
 //! `LoopCtx::header`):
 //!
 //! * [`LoopDriver::Streaming`] - `resume_partial`: truncation rewinds and returns
-//!   `Packet::NeedMore`, an error returns a bare `&'static str` message, which reads
-//!   `invalid <label>` for a rejection the derive labels ([`LoopDriver::reject_label`])
+//!   `Packet::NeedMore`, an error returns a `tinyklv::traits::PartialError` of a message and its
+//!   kind, the message reading `invalid <label>` for a rejection the derive labels
+//!   ([`LoopDriver::reject_label`])
 //! * [`LoopDriver::OneShot`] - `decode_value`: truncation rewinds and `break`s to the finalize
 //!   tail, an error leaves the fn with a `ContextError` labelled at the input position, except a
-//!   malformed value read from the main stream or kept from a `Sliced` unknown frame, whose error
-//!   names the field (or an unknown frame) first, then the value decoder's own error
-//!   ([`LoopDriver::reject_value`]). Its
-//!   [`CursorSite`] says which cursor the loop advances, and so how an error leaves the fn
+//!   malformed value read from the main stream, kept from a `Sliced` unknown frame or, under
+//!   `strict`, cut by a frame's length, whose error names the field (or an unknown frame) first,
+//!   then the value decoder's own error ([`LoopDriver::reject_value`]). Its [`CursorSite`] says
+//!   which cursor the loop advances, and so how an error leaves the fn
 //!
 //! The rules that decide truncation against malformed are stated once, on `tinyklv::Framing`
 //! and `tinyklv::Framing::Inline`
@@ -24,16 +25,16 @@
 //! The emitted tokens assume the loop's bindings: `input`, `checkpoint` (fn entry),
 //! `__checkpoint_inner` (frame start), `__acc` (the partial accumulator), the frame's value length
 //! (`DecodeFraming::len`, wherever a `take` is cut or a `size(exact = N)` check reads it),
-//! inside a failed main-stream or kept `Sliced` unknown value arm, `__err` (the value decoder's
-//! error), inside the `Abort` arm of a field's `break_on`, `__msg` (its message) and, in a
-//! one-shot loop over a [`CursorSite::Local`] cursor, `__exact_reject` (the held
+//! inside a failed main-stream, kept `Sliced` unknown or `strict` sliced value arm, `__err` (the
+//! value decoder's error), inside the `Abort` arm of a field's `break_on`, `__msg` (its message)
+//! and, in a one-shot loop over a [`CursorSite::Local`] cursor, `__exact_reject` (the held
 //! `size(exact = N)` rejection)
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::LoopCtx;
+use super::{ErrorKind, LoopCtx};
 use crate::{
     ast::attr::{MainContainer, container::BreakOnSpec},
     expand::helpers,
@@ -134,7 +135,7 @@ pub(super) enum ParseSite<'a> {
     /// A value read straight from the main stream: an `Inline` one, or an unknown key's
     Value {
         /// Names the field, or for an unknown key with no `#[klv(unknown)]` field the struct's
-        /// frame, which a malformed value is rejected with (a [`LoopDriver::reject_label`] label)
+        /// item, which a malformed value is rejected with (a [`LoopDriver::reject_label`] label)
         label: &'a TokenStream,
     },
 }
@@ -226,29 +227,37 @@ impl LoopDriver {
         quote! { input.reset(&__checkpoint_inner); }
     }
 
-    /// Emits a fatal exit carrying `msg`, with no finalize
+    /// Emits a fatal exit, with no finalize: streaming returns `partial_error`, one-shot an error
+    /// labelled `label` and tagged with `kind`
     ///
-    /// This is the container `break_on`'s `Abort` arm too. `Abort` is documented to *guarantee*
-    /// an `Err` with no partially-decoded value surfaced, so this exit honors that contract rather
-    /// than finalizing what was accumulated; both drivers leave with `Err` without finalizing
+    /// A `break_on`'s `Abort` leaves through it too. `Abort` is documented to *guarantee* an `Err`
+    /// with no partially-decoded value surfaced, so this exit honors that contract rather than
+    /// finalizing what was accumulated; both drivers leave with `Err` without finalizing
     ///
     /// # Arguments
     ///
-    /// * `msg` - An expression evaluating to the `&'static str` message, returned as is
-    ///   (streaming) or as the error's label (one-shot)
+    /// * `label` - An expression evaluating to the `&'static str` label of the one-shot error
+    /// * `kind` - What the one-shot error is
+    /// * `partial_error` - The `tinyklv::traits::PartialError` streaming returns, of `kind`
     ///
     /// # Returns
     ///
-    /// `return Err(#msg);` (streaming) or `Err(labeled_error(input, &checkpoint, #msg))` through
-    /// the [`CursorSite`]'s error exit (one-shot)
-    pub(super) fn reject(self, msg: &TokenStream) -> TokenStream {
+    /// `return Err(#partial_error);` (streaming) or `Err(kinded_error(input, &checkpoint, #label,
+    /// #kind))` through the [`CursorSite`]'s error exit (one-shot)
+    fn reject(
+        self,
+        label: &TokenStream,
+        kind: ErrorKind,
+        partial_error: &TokenStream,
+    ) -> TokenStream {
         match self {
-            Self::Streaming => quote! { return ::core::result::Result::Err(#msg); },
+            Self::Streaming => quote! { return ::core::result::Result::Err(#partial_error); },
             Self::OneShot(cursor) => cursor.error_exit(&quote! {
-                ::core::result::Result::Err(::tinyklv::__export::labeled_error(
+                ::core::result::Result::Err(::tinyklv::__export::kinded_error(
                     input,
                     &checkpoint,
-                    #msg,
+                    #label,
+                    #kind,
                 ))
             }),
         }
@@ -263,24 +272,40 @@ impl LoopDriver {
     ///
     /// * `label` - A `::core::concat!(..)` of string literals naming what was rejected, so that
     ///   streaming can splice it into its own `concat!`
+    /// * `kind` - What the error is
     ///
     /// # Returns
     ///
-    /// `return Err(concat!("invalid ", #label));` (streaming) or
-    /// `#exit Err(labeled_error(input, &checkpoint, #label));` (one-shot, see [`Self::reject`])
-    pub(super) fn reject_label(self, label: &TokenStream) -> TokenStream {
-        match self {
-            Self::Streaming => self.reject(&quote! { ::core::concat!("invalid ", #label) }),
-            Self::OneShot(_) => self.reject(label),
-        }
+    /// The [`Self::reject`] exit, streaming's error `PartialError::new(&(#kind,
+    /// concat!("invalid ", #label)))`, a constant
+    pub(super) fn reject_label(self, label: &TokenStream, kind: ErrorKind) -> TokenStream {
+        let partial_error = quote! {
+            ::tinyklv::traits::PartialError::new(&(#kind, ::core::concat!("invalid ", #label)))
+        };
+        self.reject(label, kind, &partial_error)
+    }
+
+    /// Emits the fatal exit of a `break_on` that returned `Abort(__msg)`, with no finalize
+    /// ([`Self::reject`]), labelled with `__msg` and of [`ErrorKind::Aborted`]
+    ///
+    /// # Returns
+    ///
+    /// The [`Self::reject`] exit, streaming's error `PartialError::aborted(__msg)`
+    pub(super) fn abort(self) -> TokenStream {
+        self.reject(
+            &quote! { __msg },
+            ErrorKind::Aborted,
+            &quote! { ::tinyklv::traits::PartialError::aborted(__msg) },
+        )
     }
 
     /// Emits the fatal exit for a frame whose length is not its field's `size(exact = N)`, with
     /// no finalize
     ///
-    /// A one-shot loop over a [`CursorSite::Local`] cursor holds `label` in `__exact_reject` for
+    /// A one-shot loop over a [`CursorSite::Local`] cursor holds the error in `__exact_reject` for
     /// [`LoopCtx::finish`] to return, so every such rejection shares its one error exit, and
-    /// leaves the loop; any other loop leaves through [`Self::reject_label`]
+    /// leaves the loop; any other loop leaves through [`Self::reject_label`]. Either error is
+    /// [`ErrorKind::WrongLength`]
     ///
     /// # Arguments
     ///
@@ -288,15 +313,18 @@ impl LoopDriver {
     ///
     /// # Returns
     ///
-    /// `__exact_reject = Some(#label); break;` (one-shot, local cursor) or the
-    /// [`Self::reject_label`] exit
+    /// `__exact_reject = Some(PartialError::new(&(WrongLength, #label))); break;` (one-shot, local
+    /// cursor) or the [`Self::reject_label`] exit
     pub(super) fn reject_exact(self, label: &TokenStream) -> TokenStream {
+        let kind = ErrorKind::WrongLength;
         match self {
             Self::OneShot(CursorSite::Local) => quote! {
-                __exact_reject = ::core::option::Option::Some(#label);
+                __exact_reject = ::core::option::Option::Some(
+                    ::tinyklv::traits::PartialError::new(&(#kind, #label))
+                );
                 break;
             },
-            Self::Streaming | Self::OneShot(CursorSite::Caller) => self.reject_label(label),
+            Self::Streaming | Self::OneShot(CursorSite::Caller) => self.reject_label(label, kind),
         }
     }
 
@@ -359,7 +387,7 @@ impl LoopDriver {
         match site {
             ParseSite::Header => truncated,
             ParseSite::Value { label } => {
-                let malformed = self.reject_value(label);
+                let malformed = self.reject_value(label, ErrorKind::MalformedValue);
                 quote! {
                     if input.eof_offset() == 0 {
                         #truncated
@@ -371,8 +399,8 @@ impl LoopDriver {
     }
 
     /// Emits the fatal exit for a malformed value, with no finalize: one read from the main stream
-    /// ([`Self::on_parse_fail`]), or the bounded value of a `Sliced` unknown frame that the
-    /// `#[klv(unknown)]` field keeps
+    /// ([`Self::on_parse_fail`]), the bounded value of a `Sliced` unknown frame that the
+    /// `#[klv(unknown)]` field keeps, or, under `strict`, a field's value cut by its frame's length
     ///
     /// Both drivers name what `label` names first. Streaming rejects with `label`
     /// ([`Self::reject_label`]). One-shot relabels the value decoder's error with `label` through
@@ -381,20 +409,22 @@ impl LoopDriver {
     /// # Arguments
     ///
     /// * `label` - Names what is rejected (see [`ParseSite::Value`])
+    /// * `kind` - What the error is
     ///
     /// # Returns
     ///
-    /// `return Err(concat!("invalid ", #label));` (streaming) or `__err` relabelled with `label`,
-    /// through the [`CursorSite`]'s error exit (one-shot)
-    pub(super) fn reject_value(self, label: &TokenStream) -> TokenStream {
+    /// The [`Self::reject_label`] exit (streaming) or `__err` relabelled with `label` and tagged
+    /// with `kind`, through the [`CursorSite`]'s error exit (one-shot)
+    pub(super) fn reject_value(self, label: &TokenStream, kind: ErrorKind) -> TokenStream {
         match self {
-            Self::Streaming => self.reject_label(label),
+            Self::Streaming => self.reject_label(label, kind),
             Self::OneShot(cursor) => cursor.error_exit(&quote! {
                 ::core::result::Result::Err(::tinyklv::__export::relabeled_error(
                     input,
                     &__checkpoint_inner,
                     #label,
                     __err,
+                    #kind,
                 ))
             }),
         }
@@ -403,8 +433,9 @@ impl LoopDriver {
     /// Emits the fatal exit for a field whose `break_on` returned `Abort(__msg)`, with no
     /// finalize
     ///
-    /// Both drivers keep `__msg`, as for the container's `break_on` ([`Self::reject`]). One-shot
-    /// names the field first, as for a malformed `Inline` value ([`Self::reject_value`])
+    /// Both drivers keep `__msg`, as for the container's `break_on` ([`Self::abort`]). One-shot
+    /// names the field first, as for a malformed `Inline` value ([`Self::reject_value`]). Either
+    /// error is [`ErrorKind::Aborted`]
     ///
     /// # Arguments
     ///
@@ -412,13 +443,13 @@ impl LoopDriver {
     ///
     /// # Returns
     ///
-    /// `return Err(__msg);` (streaming) or a `ContextError` labelled `__msg`, relabelled with
+    /// The [`Self::abort`] exit (streaming) or a `ContextError` labelled `__msg`, relabelled with
     /// `label` (one-shot)
     pub(super) fn reject_aborted_value(self, label: &TokenStream) -> TokenStream {
         match self {
-            Self::Streaming => self.reject(&quote! { __msg }),
+            Self::Streaming => self.abort(),
             Self::OneShot(_) => {
-                let reject = self.reject_value(label);
+                let reject = self.reject_value(label, ErrorKind::Aborted);
                 quote! {
                     let __err = ::tinyklv::__export::labeled_error(input, &__checkpoint_inner, __msg);
                     #reject
@@ -552,7 +583,7 @@ impl LoopCtx<'_> {
     /// The key literal ends the loop with the input right after the key. The fn may read past the
     /// key: `Proceed`, like any later `BreakType` variant, rewinds to just after the key, where
     /// the frame then decodes; `Skip` continues, `Done` ends the loop and `Abort` rejects with the
-    /// fn's message ([`LoopDriver::reject`]), each with the input where the fn left it. The fn is
+    /// fn's message ([`LoopDriver::abort`]), each with the input where the fn left it. The fn is
     /// handed the cursor [`LoopDriver::read_input`] gives, and its call is located at the fn, so a
     /// fn of another signature is reported there
     ///
@@ -585,7 +616,7 @@ impl LoopCtx<'_> {
         let decision = self
             .driver
             .read_input(|cursor| quote_spanned! {at_fn=> #path(&#key, #cursor) });
-        let abort = self.driver.reject(&quote! { __msg });
+        let abort = self.driver.abort();
         // --------------------------------------------------
         // match the decision, from a checkpoint just after the key
         // --------------------------------------------------
@@ -608,31 +639,44 @@ impl LoopCtx<'_> {
     ///
     /// # Returns
     ///
-    /// `Ok(Ready(v))` / `Err(label)` (streaming) or the struct with a missing-field label mapped
-    /// to a `ContextError` (one-shot). A one-shot loop over a [`CursorSite::Local`] cursor first
-    /// takes the label held in `__exact_reject`, if any, through the same mapping
+    /// `Ok(Ready(v))` / `Err(__err)` (streaming) or the struct with a missing-field error mapped
+    /// to a `ContextError` labelled with its label and tagged with its kind (one-shot). A one-shot
+    /// loop over a [`CursorSite::Local`] cursor first takes the error held in `__exact_reject`, if
+    /// any, through the same mapping. Over the caller's cursor the error can only be the
+    /// generated `finalize`'s, so its tag names [`ErrorKind::MissingRequired`] as a constant
+    /// rather than reading the kind back
     pub(super) fn finish(self) -> TokenStream {
         let partial_ty = self.partial_ty;
+        let to_context = |kind: &TokenStream| {
+            quote! {
+                |__err| ::tinyklv::__export::kinded_error(input, &checkpoint, __err.label(), #kind)
+            }
+        };
         match self.driver {
             LoopDriver::Streaming => quote! {
                 match <#partial_ty as ::tinyklv::traits::Partial>::finalize(__acc) {
                     ::core::result::Result::Ok(v) => ::core::result::Result::Ok(
                         ::tinyklv::decoder::Packet::Ready(v)
                     ),
-                    ::core::result::Result::Err(label) => ::core::result::Result::Err(label),
+                    ::core::result::Result::Err(__err) => ::core::result::Result::Err(__err),
                 }
             },
-            LoopDriver::OneShot(CursorSite::Caller) => quote! {
-                <#partial_ty as ::tinyklv::traits::Partial>::finalize(__acc)
-                    .map_err(|label| ::tinyklv::__export::labeled_error(input, &checkpoint, label))
-            },
-            LoopDriver::OneShot(CursorSite::Local) => quote! {
-                match __exact_reject {
-                    ::core::option::Option::Some(label) => ::core::result::Result::Err(label),
-                    ::core::option::Option::None => <#partial_ty as ::tinyklv::traits::Partial>::finalize(__acc),
+            LoopDriver::OneShot(CursorSite::Caller) => {
+                let to_context = to_context(&ErrorKind::MissingRequired.into_token_stream());
+                quote! {
+                    <#partial_ty as ::tinyklv::traits::Partial>::finalize(__acc).map_err(#to_context)
                 }
-                .map_err(|label| ::tinyklv::__export::labeled_error(input, &checkpoint, label))
-            },
+            }
+            LoopDriver::OneShot(CursorSite::Local) => {
+                let to_context = to_context(&quote! { __err.kind() });
+                quote! {
+                    match __exact_reject {
+                        ::core::option::Option::Some(__err) => ::core::result::Result::Err(__err),
+                        ::core::option::Option::None => <#partial_ty as ::tinyklv::traits::Partial>::finalize(__acc),
+                    }
+                    .map_err(#to_context)
+                }
+            }
         }
     }
 
@@ -643,18 +687,18 @@ impl LoopCtx<'_> {
     ///
     /// # Arguments
     ///
-    /// * `field` - The field whose value is rejected, `None` for the frame as a whole
+    /// * `field` - The field whose value is rejected, `None` for the item as a whole
     /// * `reason` - Why, written in the parentheses after what is rejected
     ///
     /// # Returns
     ///
     /// A [`LoopDriver::reject_label`] label, `` `<container>::<field>` value (<reason>) `` or
-    /// `` `<container>` frame (<reason>) ``
+    /// `` `<container>` item (<reason>) ``
     pub(super) fn label(self, field: Option<&syn::Ident>, reason: &str) -> TokenStream {
         let container = &self.input.ident;
         let (field, rejected) = match field {
             Some(field) => (Some(quote! { "::", ::core::stringify!(#field), }), "value"),
-            None => (None, "frame"),
+            None => (None, "item"),
         };
         let tail = format!("` {rejected} ({reason})");
         quote! {

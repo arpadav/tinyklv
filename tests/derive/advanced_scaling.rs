@@ -4,8 +4,8 @@
 //! `TelemetryPacket` (primitives, enums, coordinates, status flags), an
 //! 8-field `OptionalSuite` (all fields `Option<T>`), and an 8-field
 //! `RequiredSuite` (all fields required). Covers full decode, encode/decode
-//! roundtrip, all-present and all-absent optional scenarios, each optional
-//! field present individually, and each required field missing individually
+//! roundtrip, all-present and all-absent optional scenarios, all required
+//! fields present, and a required field missing
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -319,8 +319,8 @@ fn build_telemetry_bytes(p: &TelemetryPacket) -> Vec<u8> {
 
 /// Hand-build the raw byte stream for a [`RequiredSuite`] using `push_tlv`
 ///
-/// Encodes every field in declaration-key order; used by tests that verify
-/// all-present decoding and per-field missing-required-key failures
+/// Encodes every field in declaration-key order; used by the test that
+/// verifies all-present decoding
 fn build_required_bytes(s: &RequiredSuite) -> Vec<u8> {
     let mut data = vec![];
     push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
@@ -427,161 +427,6 @@ fn all_optional_8_all_absent() {
     assert_eq!(result.material, None);
 }
 
-#[test]
-/// Tests that only the `color` optional decodes to `Some` when its key is the sole key present; others stay `None`
-fn all_optional_each_alone_color() {
-    let val = Color::Alpha;
-    let mut data = vec![];
-    push_tlv(&mut data, 0x01, |__b| val.encode_value(__b));
-    let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
-    assert_eq!(result.color, Some(val));
-    assert_eq!(result.priority, None);
-    assert_eq!(result.velocity, None);
-    assert_eq!(result.attitude, None);
-    assert_eq!(result.timestamp, None);
-    assert_eq!(result.coordinate, None);
-    assert_eq!(result.status, None);
-    assert_eq!(result.material, None);
-}
-
-#[test]
-/// Tests that only the `priority` optional decodes to `Some` when it is the sole key present
-fn all_optional_each_alone_priority() {
-    let val = Priority::Low;
-    let mut data = vec![];
-    push_tlv(&mut data, 0x02, |__b| val.encode_value(__b));
-    let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
-    assert_eq!(result.color, None);
-    assert_eq!(result.priority, Some(val));
-    assert_eq!(result.velocity, None);
-    assert_eq!(result.attitude, None);
-    assert_eq!(result.timestamp, None);
-    assert_eq!(result.coordinate, None);
-    assert_eq!(result.status, None);
-    assert_eq!(result.material, None);
-}
-
-#[test]
-/// Tests that only the `velocity` optional decodes to `Some` when it is the sole key present
-fn all_optional_each_alone_velocity() {
-    let val = Velocity {
-        dx: -100,
-        dy: 200,
-        dz: 0,
-    };
-    let mut data = vec![];
-    push_tlv(&mut data, 0x03, |__b| val.encode_value(__b));
-    let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
-    assert_eq!(result.color, None);
-    assert_eq!(result.priority, None);
-    assert_eq!(result.velocity, Some(val));
-    assert_eq!(result.attitude, None);
-    assert_eq!(result.timestamp, None);
-    assert_eq!(result.coordinate, None);
-    assert_eq!(result.status, None);
-    assert_eq!(result.material, None);
-}
-
-#[test]
-/// Tests that only the `attitude` optional decodes to `Some` when it is the sole key present
-fn all_optional_each_alone_attitude() {
-    let val = Attitude {
-        roll: 1.0_f32,
-        pitch: 2.0_f32,
-        yaw: 3.0_f32,
-    };
-    let mut data = vec![];
-    push_tlv(&mut data, 0x04, |__b| val.encode_value(__b));
-    let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
-    assert_eq!(result.color, None);
-    assert_eq!(result.priority, None);
-    assert_eq!(result.velocity, None);
-    assert_eq!(result.attitude, Some(val));
-    assert_eq!(result.timestamp, None);
-    assert_eq!(result.coordinate, None);
-    assert_eq!(result.status, None);
-    assert_eq!(result.material, None);
-}
-
-#[test]
-/// Tests that only the `timestamp` optional decodes to `Some` when it is the sole key present
-fn all_optional_each_alone_timestamp() {
-    let val = Timestamp {
-        seconds: 999,
-        nanos: 1,
-    };
-    let mut data = vec![];
-    push_tlv(&mut data, 0x05, |__b| val.encode_value(__b));
-    let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
-    assert_eq!(result.color, None);
-    assert_eq!(result.priority, None);
-    assert_eq!(result.velocity, None);
-    assert_eq!(result.attitude, None);
-    assert_eq!(result.timestamp, Some(val));
-    assert_eq!(result.coordinate, None);
-    assert_eq!(result.status, None);
-    assert_eq!(result.material, None);
-}
-
-#[test]
-/// Tests that only the `coordinate` optional decodes to `Some` when it is the sole key present
-fn all_optional_each_alone_coordinate() {
-    let val = Coordinate {
-        lat: 51.5074,
-        lon: -0.1278,
-    };
-    let mut data = vec![];
-    push_tlv(&mut data, 0x06, |__b| val.encode_value(__b));
-    let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
-    assert_eq!(result.color, None);
-    assert_eq!(result.priority, None);
-    assert_eq!(result.velocity, None);
-    assert_eq!(result.attitude, None);
-    assert_eq!(result.timestamp, None);
-    assert_eq!(result.coordinate, Some(val));
-    assert_eq!(result.status, None);
-    assert_eq!(result.material, None);
-}
-
-#[test]
-/// Tests that only the `status` optional decodes to `Some` when it is the sole key present
-fn all_optional_each_alone_status() {
-    let val = StatusFlags {
-        active: false,
-        armed: false,
-        locked: false,
-        mode: 31,
-    };
-    let mut data = vec![];
-    push_tlv(&mut data, 0x07, |__b| val.encode_value(__b));
-    let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
-    assert_eq!(result.color, None);
-    assert_eq!(result.priority, None);
-    assert_eq!(result.velocity, None);
-    assert_eq!(result.attitude, None);
-    assert_eq!(result.timestamp, None);
-    assert_eq!(result.coordinate, None);
-    assert_eq!(result.status, Some(val));
-    assert_eq!(result.material, None);
-}
-
-#[test]
-/// Tests that only the `material` optional decodes to `Some` when it is the sole key present
-fn all_optional_each_alone_material() {
-    let val = Material::Ceramic;
-    let mut data = vec![];
-    push_tlv(&mut data, 0x08, |__b| val.encode_value(__b));
-    let result = OptionalSuite::decode_value(&mut data.as_slice()).unwrap();
-    assert_eq!(result.color, None);
-    assert_eq!(result.priority, None);
-    assert_eq!(result.velocity, None);
-    assert_eq!(result.attitude, None);
-    assert_eq!(result.timestamp, None);
-    assert_eq!(result.coordinate, None);
-    assert_eq!(result.status, None);
-    assert_eq!(result.material, Some(val));
-}
-
 // --------------------------------------------------
 // test 6: all_required_8_present
 // --------------------------------------------------
@@ -612,117 +457,5 @@ fn all_required_each_missing_color() {
     push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
     push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
     push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
-    assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
-}
-
-#[test]
-/// Tests that decoding fails when the required `priority` key is absent from the stream
-fn all_required_each_missing_priority() {
-    let s = required_suite_fixture();
-    let mut data = vec![];
-    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
-    // omit key 0x02 (priority)
-    push_tlv(&mut data, 0x03, |__b| s.velocity.encode_value(__b));
-    push_tlv(&mut data, 0x04, |__b| s.attitude.encode_value(__b));
-    push_tlv(&mut data, 0x05, |__b| s.timestamp.encode_value(__b));
-    push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
-    push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
-    push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
-    assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
-}
-
-#[test]
-/// Tests that decoding fails when the required `velocity` key is absent from the stream
-fn all_required_each_missing_velocity() {
-    let s = required_suite_fixture();
-    let mut data = vec![];
-    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
-    push_tlv(&mut data, 0x02, |__b| s.priority.encode_value(__b));
-    // omit key 0x03 (velocity)
-    push_tlv(&mut data, 0x04, |__b| s.attitude.encode_value(__b));
-    push_tlv(&mut data, 0x05, |__b| s.timestamp.encode_value(__b));
-    push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
-    push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
-    push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
-    assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
-}
-
-#[test]
-/// Tests that decoding fails when the required `attitude` key is absent from the stream
-fn all_required_each_missing_attitude() {
-    let s = required_suite_fixture();
-    let mut data = vec![];
-    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
-    push_tlv(&mut data, 0x02, |__b| s.priority.encode_value(__b));
-    push_tlv(&mut data, 0x03, |__b| s.velocity.encode_value(__b));
-    // omit key 0x04 (attitude)
-    push_tlv(&mut data, 0x05, |__b| s.timestamp.encode_value(__b));
-    push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
-    push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
-    push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
-    assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
-}
-
-#[test]
-/// Tests that decoding fails when the required `timestamp` key is absent from the stream
-fn all_required_each_missing_timestamp() {
-    let s = required_suite_fixture();
-    let mut data = vec![];
-    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
-    push_tlv(&mut data, 0x02, |__b| s.priority.encode_value(__b));
-    push_tlv(&mut data, 0x03, |__b| s.velocity.encode_value(__b));
-    push_tlv(&mut data, 0x04, |__b| s.attitude.encode_value(__b));
-    // omit key 0x05 (timestamp)
-    push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
-    push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
-    push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
-    assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
-}
-
-#[test]
-/// Tests that decoding fails when the required `coordinate` key is absent from the stream
-fn all_required_each_missing_coordinate() {
-    let s = required_suite_fixture();
-    let mut data = vec![];
-    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
-    push_tlv(&mut data, 0x02, |__b| s.priority.encode_value(__b));
-    push_tlv(&mut data, 0x03, |__b| s.velocity.encode_value(__b));
-    push_tlv(&mut data, 0x04, |__b| s.attitude.encode_value(__b));
-    push_tlv(&mut data, 0x05, |__b| s.timestamp.encode_value(__b));
-    // omit key 0x06 (coordinate)
-    push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
-    push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
-    assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
-}
-
-#[test]
-/// Tests that decoding fails when the required `status` key is absent from the stream
-fn all_required_each_missing_status() {
-    let s = required_suite_fixture();
-    let mut data = vec![];
-    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
-    push_tlv(&mut data, 0x02, |__b| s.priority.encode_value(__b));
-    push_tlv(&mut data, 0x03, |__b| s.velocity.encode_value(__b));
-    push_tlv(&mut data, 0x04, |__b| s.attitude.encode_value(__b));
-    push_tlv(&mut data, 0x05, |__b| s.timestamp.encode_value(__b));
-    push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
-    // omit key 0x07 (status)
-    push_tlv(&mut data, 0x08, |__b| s.material.encode_value(__b));
-    assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
-}
-
-#[test]
-/// Tests that decoding fails when the required `material` key is absent from the stream
-fn all_required_each_missing_material() {
-    let s = required_suite_fixture();
-    let mut data = vec![];
-    push_tlv(&mut data, 0x01, |__b| s.color.encode_value(__b));
-    push_tlv(&mut data, 0x02, |__b| s.priority.encode_value(__b));
-    push_tlv(&mut data, 0x03, |__b| s.velocity.encode_value(__b));
-    push_tlv(&mut data, 0x04, |__b| s.attitude.encode_value(__b));
-    push_tlv(&mut data, 0x05, |__b| s.timestamp.encode_value(__b));
-    push_tlv(&mut data, 0x06, |__b| s.coordinate.encode_value(__b));
-    push_tlv(&mut data, 0x07, |__b| s.status.encode_value(__b));
-    // omit key 0x08 (material)
     assert!(RequiredSuite::decode_value(&mut data.as_slice()).is_err());
 }

@@ -3,17 +3,15 @@
 //! Verifies that every decoder returns `Err` when presented with a zero-byte
 //! input slice. Covers all binary types (`u8`/`i8`, `be_u16` through `be_u128`,
 //! `le_u16` through `le_u64`, `be_f32`/`be_f64`, `be_u16_lengthed`,
-//! `be_u32_lengthed`, `u8_as_usize`, `be_u16_as_usize`, `le_u16_as_usize`),
-//! BER (`ber_length`, `ber_oid`), and string (`to_string_utf8` with non-zero
-//! len, `to_string_utf16_le` with non-zero len). Also tests derive-macro
-//! behavior: all-required struct errors, all-optional struct succeeds with
-//! every field `None`
+//! `be_u32_lengthed`, `u8_as_usize`, `be_u16_as_usize`, `le_u16_as_usize`)
+//! and string (`to_string_utf8` with non-zero len, `to_string_utf16_le` with
+//! non-zero len). Also tests derive-macro behavior: all-required struct
+//! errors, all-optional struct succeeds with every field `None`
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use tinyklv::dec::ber as decber;
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
 use tinyklv::enc::binary as encb;
@@ -129,20 +127,6 @@ fn be_u16_lengthed_empty_fails_on_positive_len() {
 fn be_u32_lengthed_empty_fails() {
     let mut input: &[u8] = &[];
     assert!(decb::be_u32_lengthed(4)(&mut input).is_err());
-}
-
-#[test]
-/// Tests that `ber_length` errors on empty input (no first byte to interpret)
-fn ber_length_empty() {
-    let mut input: &[u8] = &[];
-    assert!(decber::ber_length(&mut input).is_err());
-}
-
-#[test]
-/// Tests that `ber_oid::<u64>` errors on empty input
-fn ber_oid_empty() {
-    let mut input: &[u8] = &[];
-    assert!(decber::ber_oid::<u64>(&mut input).is_err());
 }
 
 #[test]

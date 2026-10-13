@@ -7,6 +7,12 @@
 use std::{error::Error, iter};
 use winnow::error::{ContextError, StrContext, StrContextValue};
 
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+/// How every label tagging an error with its `ErrorKind` begins, the kind's path
+const KIND_TAG: &str = "tinyklv::ErrorKind::";
+
 /// Queries on a decoder's error: its context, its display and its cause chain
 pub(crate) trait ContextErrorExt {
     /// The labels of the error's context chain
@@ -14,7 +20,8 @@ pub(crate) trait ContextErrorExt {
     /// # Returns
     ///
     /// Every `StrContext::Label` of the error, field first: a derived error keeps only the first
-    /// label the value decoder added, and lists it after the label naming the field
+    /// label the value decoder added, and lists it after the label naming the field. The label
+    /// that tags the error with its `ErrorKind` is not one
     fn labels(&self) -> impl Iterator<Item = &'static str>;
 
     /// Whether the error's context chain carries `Expected(description)`
@@ -64,7 +71,7 @@ pub(crate) trait ContextErrorExt {
 impl ContextErrorExt for ContextError {
     fn labels(&self) -> impl Iterator<Item = &'static str> {
         self.context().filter_map(|context| match context {
-            StrContext::Label(label) => Some(*label),
+            StrContext::Label(label) if !label.starts_with(KIND_TAG) => Some(*label),
             _ => None,
         })
     }

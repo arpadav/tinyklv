@@ -406,7 +406,7 @@ fn a_struct_with_only_the_unknown_field_round_trips_its_frames_to_their_bytes() 
 /// overlong varint
 #[test]
 fn a_malformed_inline_unknown_value_is_rejected_naming_the_frame() {
-    let message = "`LossySensor` frame (its `unknown` decoder failed before the end of the input)";
+    let message = "`LossySensor` item (its `unknown` decoder failed before the end of the input)";
     #[rustfmt::skip]
     let overlong: &[u8] = &[
         // unknown field 4, wire 0 VARINT, Inline, 9 continuation bytes

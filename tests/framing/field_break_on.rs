@@ -286,7 +286,7 @@ fn a_fields_break_on_skips_ends_or_rejects_its_value() {
     for at in 0..=rejected.len() {
         let (outcome, _) = Report::stream_split(&rejected, at);
         assert!(
-            matches!(outcome, Err("sensor reported corrupt")),
+            matches!(outcome, Err(err) if err.label() == "sensor reported corrupt"),
             "split at {at}: {outcome:?}",
         );
     }

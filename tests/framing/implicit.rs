@@ -21,7 +21,6 @@ use tinyklv::dec::string as decs;
 use tinyklv::enc::binary as encb;
 use tinyklv::enc::string as encs;
 use tinyklv::prelude::*;
-use tinyklv::traits::ResumePartial;
 
 // --------------------------------------------------
 // external
@@ -463,25 +462,16 @@ fn an_implicit_value_cut_at_the_end_of_the_input_is_truncation() {
     ];
     for (head, cut, before) in cases {
         let wire = [head, cut].concat();
-        let (sent, last) = wire.split_at(wire.len() - 1);
         let held = cut.len() - 1;
         // --------------------------------------------------
-        // streaming: pauses with the cut frame unconsumed, then the rest completes it
+        // streaming: pauses with the cut frame unconsumed, then the rest completes it, at every
+        // chunk split
         // --------------------------------------------------
-        let mut cursor = sent;
-        let Ok(Packet::NeedMore(partial)) = Beacon::decode_partial(&mut cursor) else {
-            panic!("expected NeedMore for {sent:02X?}");
-        };
-        assert_eq!(cursor.len(), held, "streaming paused at the cut frame");
-        let resumed = [cursor, last].concat();
-        match Beacon::resume_partial(&mut &resumed[..], partial) {
-            Ok(Packet::NeedMore(partial)) => assert_eq!(partial.finalize(), Ok(whole.clone())),
-            other => panic!("expected NeedMore at the end of {wire:02X?}, got {other:?}"),
-        }
+        whole.assert_decodes_from(&wire);
         // --------------------------------------------------
         // one-shot: the frame before the cut one, the cursor at the cut frame's start
         // --------------------------------------------------
-        let mut cursor = sent;
+        let mut cursor = &wire[..wire.len() - 1];
         assert_eq!(Beacon::decode_value(&mut cursor), Ok(before));
         assert_eq!(cursor.len(), held, "one-shot stopped at the cut frame");
     }

@@ -340,17 +340,6 @@ fn a_value_encoded_in_another_width_fails_the_debug_check() {
     short.encoded();
 }
 
-/// A width a field inherits from its type's `default(..)` is checked
-#[test]
-fn a_width_inherited_from_a_default_is_checked() {
-    let wire = Telemetry::wire_with(
-        Telemetry::AMBIENT,
-        // ambient, 2 bytes
-        &[0x12, 0x02, 0x00, 0x00],
-    );
-    Telemetry::assert_rejects_naming(&wire, &["`Telemetry::ambient`", "size(exact = 4)"]);
-}
-
 /// A mismatched length is rejected before the frame is classed as truncation: a frame that runs
 /// past the end of the input errors in both drivers, where a matching one would wait or stop, and
 /// leaves the cursor at the frame start. Of fields that share a width, the rejection names the

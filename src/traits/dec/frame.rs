@@ -3,7 +3,7 @@
 //! Provides [`DecodeFrame`], which combines [`SeekSentinel`] and [`DecodeValue`]
 //! into a single operation that locates the next packet in a byte stream and
 //! decodes its body, and [`DrainFrames`], which calls [`DecodeFrame`] repeatedly
-//! to collect every packet from a stream into a [`Vec`]
+//! to collect the packets of a stream into a [`Vec`] until one fails
 //!
 //! Both traits are blanket-implemented for any `T` that satisfies their
 //! respective bounds, so manual impls are almost never needed
@@ -71,10 +71,10 @@ where
 {
     /// Seeks the sentinel boundary in `input` and decodes the framed packet body
     ///
-    /// On success, `input` is advanced past the sentinel, length prefix, and
-    /// all body bytes. On failure, context is attached referencing the outer
-    /// `input` position so that errors report the stream offset of the packet,
-    /// not the offset within the isolated body slice
+    /// Once the seek succeeds, `input` is advanced past the sentinel, length prefix, and all body
+    /// bytes, whether or not the body then decodes. A body that fails to decode gains the label
+    /// `Unable to parse data embedded in packet` after any labels it carries, and the error's
+    /// display prints only the first
     ///
     /// # Arguments
     ///
@@ -82,8 +82,14 @@ where
     ///
     /// # Returns
     ///
-    /// `Ok(Self)` when the sentinel is found and the body decodes successfully,
-    /// or a [`winnow::error::ContextError`] if either step fails
+    /// `Ok(Self)` when the sentinel is found and the body decodes successfully
+    ///
+    /// # Errors
+    ///
+    /// - [`SeekSentinel::seek_sentinel`] finds no complete packet: its error, `input` where the
+    ///   seek left it
+    /// - The body fails to decode: [`DecodeValue::decode_value`]'s error with the label above,
+    ///   `input` past the packet
     fn decode_frame(input: &mut S) -> crate::Result<Self>;
 }
 /// [`DecodeFrame`] implementation for all types `T` that implement [`SeekSentinel`] and [`DecodeValue`]
@@ -92,7 +98,7 @@ where
 ///
 /// * [`SeekSentinel::seek_sentinel`] locates the sentinel in `input`, consumes sentinel + length + body, and returns the body as a sub-slice (`sought`)
 /// * [`DecodeValue::decode_value`] is then run on the sub-slice, so partial consumption during decode does not bleed into the outer `input`
-/// * On decode failure, context is attached referencing the outer `input` position for better error messages
+/// * On decode failure, the error gains a trailing label naming the embedded packet
 impl<S, T> DecodeFrame<S> for T
 where
     S: winnow::stream::Stream,
@@ -111,17 +117,12 @@ where
     }
 }
 
-/// Decodes all available KLV frames from a stream, accumulating them into a [`Vec`]
+/// Decodes KLV frames from a stream until one fails, accumulating them into a [`Vec`]
 ///
-/// Calls [`DecodeFrame::decode_frame`] in a loop until the stream is exhausted
-/// or a clean end-of-input is reached. The two termination cases are:
-///
-/// * (a) The next [`DecodeFrame::decode_frame`] call fails without consuming any
-///   bytes - this is an EOF-style end and `Ok(items)` is returned with whatever
-///   was accumulated
-/// * (b) A real mid-stream parser error is encountered - the error is propagated
-///   with full context so callers are not left guessing whether an empty [`Vec`]
-///   means "no items" or "parse failed on item N"
+/// Calls [`DecodeFrame::decode_frame`] in a loop. The first call that fails ends the loop,
+/// whatever its cause: the end of the input, a missing sentinel, or a malformed body. `input` is
+/// rewound to where that call began and the frames before it are returned, so an error is never
+/// propagated: a malformed frame, like a cut one, shows only as `input` left at it
 ///
 /// A blanket impl covers every `T: DecodeFrame<S>`
 ///
@@ -164,8 +165,7 @@ where
 {
     /// Repeatedly calls [`DecodeFrame::decode_frame`] and collects results into a [`Vec`]
     ///
-    /// Returns `Ok(Vec<Self>)` once the stream is cleanly exhausted, or
-    /// propagates the first mid-stream error encountered
+    /// Stops at the first call that fails, rewinding `input` to where it began
     ///
     /// # Arguments
     ///
@@ -173,8 +173,12 @@ where
     ///
     /// # Returns
     ///
-    /// `Ok(Vec<Self>)` containing all decoded frames, or a [`winnow::error::ContextError`]
-    /// if a parse error occurs mid-stream
+    /// `Ok(Vec<Self>)` containing every frame decoded before the first failure
+    ///
+    /// # Errors
+    ///
+    /// - The blanket impl returns none: a frame that fails ends the loop instead. Another impl
+    ///   may
     fn drain_frames(input: &mut S) -> crate::Result<Vec<Self>>;
 }
 /// [`DrainFrames`] implementation for all types `T` that implement [`DecodeFrame`]

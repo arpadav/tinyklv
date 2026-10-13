@@ -1,14 +1,16 @@
-//! Matrix tests for the `enc` dispatch sigils: none / `&`
+//! Matrix tests for the `enc` dispatch sigils: none / `&` / `*`
 //!
-//! Covers both call-shapes in the Encode codegen template:
-//! * `enc = func`  -> `func(&self.field)`                          (`Fn(&T) -> O`)
-//! * `enc = *func` -> `func(EncodeAs::encode_as(&self.field))`     dispatches via
-//!   the [`EncodeAs`] trait: primitives by value (Copy), `String -> &str`,
+//! Covers the three call-shapes in the Encode codegen template:
+//! * `enc = func`  -> `func(&self.field, out)`                          (`Fn(&T, ..)`)
+//! * `enc = &func` -> `func(EncodeAs::encode_as(&self.field), out)`     dispatches via
+//!   the [`EncodeAs`] trait: a primitive as `&Self`, `String -> &str`,
 //!   `Vec<T> -> &[T]`, `Box<T>/Rc<T>/Arc<T> -> &T`. No clone, no heap alloc
+//! * `enc = *func` -> `func(self.field, out)`                           (`Fn(T, ..)`):
+//!   a `Copy` primitive by value
 //!
 //! Each sigil is exercised on both a required field and an `Option<T>` field
 //! so the optional branch of the codegen is also verified. Roundtrip via
-//! `decode_frame` / `encode_frame` confirms the generated closure shapes
+//! `decode_frame` / `encode_frame` confirms the generated call shapes
 //! type-check and produce identical bytes
 // --------------------------------------------------
 // local

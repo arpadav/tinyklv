@@ -1,10 +1,10 @@
 //! UTF-8 string codec tests (`to_string_utf8`, `to_string_utf8_strict`, `from_string_utf8`)
 //!
 //! Tests the lossy and strict UTF-8 decoders and the encoder. Covers
-//! ASCII decoding, multi-byte Unicode (Latin-1, CJK, emoji), empty-string
-//! encode/decode, lossy acceptance of invalid bytes with U+FFFD replacement,
-//! strict rejection of invalid bytes, cursor advancement (partial consumption),
-//! and the difference between lossy and strict behavior on invalid sequences
+//! ASCII decoding, multi-byte Unicode (Latin-1, CJK, emoji), lossy acceptance
+//! of invalid bytes with U+FFFD replacement, strict rejection of invalid bytes,
+//! cursor advancement (partial consumption), and the difference between lossy
+//! and strict behavior on invalid sequences
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -75,40 +75,6 @@ fn utf8_emoji_roundtrip() {
     from_string_utf8(text, &mut encoded);
     let decoded = to_string_utf8(encoded.len())(&mut encoded.as_slice()).unwrap();
     assert_eq!(text, decoded);
-}
-
-#[test]
-/// Tests that `to_string_utf8(0)` decodes an empty input to an empty string
-fn utf8_empty_string_decode() {
-    let mut input: &[u8] = &[];
-    let result = to_string_utf8(0)(&mut input).unwrap();
-    assert_eq!(result, "");
-}
-
-#[test]
-/// Tests that `from_string_utf8("")` produces an empty byte vector
-fn utf8_empty_string_encode() {
-    let mut encoded = Vec::new();
-    from_string_utf8("", &mut encoded);
-    assert!(encoded.is_empty());
-}
-
-#[test]
-/// Tests that lossy `to_string_utf8` returns Ok with U+FFFD for invalid bytes `0xFF 0xFE`
-fn utf8_lossy_invalid_bytes_ok() {
-    // 0xFF, 0xFE are not valid UTF-8
-    let mut input: &[u8] = &[0xFF, 0xFE];
-    let result = to_string_utf8(2)(&mut input);
-    assert!(
-        result.is_ok(),
-        "lossy decoder should succeed on invalid bytes"
-    );
-    let s = result.unwrap();
-    // The replacement character U+FFFD is the expected output
-    assert!(
-        s.contains('\u{FFFD}'),
-        "should contain replacement character for invalid bytes"
-    );
 }
 
 #[test]

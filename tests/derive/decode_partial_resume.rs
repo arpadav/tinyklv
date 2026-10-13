@@ -20,6 +20,7 @@
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
+use tinyklv::traits::PartialError;
 
 #[derive(Klv, Debug, Clone, PartialEq)]
 #[klv(
@@ -207,7 +208,7 @@ fn try_from_partial_ok() {
 
 #[test]
 /// Missing required field at end-of-body: finalisation surfaces a
-/// `&'static str` label whose text names the offending field. Same
+/// `PartialError` whose label names the offending field. Same
 /// information the historical inline `gen_item_set_progress` produced,
 /// now stripped of its synthetic input/checkpoint context (which the
 /// previous design had to fabricate)
@@ -221,7 +222,8 @@ fn missing_required_label_via_finalize() {
         other => panic!("expected NeedMore (no Done break), got {}", kind(&other)),
     };
     let label: &'static str = <MissingReq as core::convert::TryFrom<_>>::try_from(p)
-        .expect_err("partial must fail finalisation: required `b` is missing");
+        .expect_err("partial must fail finalisation: required `b` is missing")
+        .label();
     assert!(
         label.contains("MissingReq::b"),
         "label must name the missing required field; got: {label}"
@@ -307,7 +309,7 @@ fn decoder_resume_with_optional() {
 ///
 /// Returns `"Ok(Ready)"`, `"Ok(NeedMore)"`, or `"Err(label)"` so that
 /// test panics name the actual variant without requiring `Debug` on `T` or `P`
-fn kind<T, P>(p: &Result<Packet<T, P>, &'static str>) -> &'static str
+fn kind<T, P>(p: &Result<Packet<T, P>, PartialError>) -> &'static str
 where
     P: tinyklv::Partial<Final = T>,
 {

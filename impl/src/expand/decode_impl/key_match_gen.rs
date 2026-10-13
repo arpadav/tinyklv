@@ -17,14 +17,14 @@
 // local
 // --------------------------------------------------
 use super::{
-    LoopCtx,
+    ErrorKind, LoopCtx,
     framing::{DecodeFraming, UnknownDecoder},
     loop_driver::{ParseSite, TakeInto},
 };
 use crate::{
     ast::{
         attr::{
-            FieldKey, UnknownField,
+            FieldKey, MainContainer, UnknownField,
             size::{LenSource, SizeSpec},
         },
         symbol, types,
@@ -45,6 +45,9 @@ pub(super) enum ValueSrc {
     /// which a `size(exact = N)` field first checks is `N` long; a known field's decode error is
     /// swallowed via `.ok()`
     HeaderSliced,
+    /// [`Self::HeaderSliced`] under the container's `strict`: a decode error, or a byte the decoder
+    /// leaves unread, is a malformed value
+    StrictSliced,
     /// `input` itself, because the value delimits itself; a decode error goes to
     /// [`LoopDriver::on_parse_fail`](super::loop_driver::LoopDriver::on_parse_fail)
     Inline,
@@ -76,13 +79,19 @@ impl ValueSrc {
     ///
     /// # Arguments
     ///
+    /// * `input` - The container, whose `strict` picks the source
     /// * `size` - The field's `size(..)`
     ///
     /// # Returns
     ///
-    /// [`Self::HeaderSliced`], or `None` for a `size(implicit)` value ([`Self::implicit`])
-    pub(super) fn header_sliced(size: Option<&SizeSpec>) -> Option<Self> {
-        Self::implicit(size).is_none().then_some(Self::HeaderSliced)
+    /// [`Self::StrictSliced`] under `strict`, else [`Self::HeaderSliced`], or `None` for a
+    /// `size(implicit)` value ([`Self::implicit`])
+    pub(super) fn header_sliced(input: &MainContainer, size: Option<&SizeSpec>) -> Option<Self> {
+        let src = match input.attrs.strict {
+            Some(_) => Self::StrictSliced,
+            None => Self::HeaderSliced,
+        };
+        Self::implicit(size).is_none().then_some(src)
     }
 }
 
@@ -95,7 +104,8 @@ impl LoopCtx<'_> {
     /// `__acc` is the in-flight `XxxPartialPacket` accumulator; each arm writes `Some(value)` into
     /// its field. A duplicate key is LAST-WINS: a later successful decode overwrites the earlier
     /// value, of any arm of a `oneof(..)`. A failed sliced decode keeps the earlier value through
-    /// `.ok() .. .or(__acc.#name)`; a failed [`ValueSrc::Inline`] decode leaves the iteration via
+    /// `.ok() .. .or(__acc.#name)`, or under `strict` rejects ([`ValueSrc::StrictSliced`]); a
+    /// failed [`ValueSrc::Inline`] decode leaves the iteration via
     /// [`LoopDriver::on_parse_fail`](super::loop_driver::LoopDriver::on_parse_fail) and never
     /// writes, and a `lengthed` field's [`ValueSrc::Inline`] arm rejects without decoding. The
     /// caller splices the arms into its own `match`, ahead of its `_` arm
@@ -274,7 +284,7 @@ impl LoopCtx<'_> {
     ///
     /// A decoded value is pushed into the field that keeps it, else dropped. A failed decode is
     /// rejected as a value read from `src` ([`Self::value_err_arm`]), labelled with the field,
-    /// else with the struct's frame
+    /// else with the struct's item
     ///
     /// # Arguments
     ///
@@ -322,7 +332,7 @@ impl LoopCtx<'_> {
     /// }
     /// ```
     ///
-    /// The value is rejected with a [`Self::label`] naming `field`, else the struct's frame, and
+    /// The value is rejected with a [`Self::label`] naming `field`, else the struct's item, and
     /// `decoder` in its reason. One read from the main stream ([`ValueSrc::Inline`]) is
     /// truncation at the end of the input, else malformed
     /// ([`LoopDriver::on_parse_fail`](super::loop_driver::LoopDriver::on_parse_fail)), `(its
@@ -337,7 +347,7 @@ impl LoopCtx<'_> {
     ///
     /// * `src` - What the decoder read
     /// * `at_dec` - The decoder's location
-    /// * `field` - The field the value is for, `None` for the struct's frame
+    /// * `field` - The field the value is for, `None` for the struct's item
     /// * `decoder` - How the reason names the decoder
     ///
     /// # Returns
@@ -357,9 +367,10 @@ impl LoopCtx<'_> {
                 self.driver
                     .on_parse_fail(ParseSite::Value { label: &label })
             }
-            ValueSrc::HeaderSliced | ValueSrc::Exact(_) => {
+            ValueSrc::HeaderSliced | ValueSrc::StrictSliced | ValueSrc::Exact(_) => {
                 let reason = format!("its {decoder} rejected the frame's value");
-                self.driver.reject_value(&self.label(field, &reason))
+                self.driver
+                    .reject_value(&self.label(field, &reason), ErrorKind::MalformedValue)
             }
         };
         let err_ty = quote_spanned! {at_dec=>
@@ -631,7 +642,19 @@ impl ArmParts<'_> {
     ///     #prelude
     ///     if let Ok(__val) = #dec #len_arg (&mut __subinput) #latebind { #field_break }
     /// },
-    /// // Inline, `break_on`: as Inline, matching `__val #latebind` and the `Ok` arm `#field_break`
+    /// // StrictSliced
+    /// #key => {
+    ///     #exact_check
+    ///     match #dec #len_arg (&mut __subinput) {
+    ///         Ok(__val) => {
+    ///             if __subinput.eof_offset() != 0 { #reject_label }
+    ///             __acc.#name = Some(__val) #latebind;
+    ///         }
+    ///         Err(__err) => { let __err: ContextError = __err; #reject_value }
+    ///     }
+    /// },
+    /// // Inline, `break_on`: as Inline, matching `__val #latebind` and the `Ok` arm `#field_break`;
+    /// // StrictSliced, `break_on`: likewise
     /// ```
     ///
     /// With `debug` set, the decode result is logged before it is used (a sliced arm then binds
@@ -649,7 +672,7 @@ impl ArmParts<'_> {
             // --------------------------------------------------
             // sliced: decode the bounded slice, once its length is checked
             // --------------------------------------------------
-            ValueSrc::HeaderSliced => {
+            ValueSrc::HeaderSliced | ValueSrc::StrictSliced => {
                 let check = self.exact_check();
                 self.sliced(check)
             }
@@ -671,7 +694,7 @@ impl ArmParts<'_> {
                     symbol::LENGTHED,
                 );
                 let label = ctx.label(Some(name), &reason);
-                let reject = ctx.driver.reject_label(&label);
+                let reject = ctx.driver.reject_label(&label, ErrorKind::WrongLength);
                 quote! {
                     #key => {
                         #reject
@@ -719,6 +742,12 @@ impl ArmParts<'_> {
     /// so a decoder of another value type, or one that takes no length under `size(lengthed)`, is
     /// reported there
     ///
+    /// A [`ValueSrc::StrictSliced`] value its decoder fails on is rejected as
+    /// [`LoopCtx::value_err_arm`] rejects a sliced one, and one whose decoder leaves a byte of
+    /// `__subinput` unread is rejected with a label naming the field
+    /// ([`LoopDriver::reject_label`](super::loop_driver::LoopDriver::reject_label)); either leaves
+    /// the cursor past the frame
+    ///
     /// # Arguments
     ///
     /// * `prelude` - What runs before the decode, if anything
@@ -732,13 +761,13 @@ impl ArmParts<'_> {
             ctx,
             name,
             key,
-            dec,
+            ref dec,
             size,
-            latebind,
+            ref latebind,
             break_on,
-            ..
+            src,
         } = self;
-        let at_dec = helpers::call_site_at(&dec);
+        let at_dec = helpers::call_site_at(dec);
         // --------------------------------------------------
         // the length a `lengthed` decoder is passed, located at the decoder
         // --------------------------------------------------
@@ -766,6 +795,35 @@ impl ArmParts<'_> {
                 (Some(bind), quote_spanned! {at_dec=> __val })
             }
         };
+        // --------------------------------------------------
+        // under `strict`, a decode error, or a byte the decoder leaves unread, rejects the value
+        // --------------------------------------------------
+        if let ValueSrc::StrictSliced = src {
+            let (mapped, on_ok) = self.on_ok(at_dec);
+            let on_err = ctx.value_err_arm(src, at_dec, Some(name), "decoder");
+            let unread = ctx.driver.reject_label(
+                &ctx.label(
+                    Some(name),
+                    "its decoder left bytes of the frame's value unread",
+                ),
+                ErrorKind::MalformedValue,
+            );
+            return quote! {
+                #key => {
+                    #prelude
+                    #bind
+                    match #decoded #mapped {
+                        ::core::result::Result::Ok(__val) => {
+                            if __subinput.eof_offset() != 0 {
+                                #unread
+                            }
+                            #on_ok
+                        }
+                        #on_err
+                    }
+                },
+            };
+        }
         // --------------------------------------------------
         // a decoded value goes where the field's `break_on` decides
         // --------------------------------------------------
@@ -810,29 +868,16 @@ impl ArmParts<'_> {
     /// The single match arm
     fn inline(self) -> TokenStream {
         let log = self.log();
+        let at_dec = helpers::call_site_at(&self.dec);
+        let (mapped, on_ok) = self.on_ok(at_dec);
         let Self {
             ctx,
             name,
             key,
             dec,
-            latebind,
-            break_on,
             ..
         } = self;
-        let at_dec = helpers::call_site_at(&dec);
         let on_err = ctx.value_err_arm(ValueSrc::Inline, at_dec, Some(name), "decoder");
-        let some_val = quote_spanned! {at_dec=> ::core::option::Option::Some(__val) };
-        // --------------------------------------------------
-        // the decoded value is written, or goes where the field's `break_on` decides once the
-        // latebind has mapped it
-        // --------------------------------------------------
-        let (mapped, on_ok) = match break_on {
-            None => (None, quote! { __acc.#name = #some_val #latebind; }),
-            Some(break_on) => {
-                let write = quote! { __acc.#name = #some_val; };
-                (Some(latebind), ctx.field_break(name, break_on, &write))
-            }
-        };
         quote! {
             #key => {
                 let __val = #dec (input);
@@ -844,6 +889,41 @@ impl ArmParts<'_> {
                     #on_err
                 }
             },
+        }
+    }
+
+    /// Emits what an arm runs on its decoded value, bound as `__val`: the value is written, or goes
+    /// where the field's `break_on` decides once the latebind has mapped the decode result
+    ///
+    /// `Some(__val)` is located at the decoder, so a decoder of another value type is reported
+    /// there
+    ///
+    /// # Arguments
+    ///
+    /// * `at_dec` - The decoder's location
+    ///
+    /// # Returns
+    ///
+    /// The latebind the decode result is mapped with before its `match`, `None` when the write
+    /// maps the value itself, and the statements of the `Ok` arm
+    fn on_ok(&self, at_dec: proc_macro2::Span) -> (Option<TokenStream>, TokenStream) {
+        let Self {
+            ctx,
+            name,
+            latebind,
+            break_on,
+            ..
+        } = self;
+        let some_val = quote_spanned! {at_dec=> ::core::option::Option::Some(__val) };
+        match break_on {
+            None => (None, quote! { __acc.#name = #some_val #latebind; }),
+            Some(break_on) => {
+                let write = quote! { __acc.#name = #some_val; };
+                (
+                    Some(latebind.clone()),
+                    ctx.field_break(name, break_on, &write),
+                )
+            }
         }
     }
 

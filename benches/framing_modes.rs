@@ -1,8 +1,9 @@
-//! The decode cost of two framing choices, each measured between structs that differ only in that
-//! choice: a varint value with a length prefix against one without, and opting in to `unknown(..)`
+//! The decode cost of three framing choices, each measured between structs that differ only in
+//! that choice: a varint value with a length prefix against one without, opting in to
+//! `unknown(..)`, and opting in to `strict`; and the encode cost of the `keylen` frame header
 //!
-//! Every benchmark is a one-shot `decode_value` over a wire encoded ahead of time, checked to
-//! decode to its expected value with every byte read before anything is timed:
+//! Every decode benchmark is a one-shot `decode_value` over a wire encoded ahead of time, checked
+//! to decode to its expected value with every byte read before anything is timed:
 //!
 //! * `varint_decode_value` - four varints (`u32`, `u32`, `i32`, `u64`) under one-byte varint keys.
 //!   [`PrefixedVarints`] frames each as key, length, value; [`ImplicitVarints`], under
@@ -13,6 +14,20 @@
 //!   and no `#[klv(unknown)]` field, [`FixedWidthsKeepingUnknown`] keeps the frames in one. All
 //!   three decode the wire with no unknown frame; the two that opt in also decode it with two
 //!   unknown frames after the known ones
+//! * `strict_decode_value` - a key + len struct with two strings and a nested struct,
+//!   [`Contact`], and a keylen protobuf-shaped one with a varint, a float, a string and a nested
+//!   message, [`Shape`]. [`StrictContact`] and [`StrictShape`], and the structs nested in them,
+//!   set `strict`. Each pair decodes the same valid wire, so the gap is what `strict` costs a
+//!   decode that passes it
+//!
+//! Every encode benchmark is an `encode_value` into a cleared buffer, checked to write its expected
+//! wire before anything is timed:
+//!
+//! * `keylen_encode_value` - messages under the [`proto::enc_tag`] header, the tag, then a length
+//!   for a wire 2 LEN value alone: [`KeylenFixedWidths`], three fixed-width values;
+//!   [`KeylenVarints`], eight varints; [`KeylenNamed`], a varint and a string of 2, 32 and 300
+//!   bytes; [`KeylenNested`], a varint and a nested [`KeylenNamed`]. Its arms differ in shape,
+//!   so it compares one tree against another, not one arm against another
 //!
 //! Lower is faster
 //!
@@ -21,7 +36,9 @@
 // local
 // --------------------------------------------------
 use tinyklv::dec::binary as decb;
+use tinyklv::dec::string as decs;
 use tinyklv::enc::binary as encb;
+use tinyklv::enc::string as encs;
 use tinyklv::prelude::*;
 
 // --------------------------------------------------
@@ -44,6 +61,12 @@ const KNOWN_ONLY: &str = "known_only";
 
 /// Bench id parameter of [`FIXED_WIDTHS_WIRE`] followed by [`UNKNOWN_FRAMES`]
 const TWO_UNKNOWN: &str = "two_unknown";
+
+/// Bench id parameter of [`CONTACT_WIRE`]
+const KEY_LEN: &str = "key_len";
+
+/// Bench id parameter of [`SHAPE_WIRE`]
+const KEYLEN: &str = "keylen";
 
 /// The bytes of [`FixedWidths::DECODED`]: each field after its key and its one-byte length
 #[rustfmt::skip]
@@ -76,7 +99,44 @@ const UNKNOWN_FRAMES: &[u8] = &[
     0x21, 0x02, 0x80, 0x01,
 ];
 
-/// LEB128 varint decoders: seven value bits per byte, low group first, the high bit set on every
+/// The bytes of [`Contact::decoded`]: each field after its key and its one-byte length
+#[rustfmt::skip]
+const CONTACT_WIRE: &[u8] = &[
+    // id: key, length 4, 12_345
+    0x01, 0x04, 0x00, 0x00, 0x30, 0x39,
+    // name: key, length 5, "Alice"
+    0x02, 0x05, 0x41, 0x6C, 0x69, 0x63, 0x65,
+    // place: key, length 12
+    0x03, 0x0C,
+    // place.latitude: key, length 4, 47_497_912
+    0x01, 0x04, 0x02, 0xD4, 0xC2, 0xB8,
+    // place.longitude: key, length 4, 19_040_235
+    0x02, 0x04, 0x01, 0x22, 0x87, 0xEB,
+    // email: key, length 17, "alice@example.org"
+    0x04, 0x11,
+    0x61, 0x6C, 0x69, 0x63, 0x65, 0x40, 0x65, 0x78, 0x61, 0x6D, 0x70, 0x6C, 0x65, 0x2E, 0x6F, 0x72,
+    0x67,
+];
+
+/// The bytes of [`Shape::decoded`]: each field after its tag, and a length-delimited one after its
+/// length
+#[rustfmt::skip]
+const SHAPE_WIRE: &[u8] = &[
+    // id: field 1 VARINT, 150
+    0x08, 0x96, 0x01,
+    // scale: field 2 I32, 0.75
+    0x15, 0x00, 0x00, 0x40, 0x3F,
+    // name: field 3 LEN, length 5, "Alice"
+    0x1A, 0x05, 0x41, 0x6C, 0x69, 0x63, 0x65,
+    // origin: field 4 LEN, length 9
+    0x22, 0x09,
+    // origin.x: field 1 VARINT, 300
+    0x08, 0xAC, 0x02,
+    // origin.label: field 2 LEN, length 4, "home"
+    0x12, 0x04, 0x68, 0x6F, 0x6D, 0x65,
+];
+
+/// LEB128 varint codecs: seven value bits per byte, low group first, the high bit set on every
 /// byte but the last
 mod varint {
     // --------------------------------------------------
@@ -172,6 +232,72 @@ mod varint {
     pub(super) fn dec_i32(input: &mut &[u8]) -> Result<i32> {
         dec_u64.map(|value| value as i32).parse_next(input)
     }
+
+    /// Encodes one `u64` as a varint, the inverse of [`dec_u64`]
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - the value to encode
+    /// * `out` - the buffer the varint bytes are appended to
+    pub(super) fn enc_u64(mut value: u64, out: &mut Vec<u8>) {
+        while value >= u64::from(CONTINUATION) {
+            out.push(value as u8 | CONTINUATION);
+            value >>= PAYLOAD_BITS;
+        }
+        out.push(value as u8);
+    }
+
+    /// Encodes one `i32` as a varint, the inverse of [`dec_i32`]: a negative value sign-extends
+    /// to ten bytes
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - the value to encode
+    /// * `out` - the buffer the varint bytes are appended to
+    pub(super) fn enc_i32(value: i32, out: &mut Vec<u8>) {
+        enc_u64(i64::from(value) as u64, out);
+    }
+
+    /// Encodes one `usize` as a varint, the inverse of [`dec_usize`]
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - the value to encode
+    /// * `out` - the buffer the varint bytes are appended to
+    pub(super) fn enc_usize(value: usize, out: &mut Vec<u8>) {
+        enc_u64(value as u64, out);
+    }
+}
+
+/// The protobuf frame header a `keylen` encoder writes: the tag varint, whose low three bits are
+/// the wire type, then the value length as a varint for wire 2 LEN alone
+mod proto {
+    // --------------------------------------------------
+    // local
+    // --------------------------------------------------
+    use super::varint;
+
+    // --------------------------------------------------
+    // constants
+    // --------------------------------------------------
+    /// The tag bits that carry the wire type
+    const WIRE_TYPE_MASK: u32 = 0x07;
+
+    /// The wire type of a length-delimited value
+    const LEN: u32 = 2;
+
+    /// Encodes one frame header
+    ///
+    /// # Arguments
+    ///
+    /// * `(tag, value_len)` - the field tag and the byte length of the value that follows
+    /// * `out` - the buffer the header bytes are appended to
+    pub(super) fn enc_tag((tag, value_len): (u32, usize), out: &mut Vec<u8>) {
+        varint::enc_u64(u64::from(tag), out);
+        if tag & WIRE_TYPE_MASK == LEN {
+            varint::enc_usize(value_len, out);
+        }
+    }
 }
 
 /// The codec of a frame no field declares, in a struct whose every frame carries a one-byte
@@ -222,6 +348,58 @@ mod raw {
     pub(super) fn enc(value: &[u8], out: &mut Vec<u8>) {
         encb::u8_from_usize(value.len(), out);
         out.extend_from_slice(value);
+    }
+}
+
+/// The protobuf frame header the keylen structs read: a varint tag, whose low three bits say how
+/// the value after it is framed
+mod tag {
+    // --------------------------------------------------
+    // local
+    // --------------------------------------------------
+    use super::varint;
+    use tinyklv::Result;
+    use tinyklv::prelude::*;
+
+    // --------------------------------------------------
+    // external
+    // --------------------------------------------------
+    use winnow::error::{ContextError, ParserError};
+
+    // --------------------------------------------------
+    // constants
+    // --------------------------------------------------
+    /// Mask selecting the wire type from a tag's low three bits
+    const WIRE_TYPE: u32 = 0b111;
+
+    /// Wire type 0 VARINT: self-delimiting
+    const VARINT: u32 = 0;
+
+    /// Wire type 2 LEN: a varint length, then that many bytes
+    const LEN: u32 = 2;
+
+    /// Wire type 5 I32: four bytes
+    const I32: u32 = 5;
+
+    /// Decodes one frame header: the tag, then the framing its wire type gives the value
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - the byte stream positioned at a frame header; advanced past it on success
+    ///
+    /// # Returns
+    ///
+    /// `Ok((tag, framing))`, the error of a varint read, or an error on a wire type no struct here
+    /// uses
+    pub(super) fn header(input: &mut &[u8]) -> Result<(u32, Framing)> {
+        let tag = varint::dec_u32(input)?;
+        let framing = match tag & WIRE_TYPE {
+            VARINT => Framing::Inline,
+            LEN => Framing::Sliced(varint::dec_usize(input)?),
+            I32 => Framing::Sliced(size_of::<u32>()),
+            _ => return Err(ContextError::from_input(input)),
+        };
+        Ok((tag, framing))
     }
 }
 
@@ -540,6 +718,478 @@ impl FixedWidthsKeepingUnknown {
     }
 }
 
+/// Where a [`Contact`] is: two coordinates, each after its key and its one-byte length
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    key(dec = decb::u8),
+    len(dec = decb::u8_as_usize),
+    default(typ = i32, dec = decb::be_i32),
+    allow_unimplemented_encode,
+)]
+struct Place {
+    /// Microdegrees north
+    #[klv(key = 0x01)]
+    latitude: i32,
+
+    /// Microdegrees east
+    #[klv(key = 0x02)]
+    longitude: i32,
+}
+
+/// A contact, each field after its key and its one-byte length: an id, a name, where it is and
+/// an email address
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    key(dec = decb::u8),
+    len(dec = decb::u8_as_usize),
+    default(typ = u32, dec = decb::be_u32),
+    default(typ = String, dec = decs::to_string_utf8_strict, size(lengthed)),
+    allow_unimplemented_encode,
+)]
+struct Contact {
+    /// Identifier
+    #[klv(key = 0x01)]
+    id: u32,
+
+    /// Name
+    #[klv(key = 0x02)]
+    name: String,
+
+    /// Where the contact is
+    #[klv(key = 0x03, dec = Place::decode_value)]
+    place: Place,
+
+    /// Email address
+    #[klv(key = 0x04)]
+    email: String,
+}
+
+/// [`Contact`] implementation
+impl Contact {
+    /// The contact [`CONTACT_WIRE`] carries
+    fn decoded() -> Self {
+        Self {
+            id: 12_345,
+            name: "Alice".to_owned(),
+            place: Place {
+                latitude: 47_497_912,
+                longitude: 19_040_235,
+            },
+            email: "alice@example.org".to_owned(),
+        }
+    }
+}
+
+/// [`Place`] under `strict`
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    key(dec = decb::u8),
+    len(dec = decb::u8_as_usize),
+    default(typ = i32, dec = decb::be_i32),
+    allow_unimplemented_encode,
+    strict,
+)]
+struct StrictPlace {
+    /// Microdegrees north
+    #[klv(key = 0x01)]
+    latitude: i32,
+
+    /// Microdegrees east
+    #[klv(key = 0x02)]
+    longitude: i32,
+}
+
+/// [`Contact`] under `strict`
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    key(dec = decb::u8),
+    len(dec = decb::u8_as_usize),
+    default(typ = u32, dec = decb::be_u32),
+    default(typ = String, dec = decs::to_string_utf8_strict, size(lengthed)),
+    allow_unimplemented_encode,
+    strict,
+)]
+struct StrictContact {
+    /// Identifier
+    #[klv(key = 0x01)]
+    id: u32,
+
+    /// Name
+    #[klv(key = 0x02)]
+    name: String,
+
+    /// Where the contact is
+    #[klv(key = 0x03, dec = StrictPlace::decode_value)]
+    place: StrictPlace,
+
+    /// Email address
+    #[klv(key = 0x04)]
+    email: String,
+}
+
+/// [`StrictContact`] implementation
+impl StrictContact {
+    /// The contact [`CONTACT_WIRE`] carries
+    fn decoded() -> Self {
+        Self {
+            id: 12_345,
+            name: "Alice".to_owned(),
+            place: StrictPlace {
+                latitude: 47_497_912,
+                longitude: 19_040_235,
+            },
+            email: "alice@example.org".to_owned(),
+        }
+    }
+}
+
+/// A proto3 message nested in [`Shape`]: `int32 x = 1` (a varint) and `string label = 2`
+/// (length-delimited)
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    keylen(dec = tag::header),
+    default(typ = i32, dec = varint::dec_i32),
+    default(typ = String, dec = decs::to_string_utf8_strict, size(lengthed)),
+    allow_unimplemented_encode,
+)]
+struct Point {
+    /// field 1, wire 0 VARINT - `Inline`
+    #[klv(key = 0x08)]
+    x: i32,
+
+    /// field 2, wire 2 LEN - `Sliced(n)`
+    #[klv(key = 0x12)]
+    label: String,
+}
+
+/// A proto3 message: `int32 id = 1` (a varint), `float scale = 2` (four bytes), `string name = 3`
+/// and `Point origin = 4` (length-delimited)
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    keylen(dec = tag::header),
+    default(typ = i32, dec = varint::dec_i32),
+    default(typ = f32, dec = decb::le_f32),
+    default(typ = String, dec = decs::to_string_utf8_strict, size(lengthed)),
+    allow_unimplemented_encode,
+)]
+struct Shape {
+    /// field 1, wire 0 VARINT - `Inline`
+    #[klv(key = 0x08)]
+    id: i32,
+
+    /// field 2, wire 5 I32 - `Sliced(4)`
+    #[klv(key = 0x15)]
+    scale: f32,
+
+    /// field 3, wire 2 LEN - `Sliced(n)`
+    #[klv(key = 0x1A)]
+    name: String,
+
+    /// field 4, wire 2 LEN - `Sliced(n)`
+    #[klv(key = 0x22, dec = Point::decode_value)]
+    origin: Point,
+}
+
+/// [`Shape`] implementation
+impl Shape {
+    /// The message [`SHAPE_WIRE`] carries
+    fn decoded() -> Self {
+        Self {
+            id: 150,
+            scale: 0.75,
+            name: "Alice".to_owned(),
+            origin: Point {
+                x: 300,
+                label: "home".to_owned(),
+            },
+        }
+    }
+}
+
+/// [`Point`] under `strict`
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    keylen(dec = tag::header),
+    default(typ = i32, dec = varint::dec_i32),
+    default(typ = String, dec = decs::to_string_utf8_strict, size(lengthed)),
+    allow_unimplemented_encode,
+    strict,
+)]
+struct StrictPoint {
+    /// field 1, wire 0 VARINT - `Inline`
+    #[klv(key = 0x08)]
+    x: i32,
+
+    /// field 2, wire 2 LEN - `Sliced(n)`
+    #[klv(key = 0x12)]
+    label: String,
+}
+
+/// [`Shape`] under `strict`
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    keylen(dec = tag::header),
+    default(typ = i32, dec = varint::dec_i32),
+    default(typ = f32, dec = decb::le_f32),
+    default(typ = String, dec = decs::to_string_utf8_strict, size(lengthed)),
+    allow_unimplemented_encode,
+    strict,
+)]
+struct StrictShape {
+    /// field 1, wire 0 VARINT - `Inline`
+    #[klv(key = 0x08)]
+    id: i32,
+
+    /// field 2, wire 5 I32 - `Sliced(4)`
+    #[klv(key = 0x15)]
+    scale: f32,
+
+    /// field 3, wire 2 LEN - `Sliced(n)`
+    #[klv(key = 0x1A)]
+    name: String,
+
+    /// field 4, wire 2 LEN - `Sliced(n)`
+    #[klv(key = 0x22, dec = StrictPoint::decode_value)]
+    origin: StrictPoint,
+}
+
+/// [`StrictShape`] implementation
+impl StrictShape {
+    /// The message [`SHAPE_WIRE`] carries
+    fn decoded() -> Self {
+        Self {
+            id: 150,
+            scale: 0.75,
+            name: "Alice".to_owned(),
+            origin: StrictPoint {
+                x: 300,
+                label: "home".to_owned(),
+            },
+        }
+    }
+}
+
+/// A sensor sample in `keylen` mode, three fixed-width values: each frame is the tag alone, then
+/// the value
+#[derive(Klv, Debug)]
+#[klv(
+    keylen(enc = proto::enc_tag),
+    allow_unimplemented_decode,
+    default(typ = f32, enc = *encb::le_f32),
+    default(typ = i64, enc = *encb::le_i64),
+    default(typ = u32, enc = *encb::le_u32),
+)]
+struct KeylenFixedWidths {
+    /// Supply voltage, field 2, wire 5 I32
+    #[klv(key = 0x15)]
+    voltage: f32,
+
+    /// Microseconds since the Unix epoch, field 4, wire 1 I64
+    #[klv(key = 0x21)]
+    timestamp: i64,
+
+    /// Seconds since boot, field 5, wire 5 I32
+    #[klv(key = 0x2D)]
+    uptime: u32,
+}
+
+/// [`KeylenFixedWidths`] implementation
+impl KeylenFixedWidths {
+    /// The sample [`Self::WIRE`] carries
+    const SAMPLE: Self = Self {
+        voltage: 3.3,
+        timestamp: 1_760_000_000_000_000,
+        uptime: 86_400,
+    };
+
+    /// The bytes of [`Self::SAMPLE`]: each value little-endian after its tag
+    #[rustfmt::skip]
+    const WIRE: &[u8] = &[
+        // voltage: tag, 3.3
+        0x15, 0x33, 0x33, 0x53, 0x40,
+        // timestamp: tag, 1_760_000_000_000_000
+        0x21, 0x00, 0x00, 0xCE, 0xEE, 0xB5, 0x40, 0x06, 0x00,
+        // uptime: tag, 86_400
+        0x2D, 0x80, 0x51, 0x01, 0x00,
+    ];
+}
+
+/// A radio link's counters in `keylen` mode, eight varints: each frame is the tag alone, then the
+/// varint
+#[derive(Klv, Debug)]
+#[klv(
+    keylen(enc = proto::enc_tag),
+    allow_unimplemented_decode,
+    default(typ = i32, enc = *varint::enc_i32),
+)]
+struct KeylenVarints {
+    /// Packets sent
+    #[klv(key = 0x08)]
+    packets: i32,
+
+    /// Packets sent again
+    #[klv(key = 0x10)]
+    retries: i32,
+
+    /// Received signal strength, dBm
+    #[klv(key = 0x18)]
+    rssi: i32,
+
+    /// Radio channel
+    #[klv(key = 0x20)]
+    channel: i32,
+
+    /// Frames received corrupt
+    #[klv(key = 0x28)]
+    errors: i32,
+
+    /// Packets waiting to be sent
+    #[klv(key = 0x30)]
+    queued: i32,
+
+    /// Packets given up on
+    #[klv(key = 0x38)]
+    dropped: i32,
+
+    /// Round-trip time, microseconds
+    #[klv(key = 0x40)]
+    latency: i32,
+}
+
+/// [`KeylenVarints`] implementation
+impl KeylenVarints {
+    /// The counters [`Self::WIRE`] carries
+    const SAMPLE: Self = Self {
+        packets: 1_500,
+        retries: 3,
+        rssi: -67,
+        channel: 11,
+        errors: 0,
+        queued: 42,
+        dropped: 7,
+        latency: 12_000,
+    };
+
+    /// The bytes of [`Self::SAMPLE`]: each varint after its tag
+    #[rustfmt::skip]
+    const WIRE: &[u8] = &[
+        // packets: tag, 1_500
+        0x08, 0xDC, 0x0B,
+        // retries: tag, 3
+        0x10, 0x03,
+        // rssi: tag, -67 sign-extended
+        0x18, 0xBD, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01,
+        // channel: tag, 11
+        0x20, 0x0B,
+        // errors: tag, 0
+        0x28, 0x00,
+        // queued: tag, 42
+        0x30, 0x2A,
+        // dropped: tag, 7
+        0x38, 0x07,
+        // latency: tag, 12_000
+        0x40, 0xE0, 0x5D,
+    ];
+}
+
+/// A named device in `keylen` mode: a varint, then a string after its tag and its length
+#[derive(Klv, Debug)]
+#[klv(keylen(enc = proto::enc_tag), allow_unimplemented_decode)]
+struct KeylenNamed {
+    /// Device number, field 1, wire 0 VARINT
+    #[klv(key = 0x08, enc = *varint::enc_i32)]
+    id: i32,
+
+    /// Device name, field 2, wire 2 LEN
+    #[klv(key = 0x12, enc = &encs::from_string_utf8)]
+    name: String,
+}
+
+/// [`KeylenNamed`] implementation
+impl KeylenNamed {
+    /// The `id` frame of every sample: tag, 5
+    const ID_FRAME: &[u8] = &[0x08, 0x05];
+
+    /// A 2-byte `name`, and its frame header: tag, length 2
+    const SHORT: (usize, &[u8]) = (2, &[0x12, 0x02]);
+
+    /// A 32-byte `name`, and its frame header: tag, length 32
+    const MEDIUM: (usize, &[u8]) = (32, &[0x12, 0x20]);
+
+    /// A 300-byte `name`, and its frame header: tag, length 300 in two varint bytes
+    const LONG: (usize, &[u8]) = (300, &[0x12, 0xAC, 0x02]);
+
+    /// The sample with a `name` of `len` bytes
+    ///
+    /// # Arguments
+    ///
+    /// * `len` - the byte length of `name`
+    ///
+    /// # Returns
+    ///
+    /// `id = 5` and `len` copies of `n`
+    fn sample(len: usize) -> Self {
+        Self {
+            id: 5,
+            name: "n".repeat(len),
+        }
+    }
+
+    /// The bytes of [`Self::sample`]
+    ///
+    /// # Arguments
+    ///
+    /// * `(len, name_header)` - the byte length of `name`, and its frame header
+    ///
+    /// # Returns
+    ///
+    /// The `id` frame, then the `name` header and bytes
+    fn wire((len, name_header): (usize, &[u8])) -> Vec<u8> {
+        [Self::ID_FRAME, name_header, "n".repeat(len).as_bytes()].concat()
+    }
+}
+
+/// A device report in `keylen` mode: a varint, then a nested [`KeylenNamed`] after its tag and its
+/// length
+#[derive(Klv, Debug)]
+#[klv(keylen(enc = proto::enc_tag), allow_unimplemented_decode)]
+struct KeylenNested {
+    /// Report number, field 1, wire 0 VARINT
+    #[klv(key = 0x08, enc = *varint::enc_i32)]
+    report: i32,
+
+    /// The reporting device, field 2, wire 2 LEN
+    #[klv(key = 0x12, enc = KeylenNamed::encode_value)]
+    device: KeylenNamed,
+}
+
+/// [`KeylenNested`] implementation
+impl KeylenNested {
+    /// The `report` frame, then the `device` frame header: tag, length 36
+    const HEAD: &[u8] = &[0x08, 0x01, 0x12, 0x24];
+
+    /// Report 1 of the [`KeylenNamed::MEDIUM`] device
+    ///
+    /// # Returns
+    ///
+    /// The report [`Self::wire`] carries
+    fn sample() -> Self {
+        Self {
+            report: 1,
+            device: KeylenNamed::sample(KeylenNamed::MEDIUM.0),
+        }
+    }
+
+    /// The bytes of [`Self::sample`]
+    ///
+    /// # Returns
+    ///
+    /// [`Self::HEAD`], then the device's 36 bytes
+    fn wire() -> Vec<u8> {
+        [Self::HEAD, &KeylenNamed::wire(KeylenNamed::MEDIUM)].concat()
+    }
+}
+
 /// Checks that `wire` decodes to `expected` with every byte read, then times the one-shot
 /// [`DecodeValue::decode_value`] over it
 ///
@@ -583,6 +1233,56 @@ fn bench_decode<T>(
     // --------------------------------------------------
     group.bench_function(id, |b| {
         b.iter(|| T::decode_value(&mut black_box(wire)));
+    });
+}
+
+/// Checks that `value` encodes to `wire`, then times [`EncodeValue::encode_value`] of it into a
+/// buffer cleared before each encode
+///
+/// The check runs once, outside the timed loop, so a wrong wire stops the run instead of timing an
+/// encode that writes other bytes. The buffer is reused, as a caller encoding record after record
+/// reuses its own, so a timed encode allocates only what the generated code does. Each timed
+/// encode reads a black-boxed reference to the value, so the optimizer cannot fold the known
+/// fields into the encoder, and the encoded length goes back to criterion
+///
+/// # Arguments
+///
+/// * `group` - the criterion group to register under
+/// * `id` - the benchmark id
+/// * `value` - the value to encode
+/// * `wire` - the bytes `value` encodes to
+///
+/// # Panics
+///
+/// When `value` does not encode to `wire`
+fn bench_encode<T>(
+    group: &mut BenchmarkGroup<'_, WallTime>,
+    id: BenchmarkId,
+    value: &T,
+    wire: &[u8],
+) where
+    T: EncodeValue + Debug,
+{
+    // --------------------------------------------------
+    // the value encodes to the expected wire
+    // --------------------------------------------------
+    let mut out = Vec::new();
+    value.encode_value(&mut out);
+    assert_eq!(
+        out,
+        wire,
+        "`{}` encodes {value:?} to another wire",
+        type_name::<T>()
+    );
+    // --------------------------------------------------
+    // time the encode
+    // --------------------------------------------------
+    group.bench_function(id, |b| {
+        b.iter(|| {
+            out.clear();
+            black_box(value).encode_value(&mut out);
+            out.len()
+        });
     });
 }
 
@@ -669,5 +1369,102 @@ fn unknown_decode_value(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, varint_decode_value, unknown_decode_value);
+/// Times [`Contact`] and [`StrictContact`] decoding [`CONTACT_WIRE`], and [`Shape`] and
+/// [`StrictShape`] decoding [`SHAPE_WIRE`]
+///
+/// No throughput is set, as the figure to compare is the time per decode of the same wire
+///
+/// # Arguments
+///
+/// * `c` - the criterion driver to register the benchmark group under
+fn strict_decode_value(c: &mut Criterion) {
+    let mut group = c.benchmark_group("strict_decode_value");
+    group.sample_size(SAMPLE_SIZE);
+    // --------------------------------------------------
+    // key + len
+    // --------------------------------------------------
+    bench_decode(
+        &mut group,
+        BenchmarkId::new("lenient", KEY_LEN),
+        CONTACT_WIRE,
+        &Contact::decoded(),
+    );
+    bench_decode(
+        &mut group,
+        BenchmarkId::new("strict", KEY_LEN),
+        CONTACT_WIRE,
+        &StrictContact::decoded(),
+    );
+    // --------------------------------------------------
+    // keylen
+    // --------------------------------------------------
+    bench_decode(
+        &mut group,
+        BenchmarkId::new("lenient", KEYLEN),
+        SHAPE_WIRE,
+        &Shape::decoded(),
+    );
+    bench_decode(
+        &mut group,
+        BenchmarkId::new("strict", KEYLEN),
+        SHAPE_WIRE,
+        &StrictShape::decoded(),
+    );
+    group.finish();
+}
+
+/// Times [`KeylenFixedWidths`], [`KeylenVarints`], [`KeylenNamed`] with a `name` of each benched
+/// length, and [`KeylenNested`] encoding their samples
+///
+/// No throughput is set, as the figure to compare is the time per encode of the same message on
+/// another tree
+///
+/// # Arguments
+///
+/// * `c` - the criterion driver to register the benchmark group under
+fn keylen_encode_value(c: &mut Criterion) {
+    let mut group = c.benchmark_group("keylen_encode_value");
+    group.sample_size(SAMPLE_SIZE);
+    // --------------------------------------------------
+    // fixed-width values, then varints
+    // --------------------------------------------------
+    bench_encode(
+        &mut group,
+        BenchmarkId::from_parameter("fixed_widths"),
+        &KeylenFixedWidths::SAMPLE,
+        KeylenFixedWidths::WIRE,
+    );
+    bench_encode(
+        &mut group,
+        BenchmarkId::from_parameter("varints"),
+        &KeylenVarints::SAMPLE,
+        KeylenVarints::WIRE,
+    );
+    // --------------------------------------------------
+    // a string of each benched length, then a nested message
+    // --------------------------------------------------
+    for name in [KeylenNamed::SHORT, KeylenNamed::MEDIUM, KeylenNamed::LONG] {
+        bench_encode(
+            &mut group,
+            BenchmarkId::new("named", name.0),
+            &KeylenNamed::sample(name.0),
+            &KeylenNamed::wire(name),
+        );
+    }
+    bench_encode(
+        &mut group,
+        BenchmarkId::from_parameter("nested"),
+        &KeylenNested::sample(),
+        &KeylenNested::wire(),
+    );
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    varint_decode_value,
+    unknown_decode_value,
+    strict_decode_value,
+    keylen_encode_value
+);
 criterion_main!(benches);

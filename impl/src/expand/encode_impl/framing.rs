@@ -8,14 +8,20 @@
 //!   value at a known width or back-fills its length. A `size(implicit)` value has no length, so
 //!   it is written straight after its key; so is a retained unknown frame, whose encoder writes
 //!   the frame's own length
-//! * [`EncodeFraming::Fused`] stages every value, then hands `(key, value_len)` to the `keylen`
-//!   encoder, which writes the key and, when the key implies one, the length
+//! * [`EncodeFraming::Fused`] hands `(key, value_len)` to the `keylen` encoder, which writes the
+//!   key and, when the key implies one, the length: before a value of known width, else after the
+//!   value, then rotated in front of it
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{fixed_width, length_prefix::LengthPrefix, staging::Staging};
+use super::{
+    field_length_plan::{FieldLengthPlan, ValueWidth},
+    fixed_width,
+    length_prefix::LengthPrefix,
+    staging::Staging,
+};
 use crate::{
     ast::{
         attr::{
@@ -31,7 +37,7 @@ use crate::{
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use quote::{ToTokens, quote_spanned};
+use quote::{ToTokens, quote, quote_spanned};
 
 // --------------------------------------------------
 // constants
@@ -205,11 +211,10 @@ impl<'a> EncodeFraming<'a> {
 
     /// Declares the scratch buffer, when a field value is staged before its header is written
     ///
-    /// A variable-width length prefix or a fused header encodes each field value into a scratch
-    /// buffer before its frame header is written. A fixed-width prefix, or a `size(implicit)`
-    /// value, writes directly to the caller output, so a container with no staged value declares
-    /// nothing and keeps generated methods free of unused locals. A retained unknown frame is
-    /// staged only under a fused header, which always declares the buffer
+    /// A variable-width length prefix encodes each field value into a scratch buffer before its
+    /// frame header is written. A fixed-width prefix, a `size(implicit)` value, or a fused header
+    /// writes directly to the caller output, so a container with no staged value declares nothing
+    /// and keeps generated methods free of unused locals. A retained unknown frame is never staged
     ///
     /// # Arguments
     ///
@@ -226,18 +231,21 @@ impl<'a> EncodeFraming<'a> {
                     input.klv_keys().any(|key| key.codec.implicit().is_none())
                 }
             },
-            Self::Fused { .. } => true,
+            Self::Fused { .. } => false,
         };
         staged.then(|| Staging::Scratch.declare())
     }
 
     /// Writes one frame: under a separate header, its key through the key encoder, then what
-    /// `separate` writes after it; under a fused header, its value staged and the `keylen` header
-    /// written from `(key, staged_len)` ([`KeylenEncoder::write_staged`])
+    /// `separate` writes after it; under a fused header, a value of known width after the
+    /// `keylen` header written from `(key, W)` ([`KeylenEncoder::write_known`]), any other value
+    /// before the header written from `(key, value_len)` and rotated in front of it
+    /// ([`KeylenEncoder::write_rotated`])
     ///
     /// # Arguments
     ///
     /// * `key` - The frame's key expression
+    /// * `plan` - Whether the value's width is known before it is written
     /// * `value_write` - Builds the statements encoding the value into the buffer it is given
     /// * `span` - Span of the emitted write
     /// * `separate` - Builds the rest of a separate frame from its key write and the length
@@ -249,6 +257,7 @@ impl<'a> EncodeFraming<'a> {
     pub(super) fn write_frame(
         self,
         key: &impl ToTokens,
+        plan: FieldLengthPlan<'_>,
         value_write: impl FnOnce(&proc_macro2::TokenStream) -> proc_macro2::TokenStream,
         span: proc_macro2::Span,
         separate: impl FnOnce(proc_macro2::TokenStream, LengthPrefix<'a>) -> proc_macro2::TokenStream,
@@ -257,9 +266,14 @@ impl<'a> EncodeFraming<'a> {
             Self::Separate {
                 key_encoder, len, ..
             } => separate(key_encoder.write(key, span), len),
-            Self::Fused { keylen_encoder } => {
-                keylen_encoder.write_staged(Staging::Scratch, key, value_write, span)
-            }
+            Self::Fused { keylen_encoder } => match plan {
+                FieldLengthPlan::KnownValueWidth(value) => {
+                    keylen_encoder.write_known(key, value, value_write, span)
+                }
+                FieldLengthPlan::UnknownValueWidth => {
+                    keylen_encoder.write_rotated(key, value_write, span)
+                }
+            },
         }
     }
 }
@@ -296,35 +310,100 @@ pub(super) struct KeylenEncoder<'a>(&'a types::XcoderType);
 
 /// [`KeylenEncoder`] implementation
 impl KeylenEncoder<'_> {
-    /// Writes one frame whose value is staged first: stage, write the header, then append
+    /// Writes one frame whose value width is known: the header from `(key, W)`, then the value
     ///
-    /// The value is encoded into the `staging` buffer, the header is written from `key` and the
-    /// staged length, and the staged bytes follow it. The encoder call, staged length included, is
-    /// located at the `keylen` encoder with the derive's call-site hygiene, so an encoder with the
-    /// wrong signature is reported at the encoder while the derive's locals still resolve
+    /// The value write is checked in debug builds to be `W` bytes ([`ValueWidth::write_after`])
     ///
     /// # Arguments
     ///
-    /// * `staging` - The buffer the value is staged in
     /// * `key` - The frame's key expression
-    /// * `value_write` - Builds the statements encoding the value into the buffer it is given
+    /// * `value` - The value's known width
+    /// * `value_write` - Builds the statements appending the value bytes to the buffer it is given
     /// * `span` - Span of the emitted write
     ///
     /// # Returns
     ///
-    /// The staged write from [`Staging::write`]
-    pub(super) fn write_staged(
+    /// A block writing the complete frame into `out`
+    pub(super) fn write_known(
         self,
-        staging: Staging,
+        key: &impl ToTokens,
+        value: ValueWidth<'_>,
+        value_write: impl FnOnce(&proc_macro2::TokenStream) -> proc_macro2::TokenStream,
+        span: proc_macro2::Span,
+    ) -> proc_macro2::TokenStream {
+        let bytes = value.bytes;
+        let call = self.header(key);
+        let header = quote! { let __value_len = #bytes; #call };
+        value.write_after(header, value_write, span)
+    }
+
+    /// Writes one frame whose value width is unknown: the value, then the header from
+    /// `(key, value_len)`, rotated in front of the value
+    ///
+    /// The header is written at the end of `out`, after the value, so no buffer stages the value.
+    /// A one- or two-byte header is moved by shifting the value up with `copy_within` and storing
+    /// its bytes in front of it; a longer one by `rotate_right`, which is not inlined and copies
+    /// three times, a cost that only a short frame notices
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The frame's key expression
+    /// * `value_write` - Builds the statements appending the value bytes to the buffer it is given
+    /// * `span` - Span of the emitted write
+    ///
+    /// # Returns
+    ///
+    /// A block writing the complete frame into `out`
+    pub(super) fn write_rotated(
+        self,
         key: &impl ToTokens,
         value_write: impl FnOnce(&proc_macro2::TokenStream) -> proc_macro2::TokenStream,
         span: proc_macro2::Span,
     ) -> proc_macro2::TokenStream {
+        let value_write = value_write(&quote_spanned! { span => out });
+        let header = self.header(key);
+        quote_spanned! { span =>
+            {
+                let __frame_start = out.len();
+                #value_write
+                let __header_start = out.len();
+                let __value_len = __header_start - __frame_start;
+                #header
+                match out[__header_start..] {
+                    [__first] => {
+                        out.copy_within(__frame_start..__header_start, __frame_start + 1);
+                        out[__frame_start] = __first;
+                    }
+                    [__first, __second] => {
+                        out.copy_within(__frame_start..__header_start, __frame_start + 2);
+                        out[__frame_start] = __first;
+                        out[__frame_start + 1] = __second;
+                    }
+                    _ => {
+                        let __header_len = out.len() - __header_start;
+                        out[__frame_start..].rotate_right(__header_len);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The header write from `(key, __value_len)`
+    ///
+    /// The encoder call is located at the `keylen` encoder with the derive's call-site hygiene,
+    /// so an encoder with the wrong signature is reported at the encoder while the derive's
+    /// `__value_len` and `out` still resolve
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The frame's key expression
+    ///
+    /// # Returns
+    ///
+    /// The encoder call statement
+    fn header(self, key: &impl ToTokens) -> proc_macro2::TokenStream {
         let Self(keylen_encoder) = self;
         let at = helpers::call_site_at(keylen_encoder);
-        let mut buffer = staging.buffer();
-        buffer.set_span(at);
-        let header = quote_spanned! { at => #keylen_encoder((#key, #buffer.len()), out); };
-        staging.write(header, value_write, span)
+        quote_spanned! { at => #keylen_encoder((#key, __value_len), out); }
     }
 }

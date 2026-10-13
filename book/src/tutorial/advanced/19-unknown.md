@@ -31,7 +31,7 @@ on. A frame that consumes no byte, key included, is an error.
 
 Without the field, each decoded value is dropped, `enc` may be left out, and a
 `keylen` struct skips a `Sliced` unknown frame undecoded. With it, encode writes
-the declared fields, then the kept frames in the order they were decoded.
+the kept frames in decode order after the fields, before any `break_on` one.
 
 Run this example: `cargo run --example book_19_unknown`
 

@@ -1,8 +1,8 @@
-//! The fixed-prefix field length kinds
+//! The field length kinds
 //!
-//! It names the ways a field's value length is written under a fixed-width length prefix, so
-//! emission modules can choose a concrete write shape, writes a value of known width, and checks
-//! in debug builds that a value is its known width
+//! It names the ways a field's value length is written under a fixed-width length prefix or a
+//! `keylen` header, so emission modules can choose a concrete write shape, writes a value of known
+//! width, and checks in debug builds that a value is its known width
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -76,10 +76,13 @@ impl ValueWidth<'_> {
     }
 }
 
-/// How one field's value length is written under a fixed-width length prefix
+/// How one field's value length is written under a fixed-width length prefix or a `keylen` header
+#[derive(Debug, Clone, Copy)]
 pub(super) enum FieldLengthPlan<'a> {
-    /// Value byte width is known at compile time
+    /// Value byte width is known at compile time, so the length is written before the value
     KnownValueWidth(ValueWidth<'a>),
-    /// Value width is unknown, so the container's fixed length slot is reserved and back-filled
-    ReservedLengthSlot,
+    /// Value width is unknown until the value is written: the container's fixed length slot is
+    /// reserved and back-filled, a `keylen` header is written after the value and rotated in
+    /// front of it
+    UnknownValueWidth,
 }

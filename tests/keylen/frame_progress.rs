@@ -46,7 +46,7 @@ struct Peeked {
 /// [`Peeked`] implementation
 impl Peeked {
     /// What both drivers' rejection of a frame that consumed no input names
-    const NO_PROGRESS: &[&str] = &["`Peeked` frame", "consumed no input"];
+    const NO_PROGRESS: &[&str] = &["`Peeked` item", "consumed no input"];
 
     /// Decodes a frame header: the type byte as the key, left in the input for the value
     ///

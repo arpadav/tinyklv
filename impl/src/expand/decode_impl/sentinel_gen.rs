@@ -9,7 +9,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{DecodeCtx, framing::DecodeFraming};
+use super::{DecodeCtx, ErrorKind, framing::DecodeFraming};
 
 // --------------------------------------------------
 // external
@@ -42,7 +42,9 @@ impl DecodeCtx<'_> {
     ///   sentinel whose length fails short of the end of the input begins no packet, so the
     ///   search resumes one byte past its start. On an error `input` is left at the found
     ///   sentinel, or on a miss at the last `len - 1` bytes, the only ones that may still
-    ///   begin a sentinel
+    ///   begin a sentinel. A miss is [`ErrorKind::MissingSentinel`]; a length or a body that
+    ///   the end of the input cuts is [`ErrorKind::Truncated`], as a value failing there is
+    ///   (DES-12)
     ///
     /// # Returns
     ///
@@ -62,6 +64,7 @@ impl DecodeCtx<'_> {
         };
         let name = &self.input.ident;
         let stream = &self.stream;
+        let (missing, truncated) = (ErrorKind::MissingSentinel, ErrorKind::Truncated);
         let stream_lifetimed = &self.stream_lifetimed;
         let lifetime = &self.lifetime;
         // --------------------------------------------------
@@ -148,10 +151,11 @@ impl DecodeCtx<'_> {
                         let ::core::option::Option::Some(position) = __found else {
                             // only the last `len - 1` bytes may still begin a sentinel
                             *input = &__hay[__hay.len().saturating_sub(#sentinel_len_static_name.saturating_sub(1))..];
-                            return ::core::result::Result::Err(::tinyklv::__export::labeled_error(
+                            return ::core::result::Result::Err(::tinyklv::__export::kinded_error(
                                 input,
                                 &checkpoint,
                                 ::core::concat!("Unable to find recognition sentinel for `", ::core::stringify!(#name), "` packet"),
+                                #missing,
                             ));
                         };
                         let mut __rest: &[u8] = &__hay[position + #sentinel_len_static_name..];
@@ -172,15 +176,18 @@ impl DecodeCtx<'_> {
                                 // the body is cut: the packet is not all here yet
                                 ::core::option::Option::None => {
                                     *input = &__hay[position..];
-                                    return ::core::result::Result::Err(
-                                        ::tinyklv::__export::winnow::error::ParserError::from_input(input),
-                                    );
+                                    return ::core::result::Result::Err(::tinyklv::__export::kinded_error(
+                                        input,
+                                        &checkpoint,
+                                        ::core::concat!("Unable to read packet body for `", ::core::stringify!(#name), "` packet"),
+                                        #truncated,
+                                    ));
                                 }
                             },
                             // the length is cut: the packet is not all here yet
                             ::core::result::Result::Err(__e) if __rest.is_empty() => {
                                 *input = &__hay[position..];
-                                return ::core::result::Result::Err(__e);
+                                return ::core::result::Result::Err(::tinyklv::__export::with_kind(__e, #truncated));
                             }
                             // the length is invalid: this sentinel begins no packet
                             ::core::result::Result::Err(_) => __hay = &__hay[position + 1..],

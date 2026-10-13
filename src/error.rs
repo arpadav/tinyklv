@@ -14,10 +14,11 @@ use winnow::error::{ContextError, StrContext};
 ///
 /// [`ErrorKind::of`] reads the kind of a [`crate::Result`] error, and
 /// [`DecodeIterError::kind`](crate::decoder::DecodeIterError::kind) that of a [`crate::Decoder`]
-/// error. Every error of the BER decoders carries one, as do the UTF-16 decoders' odd-length
-/// rejection and [`Decoder::finish`](crate::Decoder::finish)'s missing required field. An error
-/// built elsewhere, by the derive, by a bare `winnow` parser such as a fixed-width integer's at
-/// the end of the input, or by a custom decoder, has none
+/// error, and [`PartialError::kind`](crate::traits::PartialError::kind) that of a streaming
+/// decode's. Every error of the BER decoders carries one, as do the UTF-16 decoders' odd-length
+/// rejection and every error the derive's decodes and sentinel seek return. An error built
+/// elsewhere, by a bare `winnow` parser such as a fixed-width integer's at the end of the input,
+/// or by a custom decoder, has none
 ///
 /// # Example
 ///

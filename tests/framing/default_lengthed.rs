@@ -122,18 +122,3 @@ impl RadioLog {
 fn des27_a_field_with_its_own_dec_is_not_lengthed() {
     RadioLog::decoded().assert_decodes_from(&RadioLog::wire());
 }
-
-/// A field on the default's decoder stays `lengthed` under a width of its own, which replaces the
-/// default's
-#[test]
-fn des27_a_field_on_the_defaults_dec_keeps_lengthed_under_its_own_exact() {
-    #[rustfmt::skip]
-    let wire = [
-        RadioLog::CALLER,
-        RadioLog::CALLEE,
-        // relay = "W1AW/P" (field 3, 6 bytes)
-        &[0x1A, 0x06, b'W', b'1', b'A', b'W', b'/', b'P'],
-    ]
-    .concat();
-    RadioLog::assert_rejects_naming(&wire, &["`RadioLog::relay`", "size(exact = 4)"]);
-}

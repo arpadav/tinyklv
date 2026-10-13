@@ -39,7 +39,7 @@ use loop_driver::{CursorSite, LoopDriver};
 // external
 // --------------------------------------------------
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{ToTokens, quote};
 
 // --------------------------------------------------
 // constants
@@ -47,6 +47,37 @@ use quote::quote;
 /// The fewest alternatives of a `K1 | K2 | ..` pattern that `clippy::manual_range_patterns` reads
 /// as a range, a repeated key counted each time
 const RANGE_LINT_KEYS: usize = 3;
+
+/// What a generated decode error is, emitted as the `tinyklv::ErrorKind` variant of the same name
+#[derive(Debug, Clone, Copy)]
+enum ErrorKind {
+    /// A sentinel's packet length or body that the input cuts short
+    Truncated,
+    /// A value or length its decoder rejects, or, under `strict`, leaves bytes of unread
+    MalformedValue,
+    /// A frame length other than a field's `size(exact = N)`, or an `Inline` item for a
+    /// `lengthed` field
+    WrongLength,
+    /// An item that consumed no input
+    NoProgress,
+    /// A key no field declares, under `deny_unknown_keys`
+    UnknownKey,
+    /// A required field with no value once the loop ends
+    MissingRequired,
+    /// A `break_on` that returned `Abort`
+    Aborted,
+    /// No sentinel in the input
+    MissingSentinel,
+}
+
+/// [`ErrorKind`] implementation of [`ToTokens`]
+impl ToTokens for ErrorKind {
+    /// Emits `::tinyklv::ErrorKind::<variant>`, the variant named as this one's [`Debug`] does
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let variant = quote::format_ident!("{self:?}");
+        tokens.extend(quote! { ::tinyklv::ErrorKind::#variant });
+    }
+}
 
 /// A container that gets decode impls, with everything those impls derive from it
 ///

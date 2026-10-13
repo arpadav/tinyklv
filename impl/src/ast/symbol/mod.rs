@@ -92,6 +92,12 @@ pub(crate) const SKIP_IF: Symbol = Symbol("skip_if");
 pub(crate) const UNKNOWN_FRAMES: Symbol = Symbol("unknown");
 /// The `deny_unknown_keys` sub-attribute identifier
 pub(crate) const DENY_UNKNOWN_KEYS: Symbol = Symbol("deny_unknown_keys");
+/// The `strict` sub-attribute identifier
+///
+/// Opt-in container flag. When set, a header-sized value its decoder fails on, or leaves bytes of
+/// unread, is a malformed value; without it, the value is dropped and its field keeps the value it
+/// had
+pub(crate) const STRICT: Symbol = Symbol("strict");
 /// The `allow_unimplemented_decode` sub-attribute identifier
 pub(crate) const ALLOW_UNIMPLEMENTED_DECODE: Symbol = Symbol("allow_unimplemented_decode");
 /// The `allow_unimplemented_encode` sub-attribute identifier
@@ -120,6 +126,7 @@ pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
     UNKNOWN_FRAMES,
     DEBUG,
     DENY_UNKNOWN_KEYS,
+    STRICT,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,
     TRAIT_FALLBACK,
@@ -200,6 +207,7 @@ const KNOWN: &[Symbol] = &[
     SKIP_IF,
     UNKNOWN_FRAMES,
     DENY_UNKNOWN_KEYS,
+    STRICT,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,
     TRAIT_FALLBACK,

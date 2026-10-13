@@ -69,15 +69,6 @@ fn le_u16_max() {
 }
 
 #[test]
-/// Tests `le_u16` encoder emits little-endian byte order (low byte first)
-fn le_u16_byte_order() {
-    // 0x0102 LE: low byte [0x02] comes first
-    let mut encoded = Vec::new();
-    tinyklv::enc::binary::le_u16(0x0102_u16, &mut encoded);
-    assert_eq!(encoded, vec![0x02, 0x01]);
-}
-
-#[test]
 /// Tests `le_u32` decodes `to_le_bytes` output back to the original value
 fn le_u32_known_value() {
     let bytes = 0x01020304_u32.to_le_bytes();

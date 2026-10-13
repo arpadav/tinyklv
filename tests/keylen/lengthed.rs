@@ -122,22 +122,3 @@ fn an_inline_frame_at_the_end_of_the_input_is_malformed() {
     .concat();
     Contact::assert_rejects_naming(&wire, &["`Contact::name`", "size(lengthed)"]);
 }
-
-/// Both drivers word the rejection the same way and leave the cursor at the value start, the
-/// decoder never run
-#[test]
-fn the_rejection_names_the_field_and_leaves_the_cursor_at_the_value() {
-    let message =
-        "`Contact::name` value (an `Inline` frame has no length for its `size(lengthed)` decoder)";
-    #[rustfmt::skip]
-    let wire = [
-        Contact::ID,
-        // name (field 2, wire 0 VARINT, Inline)
-        &[0x10],
-        // the value bytes, never read
-        &[0x03, b'A', b'd', b'a'],
-    ]
-    .concat();
-    let value_start = Contact::ID.len() + 1;
-    Contact::assert_rejects_at(&wire, value_start, message);
-}

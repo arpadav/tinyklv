@@ -1,6 +1,6 @@
 //! Sentinel-seeking trait for locating KLV packet boundaries in a byte stream
 //!
-//! [`SeekSentinel`] is the stream-scanning half of the full decode pipeline
+//! [`SeekSentinel`] is the stream-scanning half of the full decode pipeline.
 //! It scans forward through `input` until the type's recognition sentinel bytes
 //! are found, then consumes the sentinel, reads the declared body length, takes
 //! that many bytes, and returns them as a sub-slice for [`super::DecodeValue`] to
@@ -23,7 +23,9 @@
 ///
 /// This trait is automatically implemented when `sentinel` is set in the
 /// [`crate::Klv`] attribute. The sentinel bytes and the length decoder are
-/// both specified in the `#[klv(...)]` attribute block
+/// both specified in the `#[klv(...)]` attribute block. The derived impl also
+/// skips a found sentinel whose length decoder fails short of the end of the
+/// input, resuming the scan one byte past its start
 ///
 /// # Example
 ///
@@ -59,11 +61,8 @@ where
 {
     /// Scans `input` for the recognition sentinel, then returns the framed body bytes
     ///
-    /// Advances `input` past the sentinel, length prefix, and all body bytes
-    /// Pre-sentinel bytes are consumed and discarded. Returns an error only when
-    /// the stream ends before a sentinel is found or the declared body length
-    /// cannot be satisfied. On an error `input` is left past only the bytes that
-    /// cannot begin a packet, which [`crate::Decoder`] drops
+    /// Advances `input` past the sentinel, length prefix, and all body bytes.
+    /// Pre-sentinel bytes are consumed and discarded
     ///
     /// # Arguments
     ///
@@ -71,8 +70,12 @@ where
     ///
     /// # Returns
     ///
-    /// `Ok(S)` - a sub-slice containing exactly the body bytes of the located packet -
-    /// or a [`winnow::error::ContextError`] if no sentinel is found or the stream
-    /// ends mid-frame
+    /// `Ok(S)` - a sub-slice containing exactly the body bytes of the located packet
+    ///
+    /// # Errors
+    ///
+    /// - The stream ends before a sentinel is found, or before the declared body length is
+    ///   satisfied: `input` is left past only the bytes that cannot begin a packet, which
+    ///   [`crate::Decoder`] drops
     fn seek_sentinel(input: &mut S) -> crate::Result<S>;
 }

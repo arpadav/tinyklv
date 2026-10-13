@@ -1,8 +1,8 @@
-//! Encode traits for KLV field values and key-length-value framing
+//! Encode traits for KLV field values and sentinel-framed packets
 //!
 //! Core encode-side traits:
 //! * [`EncodeValue`] - appends the encoded value portion of a KLV triple to a caller-owned buffer
-//! * [`EncodeFrame`] - appends a full key-length-value byte sequence to a caller-owned buffer
+//! * [`EncodeFrame`] - appends a packet (sentinel, body length, body) to a caller-owned buffer
 //!
 //! Decode counterparts live in [`crate::traits::dec`]
 //!
@@ -23,7 +23,7 @@
 ///                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 /// ```
 ///
-/// ***This trait IS automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv) trait, in which every field has an associated encoder for it's type. Otherwise, this trait CAN be implemented manually.***
+/// ***This trait IS automatically implemented for structs deriving [`tinyklv::Klv`](crate::Klv), in which every field has an associated encoder for its type. Otherwise, this trait CAN be implemented manually.***
 ///
 /// For custom encoding functions, ***no need to use this trait***. Instead, ensure the function
 /// appends the value bytes to the buffer with a signature matching the following:
@@ -104,7 +104,7 @@
 ///     example_one: InnerValue {},
 ///     example_two: InnerValue {},
 ///     example_three: InnerValue {},
-/// }.encode_frame(&mut my_struct_encoded); // See: `tinyklv::prelude::EncodeFrame` -> This prepends the key and length
+/// }.encode_frame(&mut my_struct_encoded); // See: `tinyklv::prelude::EncodeFrame` -> This prepends the sentinel and length
 ///
 /// assert_eq!(my_struct_encoded, vec![
 ///     0x00,               // sentinel
@@ -132,7 +132,7 @@ pub trait EncodeValue {
     ///
     /// Writes **only** the value bytes (no key or length prefix) to the end of the
     /// caller-owned buffer, growing it as needed. Use [`EncodeFrame::encode_frame`]
-    /// to write a complete key-length-value triple instead
+    /// to write it as a complete packet instead
     ///
     /// # Arguments
     ///
@@ -163,20 +163,20 @@ where
     }
 }
 
-/// Full KLV encode pipeline: prepends key and length to [`EncodeValue`] output
+/// Full KLV encode pipeline: prepends the sentinel and body length to [`EncodeValue`] output
 ///
 /// Decode counterpart: [`DecodeFrame`](crate::traits::DecodeFrame)
 ///
-/// Trait for encoding data to its full key-length-value representation
+/// Trait for encoding data to its full packet representation
 ///
 /// ```text
-///                 This is what is encoded
-///  vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
-/// [ ... key ... | ... length ... | ..... value (self) ..... ]
-///  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+///                     This is what is encoded
+///  vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+/// [ ... sentinel ... | ... length ... | ..... value (self) ..... ]
+///  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 /// ```
 ///
-/// ***This trait IS automatically implemented for structs deriving the [`tinyklv::Klv`](crate::Klv) trait, in which every field has an associated encoder for it's type. Otherwise, this trait CAN be implemented manually.***
+/// ***This trait IS automatically implemented for structs deriving [`tinyklv::Klv`](crate::Klv) that declare a `sentinel`, in which every field has an associated encoder for its type. Otherwise, this trait CAN be implemented manually.***
 ///
 /// Since this function and [`EncodeValue`] have the same function signature, this could cause confusion. Therefore, the general workflow for all KLV encoding should be:
 ///
@@ -186,7 +186,7 @@ where
 ///
 /// 2. Prepend the encoded value with its key/recognition sentinel and length to convert the struct/value into its key-length-value representation
 ///
-/// Then, youre done: now you can produce the key-length-value representation of your struct with the following snippet:
+/// Then, you're done: now you can produce the key-length-value representation of your struct with the following snippet:
 ///
 /// ```rust
 /// use tinyklv::prelude::*;
@@ -272,8 +272,8 @@ where
 ///     allow_unimplemented_decode,
 ///     key(enc = tinyklv::codecs::binary::enc::u8),
 ///     len(enc = tinyklv::codecs::binary::enc::u8_from_usize),
-/// )]  // this implements `tinyklv::prelude::EncodeValue` and `tinyklv::prelude::EncodeFrame`
-///     // given a key and length encoder are provided
+/// )]  // this implements `tinyklv::prelude::EncodeValue`, and `tinyklv::prelude::EncodeFrame`
+///     // given the sentinel
 /// struct MyStruct {
 ///     #[klv(key = 0xFF, enc = string_encoder)]
 ///     value: String,
@@ -300,11 +300,11 @@ where
 /// assert_eq!(mystruct_klv_1, mystruct_klv_2);
 /// ```
 pub trait EncodeFrame {
-    /// Appends `self` as a complete KLV frame to `out`: key bytes, then length bytes, then value bytes
+    /// Appends `self` as a complete packet to `out`: sentinel bytes, then length bytes, then value bytes
     ///
-    /// Writes a full key-length-value triple to the end of the caller-owned buffer in
-    /// one pass. The derive macro generates this implementation when both `key` and
-    /// `len` encoders are provided in the `#[klv(...)]` attribute
+    /// Writes the packet to the end of the caller-owned buffer. The derive macro generates this
+    /// implementation when the `#[klv(...)]` attribute declares a `sentinel`, whose packet length
+    /// the `len` encoder writes
     ///
     /// # Arguments
     ///

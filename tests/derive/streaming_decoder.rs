@@ -17,6 +17,7 @@ use tinyklv::decoder::DecodeIterError;
 use tinyklv::enc::ber as encber;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
+use tinyklv::traits::PartialIterator;
 
 #[derive(Klv, Debug, Clone, PartialEq)]
 #[klv(
@@ -498,6 +499,35 @@ fn decoder_finish_on_empty() {
         Some(ErrorKind::MissingRequired),
         "{result:?}"
     );
+}
+
+/// A sentinel packet of one field that rejects a key no field declares
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    sentinel = b"STRC",
+    key(dec = decb::u8),
+    len(dec = decb::u8_as_usize),
+    deny_unknown_keys,
+    allow_unimplemented_encode,
+)]
+struct StrictSample {
+    #[klv(key = 0x01, dec = decb::u8)]
+    a: u8,
+}
+
+#[test]
+/// A body `next_resume` rejects is `Malformed`, with the kind of the derive's streaming error
+fn decoder_next_resume_error_carries_its_kind() {
+    let mut dec = StrictSample::decoder();
+    #[rustfmt::skip]
+    dec.feed(&[
+        // a = 1
+        0x01, 0x01, 0x01,
+        // key 0x09, which no field declares
+        0x09, 0x01, 0x00,
+    ]);
+    let error = dec.next_resume().expect_err("an unknown key is rejected");
+    assert_eq!(error.kind(), Some(ErrorKind::UnknownKey), "{error:?}");
 }
 
 #[test]

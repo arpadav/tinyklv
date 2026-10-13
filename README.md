@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/tinyklv.svg)](https://crates.io/crates/tinyklv)
 [![Documentation](https://img.shields.io/docsrs/tinyklv)](https://docs.rs/tinyklv)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/arpadav/tinyklv/blob/main/LICENSE)
 [![MSRV](https://img.shields.io/badge/rustc-1.95%2B-orange.svg)](https://www.rust-lang.org)
 
 The fastest derive-macro framework for encoding and decoding [Key-Length-Value
@@ -192,7 +192,7 @@ Issues and pull requests welcome at
 
 ## License
 
-Licensed under the MIT License. See [LICENSE](LICENSE) for details.
+Licensed under the MIT License. See [LICENSE](https://github.com/arpadav/tinyklv/blob/main/LICENSE) for details.
 
 ## Support
 

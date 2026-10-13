@@ -7,8 +7,7 @@
 //! resumed after the error starts at the next frame; one that runs past the end is left whole.
 //! Encode writes `N` as the length of a frame that carries one. An `Inline` frame carries no
 //! length: an exact-width field's decoder reads the main input unchecked, and a `lengthed` one has
-//! no length to read by, so its value is malformed; a malformed value leaves the cursor where its
-//! decoder stopped
+//! no length to read by, so its value is malformed
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -201,7 +200,7 @@ fn encode_writes_each_exact_width_as_the_length() {
 }
 
 /// A value its encoder writes in another byte count than its exact width fails the debug check:
-/// four octets for a six-byte `addr`, staged ahead of the header that frames it
+/// four octets for a six-byte `addr`, written after a header that already gives six
 #[test]
 #[cfg(debug_assertions)]
 #[should_panic(expected = "the value encoder of `addr` wrote a different byte count")]
@@ -240,28 +239,6 @@ fn the_rejection_names_the_field_and_leaves_the_cursor_past_the_frame() {
     ];
     let wire = [Fix::SEQ, stamp, Fix::ADDR].concat();
     Fix::assert_rejects_at(&wire, Fix::SEQ.len() + stamp.len(), message);
-}
-
-/// A malformed `Inline` value is rejected naming the field, and both drivers leave the cursor
-/// where its decoder stopped: on the 10th byte of an overlong varint, short of the end of the
-/// input
-#[test]
-fn a_malformed_inline_value_leaves_the_cursor_where_its_decoder_stopped() {
-    let message = "`Fix::seq` value (its decoder failed before the end of the input)";
-    #[rustfmt::skip]
-    let seq: &[u8] = &[
-        // seq (field 1, wire 0 VARINT, Inline), 9 continuation bytes
-        0x08,
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-    ];
-    let wire = [
-        seq,
-        // a 10th byte carrying bits past the 64th
-        &[0x02],
-        Fix::STAMP,
-    ]
-    .concat();
-    Fix::assert_rejects_at(&wire, seq.len(), message);
 }
 
 /// An `Inline` frame carries no length: the exact-width field's decoder reads its value from

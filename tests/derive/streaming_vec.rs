@@ -16,6 +16,7 @@ use crate::beacon::Beacon;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
+use tinyklv::traits::PartialError;
 
 /// A 2-byte sensor reading: a `channel` triple followed by a `value` triple
 #[derive(Klv, Debug, Clone, Copy, PartialEq)]
@@ -251,7 +252,7 @@ fn vec_decode_partial_propagates_error_after_consuming() {
         // unknown key 0x09
         0x09, 0x01, 0x00,
     ];
-    match Vec::<StrictBeacon>::decode_partial(&mut &wire[..]) {
+    match Vec::<StrictBeacon>::decode_partial(&mut &wire[..]).map_err(PartialError::label) {
         Err(label) if label.contains("invalid key") && label.contains("StrictBeacon") => {}
         other => panic!("expected an unknown-key Err naming `StrictBeacon`, got {other:?}"),
     }

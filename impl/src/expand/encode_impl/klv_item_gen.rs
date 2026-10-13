@@ -132,12 +132,12 @@ impl EncodeCtx<'_> {
 
     /// Generates one key's frame write
     ///
-    /// Picks the write: implicit, staged, known or reserved. A `size(implicit)` value is
+    /// Picks the write: implicit, staged, known or unknown width. A `size(implicit)` value is
     /// written straight after its key with no length ([`PlannedItemWrite::write_implicit`]). A
-    /// fused `keylen` encoder, or a variable-width length prefix, stages the value in the scratch
-    /// buffer ([`PlannedItemWrite::staged_write`]). Under a fixed-width length prefix the
-    /// [`FieldLengthPlan`] picks a known-width or a reserved-slot write, and the fixed-width
-    /// length slot writes it
+    /// variable-width length prefix stages the value in the scratch buffer
+    /// ([`PlannedItemWrite::staged_write`]). Under a fixed-width length prefix or a fused `keylen`
+    /// encoder the [`FieldLengthPlan`] picks a known-width or an unknown-width write, and the
+    /// fixed-width length slot or the `keylen` encoder writes it
     ///
     /// # Arguments
     ///
@@ -149,6 +149,7 @@ impl EncodeCtx<'_> {
     fn frame_write(&self, item: &PlannedItemWrite<'_>) -> proc_macro2::TokenStream {
         let span = item.span();
         let key = item.key.key;
+        let plan = item.length_plan();
         let value_write = |dst: &proc_macro2::TokenStream| item.value_write(dst);
         let staged_write = |dst: &proc_macro2::TokenStream| item.staged_write(dst);
         let implicit = item.key.codec.implicit().is_some();
@@ -156,14 +157,14 @@ impl EncodeCtx<'_> {
         // emit the item write the container framing selects
         // --------------------------------------------------
         self.framing
-            .write_frame(key, staged_write, span, |key_write, len| {
+            .write_frame(key, plan, value_write, span, |key_write, len| {
                 match (implicit, len) {
                     (true, _) => item.write_implicit(key_write),
-                    (false, LengthPrefix::Fixed(len)) => match item.length_plan() {
+                    (false, LengthPrefix::Fixed(len)) => match plan {
                         FieldLengthPlan::KnownValueWidth(value) => {
                             len.write_known(key_write, value, value_write, span)
                         }
-                        FieldLengthPlan::ReservedLengthSlot => {
+                        FieldLengthPlan::UnknownValueWidth => {
                             len.write_backfilled(key_write, value_write, span)
                         }
                     },
@@ -179,11 +180,12 @@ impl EncodeCtx<'_> {
     /// One loop over the `#[klv(unknown)]` field writes each `(key, value)` frame. Under a separate
     /// header the key encoder writes the key and the `unknown(enc = ..)` encoder writes the rest of
     /// the frame, its length included when the frame has one, straight into `out`. Under a fused
-    /// header the value is staged and the `keylen` encoder writes the header from `(key,
-    /// staged_len)` ([`KeylenEncoder::write_staged`](super::framing::KeylenEncoder::write_staged)).
-    /// The key is passed by value, as a field's literal key is, so the key type is `Copy`. The
-    /// loop is located at the field and the encoder call at the encoder, so a wrong element type
-    /// or encoder signature is reported where it is written
+    /// header the value is written, then the `keylen` encoder writes the header from `(key,
+    /// value_len)` and it is rotated in front of the value
+    /// ([`KeylenEncoder::write_rotated`](super::framing::KeylenEncoder::write_rotated)). The key is
+    /// passed by value, as a field's literal key is, so the key type is `Copy`. The loop is located
+    /// at the field and the encoder call at the encoder, so a wrong element type or encoder
+    /// signature is reported where it is written
     ///
     /// # Returns
     ///
@@ -205,12 +207,16 @@ impl EncodeCtx<'_> {
         // --------------------------------------------------
         // the frame write the container framing selects
         // --------------------------------------------------
-        let frame_write = self
-            .framing
-            .write_frame(&key, value_write, span, |key_write, _| {
+        let frame_write = self.framing.write_frame(
+            &key,
+            FieldLengthPlan::UnknownValueWidth,
+            value_write,
+            span,
+            |key_write, _| {
                 let value_write = value_write(&quote_spanned! { span => out });
                 quote! { #key_write #value_write }
-            });
+            },
+        );
         // --------------------------------------------------
         // one frame per retained `(key, value)`
         // --------------------------------------------------
@@ -469,15 +475,16 @@ impl<'a> PlannedItemWrite<'a> {
         }
     }
 
-    /// Chooses how the field's value length is written under a fixed-width length prefix
+    /// Chooses how the field's value length is written under a fixed-width length prefix or a
+    /// `keylen` header
     ///
     /// Prefers writing the length immediately when an exact field size is declared, or when a
-    /// primitive type and its built-in encoder agree on a width. Otherwise the container's fixed
-    /// length slot is reserved and back-filled after the value is encoded
+    /// primitive type and its built-in encoder agree on a width. Otherwise the length is written
+    /// once the value is encoded
     ///
     /// # Returns
     ///
-    /// The known value width when provable, else the reserved fixed slot
+    /// The known value width when provable, else the unknown width
     fn length_plan(&self) -> FieldLengthPlan<'a> {
         // --------------------------------------------------
         // explicit exact field sizes can be written immediately
@@ -503,9 +510,9 @@ impl<'a> PlannedItemWrite<'a> {
             }
         }
         // --------------------------------------------------
-        // otherwise reserve the container's fixed length slot
+        // otherwise the width is known only once the value is written
         // --------------------------------------------------
-        FieldLengthPlan::ReservedLengthSlot
+        FieldLengthPlan::UnknownValueWidth
     }
 
     /// Writes a prefix, then the `size(implicit)` value straight into `out`, with no length
@@ -555,9 +562,9 @@ impl<'a> PlannedItemWrite<'a> {
         })
     }
 
-    /// The value encoder call staging the field value in `dst`, every field's
-    /// [`Staging::Scratch`] buffer, then, under `size(exact = N)`, the debug-build check that the
-    /// buffer holds `N` bytes ([`ValueWidth::check`])
+    /// The value encoder call staging the field value in `dst`, the [`Staging::Scratch`] buffer of
+    /// a variable-width length prefix, then, under `size(exact = N)`, the debug-build check that
+    /// the buffer holds `N` bytes ([`ValueWidth::check`])
     ///
     /// # Arguments
     ///

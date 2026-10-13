@@ -17,7 +17,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::DecodeCtx;
+use super::{DecodeCtx, ErrorKind};
 use crate::{
     ast::{
         attr::{MainField, UnknownField},
@@ -211,12 +211,12 @@ impl DecodeCtx<'_> {
 
     /// Generates the [`tinyklv::traits::Partial`] impl for the partial-packet struct
     ///
-    /// Emits `Partial::finalize(self) -> Result<Xxx, &'static str>`. For each
+    /// Emits `Partial::finalize(self) -> Result<Xxx, PartialError>`. For each
     /// KLV-annotated field one of two things happens:
     ///
     /// * `Option<T>` field - moved into the final struct literal unchanged
     /// * required `T` field - a short-circuit guard unwraps `Some(v)` or returns
-    ///   `Err` with a descriptive message naming the missing field
+    ///   `Err` with [`ErrorKind::MissingRequired`] and a message naming the missing field
     ///
     /// Fields without a `#[klv(..)]` attribute are filled via
     /// `<T as Default>::default()`; the generated code will not compile if their
@@ -228,11 +228,11 @@ impl DecodeCtx<'_> {
     /// ```rust no_run ignore
     /// impl ::tinyklv::traits::Partial for XxxPartialPacket {
     ///     type Final = Xxx;
-    ///     fn finalize(self) -> Result<Xxx, &'static str> {
+    ///     fn finalize(self) -> Result<Xxx, PartialError> {
     ///         // one of these per required (non-Option) klv field:
     ///         let #required_name = match self.#required_name {
     ///             Some(v) => v,
-    ///             None => return Err(/* message naming the missing field */),
+    ///             None => return Err(/* `MissingRequired`, naming the missing field */),
     ///         };
     ///         // one per Option<T> klv field:
     ///         let #optional_name = self.#optional_name;
@@ -257,6 +257,7 @@ impl DecodeCtx<'_> {
         // symbol for `default` keyword in error messages
         // --------------------------------------------------
         let default_symbol = symbol::DEFAULT_VALUE.to_token_stream();
+        let missing = ErrorKind::MissingRequired;
         // --------------------------------------------------
         // for every required (non-Option) klv field, emit a guard statement
         // that pulls from the partial:
@@ -277,7 +278,7 @@ impl DecodeCtx<'_> {
                     let #name = match self.#name {
                         Some(v) => v,
                         None => return ::core::result::Result::Err(
-                            ::core::concat!(
+                            ::tinyklv::traits::PartialError::new(&(#missing, ::core::concat!(
                                 "`",
                                 ::core::stringify!(#struct_name),
                                 "::",
@@ -285,7 +286,7 @@ impl DecodeCtx<'_> {
                                 "` is a required value missing from the packet; to allow this, make the field an `Option` or give it a `",
                                 ::core::stringify!(#default_symbol),
                                 "`",
-                            )
+                            )))
                         ),
                     };
                 }
@@ -331,7 +332,7 @@ impl DecodeCtx<'_> {
                 #[inline]
                 fn finalize(self) -> ::core::result::Result<
                     #struct_name #ty_generics,
-                    &'static str,
+                    ::tinyklv::traits::PartialError,
                 > {
                     #(#required_guards)*
                     #(#optional_passes)*
@@ -347,7 +348,7 @@ impl DecodeCtx<'_> {
 
     /// Generates the `TryFrom<XxxPartialPacket> for Xxx` convenience impl
     ///
-    /// Emits a `TryFrom` impl with `Error = &'static str` that routes entirely
+    /// Emits a `TryFrom` impl with `Error = PartialError` that routes entirely
     /// through [`tinyklv::traits::Partial::finalize`], keeping all required-field
     /// validation logic in one place. Lets user code write
     /// `let x: Xxx = partial.try_into()?;` without needing to import the
@@ -369,7 +370,7 @@ impl DecodeCtx<'_> {
         quote! {
             #[automatically_derived]
             impl #impl_generics ::core::convert::TryFrom<#partial_ty> for #struct_name #ty_generics #where_clause {
-                type Error = &'static str;
+                type Error = ::tinyklv::traits::PartialError;
                 #[inline(always)]
                 fn try_from(p: #partial_ty) -> ::core::result::Result<Self, Self::Error> {
                     <#partial_ty as ::tinyklv::traits::Partial>::finalize(p)

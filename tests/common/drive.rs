@@ -10,8 +10,9 @@
 // local
 // --------------------------------------------------
 use super::error::ContextErrorExt;
+use tinyklv::ErrorKind;
 use tinyklv::prelude::*;
-use tinyklv::traits::ResumePartial;
+use tinyklv::traits::{PartialError, ResumePartial};
 
 // --------------------------------------------------
 // external
@@ -20,7 +21,7 @@ use std::fmt::Debug;
 use winnow::error::ContextError;
 
 /// The outcome of one streaming run
-type Streamed<T, P> = Result<Packet<T, P>, &'static str>;
+type Streamed<T, P> = Result<Packet<T, P>, PartialError>;
 
 /// Codec drivers for every type, each callable once the type implements the codec trait it
 /// drives
@@ -217,7 +218,7 @@ pub(crate) trait Drive {
         // --------------------------------------------------
         for at in 0..=wire.len() {
             match Self::stream_split(wire, at) {
-                (Err(label), _) if label.starts_with("invalid ") && names_all(label) => {}
+                (Err(err), _) if err.label().starts_with("invalid ") && names_all(err.label()) => {}
                 (other, left) => failures.push(format!("split at {at}: {other:?}, {left} left")),
             }
         }
@@ -259,8 +260,8 @@ pub(crate) trait Drive {
             let (outcome, left) = Self::stream_split(wire, split);
             let stopped = wire.len() - left;
             match outcome {
-                Err(label)
-                    if label.strip_prefix("invalid ") == Some(message)
+                Err(err)
+                    if err.label().strip_prefix("invalid ") == Some(message)
                         && (split < at || stopped == at) => {}
                 other => {
                     failures.push(format!("split at {split}: {other:?}, stopped at {stopped}"));
@@ -282,6 +283,45 @@ pub(crate) trait Drive {
         assert!(
             failures.is_empty(),
             "expected {message:?} at {at} of {wire:02X?}: {failures:#?}"
+        );
+    }
+
+    /// Asserts both drivers reject `wire` with an error of `kind`
+    ///
+    /// # Arguments
+    ///
+    /// * `wire` - the input; one-shot decodes it whole, streaming at every chunk split
+    /// * `kind` - what the rejection is
+    ///
+    /// # Panics
+    ///
+    /// If any run returns anything but an error of `kind`, listing every failing run
+    #[track_caller]
+    fn assert_rejects_as<'w>(wire: &'w [u8], kind: ErrorKind)
+    where
+        Self: ResumePartial<&'w [u8]> + Debug,
+        <Self as DecodePartial<&'w [u8]>>::Partial: Debug,
+    {
+        let mut failures = Vec::new();
+        // --------------------------------------------------
+        // one-shot, its error tagged with `kind`
+        // --------------------------------------------------
+        match Self::decode_value(&mut &wire[..]) {
+            Err(error) if ErrorKind::of(&error) == Some(kind) => {}
+            other => failures.push(format!("one-shot: {other:?}")),
+        }
+        // --------------------------------------------------
+        // streaming, split at every offset
+        // --------------------------------------------------
+        for at in 0..=wire.len() {
+            match Self::stream_split(wire, at) {
+                (Err(error), _) if error.kind() == kind => {}
+                (other, left) => failures.push(format!("split at {at}: {other:?}, {left} left")),
+            }
+        }
+        assert!(
+            failures.is_empty(),
+            "expected {kind:?} for {wire:02X?}: {failures:#?}"
         );
     }
 

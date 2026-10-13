@@ -4,7 +4,8 @@
 //! through the derive macro on a realistic `AsciiTelemetry` struct that
 //! mixes a fixed binary `u16` field with `size(lengthed)` decimal-integer,
 //! signed-integer, float, hex, and alpha-run fields.  Covers a full
-//! roundtrip, hand-built packet decoding, and rejection of garbage numerics
+//! roundtrip, hand-built packet decoding, and rejection of garbage numerics,
+//! and ASCII `u8` / `i8` fields framed under a fixed-width length prefix
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -43,6 +44,37 @@ struct AsciiTelemetry {
 
     #[klv(key = 0x06, size(lengthed), dec = deca::alpha, enc = enca::from_string_ascii)]
     callsign: String,
+}
+
+/// ASCII `u8` / `i8` fields under a one-byte fixed-width length prefix: their encoders share the
+/// binary encoders' names, not their width
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)),
+)]
+struct AsciiCounters {
+    #[klv(key = 0x01, size(lengthed), dec = deca::u8, enc = *enca::u8)]
+    count: u8,
+
+    #[klv(key = 0x02, size(lengthed), dec = deca::i8, enc = *enca::i8)]
+    trim: i8,
+}
+
+#[test]
+/// Verifies an ASCII `u8` / `i8` value wider than one byte is framed with its written length
+/// under a fixed-width length prefix
+fn ascii_counters_fixed_len_frames_written_length() {
+    let original = AsciiCounters {
+        count: 200,
+        trim: -100,
+    };
+    let mut encoded = Vec::new();
+    original.encode_value(&mut encoded);
+    assert_eq!(encoded, b"\x01\x03200\x02\x04-100");
+    let decoded = AsciiCounters::decode_value(&mut encoded.as_slice()).unwrap();
+    assert_eq!(decoded, original);
 }
 
 #[test]

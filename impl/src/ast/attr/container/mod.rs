@@ -113,6 +113,9 @@ pub(crate) struct Container {
     /// Whether unknown keys cause a decode error rather than being silently skipped
     pub deny_unknown_keys: Option<syn::Path>,
 
+    /// Whether a header-sized value its decoder fails on, or leaves bytes of unread, is an error
+    pub strict: Option<syn::Path>,
+
     /// Whether fields with no decoder are allowed (suppresses missing-decoder errors)
     pub allow_unimplemented_decode: Option<syn::Path>,
 
@@ -155,6 +158,7 @@ impl Container {
         let mut defaults: Vec<(syn::Type, DefaultXcoder)> = Vec::new();
         let mut debug = None;
         let mut deny_unknown_keys = None;
+        let mut strict = None;
         let mut allow_unimplemented_decode = None;
         let mut allow_unimplemented_encode = None;
         let mut trait_fallback = None;
@@ -245,6 +249,9 @@ impl Container {
                             &list.path,
                             err!(ExpectedAsPath(symbol::DENY_UNKNOWN_KEYS)),
                         ),
+                        symbol::STRICT => {
+                            cx.error_spanned_by(&list.path, err!(ExpectedAsPath(symbol::STRICT)));
+                        }
                         symbol::ALLOW_UNIMPLEMENTED_DECODE => cx.error_spanned_by(
                             &list.path,
                             err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_DECODE)),
@@ -302,6 +309,9 @@ impl Container {
                             &nv.path,
                             err!(ExpectedAsPath(symbol::DENY_UNKNOWN_KEYS)),
                         ),
+                        symbol::STRICT => {
+                            cx.error_spanned_by(&nv.path, err!(ExpectedAsPath(symbol::STRICT)));
+                        }
                         symbol::ALLOW_UNIMPLEMENTED_DECODE => cx.error_spanned_by(
                             &nv.path,
                             err!(ExpectedAsPath(symbol::ALLOW_UNIMPLEMENTED_DECODE)),
@@ -326,6 +336,7 @@ impl Container {
                     syn::Meta::Path(path) => match name {
                         symbol::DEBUG => debug = Some(path),
                         symbol::DENY_UNKNOWN_KEYS => deny_unknown_keys = Some(path),
+                        symbol::STRICT => strict = Some(path),
                         symbol::ALLOW_UNIMPLEMENTED_DECODE => {
                             allow_unimplemented_decode = Some(path);
                         }
@@ -382,6 +393,7 @@ impl Container {
             defaults: defaults.into_iter().collect(),
             debug,
             deny_unknown_keys,
+            strict,
             allow_unimplemented_decode,
             allow_unimplemented_encode,
             trait_fallback,
@@ -413,6 +425,9 @@ pub(crate) struct ContainerParsed {
 
     /// Whether unknown keys cause a decode error rather than being silently skipped
     pub deny_unknown_keys: Option<syn::Path>,
+
+    /// Whether a header-sized value its decoder fails on, or leaves bytes of unread, is an error
+    pub strict: Option<syn::Path>,
 
     /// Retained path for `allow_unimplemented_decode`, unused in expansion
     pub _allow_unimplemented_decode: Option<syn::Path>,
@@ -590,6 +605,7 @@ impl ContainerParsed {
             break_on: cont.break_on,
             debug: cont.debug,
             deny_unknown_keys: cont.deny_unknown_keys,
+            strict: cont.strict,
             _allow_unimplemented_decode: cont.allow_unimplemented_decode,
             _allow_unimplemented_encode: cont.allow_unimplemented_encode,
             _trait_fallback: cont.trait_fallback,

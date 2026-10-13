@@ -196,11 +196,12 @@ function patches the decoded value in place.
 status: Status,
 ```
 
-Runs `fn(&value) -> BreakType` right after the field decodes, in both framing
-modes: `Proceed` keeps the value, `Skip` discards it, `Done` keeps it and ends
-the decode, and `Abort` is an error naming the field. The container-level
+Runs `fn(&value) -> BreakType` after the field decodes: `Proceed` keeps the
+value, `Skip` discards it, `Done` keeps it and ends the decode, and `Abort`
+errors with its message (one-shot: field first). Encode writes these fields
+last. The container-level
 [`break_on`](./container-attributes.md#break_on--key-literal--path) checks
-keys instead.
+keys.
 
 ## `unknown`
 
@@ -211,10 +212,10 @@ extra: Vec<(u8, Vec<u8>)>,
 
 Keeps every frame whose key no field declares, as `(key, value)` in wire
 order, decoded by the container
-[`unknown(dec = ..)`](./container-attributes.md#unknowndec---enc--). Encode
-writes them after the keyed fields, with its `enc`. A malformed kept frame is
-an error naming this field. One per struct, beside a container `unknown(..)`;
-it takes no other setting.
+[`unknown(dec = ..)`](./container-attributes.md#unknowndec---enc--). Its
+`enc` writes them before any `break_on` field, after the rest. A malformed kept
+frame is an error naming this field. One per struct, beside a container
+`unknown(..)`, with no other setting.
 
 ## Cross-reference
 

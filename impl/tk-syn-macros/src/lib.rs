@@ -539,8 +539,7 @@ pub mod helpers {
     /// Parses the `= <value>` side of a [`syn::meta::ParseNestedMeta`] as type `T`
     ///
     /// Calls [`syn::meta::ParseNestedMeta::value`] to obtain the value stream,
-    /// then parses it as `T`. Returns an error if no `=` token is present or
-    /// if parsing `T` fails. This function is referenced by [`create_parser!`]
+    /// then parses it as `T`. This function is referenced by [`create_parser!`]
     /// when generating `pnm`-style parsers
     ///
     /// # Arguments
@@ -549,8 +548,11 @@ pub mod helpers {
     ///
     /// # Returns
     ///
-    /// `Ok(T)` on success, or a [`syn::Error`] if the value is absent or
-    /// cannot be parsed as `T`
+    /// `Ok(T)`, the parsed value
+    ///
+    /// # Errors
+    ///
+    /// - No `=` token is present, or the value does not parse as `T`: a [`syn::Error`]
     #[inline(always)]
     pub fn parse_pnm<T>(pnm: &syn::meta::ParseNestedMeta) -> syn::Result<T>
     where
@@ -562,9 +564,8 @@ pub mod helpers {
     /// Parses the value expression of a [`syn::MetaNameValue`] as type `T`
     ///
     /// Converts the value expression to a token stream via
-    /// [`quote::ToTokens::to_token_stream`] and parses it as `T`. Returns an
-    /// error if the token stream cannot be parsed as `T`. This function is
-    /// referenced by [`create_parser!`] when generating `nv`-style parsers
+    /// [`quote::ToTokens::to_token_stream`] and parses it as `T`. This function
+    /// is referenced by [`create_parser!`] when generating `nv`-style parsers
     ///
     /// # Arguments
     ///
@@ -572,7 +573,11 @@ pub mod helpers {
     ///
     /// # Returns
     ///
-    /// `Ok(T)` on success, or a [`syn::Error`] if the value cannot be parsed as `T`
+    /// `Ok(T)`, the parsed value
+    ///
+    /// # Errors
+    ///
+    /// - The value does not parse as `T`: a [`syn::Error`]
     #[inline(always)]
     pub fn parse_nv<T>(nv: &syn::MetaNameValue) -> syn::Result<T>
     where

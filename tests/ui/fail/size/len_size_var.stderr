@@ -1,6 +1,0 @@
-error: Unknown `size` sub-attribute in key/len: `var`.
-       Expected `exact = <..>` or `reserve = <..>`; `lengthed` goes in a field's `size(..)`.
- --> tests/ui/fail/size/len_size_var.rs:6:55
-  |
-6 |     len(dec = tinyklv::dec::binary::u8_as_usize, size(var)),
-  |                                                       ^^^

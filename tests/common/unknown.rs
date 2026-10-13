@@ -62,6 +62,8 @@ pub(crate) fn unknown_dec(tag: u32) -> impl Fn(&mut &[u8]) -> Result<Unknown> {
         Some(Framing::Inline) => unknown_body_dec(tag)(input),
         Some(Framing::Sliced(width)) => unknown_body_dec(tag)(&mut take_or_drain(width, input)?),
         None => Err(ContextError::from_input(input)),
+        // `Framing` is `#[non_exhaustive]`, and `wire::framing` returns `Inline` or `Sliced`
+        Some(_) => unreachable!(),
     }
 }
 

@@ -24,14 +24,14 @@
 //!
 //! ## The `size(..)` attribute
 //!
-//! Every value has an encoder with two paths (*fixed* - always `N` bytes; *dynamic* - size varies,
-//! so the length is back-patched after the body) and a decoder with two paths (*internal* - knows
-//! its width or self-delimits on the `len`-bounded sub-slice; *uses-len* - the signature takes the
-//! runtime length). `size(..)` controls both, along two orthogonal axes: `lengthed` (the decoder
-//! takes the runtime `len`; absent ⇒ internal) and the byte count `exact = N` (the value is `N`
-//! bytes: decode rejects any other item length, encode takes the fixed-width fast path) or
-//! `reserve = N` (an encode reserve only). `exact` and `reserve` are mutually exclusive. See the
-//! book's "Field attributes" reference for the full table.
+//! Four keywords, one fact each: `implicit` writes and reads no length prefix, `exact = N` makes
+//! the value `N` bytes (decode rejects an item length other than `N`), `lengthed` hands the
+//! decoder the value's length (its signature takes the runtime `len`), and `reserve = N` adds `N`
+//! bytes to the encoder's up-front allocation, changing no byte on the wire. `exact` and `reserve`
+//! are mutually exclusive. Under a fixed-width `len(size(exact = W))` slot, an `exact = N`
+//! value's length is written before it and any other value's is back-filled after it; a
+//! variable-width `len(..)` stages every value it prefixes. See the book's "Field attributes"
+//! reference for the full table.
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
@@ -46,7 +46,7 @@ mod native;
 // --------------------------------------------------
 pub use coerce::EncodeAs;
 pub use dec::{
-    BreakType, DecodeFrame, DecodePartial, DecodeValue, DrainFrames, Partial, PartialIterator,
-    ResumePartial, SeekSentinel,
+    BreakType, DecodeFrame, DecodePartial, DecodeValue, DrainFrames, Partial, PartialError,
+    PartialIterator, ResumePartial, SeekSentinel,
 };
 pub use enc::{EncodeFrame, EncodeValue};

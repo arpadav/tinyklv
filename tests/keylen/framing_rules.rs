@@ -4,7 +4,8 @@
 //! over cut and corrupt buffers. Any fused-header failure is truncation: streaming returns
 //! `NeedMore`, one-shot stops at the frame and finalizes. An `Inline` value that fails at
 //! end of input is truncation too; one that fails mid-buffer is malformed (an `Err`
-//! labelled `<Struct>::<field>`). Either driver decodes an `Inline` value in one read
+//! labelled `<Struct>::<field>`), the cursor left where its decoder stopped. Either driver
+//! decodes an `Inline` value in one read
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -182,6 +183,29 @@ fn malformed_header_is_truncation() {
         Ok(Reading::count_only())
     );
     assert_eq!(cursor, &wire[2..], "one-shot stops at the bad frame");
+}
+
+/// A malformed `Inline` value is rejected naming the field, and both drivers leave the cursor
+/// where its decoder stopped: on the 10th byte of an overlong varint, short of the end of the
+/// input
+#[test]
+fn a_malformed_inline_value_leaves_the_cursor_where_its_decoder_stopped() {
+    let message = "`Reading::count` value (its decoder failed before the end of the input)";
+    #[rustfmt::skip]
+    let count: &[u8] = &[
+        // count (field 1, wire 0 VARINT, Inline), 9 continuation bytes
+        0x08,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    ];
+    let wire = [
+        count,
+        // a 10th byte carrying bits past the 64th
+        &[0x02],
+        // label = "hi"
+        &[0x12, 0x02, 0x68, 0x69],
+    ]
+    .concat();
+    Reading::assert_rejects_at(&wire, count.len(), message);
 }
 
 /// A `ber_oid` value past its type's range, with more frames after it, is malformed in

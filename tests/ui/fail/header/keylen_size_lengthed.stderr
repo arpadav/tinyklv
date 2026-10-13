@@ -1,5 +1,0 @@
-error: `size(..)` is not supported in `keylen(..)`: the `keylen` codec decides each frame's framing; put `size(..)` on a field, or on `key(..)`/`len(..)` in place of `keylen(..)`.
-  --> tests/ui/fail/header/keylen_size_lengthed.rs:13:46
-   |
-13 | #[klv(keylen(dec = header, enc = header_enc, size(lengthed)))]
-   |                                              ^^^^
