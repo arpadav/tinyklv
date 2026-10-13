@@ -28,6 +28,22 @@ causes the derive to implement `SeekSentinel` and, via a blanket impl,
 Usually, since stream defaults to `&[u8]`, a byte-string is used here. However,
 if the stream is `&str` then a `&'static str` can be used.
 
+## `break_on = <key literal | path>`
+
+```rust,ignore
+#[klv(break_on = 0xFF)]
+#[klv(break_on = classify)] // fn classify(key: u8, len: usize) -> BreakType
+```
+
+Checked after each frame header, before the value decodes. A key literal ends
+the decode at a frame of that key, in both framing modes. A path is called
+with each key and length: `Proceed` decodes the value, `Skip` drops it, `Done`
+ends the decode, and `Abort` is an error. The path needs each frame's length,
+which the derive does not read in a `keylen` struct, for a `size(implicit)`
+field, or for a key `unknown(..)` decodes: there it is a compile error. To
+check a decoded value, use the field-level
+[`break_on`](./field-attributes.md#break_on--path).
+
 ## `key(dec = ..., enc = ...)`
 
 ```rust,ignore
@@ -50,7 +66,29 @@ must accept a `usize`. Use the `_as_usize` / `_from_usize` helpers from `decb` /
 A `len(..)` with no `exact` uses the variable-width length path, which
 is the path used by BER-style length codecs.
 
-## `default(typ = T, dec = ..., enc = ..., size(...))`
+## `keylen(dec = ..., enc = ...)`
+
+```rust,ignore
+#[klv(keylen(dec = dec_header, enc = enc_header))]
+```
+
+One codec for the whole frame header, in place of `key(..)` + `len(..)`, so
+the key decides each value's framing at run time. `dec` matches
+`fn(&mut S) -> tinyklv::Result<(K, Framing)>`: `Framing::Sliced(n)` hands the
+field decoder the next `n` bytes as a sub-slice, `Framing::Inline` hands it the
+main stream to read until it stops itself. `enc` matches
+`fn((K, usize), &mut Vec<u8>)`, takes no sigil, and is given each key with the
+length of its encoded value. A failed header read is truncation: streaming
+waits for more bytes, one-shot stops.
+
+Field decoders return `tinyklv::Result<T>`, and a `size(lengthed)` one is
+passed a `Sliced` frame's length; an `Inline` frame for it is an error.
+`keylen(..)` takes no `key(..)`, `len(..)`, `sentinel` or `break_on = <fn>`,
+and no field takes `size(implicit)`: each is a compile error. Without
+[`unknown(..)`](#unknowndec---enc--), a key no field declares is skipped when
+`Sliced` and ends the decode when `Inline`.
+
+## `default(typ = T, dec = ..., enc = ..., size(...), skip_if...)`
 
 ```rust,ignore
 #[klv(
@@ -59,17 +97,20 @@ is the path used by BER-style length codecs.
     // `dec` and `enc` are independently optional: attach an encoder
     // only, and decoders for `MyStruct` can still be used per-field
     default(typ = MyStruct, enc = MyStruct::encode_value),
+    // a size and a skip for every `u64` field
+    default(
+        typ = u64, dec = dec_varint, enc = *enc_varint,
+        size(implicit), skip_if_default,
+    ),
 )]
 ```
 
-Attaches a codec to a concrete field type. Every field of type `T` in the
-struct resolves its codec from this default.
-Only `typ` is required; `dec`, `enc`, and `size(..)` are independently
-optional, so a default can supply just a decoder, just an encoder, or both.
-`size(lengthed)` selects the length-taking decoder shape; `size(exact = N)` and
-`size(reserve = N)` carry the same meanings as field-level `size(..)`. A
-field's own setting overrides the default's; `lengthed` follows the `dec` the
-field uses.
+Attaches a codec to a concrete field type: every field of type `T` (or
+`Option<T>`) takes from it whichever of `dec`, `enc`, `size(..)` and skip it
+leaves unset, each meaning what it does on a field. `typ` and one of `dec` /
+`enc` are required. `lengthed` follows the `dec` the field uses, and an
+inherited `implicit` cannot be turned off. A second `default(typ = T, ..)`
+adds to the first; one setting given twice for `T` is a compile error.
 
 The `enc` path inside `default(...)` accepts the same `&` and `*` sigils
 as field-level `enc`. See
@@ -94,7 +135,28 @@ separate error-path logging and are not controlled by this flag.
 
 Makes the generated `decode_value` return an error when it encounters a key
 it does not have a field for. Without it, unknown keys are skipped silently
-for forward compatibility.
+for forward compatibility, or decoded by `unknown(..)`.
+
+## `unknown(dec = ..., enc = ...)`
+
+```rust,ignore
+#[klv(unknown(dec = dec_frame, enc = &enc_frame))]
+```
+
+The codec of every frame whose key no field declares. `dec` takes the key
+first, as a `lengthed` decoder takes the length:
+`fn(K) -> impl Fn(&mut S) -> tinyklv::Result<U>`. `enc` matches
+`fn(&U, &mut Vec<u8>)` and takes the field sigils. Beside `key(..)` +
+`len(..)`, `dec` reads everything after the key, its length included, and
+`enc` writes it back. Beside `keylen(..)`, `dec` reads the value as the header
+framed it, and `enc` writes the value alone.
+
+Decoded values are dropped unless a
+[`#[klv(unknown)]`](./field-attributes.md#unknown) field keeps them, and `enc`
+is required only beside that field. Without it, a `keylen` struct skips a
+`Sliced` unknown frame undecoded. It is a compile error beside
+`deny_unknown_keys`. The decoder's contract:
+[19 - Unknown frames](../tutorial/advanced/19-unknown.md).
 
 ## `allow_unimplemented_encode`
 
@@ -133,9 +195,12 @@ trait impls on the field type. Field-level codecs and container
 | `sentinel` | [03 - Frames & sentinels](../tutorial/fundamentals/03-frames-and-sentinels.md) |
 | `key(dec, enc)` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
 | `len(dec, enc, size)` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
+| `keylen(dec, enc)` | [18 - Framing per key](../tutorial/advanced/18-keylen.md) |
+| `break_on` | [14 - Break conditions](../tutorial/advanced/14-break-condition.md) |
 | `default(typ, dec, enc, size)` | [04 - Default codecs](../tutorial/fundamentals/04-default-codec.md) |
 | `debug` | Reference only |
 | `deny_unknown_keys` | Reference only |
+| `unknown(dec, enc)` | [19 - Unknown frames](../tutorial/advanced/19-unknown.md) |
 | `allow_unimplemented_encode` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
 | `allow_unimplemented_decode` | Reference only |
 | `trait_fallback` | [11 - Optional fields & default](../tutorial/fundamentals/11-default-fallback.md) |

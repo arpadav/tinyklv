@@ -31,6 +31,10 @@ use syn::parse::Parser;
 pub(crate) const KLV_ATTR: Symbol = Symbol(crate::ATTR_NAME);
 /// The `key` sub-attribute identifier
 pub(crate) const KEY: Symbol = Symbol("key");
+/// The `oneof(K => Enum::Variant(Type), ..)` value of a field's `key`: the frames of each `K`
+/// carry a `Type`, decoded and encoded with its type's codec, and the field holds it as
+/// `Enum::Variant`; the last one decoded wins
+pub(crate) const ONEOF: Symbol = Symbol("oneof");
 /// The `typ` sub-attribute identifier
 pub(crate) const TYPE: Symbol = Symbol("typ");
 /// The `debug` sub-attribute identifier
@@ -173,6 +177,7 @@ pub(crate) const UNKNOWN: Symbol = Symbol("<unknown>");
 const KNOWN: &[Symbol] = &[
     KLV_ATTR,
     KEY,
+    ONEOF,
     TYPE,
     DEBUG,
     LENGTH,

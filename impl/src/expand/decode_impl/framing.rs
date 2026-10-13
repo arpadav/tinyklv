@@ -440,9 +440,9 @@ impl LoopCtx<'_> {
                 // --------------------------------------------------
                 let keys: Vec<_> = self
                     .input
-                    .klv_fields()
-                    .filter(|(_, attrs)| ValueSrc::header_sliced(attrs.size.as_ref()).is_some())
-                    .map(|(_, attrs)| &attrs.key)
+                    .klv_keys()
+                    .filter(|key| ValueSrc::header_sliced(key.codec.size.as_ref()).is_some())
+                    .map(|key| key.key)
                     .collect();
                 let (pattern, allow) = super::key_pattern(&keys);
                 let prefixed = (!keys.is_empty()).then(|| {

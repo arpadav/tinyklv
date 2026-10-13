@@ -63,11 +63,12 @@
 /// derive-generated decode loop branches on this value to decide whether to slice the value into a
 /// bounded sub-slice or let the value decoder consume it inline from the main stream
 ///
-/// The key must determine the framing. The loop picks a field by its key alone and runs that
-/// field's decoder on whatever framing the header returned, so an `Inline` frame for a known key
-/// feeds that field's decoder the unbounded main stream. A decoder written for a bounded sub-slice
-/// (one that reads to the end of its input, such as a string) then reads past its own value. Have
-/// the `keylen` decoder return one framing per key, the one the key's field decoder expects
+/// The key must determine the framing. The loop picks a decoder by its key alone, the field's or,
+/// for a `key = oneof(..)` arm, the arm's, and runs it on whatever framing the header returned, so
+/// an `Inline` frame for a known key feeds that decoder the unbounded main stream. A decoder
+/// written for a bounded sub-slice (one that reads to the end of its input, such as a string) then
+/// reads past its own value. Have the `keylen` decoder return one framing per key, the one the
+/// key's decoder expects
 ///
 /// Any failure of the `keylen` decoder itself is truncation, wherever the cursor stopped: the loop
 /// rewinds to the start of the frame, then streaming decode returns `Packet::NeedMore` and one-shot

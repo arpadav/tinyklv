@@ -543,6 +543,21 @@ Currently only one key per field is supported.",
     DuplicateKeyInField,
 
     #[error("\
+        A `{k} = {o}(..)` field takes no `{e}`, `{d}` or `{s}(..)`: each arm's value uses the \
+codec of its type, from the struct's `{df}({t} = <..>, ..)` or `{fi}`. Remove this setting from \
+the field.",
+        k = symbol::KEY,
+        o = symbol::ONEOF,
+        e = symbol::ENCODER,
+        d = symbol::DECODER,
+        s = symbol::SIZE,
+        df = symbol::DEFAULT,
+        t = symbol::TYPE,
+        fi = symbol::TRAIT_FALLBACK,
+    )]
+    OneofFieldWithCodec,
+
+    #[error("\
         Duplicate `{s}` field.",
         s = symbol::ENCODER,
     )]

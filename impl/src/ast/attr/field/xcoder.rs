@@ -1,8 +1,8 @@
 //! Raw parsed accumulator for a single field's `#[klv(..)]` settings
 //!
 //! Defines [`FieldXcoder`], which accumulates every recognized sub-attribute
-//! from one `#[klv(..)]` annotation on a struct field: the key literal, the
-//! optional encoder and decoder, the value size shape, the `latebind`
+//! from one `#[klv(..)]` annotation on a struct field: the key literal or `oneof(..)`, the
+//! value's [`ValueCodec`] (encoder, decoder and size shape), the `latebind`
 //! post-decode step, field-level `default`, `break_on`, the skip, and the `unknown` flag of the
 //! field that keeps the frames whose key no field declares. The [`From<&syn::MetaList>`]
 //! impl drives the actual `parse_nested_meta` parse; duplicate-field errors
@@ -13,6 +13,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use super::oneof::{KeySpec, Oneof};
 use crate::ast::attr::{size::SizeSpec, skip_if::SkipIf};
 use crate::ast::symbol;
 use crate::ast::types::{DefaultValue, LatebindXcoder, SiguledXcoder, XcoderType};
@@ -28,12 +29,10 @@ use tk_syn_macros::handle_unique_nested_meta_values;
 pub(crate) struct FieldXcoder {
     /// The key for the field
     pub key: Option<syn::Lit>,
-    /// The encoder for the field, with optional dispatch sigil
-    pub enc: Option<SiguledXcoder>,
-    /// The decoder for the field
-    pub dec: Option<XcoderType>,
-    /// The declared size shape of the field's value; see [`SizeSpec`]
-    pub size: Option<SizeSpec>,
+    /// The arms of a `key = oneof(..)`, written in place of a key literal
+    pub oneof: Option<Oneof>,
+    /// The encoder, decoder and size of the field's value
+    pub codec: ValueCodec,
     /// Post-decode conversion or in-place mutation (`latebind = path` or
     /// `latebind = &mut path`). `None` means no post-decode step
     pub latebind: Option<LatebindXcoder>,
@@ -43,12 +42,6 @@ pub(crate) struct FieldXcoder {
     ///
     /// See [`DefaultValue`] for the two accepted forms
     pub default: Option<DefaultValue>,
-    /// `true` if `enc` was synthesized from the `trait_fallback` container flag
-    /// rather than supplied by the user or a container `default(..)` match
-    pub fallback_enc: bool,
-    /// `true` if `dec` was synthesized from the `trait_fallback` container flag
-    /// rather than supplied by the user or a container `default(..)` match
-    pub fallback_dec: bool,
     /// The `fn(&value) -> BreakType` consulted right after the field's value decodes
     pub break_on: Option<syn::Path>,
     /// When the field's frame is left out of the encode; see [`SkipIf`]
@@ -58,10 +51,37 @@ pub(crate) struct FieldXcoder {
     /// The span of the first setting the list names other than `unknown`, which a keyed field
     /// has and the field that keeps the unknown frames may not
     pub keyed_setting: Option<proc_macro2::Span>,
+    /// The spans of the list's `enc`, `dec` and `size`, which a `key = oneof(..)` field may not
+    /// have
+    pub codec_settings: Vec<proc_macro2::Span>,
+}
+
+#[derive(Debug, Clone, Default)]
+/// The codec of the value a key's frames carry: a field's own, or one `oneof(..)` arm's
+pub(crate) struct ValueCodec {
+    /// The encoder, with optional dispatch sigil
+    pub enc: Option<SiguledXcoder>,
+    /// The decoder
+    pub dec: Option<XcoderType>,
+    /// The declared size shape of the value; see [`SizeSpec`]
+    pub size: Option<SizeSpec>,
+    /// `true` if `enc` was synthesized from the `trait_fallback` container flag
+    /// rather than supplied by the user or a container `default(..)` match
+    pub fallback_enc: bool,
+    /// `true` if `dec` was synthesized from the `trait_fallback` container flag
+    /// rather than supplied by the user or a container `default(..)` match
+    pub fallback_dec: bool,
+}
+/// [`ValueCodec`] implementation
+impl ValueCodec {
+    /// The span of the size's `implicit` keyword, if written: the value has no length prefix
+    pub(crate) fn implicit(&self) -> Option<proc_macro2::Span> {
+        self.size.as_ref().and_then(SizeSpec::implicit)
+    }
 }
 /// [`FieldXcoder`] implementation of [`From`] for [`syn::MetaList`]
 ///
-/// Parses the nested meta arguments from a field-level `#[klv(key = .., enc =
+/// Parses the nested meta arguments from a field-level `#[klv(key = .. | oneof(..), enc =
 /// .., dec = .., size(..), latebind = .., default = .., break_on = .., skip_if_default |
 /// skip_if = ..)]` attribute list, or the bare `#[klv(unknown)]`, into a [`FieldXcoder`]
 ///
@@ -74,7 +94,7 @@ impl From<&syn::MetaList> for FieldXcoder {
         // --------------------------------------------------
         // init
         // --------------------------------------------------
-        let mut key: Option<syn::Lit> = None;
+        let mut key: Option<KeySpec> = None;
         let mut enc: Option<SiguledXcoder> = None;
         let mut dec: Option<XcoderType> = None;
         let mut size: Option<SizeSpec> = None;
@@ -85,6 +105,7 @@ impl From<&syn::MetaList> for FieldXcoder {
         let mut skip_if: Option<syn::Path> = None;
         let mut unknown: Option<proc_macro2::Span> = None;
         let mut keyed_setting: Option<proc_macro2::Span> = None;
+        let mut codec_settings: Vec<proc_macro2::Span> = Vec::new();
         // --------------------------------------------------
         // parse nested meta
         // --------------------------------------------------
@@ -92,6 +113,12 @@ impl From<&syn::MetaList> for FieldXcoder {
             .parse_nested_meta(|meta| {
                 if meta.path != symbol::UNKNOWN_FRAMES {
                     keyed_setting.get_or_insert_with(|| meta.path.span());
+                }
+                if meta.path == symbol::ENCODER
+                    || meta.path == symbol::DECODER
+                    || meta.path == symbol::SIZE
+                {
+                    codec_settings.push(meta.path.span());
                 }
                 handle_unique_nested_meta_values! {
                     meta;
@@ -124,22 +151,33 @@ impl From<&syn::MetaList> for FieldXcoder {
             }
         };
         // --------------------------------------------------
+        // a key literal, or the arms of a `oneof(..)`
+        // --------------------------------------------------
+        let (key, oneof) = match key {
+            Some(KeySpec::Literal(key)) => (Some(key), None),
+            Some(KeySpec::Oneof(oneof)) => (None, Some(oneof)),
+            None => (None, None),
+        };
+        // --------------------------------------------------
         // return
         // --------------------------------------------------
         FieldXcoder {
             key,
-            enc,
-            dec,
-            size,
+            oneof,
+            codec: ValueCodec {
+                enc,
+                dec,
+                size,
+                ..ValueCodec::default()
+            },
             latebind,
             errors,
             default,
-            fallback_enc: false,
-            fallback_dec: false,
             break_on,
             skip_if,
             unknown,
             keyed_setting,
+            codec_settings,
         }
     }
 }

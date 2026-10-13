@@ -17,5 +17,6 @@ mod exact;
 mod exact_stateful;
 mod field_break_on;
 mod implicit;
+mod oneof;
 mod skip;
 mod unknown;

@@ -42,7 +42,7 @@ Run this example: `cargo run --example book_07_b_size_lengthed`
 
 ## Overview
 
-- `size(lengthed)` selects the length-taking codec shape.
+- `size(lengthed)` selects the length-taking codec shape; [Field attributes](../../reference/field-attributes.md#size) charts every `size(..)` keyword.
 - `decs::to_string_utf8` is the canonical UTF-8 `String` decoder.
 - The outer body length still frames the packet; `size(lengthed)` only affects the field value decoder.
 

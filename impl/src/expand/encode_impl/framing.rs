@@ -154,12 +154,12 @@ impl<'a> EncodeFraming<'a> {
     /// Computes the `encode_value` encode reserve in bytes
     ///
     /// Estimates the number of bytes the generated `encode_value` method should reserve before
-    /// writing field items: per keyed `#[klv(..)]` field, the frame header estimate
-    /// ([`Self::header_reserve_bytes`]) plus any statically known value width. A `size(implicit)`
-    /// value adds no length, and its width is its `exact = N` or `reserve = N`. Unknown widths
-    /// contribute zero for the value portion, so the result is an estimate rather than a
-    /// wire-format contract. Retained unknown frames add nothing: their count and widths are
-    /// known only at run time. Every sum saturates at `usize::MAX`
+    /// writing field items: per key of a `#[klv(..)]` field, each `oneof(..)` arm's included, the
+    /// frame header estimate ([`Self::header_reserve_bytes`]) plus any statically known value
+    /// width. A `size(implicit)` value adds no length, and its width is its `exact = N` or
+    /// `reserve = N`. Unknown widths contribute zero for the value portion, so the result is an
+    /// estimate rather than a wire-format contract. Retained unknown frames add nothing: their
+    /// count and widths are known only at run time. Every sum saturates at `usize::MAX`
     ///
     /// # Arguments
     ///
@@ -177,14 +177,14 @@ impl<'a> EncodeFraming<'a> {
         // sum known field widths into the encode reserve
         // --------------------------------------------------
         input
-            .klv_fields()
-            .map(|(field, attrs)| {
-                let size = attrs.size.as_ref();
+            .klv_keys()
+            .map(|key| {
+                let size = key.codec.size.as_ref();
                 let (len, value) = match size.filter(|size| size.implicit().is_some()) {
                     Some(size) => (0, size.capacity_bytes()),
                     None => (
                         len_bytes,
-                        fixed_width::fixed_value_type_width(field.ty)
+                        fixed_width::fixed_value_type_width(key.field.ty)
                             .or_else(|| size.and_then(SizeSpec::capacity_bytes)),
                     ),
                 };
@@ -214,9 +214,9 @@ impl<'a> EncodeFraming<'a> {
         let staged = match self {
             Self::Separate { len, .. } => match len {
                 LengthPrefix::Fixed(_) => false,
-                LengthPrefix::Variable(_) => input
-                    .klv_fields()
-                    .any(|(_, attrs)| attrs.size.as_ref().and_then(SizeSpec::implicit).is_none()),
+                LengthPrefix::Variable(_) => {
+                    input.klv_keys().any(|key| key.codec.implicit().is_none())
+                }
             },
             Self::Fused { .. } => true,
         };

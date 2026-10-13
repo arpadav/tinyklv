@@ -26,6 +26,9 @@
     - [Break conditions](./tutorial/advanced/14-break-condition.md)
     - [Streaming partial packets](./tutorial/advanced/15-streaming-decode.md)
     - [Async / Tokio streams](./tutorial/advanced/16-tokio-streams.md)
+    - [Values with no length](./tutorial/advanced/17-implicit.md)
+    - [Framing per key](./tutorial/advanced/18-keylen.md)
+    - [Unknown frames](./tutorial/advanced/19-unknown.md)
 
 # Reference
 

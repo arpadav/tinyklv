@@ -1,0 +1,5 @@
+error: A `key = oneof(..)` field takes no `enc`, `dec` or `size(..)`: each arm's value uses the codec of its type, from the struct's `default(typ = <..>, ..)` or `trait_fallback`. Remove this setting from the field.
+  --> tests/ui/fail/oneof/field_with_codec.rs:19:9
+   |
+19 |         dec = tinyklv::dec::binary::u8,
+   |         ^^^

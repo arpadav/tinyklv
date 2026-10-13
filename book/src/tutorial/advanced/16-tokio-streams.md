@@ -48,3 +48,5 @@ Run this example: `cargo run --example book_16_tokio_streams`
 - Use `feed()` + `iter()` for real-time packet processing.
 - `tokio` appears only as a transport dependency - no library-level
   async feature flag.
+
+**Next:** [17 - Values with no length](./17-implicit.md)

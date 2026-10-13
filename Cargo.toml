@@ -96,6 +96,11 @@ harness = false
 name = "int_decode"
 harness = false
 
+[[bench]]
+# a varint with a length prefix vs `size(implicit)`, and what opting in to `unknown(..)` costs
+name = "framing_modes"
+harness = false
+
 [features]
 default = []
 ascii = ["winnow/ascii"]

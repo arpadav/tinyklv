@@ -83,8 +83,8 @@ impl CursorSite {
     /// cursor in fewer instructions, and any other stream need not be `Clone`
     pub(super) fn of(input: &MainContainer, stream: &syn::Type) -> Self {
         let exact = input
-            .klv_fields()
-            .filter_map(|(_, attrs)| attrs.size.as_ref())
+            .klv_keys()
+            .filter_map(|key| key.codec.size.as_ref())
             .any(|size| size.len_check().is_some());
         if exact && *stream == super::u8_slice() {
             Self::Local

@@ -4,13 +4,14 @@
 //! over cut and corrupt buffers. Any fused-header failure is truncation: streaming returns
 //! `NeedMore`, one-shot stops at the frame and finalizes. An `Inline` value that fails at
 //! end of input is truncation too; one that fails mid-buffer is malformed (an `Err`
-//! labelled `<Struct>::<field>`)
+//! labelled `<Struct>::<field>`). Either driver decodes an `Inline` value in one read
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::common::drive::Drive;
+use crate::common::scans::Scans;
 use crate::common::varint;
 use crate::support::example::{Example, Reading};
 use crate::support::{header, value};
@@ -100,6 +101,24 @@ impl Wide {
     fn text() -> String {
         "t".repeat(Self::TEXT_LEN)
     }
+}
+
+/// Message whose `Inline` varints [`Scans`] counts every read of
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    keylen(dec = header::dec_tag),
+    allow_unimplemented_encode,
+    default(typ = u64, dec = Scans::dec_u64),
+)]
+struct Counters {
+    /// field 1, wire 0 VARINT - `Inline`
+    #[klv(key = 0x08)]
+    sent: u64,
+
+    /// field 2, wire 0 VARINT - `Inline`
+    #[klv(key = 0x10)]
+    lost: u64,
 }
 
 /// Every two-chunk split of the canonical wire decodes to the same struct as one-shot,
@@ -215,6 +234,22 @@ fn split_inside_long_form_ber_length_value() {
     expected.assert_decodes_from(&wire);
 }
 
+/// An `Inline` varint value split anywhere, including between its two bytes, pauses, then
+/// completes to the value one-shot decodes
+#[test]
+fn split_inside_varint_value() {
+    #[rustfmt::skip]
+    let wire = [
+        // count = 300, a two-byte varint
+        0x08, 0xAC, 0x02,
+    ];
+    let expected = Reading {
+        count: 300,
+        ..Reading::count_only()
+    };
+    expected.assert_decodes_from(&wire);
+}
+
 /// An `Inline` decoder that refuses short input without consuming fails away from the end
 /// of input, so a cut fixed-width value is classed malformed, not truncation
 #[test]
@@ -227,4 +262,22 @@ fn short_fixed_inline_value_is_malformed() {
         0x20, 0x01,
     ];
     Limits::assert_rejects_naming(&wire, &["Limits::port"]);
+}
+
+/// An `Inline` value is read once per frame, by one-shot and by streaming over the whole input
+#[test]
+fn inline_value_is_read_once_by_either_driver() {
+    #[rustfmt::skip]
+    let wire = [
+        // sent = 300 (field 1, wire 0 VARINT, Inline)
+        0x08, 0xAC, 0x02,
+        // lost = 5 (field 2, wire 0 VARINT, Inline)
+        0x10, 0x05,
+    ];
+    let expected = Counters { sent: 300, lost: 5 };
+    let (decoded, scans) = Scans::count(|| Counters::decode_value(&mut &wire[..]));
+    assert_eq!(decoded.as_ref(), Ok(&expected));
+    assert_eq!(scans, 2, "one-shot: one read per frame");
+    let ((), scans) = Scans::count(|| expected.assert_streams_to(&mut &wire[..]));
+    assert_eq!(scans, 2, "streaming: one read per frame");
 }

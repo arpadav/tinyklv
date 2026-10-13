@@ -9,3 +9,6 @@ Complex behaviour and real-world integration patterns.
 | 14 | [Break conditions](./14-break-condition.md) | Custom loop control via `#[klv(break_on = ..)]` / `BreakType` |
 | 15 | [Streaming partial packets](./15-streaming-decode.md) | `::decoder()`, `decode_partial`, and resume |
 | 16 | [Async / Tokio streams](./16-tokio-streams.md) | Driving `::decoder()` from Tokio channels |
+| 17 | [Values with no length](./17-implicit.md) | `size(implicit)`: no length prefix |
+| 18 | [Framing per key](./18-keylen.md) | The fused `keylen(dec, enc)` codec |
+| 19 | [Unknown frames](./19-unknown.md) | `unknown(dec, enc)` and `#[klv(unknown)]` |

@@ -153,7 +153,8 @@ impl DecodeCtx<'_> {
     /// The gate runs after the frame header and before any value byte is consumed, so an unknown
     /// key is rejected with the `invalid key (expected one of the keys defined on ..)` message,
     /// never the truncation a declared length overrunning the input would otherwise produce. The
-    /// pattern is the `|`-joined alternation of every field's `#[klv(key = ..)]` literal, never
+    /// pattern is the `|`-joined alternation of every field's `#[klv(key = ..)]` literal, each
+    /// `oneof(..)` arm's included, never
     /// empty: a decode impl is generated only for a struct with at least one KLV field, and a
     /// `#[klv(unknown)]` one needs the `unknown(..)` that `deny_unknown_keys` cannot sit beside.
     /// The gate carries the `clippy::manual_range_patterns` allow its pattern needs, if any
@@ -170,13 +171,9 @@ impl DecodeCtx<'_> {
         let name = &self.input.ident;
         let key = self.framing.key();
         // --------------------------------------------------
-        // each klv field's declared key expression, spliced with `|` separators
+        // each klv field's declared key expressions, spliced with `|` separators
         // --------------------------------------------------
-        let keys: Vec<_> = self
-            .input
-            .klv_fields()
-            .map(|(_, attrs)| &attrs.key)
-            .collect();
+        let keys: Vec<_> = self.input.klv_keys().map(|key| key.key).collect();
         let (pattern, allow) = super::key_pattern(&keys);
         let reject = driver.reject(&quote! {
             concat!(

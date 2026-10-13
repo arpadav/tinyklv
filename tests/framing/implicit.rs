@@ -1,17 +1,19 @@
 //! `size(implicit)` on a field of a key + len struct: no length prefix is written or read
 //!
 //! An implicit value follows its key directly. One that delimits itself is decoded straight from
-//! the input; one of `exact = N` is the `N` bytes after its key, and a `lengthed` decoder is passed
-//! `N`. Encode writes the key, then the value. A field with a length prefix beside it keeps its
-//! length, and a frame of an unknown key is skipped by its length. An implicit value cut at the end
-//! of the input is truncation: streaming waits for the rest, one-shot finalizes without it. A
-//! key-literal `break_on` is checked on every frame right after its key, an implicit field's too
+//! the input in one read; one of `exact = N` is the `N` bytes after its key, and a `lengthed`
+//! decoder is passed `N`. Encode writes the key, then the value. A field with a length prefix
+//! beside it keeps its length, and a frame of an unknown key is skipped by its length. An implicit
+//! value cut at the end of the input is truncation: streaming waits for the rest, one-shot
+//! finalizes without it. A key-literal `break_on` is checked on every frame right after its key,
+//! an implicit field's too
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::common::drive::Drive;
+use crate::common::scans::Scans;
 use crate::common::varint;
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
@@ -263,6 +265,24 @@ struct BeaconLog {
     callsign: Option<Callsign>,
 }
 
+/// A link's packet counters, implicit varints whose every read [`Scans`] counts
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    key(dec = varint::dec_u32),
+    len(dec = varint::dec_usize),
+    allow_unimplemented_encode,
+    default(typ = u64, dec = Scans::dec_u64, size(implicit)),
+)]
+struct Counters {
+    /// packets sent
+    #[klv(key = 0x01)]
+    sent: u64,
+
+    /// packets lost
+    #[klv(key = 0x02)]
+    lost: u64,
+}
+
 /// The worked example encodes to the plan's exact bytes, and decodes back from them
 #[test]
 fn the_worked_example_round_trips_to_the_plans_bytes() {
@@ -340,4 +360,23 @@ fn an_implicit_value_cut_at_the_end_of_the_input_is_truncation() {
         assert_eq!(Beacon::decode_value(&mut cursor), Ok(before));
         assert_eq!(cursor.len(), held, "one-shot stopped at the cut frame");
     }
+}
+
+/// An implicit value that delimits itself is read once per frame, by one-shot and by streaming
+/// over the whole input
+#[test]
+fn an_implicit_value_is_read_once_by_either_driver() {
+    #[rustfmt::skip]
+    let wire = [
+        // sent = 300: key, varint `AC 02`
+        0x01, 0xAC, 0x02,
+        // lost = 5: key, varint `05`
+        0x02, 0x05,
+    ];
+    let expected = Counters { sent: 300, lost: 5 };
+    let (decoded, scans) = Scans::count(|| Counters::decode_value(&mut &wire[..]));
+    assert_eq!(decoded.as_ref(), Ok(&expected));
+    assert_eq!(scans, 2, "one-shot: one read per frame");
+    let ((), scans) = Scans::count(|| expected.assert_streams_to(&mut &wire[..]));
+    assert_eq!(scans, 2, "streaming: one read per frame");
 }

@@ -22,4 +22,5 @@ mod framing_rules;
 mod inline_error;
 mod lengthed;
 mod macro_hygiene;
+mod oneof;
 mod support;

@@ -1,8 +1,8 @@
 //! Code generation for the key-dispatch match arms
 //!
-//! [`LoopCtx::items_match`] emits one arm per field of the `match` on the frame's key
-//! ([`DecodeFraming::key`](super::framing::DecodeFraming::key)), routing the key to the field's
-//! decoder and writing the result into the partial-packet accumulator. Each field reads its value
+//! [`LoopCtx::items_match`] emits one arm per key of the `match` on the frame's key
+//! ([`DecodeFraming::key`](super::framing::DecodeFraming::key)), routing the key to its value's
+//! decoder and writing the result into the partial-packet accumulator. Each key reads its value
 //! from the [`ValueSrc`] the caller picks for it. A sliced arm of a `size(exact = N)` field first
 //! rejects a frame length other than `N`; [`LoopCtx::exact_guards`] runs the same checks on a frame
 //! that runs past the end of the input, before it is classed as truncation. A
@@ -24,7 +24,7 @@ use super::{
 use crate::{
     ast::{
         attr::{
-            UnknownField,
+            FieldKey, UnknownField,
             size::{LenSource, SizeSpec},
         },
         symbol, types,
@@ -88,21 +88,22 @@ impl ValueSrc {
 
 /// [`LoopCtx`] implementation of the known-key arms
 impl LoopCtx<'_> {
-    /// Generates one arm per KLV field of the `match` on the frame's key that `src_of` gives a
-    /// source, each reading from that source
+    /// Generates one arm per key of the `match` on the frame's key that `src_of` gives a source,
+    /// each reading from that source: a field's own key, or each arm of its `key = oneof(..)`,
+    /// whose value is wrapped in the arm's variant before the latebind
     ///
     /// `__acc` is the in-flight `XxxPartialPacket` accumulator; each arm writes `Some(value)` into
     /// its field. A duplicate key is LAST-WINS: a later successful decode overwrites the earlier
-    /// value. A failed sliced decode keeps the earlier value through `.ok() .. .or(__acc.#name)`; a
-    /// failed [`ValueSrc::Inline`] decode leaves the iteration via
+    /// value, of any arm of a `oneof(..)`. A failed sliced decode keeps the earlier value through
+    /// `.ok() .. .or(__acc.#name)`; a failed [`ValueSrc::Inline`] decode leaves the iteration via
     /// [`LoopDriver::on_parse_fail`](super::loop_driver::LoopDriver::on_parse_fail) and never
     /// writes, and a `lengthed` field's [`ValueSrc::Inline`] arm rejects without decoding. The
     /// caller splices the arms into its own `match`, ahead of its `_` arm
     ///
     /// # Arguments
     ///
-    /// * `src_of` - Picks each field's value source from its `size(..)`, or `None` to leave the
-    ///   field out of this `match`
+    /// * `src_of` - Picks each key's value source from its `size(..)`, or `None` to leave the
+    ///   key out of this `match`
     ///
     /// # Returns
     ///
@@ -110,49 +111,58 @@ impl LoopCtx<'_> {
     ///
     /// # Panics
     ///
-    /// When a field has no decoder. [`DecodeCtx::new`](super::DecodeCtx::new) returns before arm
-    /// generation unless every field has one
+    /// When a key has no decoder. [`DecodeCtx::new`](super::DecodeCtx::new) returns before arm
+    /// generation unless every key has one
     pub(super) fn items_match(
         self,
         mut src_of: impl FnMut(Option<&SizeSpec>) -> Option<ValueSrc>,
     ) -> TokenStream {
-        let arms = self.input.klv_fields().filter_map(|(f, attrs)| {
-            let src = src_of(attrs.size.as_ref())?;
+        let arms = self.input.klv_keys().filter_map(|key| {
+            let FieldKey {
+                field,
+                attrs,
+                key,
+                codec,
+                ty,
+                variant,
+            } = key;
+            let src = src_of(codec.size.as_ref())?;
             // --------------------------------------------------
-            // decoder - the explicit codec, or the field type's `DecodeValue` impl
+            // decoder - the explicit codec, or the value type's `DecodeValue` impl
             // --------------------------------------------------
-            let dec = if attrs.fallback_dec {
-                let t = f.value_ty();
+            let dec = if codec.fallback_dec {
                 let stream = self.stream;
-                quote! { <#t as ::tinyklv::traits::DecodeValue<#stream>>::decode_value }
+                quote! { <#ty as ::tinyklv::traits::DecodeValue<#stream>>::decode_value }
             } else {
                 #[allow(
                     clippy::unwrap_used,
-                    reason = "`DecodeCtx::new` returns before arm generation unless every field has a decoder"
+                    reason = "`DecodeCtx::new` returns before arm generation unless every key has a decoder"
                 )]
-                let dec = attrs.dec.as_ref().unwrap();
+                let dec = codec.dec.as_ref().unwrap();
                 quote! { #dec }
             };
             // --------------------------------------------------
-            // latebind - optional transform post-decode, mutating or consuming
+            // a `oneof(..)` arm's variant, then the latebind - optional transform post-decode,
+            // mutating or consuming
             // --------------------------------------------------
+            let wrap = variant.map(|variant| quote! { .map(#variant) });
             let latebind = match attrs.latebind.as_ref() {
                 Some(lb) if lb.is_mut => {
                     let inner = &lb.inner;
-                    quote! { .map(|mut __v| { #inner(&mut __v); __v }) }
+                    quote! { #wrap .map(|mut __v| { #inner(&mut __v); __v }) }
                 }
                 Some(lb) => {
                     let inner = &lb.inner;
-                    quote! { .map(#inner) }
+                    quote! { #wrap .map(#inner) }
                 }
-                None => quote! {},
+                None => quote! { #wrap },
             };
             let arm = ArmParts {
                 ctx: self,
-                name: &f.name,
-                key: &attrs.key,
+                name: &field.name,
+                key,
                 dec,
-                size: attrs.size.as_ref(),
+                size: codec.size.as_ref(),
                 latebind,
                 break_on: attrs.break_on.as_ref(),
                 src,
@@ -493,7 +503,7 @@ impl LoopCtx<'_> {
     }
 
     /// Emits the checks a frame running past the end of the input meets before it is classed as
-    /// truncation: one per distinct `size(exact = N)` width of a field with a length prefix
+    /// truncation: one per distinct `size(exact = N)` width of a key with a length prefix
     /// ([`SizeSpec::len_check`]), in field order, rejecting a key of that width with a length
     /// other than `N`. A width that fields share tells the rejected field apart only once its
     /// check fails. Each check carries the `clippy::manual_range_patterns` allow its pattern
@@ -517,14 +527,17 @@ impl LoopCtx<'_> {
         let key = self.framing.key();
         let len = self.framing.len();
         // --------------------------------------------------
-        // the exact fields, (key, name, `N` as written), grouped by width in field order
+        // the exact keys, (key, name, `N` as written), grouped by width in field order
         // --------------------------------------------------
         let mut groups: Vec<(usize, Vec<_>)> = Vec::new();
-        for (f, attrs) in self.input.klv_fields() {
-            let Some((width, lit)) = attrs.size.as_ref().and_then(SizeSpec::len_check) else {
+        for FieldKey {
+            field, key, codec, ..
+        } in self.input.klv_keys()
+        {
+            let Some((width, lit)) = codec.size.as_ref().and_then(SizeSpec::len_check) else {
                 continue;
             };
-            let field = (&attrs.key, &f.name, lit);
+            let field = (key, &field.name, lit);
             match groups.iter_mut().find(|(w, _)| *w == width) {
                 Some((_, fields)) => fields.push(field),
                 None => groups.push((width, vec![field])),
@@ -556,7 +569,7 @@ impl LoopCtx<'_> {
     }
 }
 
-/// The per-field fragments of one known-key arm
+/// The per-key fragments of one known-key arm
 struct ArmParts<'a> {
     /// The loop context the arm is emitted against
     ctx: LoopCtx<'a>,
@@ -564,17 +577,17 @@ struct ArmParts<'a> {
     /// The field the arm writes into, `__acc.#name`
     name: &'a syn::Ident,
 
-    /// The field's `#[klv(key = ..)]` literal, the arm's pattern
+    /// The key literal, the arm's pattern: the field's `#[klv(key = ..)]`, or a `oneof(..)` arm's
     key: &'a syn::Lit,
 
     /// The decoder expression (explicit codec or `DecodeValue` fallback)
     dec: TokenStream,
 
-    /// The field's `size(..)`: whether the decoder takes a length, and the width a frame's length
+    /// The value's `size(..)`: whether the decoder takes a length, and the width a frame's length
     /// must match
     size: Option<&'a SizeSpec>,
 
-    /// The `.map(..)` latebind transform, else empty
+    /// The `.map(..)` of a `oneof(..)` arm's variant, then the latebind transform, else empty
     latebind: TokenStream,
 
     /// The field's `fn(&value) -> BreakType`, which decides what happens to a decoded value

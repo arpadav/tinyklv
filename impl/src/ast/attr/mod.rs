@@ -1,7 +1,8 @@
 //! Top-level parsed AST types for a `#[derive(Klv)]`-annotated struct
 //!
 //! Defines [`MainContainer`] (the fully parsed and validated view of an annotated struct),
-//! [`MainField`] (a single named field within that struct) and [`UnknownFrames`] (the codec of the
+//! [`MainField`] (a single named field within that struct), [`FieldKey`] (one key of a keyed
+//! field, with the codec of the value its frames carry) and [`UnknownFrames`] (the codec of the
 //! frames whose key no field declares, and the [`UnknownField`] that keeps them). These types are
 //! the bridge between the attribute-parsing pass (`container` and `field` sub-modules) and the
 //! code-generation pass (`expand`)
@@ -18,7 +19,7 @@ pub(crate) mod skip_if;
 // --------------------------------------------------
 // re-exports
 // --------------------------------------------------
-pub(crate) use field::FieldParsed;
+pub(crate) use field::{FieldKeys, FieldParsed, KeySpec, ValueCodec};
 
 // --------------------------------------------------
 // local
@@ -27,7 +28,7 @@ use crate::Ctxt;
 use container::{
     BreakOnSpec, CodecAttr, ContainerMode, ContainerParsed, DefaultXcoder, UnknownXcoder,
 };
-use size::SizeSpec;
+use field::OneofKey;
 
 // --------------------------------------------------
 // external
@@ -86,6 +87,30 @@ pub(crate) struct MainField<'a> {
 
     /// The original [`syn::Field`], retained for span anchoring
     pub _original: &'a syn::Field,
+}
+
+/// One key of a keyed field, with the codec of the value its frames carry: the field's own key,
+/// or one arm of its `key = oneof(..)`
+#[derive(Clone, Copy)]
+pub(crate) struct FieldKey<'a> {
+    /// The field the key's frames decode into
+    pub field: &'a MainField<'a>,
+
+    /// The field's validated KLV attributes
+    pub attrs: &'a FieldParsed,
+
+    /// The key literal
+    pub key: &'a syn::Lit,
+
+    /// The codec of the value the key's frames carry
+    pub codec: &'a ValueCodec,
+
+    /// The type of that value: the field's value type, or the arm's
+    pub ty: &'a syn::Type,
+
+    /// The variant of the field's enum an arm's value is wrapped in, `None` for the field's own
+    /// key
+    pub variant: Option<&'a syn::Path>,
 }
 
 /// The frames whose key no field declares: the container's `unknown(..)` codec and the field
@@ -223,8 +248,8 @@ impl<'a> MainContainer<'a> {
             // its default fills it
             // --------------------------------------------------
             ContainerMode::Fused { .. } => {
-                for (_, attrs) in container.klv_fields() {
-                    if let Some(span) = attrs.size.as_ref().and_then(SizeSpec::implicit) {
+                for key in container.klv_keys() {
+                    if let Some(span) = key.codec.implicit() {
                         cx.syn_error(syn::Error::new(span, err!(ImplicitInKeylen)));
                     }
                 }
@@ -254,6 +279,17 @@ impl<'a> MainContainer<'a> {
             .filter_map(|field| field.attrs.as_ref().map(|attrs| (field, attrs)))
     }
 
+    /// The keys of the struct's keyed fields, in declaration order, a `key = oneof(..)` field's in
+    /// the order of its arms
+    ///
+    /// # Returns
+    ///
+    /// Every key, paired with its field and the codec of its value
+    pub(crate) fn klv_keys(&self) -> impl Iterator<Item = FieldKey<'_>> {
+        self.klv_fields()
+            .flat_map(|(field, attrs)| FieldKey::of(field, attrs))
+    }
+
     /// The struct's fields without `#[klv(..)]`, in declaration order
     ///
     /// # Returns
@@ -280,29 +316,29 @@ impl<'a> MainContainer<'a> {
     /// `false` when a `size(implicit)` field's frame has no length, or when `unknown(..)` is set,
     /// whose decoder reads an unknown key's length itself
     pub(crate) fn reads_every_len(&self) -> bool {
-        self.unknown.is_none()
-            && !self
-                .klv_fields()
-                .any(|(_, attrs)| attrs.size.as_ref().and_then(SizeSpec::implicit).is_some())
+        self.unknown.is_none() && !self.klv_keys().any(|key| key.codec.implicit().is_some())
     }
 
     /// Whether the struct has a field to generate for, keyed or the one that keeps
-    /// [`Self::unknown`] frames, and every keyed one passes `has`
+    /// [`Self::unknown`] frames, and every key's value codec passes `has`
     ///
-    /// Gates each generated half: a decode or encode impl needs a codec on every keyed field, and
+    /// Gates each generated half: a decode or encode impl needs a codec on every key, and
     /// a struct without a field has nothing to generate. The frames' codec is the container's
     /// `unknown(..)`, which each half checks itself
     ///
     /// # Arguments
     ///
-    /// * `has` - The per-field check, e.g. that the field carries an encoder
+    /// * `has` - The per-key check, e.g. that the value carries an encoder
     ///
     /// # Returns
     ///
-    /// `true` when a keyed or `#[klv(unknown)]` field exists and `has` holds for every keyed one
-    pub(crate) fn every_keyed_field(&self, has: impl FnMut(&FieldParsed) -> bool) -> bool {
-        let mut attrs = self.klv_fields().map(|(_, attrs)| attrs).peekable();
-        (self.kept().is_some() || attrs.peek().is_some()) && attrs.all(has)
+    /// `true` when a keyed or `#[klv(unknown)]` field exists and `has` holds for every key
+    pub(crate) fn every_keyed_field(&self, mut has: impl FnMut(&ValueCodec) -> bool) -> bool {
+        let mut fields = self.klv_fields().peekable();
+        (self.kept().is_some() || fields.peek().is_some())
+            && fields
+                .flat_map(|(field, attrs)| FieldKey::of(field, attrs))
+                .all(|key| has(key.codec))
     }
 }
 
@@ -315,6 +351,48 @@ impl<'a> MainField<'a> {
     /// `T` for an `Option<T>` field, else the field's declared type
     pub(crate) fn value_ty(&self) -> &'a syn::Type {
         crate::ast::types::unwrap_option_type(self.ty).unwrap_or(self.ty)
+    }
+}
+
+/// [`FieldKey`] implementation
+impl<'a> FieldKey<'a> {
+    /// The keys of a keyed field
+    ///
+    /// # Arguments
+    ///
+    /// * `field` - The field
+    /// * `attrs` - Its validated KLV attributes
+    ///
+    /// # Returns
+    ///
+    /// The field's own key, or each arm of its `key = oneof(..)`
+    pub(crate) fn of(
+        field: &'a MainField<'a>,
+        attrs: &'a FieldParsed,
+    ) -> impl Iterator<Item = Self> {
+        let (own, arms) = match &attrs.keys {
+            FieldKeys::One { key, codec } => (
+                Some(Self {
+                    field,
+                    attrs,
+                    key,
+                    codec,
+                    ty: field.value_ty(),
+                    variant: None,
+                }),
+                [].as_slice(),
+            ),
+            FieldKeys::Oneof(arms) => (None, arms.as_slice()),
+        };
+        own.into_iter()
+            .chain(arms.iter().map(move |OneofKey { arm, codec }| Self {
+                field,
+                attrs,
+                key: &arm.key,
+                codec,
+                ty: &arm.ty,
+                variant: Some(&arm.variant),
+            }))
     }
 }
 
@@ -356,6 +434,7 @@ fn fields_from_ast<'a>(
         let attrs = match field::Field::from_ast(cx, field, name, container_defaults, aue, aud, fi)
         {
             Some(field::Field::Keyed(x)) => FieldParsed::from_field(cx, field, &x),
+            Some(field::Field::Oneof(attrs)) => Some(*attrs),
             // --------------------------------------------------
             // the field that keeps the unknown frames is held apart from the keyed ones
             // --------------------------------------------------

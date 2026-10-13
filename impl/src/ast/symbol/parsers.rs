@@ -22,7 +22,10 @@
 // --------------------------------------------------
 use crate::{
     ast::{
-        attr::size::{SizeBytes, SizeSpec},
+        attr::{
+            KeySpec,
+            size::{SizeBytes, SizeSpec},
+        },
         types::*,
     },
     symbol::*,
@@ -120,8 +123,8 @@ create_parser!(
     nv_parse_maybestr => syn::MetaNameValue
 );
 
-// key / sentinel
-create_parser!(KEY: syn::Lit; pnm);
+// key (a literal or a `oneof(..)`) / sentinel
+create_parser!(KEY: KeySpec; pnm);
 create_parser!(SENTINEL: syn::Lit; nv);
 
 // size (field size shape: `size(implicit, lengthed, exact = N | reserve = N)`; key/len byte
