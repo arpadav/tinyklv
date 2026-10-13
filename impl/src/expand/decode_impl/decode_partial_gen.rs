@@ -12,42 +12,26 @@
 //!   `decode_value`/`decode_frame`)
 //!
 //! The last two differ only in their impl header and prologue. Both get the loop itself from
-//! [`DecodeCtx::frame_loop`], whose frame header and body come from
+//! [`LoopCtx::frame_loop`], whose frame header and body come from
 //! [`DecodeFraming`](super::framing::DecodeFraming) and whose exits come from [`LoopDriver`],
-//! followed, when it can `break` ([`DecodeCtx::breaks`]), by the [`LoopCtx::finish`] tail, which
+//! followed, when its body can `break` ([`breaks_out`]), by the [`LoopCtx::finish`] tail, which
 //! finalizes the accumulator once the loop `break`s
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{
-    DecodeCtx, ErrorKind, LoopCtx,
-    loop_driver::{CursorSite, LoopDriver},
-};
+use super::{DecodeCtx, ErrorKind, LoopCtx, key_match_gen::KeyPattern, loop_driver::LoopDriver};
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use proc_macro2::TokenStream;
+use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use quote::quote;
 
-/// [`DecodeCtx`] implementation of the decode loop and the impls built around it
-impl DecodeCtx<'_> {
-    /// Emits the `logger!` call after the frame header, when the container set `debug`
-    ///
-    /// # Returns
-    ///
-    /// The log statement, or `None` without `debug`
-    fn debug_key_val(&self) -> Option<TokenStream> {
-        self.input
-            .attrs
-            .debug
-            .is_some()
-            .then(|| self.framing.debug_line())
-    }
-
-    /// Emits the per-frame decode `loop { .. }` for `driver`
+/// [`LoopCtx`] implementation of the decode loop
+impl LoopCtx<'_> {
+    /// Emits the per-frame decode `loop { .. }` for this context's driver
     ///
     /// Each iteration:
     ///
@@ -66,87 +50,64 @@ impl DecodeCtx<'_> {
     ///    consumed no input
     ///
     /// A `break` leaves the loop for the [`LoopCtx::finish`] tail, which follows the loop only
-    /// when it can `break` ([`Self::breaks`]); a loop that cannot diverges, and a tail after it
+    /// when its body `break`s ([`breaks_out`]); a loop that cannot diverges, and a tail after it
     /// would be unreachable code
-    ///
-    /// # Arguments
-    ///
-    /// * `driver` - The loop exit policy
     ///
     /// # Returns
     ///
     /// The `loop { .. }` statement, then the tail expression when the loop can `break`
-    fn frame_loop(&self, driver: LoopDriver) -> TokenStream {
+    pub(super) fn frame_loop(self) -> TokenStream {
         let input = self.input;
         // --------------------------------------------------
-        // the loop context, and the exit taken on a clean end of input
+        // the exit taken on a clean end of input
         // --------------------------------------------------
-        let lp = self.loop_ctx(driver);
-        let clean_eof = driver.clean_eof();
+        let clean_eof = self.driver.clean_eof();
         // --------------------------------------------------
         // the stages of one frame, in the order the loop runs them
         // --------------------------------------------------
-        let header = lp.header();
-        let break_on = lp.break_on();
-        let debug_key_val = self.debug_key_val();
+        let header = self.header();
+        let break_on = self.break_on();
+        let debug_key_val = input
+            .attrs
+            .debug
+            .is_some()
+            .then(|| self.framing.debug_line());
         let gate = input
             .attrs
             .deny_unknown_keys
             .is_some()
-            .then(|| self.unknown_key_gate(driver));
-        let body = lp.body();
-        // --------------------------------------------------
-        // the tail follows the loop only when the loop can `break`
-        // --------------------------------------------------
-        let finish = self.breaks(driver, break_on.as_ref()).then(|| lp.finish());
+            .then(|| self.unknown_key_gate());
+        let body = self.body();
         // --------------------------------------------------
         // the stages after `break_on`, once the frame's length is read
         // --------------------------------------------------
-        let frame = lp.after_key(quote! {
+        let frame = self.after_key(quote! {
             #debug_key_val
             #gate
             #body
         });
         // --------------------------------------------------
-        // emit the loop: the clean end of input, a checkpoint, then each stage
+        // the loop body: the clean end of input, a checkpoint, then each stage
         // --------------------------------------------------
+        let iteration = quote! {
+            if input.eof_offset() == 0 {
+                #clean_eof
+            }
+            let __checkpoint_inner = input.checkpoint();
+            #header
+            #break_on
+            #frame
+        };
+        // --------------------------------------------------
+        // emit the loop, and the tail only when the body can `break`
+        // --------------------------------------------------
+        let finish = breaks_out(&iteration).then(|| self.finish());
         quote! {
             loop {
-                if input.eof_offset() == 0 {
-                    #clean_eof
-                }
-                let __checkpoint_inner = input.checkpoint();
-                #header
-                #break_on
-                #frame
+                #iteration
             }
             #finish
         }
-    }
-
-    /// Whether the loop emitted for `driver` contains a `break`
-    ///
-    /// ORs the report of each emitter that can put a `break` into the loop:
-    /// [`LoopDriver::clean_eof_breaks`], a `Some` from [`LoopCtx::break_on`],
-    /// [`DecodeFraming::unknown_key_breaks`](super::framing::DecodeFraming::unknown_key_breaks),
-    /// and a field's `break_on`, whose `Done` breaks
-    ///
-    /// # Arguments
-    ///
-    /// * `driver` - The loop exit policy
-    /// * `break_on` - What [`LoopCtx::break_on`] emitted into the loop
-    ///
-    /// # Returns
-    ///
-    /// `true` when the loop can `break` to the [`LoopCtx::finish`] tail
-    fn breaks(&self, driver: LoopDriver, break_on: Option<&TokenStream>) -> bool {
-        driver.clean_eof_breaks()
-            || break_on.is_some()
-            || self.framing.unknown_key_breaks()
-            || self
-                .input
-                .klv_fields()
-                .any(|(_, attrs)| attrs.break_on.is_some())
     }
 
     /// Emits the `deny_unknown_keys` gate, `if !matches!(#key, #pattern) { #reject }`, where
@@ -160,26 +121,20 @@ impl DecodeCtx<'_> {
     /// every key, `if true { #reject }`; one whose only field is `#[klv(unknown)]` needs the
     /// `unknown(..)` that `deny_unknown_keys` cannot sit beside.
     /// The gate carries the `clippy::manual_range_patterns` allow its pattern needs, if any
-    /// ([`key_pattern`](super::key_pattern))
-    ///
-    /// # Arguments
-    ///
-    /// * `driver` - The loop exit policy the rejection returns through
-    ///   ([`LoopDriver::reject_label`])
+    /// ([`KeyPattern::allowed`]), and rejects through the driver ([`LoopDriver::reject_label`])
     ///
     /// # Returns
     ///
     /// The gate statement
-    fn unknown_key_gate(&self, driver: LoopDriver) -> TokenStream {
+    fn unknown_key_gate(self) -> TokenStream {
         let name = &self.input.ident;
         let key = self.framing.key();
         // --------------------------------------------------
         // each klv field's declared key expressions, spliced with `|` separators; with none,
         // every key is unknown
         // --------------------------------------------------
-        let keys: Vec<_> = self.input.klv_keys().map(|key| key.key).collect();
-        let (pattern, allow) = super::key_pattern(&keys);
-        let unknown = if keys.is_empty() {
+        let pattern: KeyPattern = self.input.klv_keys().map(|key| key.key).collect();
+        let unknown = if pattern.is_empty() {
             quote! { true }
         } else {
             quote! { !::core::matches!(#key, #pattern) }
@@ -191,15 +146,60 @@ impl DecodeCtx<'_> {
                 "`; to turn this off, remove `deny_unknown_keys`)",
             )
         };
-        let reject = driver.reject_label(&label, ErrorKind::UnknownKey);
-        quote! {
-            #allow
+        let reject = self.driver.reject_label(&label, ErrorKind::UnknownKey);
+        pattern.allowed(quote! {
             if #unknown {
                 #reject
             }
+        })
+    }
+}
+
+/// Whether a loop body `break`s out of its loop, read off its tokens: an unlabelled `break` at
+/// any depth, outside a loop nested in the body and a macro call's arguments
+///
+/// A nested `loop`, `while` or `for` is skipped through the first brace group after its keyword,
+/// its body, and the token after a `!`, a macro call's arguments, is not read. A labelled `break`
+/// leaves the block or loop of its label
+///
+/// # Arguments
+///
+/// * `body` - The tokens inside the loop's braces
+///
+/// # Returns
+///
+/// `true` when the code after the loop is reachable
+fn breaks_out(body: &TokenStream) -> bool {
+    let mut tokens = body.clone().into_iter().peekable();
+    while let Some(token) = tokens.next() {
+        match token {
+            TokenTree::Ident(ident) if ident == "break" => {
+                let labelled =
+                    matches!(tokens.peek(), Some(TokenTree::Punct(p)) if p.as_char() == '\'');
+                if !labelled {
+                    return true;
+                }
+            }
+            TokenTree::Ident(ident) if ident == "loop" || ident == "while" || ident == "for" => {
+                let _body = tokens.find(|token| {
+                    matches!(token, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace)
+                });
+            }
+            TokenTree::Punct(punct) if punct.as_char() == '!' => {
+                let _arguments = tokens.next();
+            }
+            TokenTree::Group(group) if breaks_out(&group.stream()) => return true,
+            TokenTree::Group(_)
+            | TokenTree::Ident(_)
+            | TokenTree::Punct(_)
+            | TokenTree::Literal(_) => {}
         }
     }
+    false
+}
 
+/// [`DecodeCtx`] implementation of the impls built around the decode loop
+impl DecodeCtx<'_> {
     /// Pairs `driver` with this container, its framing, stream and accumulator types
     ///
     /// # Arguments
@@ -224,8 +224,8 @@ impl DecodeCtx<'_> {
     /// Each call resumes decoding into the caller's `__acc` and returns `Packet::NeedMore(__acc)`
     /// when the input runs out mid-frame or between frames, `Packet::Ready` once the loop ends and
     /// `finalize` succeeds, or `Err` with a `tinyklv::traits::PartialError`; a fused container's
-    /// exits follow the rules stated on `tinyklv::Framing`. The loop is [`Self::frame_loop`] with
-    /// [`LoopDriver::Streaming`]
+    /// exits follow the rules stated on `tinyklv::Framing`. The loop is [`LoopCtx::frame_loop`]
+    /// with [`LoopDriver::Streaming`]
     ///
     /// # Returns
     ///
@@ -249,7 +249,7 @@ impl DecodeCtx<'_> {
         // --------------------------------------------------
         // the frame loop, resuming into the caller's `__acc`
         // --------------------------------------------------
-        let frame_loop = self.frame_loop(driver);
+        let frame_loop = self.loop_ctx(driver).frame_loop();
         // --------------------------------------------------
         // emit the `ResumePartial` impl around the loop
         // --------------------------------------------------
@@ -286,9 +286,9 @@ impl DecodeCtx<'_> {
     /// `NeedMore` or `Ready` (see [`LoopDriver`]); a fused container's exits follow the rules
     /// stated on `tinyklv::Framing`
     ///
-    /// The loop advances the cursor the container's [`CursorSite`] names: the caller's, or a
-    /// local copy inside the block labelled `'__tinyklv_decode`, which every exit leaves and after
-    /// which the copy is written back to the caller's
+    /// The loop advances the caller's cursor, or a local copy written back to it, as the
+    /// container's cursor site decides
+    /// ([`CursorSite::decode_value_body`](super::loop_driver::CursorSite::decode_value_body))
     ///
     /// # Returns
     ///
@@ -312,30 +312,11 @@ impl DecodeCtx<'_> {
         // --------------------------------------------------
         // the frame loop, accumulating into a stack-local partial
         // --------------------------------------------------
-        let frame_loop = self.frame_loop(driver);
+        let frame_loop = self.loop_ctx(driver).frame_loop();
         // --------------------------------------------------
-        // the loop over the caller's cursor, or over a local copy written back after the block
-        // every exit leaves
+        // the loop over the caller's cursor, or over a local copy written back after it
         // --------------------------------------------------
-        let body = match self.cursor {
-            CursorSite::Caller => quote! {
-                let checkpoint = input.checkpoint();
-                let mut __acc = <#partial_ty as ::core::default::Default>::default();
-                #frame_loop
-            },
-            CursorSite::Local => quote! {
-                let mut __cursor = ::core::clone::Clone::clone(&*input);
-                let __result = '__tinyklv_decode: {
-                    let input = &mut __cursor;
-                    let checkpoint = input.checkpoint();
-                    let mut __acc = <#partial_ty as ::core::default::Default>::default();
-                    let mut __exact_reject: ::core::option::Option<::tinyklv::traits::PartialError> = ::core::option::Option::None;
-                    #frame_loop
-                };
-                *input = __cursor;
-                __result
-            },
-        };
+        let body = self.cursor.decode_value_body(partial_ty, &frame_loop);
         // --------------------------------------------------
         // emit the `DecodeValue` impl around the loop
         // --------------------------------------------------
@@ -404,11 +385,15 @@ impl DecodeCtx<'_> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CursorSite::{Caller, Local},
         DecodeCtx,
         LoopDriver::{self, OneShot, Streaming},
+        breaks_out,
     };
-    use crate::{Ctxt, ast::attr::MainContainer};
+    use crate::{
+        Ctxt,
+        ast::attr::MainContainer,
+        expand::decode_impl::loop_driver::CursorSite::{Caller, Local},
+    };
 
     use proc_macro2::{TokenStream, TokenTree};
     use quote::{format_ident, quote};
@@ -429,7 +414,7 @@ mod tests {
 
         /// The frame loop the derive emits for `driver`, `loop { .. }` then any finish tail
         fn frame_loop(&self, driver: LoopDriver) -> TokenStream {
-            self.with_ctx(|ctx| ctx.frame_loop(driver))
+            self.with_ctx(|ctx| ctx.loop_ctx(driver).frame_loop())
         }
 
         /// The drivers the derive emits a loop for: streaming, and one-shot over the cursor the
@@ -646,6 +631,25 @@ mod tests {
                 breaks,
                 "{name}: finish tail iff the loop breaks",
             );
+        }
+    }
+
+    #[test]
+    /// Verifies a loop body leaves its loop only through an unlabelled `break` of its own: one in
+    /// a nested loop, in a macro call's arguments, or with a label leaves something else
+    fn only_an_unlabelled_break_of_its_own_leaves_the_loop() {
+        let cases = [
+            (quote! { if done { break; } }, true),
+            (quote! { if !::core::matches!(key, 1) { break; } }, true),
+            (quote! { break '__tinyklv_decode (e); }, false),
+            (quote! { let _ = loop { break 1; }; }, false),
+            (quote! { while more { break; } }, false),
+            (quote! { for x in xs { break; } }, false),
+            (quote! { for x in xs {} break; }, true),
+            (quote! { let _ = dec!(break); }, false),
+        ];
+        for (body, breaks) in cases {
+            assert_eq!(breaks_out(&body), breaks, "{body}");
         }
     }
 

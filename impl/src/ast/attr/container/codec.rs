@@ -11,6 +11,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use super::AllowUnimplemented;
 use crate::{
     Ctxt,
     ast::{
@@ -28,7 +29,7 @@ use std::borrow::Cow;
 /// The parsed fields of one codec attribute list, held by a [`CodecAttr`]
 ///
 /// Each slot parses into its own type, so a `keylen(..)` holds no `size(..)`
-pub(crate) trait CodecFields:
+pub(in crate::ast::attr) trait CodecFields:
     for<'a> TryFrom<&'a syn::MetaList, Error = syn::Error>
 {
     /// Whether the list set an `enc`
@@ -130,7 +131,7 @@ impl CodecSlot {
 /// attribute itself. An [`Self::Invalid`] attribute still counts as present, so its own error is
 /// not joined by a missing-framing or conflict error that only its absence would explain
 #[derive(Debug, Default)]
-pub(crate) enum CodecAttr<T> {
+pub(in crate::ast::attr) enum CodecAttr<T> {
     /// The attribute did not appear
     #[default]
     Absent,
@@ -221,16 +222,15 @@ impl<T: CodecFields> CodecAttr<T> {
     /// # Arguments
     ///
     /// * `cx` - Error accumulation context the errors are reported to
-    /// * `allow_encode` - Whether a missing `enc` is allowed
-    /// * `allow_decode` - Whether a missing `dec` is allowed
-    pub(crate) fn report_missing(&self, cx: &Ctxt, allow_encode: bool, allow_decode: bool) {
+    /// * `allow` - Whether a missing `enc` and a missing `dec` are allowed
+    pub(in crate::ast::attr) fn report_missing(&self, cx: &Ctxt, allow: AllowUnimplemented) {
         let Self::Parsed(path, fields) = self else {
             return;
         };
-        if !allow_encode && !fields.has_enc() {
+        if !allow.encode && !fields.has_enc() {
             cx.error_spanned_by(path, err!(MissingEncInCodec(path)));
         }
-        if !allow_decode && !fields.has_dec() {
+        if !allow.decode && !fields.has_dec() {
             cx.error_spanned_by(path, err!(MissingDecInCodec(path)));
         }
     }

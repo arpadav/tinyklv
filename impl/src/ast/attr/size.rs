@@ -23,7 +23,7 @@ use tk_syn_macros::handle_unique_nested_meta_values;
 use quote::ToTokens;
 use syn::spanned::Spanned;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Default)]
 /// The byte count of a `size(..)`, from its `exact = N` / `reserve = N` items: the whole size of
 /// a `key(..)` or `len(..)`, and one axis of a field's [`SizeSpec`]
 ///
@@ -240,7 +240,7 @@ impl SizeSpec {
         };
         let implicit = own_implicit.or_else(|| default.and_then(|default| default.implicit));
         let bytes_side = match (own, default) {
-            (Some(own), _) if own.bytes != SizeBytes::Unset => Some(own),
+            (Some(own), _) if !matches!(own.bytes, SizeBytes::Unset) => Some(own),
             (_, Some(default)) => Some(default.clone()),
             (own, None) => own,
         };

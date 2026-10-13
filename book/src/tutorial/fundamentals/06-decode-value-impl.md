@@ -22,7 +22,7 @@ that embeds a `Celsius` gets the decoder for free.
 Run this example: `cargo run --example book_06_decode_value_impl`
 
 ```rust
-{{#include ../../../../examples/book_06_decode_value_impl.rs}}
+{{#include ../../../../examples/book/basics/book_06_decode_value_impl.rs}}
 ```
 
 ## Overview

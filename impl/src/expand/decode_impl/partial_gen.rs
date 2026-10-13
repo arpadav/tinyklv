@@ -5,8 +5,8 @@
 //!
 //! * [`DecodeCtx::partial_struct`] - emits the hidden `XxxPartialPacket` struct (a
 //!   mirror of the user struct with every KLV field as `Option<T>`, and the `#[klv(unknown)]`
-//!   field as its own type) and its manual [`Default`] impl seeded by any field-level `default`
-//!   attributes
+//!   field as its own type), its manual [`Default`] impl seeded by any field-level `default`
+//!   attributes, and its [`Debug`] impl, which names the fields without their values
 //! * [`DecodeCtx::partial_impl`] - emits the [`tinyklv::traits::Partial`] impl,
 //!   which validates required fields and constructs the final struct via
 //!   `Partial::finalize`
@@ -33,7 +33,8 @@ use quote::{ToTokens, quote};
 
 /// [`DecodeCtx`] implementation of the partial-packet struct and its impls
 impl DecodeCtx<'_> {
-    /// Generates the partial-packet struct definition and its manual [`Default`] impl
+    /// Generates the partial-packet struct definition and its manual [`Default`] and [`Debug`]
+    /// impls
     ///
     /// The emitted struct mirrors the main struct with one `Option<T>` field per
     /// KLV-annotated field; non-KLV fields are omitted from the partial and filled
@@ -54,12 +55,15 @@ impl DecodeCtx<'_> {
     /// because `default = <expr>` may be an arbitrary expression that does not
     /// match `<T as Default>::default()`
     ///
+    /// The `Debug` impl prints each field's name with `..` for its value, so a logged partial
+    /// shows no decoded data, and asks no field type to be `Debug`
+    ///
     /// The partial struct takes the visibility of the original struct
     ///
     /// # Returns
     ///
     /// A [`proc_macro2::TokenStream`] containing the partial struct definition and
-    /// its `Default` impl block
+    /// its `Default` and `Debug` impl blocks
     pub(super) fn partial_struct(&self) -> proc_macro2::TokenStream {
         let name = &self.input.ident;
         let partial_name = &self.partial_name;
@@ -73,7 +77,7 @@ impl DecodeCtx<'_> {
         // --------------------------------------------------
         // Option<T> fields flattened: store Option<T>, not Option<Option<T>>
         // --------------------------------------------------
-        let field_decls = self.input.klv_fields().map(|(field, _)| {
+        let field_decls = self.input.keyed_fields().map(|(field, _)| {
             let field_name = &field.name;
             let ty = field.value_ty();
             // --------------------------------------------------
@@ -130,7 +134,7 @@ impl DecodeCtx<'_> {
         // --------------------------------------------------
         // get the default inits for the fields
         // --------------------------------------------------
-        let default_inits = self.input.klv_fields().map(|(field, attrs)| {
+        let default_inits = self.input.keyed_fields().map(|(field, attrs)| {
             let field_name = &field.name;
             let default = attrs.default.clone();
             let ty = field.value_ty();
@@ -182,13 +186,20 @@ impl DecodeCtx<'_> {
             quote! { "`]. Mirror of the struct with every klv field as `Option<T>` so the decode loop can fill it incrementally and resume across `Packet::NeedMore` boundaries via [`tinyklv::Decoder`]" }
         };
         // --------------------------------------------------
-        // construct, both the struct, and the default impl
+        // the fields the `Debug` impl names, each with `..` for its value
+        // --------------------------------------------------
+        let debug_names = self
+            .input
+            .keyed_fields()
+            .map(|(field, _)| &field.name)
+            .chain(unknown.map(|UnknownField { name, .. }| name));
+        // --------------------------------------------------
+        // construct the struct, and its default and debug impls
         // --------------------------------------------------
         quote! {
             #[doc(hidden)]
             #[automatically_derived]
             #[doc = ::core::concat!(" In-flight partial packet for [`", ::core::stringify!(#name), #mirror)]
-            #[derive(::core::fmt::Debug)]
             #vis struct #partial_name #impl_generics #where_clause {
                 #(#field_decls)*
                 #unknown_decl
@@ -204,6 +215,15 @@ impl DecodeCtx<'_> {
                         #unknown_init
                         #phantom_default
                     }
+                }
+            }
+
+            #[automatically_derived]
+            impl #impl_generics ::core::fmt::Debug for #partial_ty #where_clause {
+                fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                    f.debug_struct(::core::stringify!(#partial_name))
+                        #(.field(::core::stringify!(#debug_names), &::core::format_args!("..")))*
+                        .finish()
                 }
             }
         }
@@ -270,7 +290,7 @@ impl DecodeCtx<'_> {
         // --------------------------------------------------
         let required_guards = self
             .input
-            .klv_fields()
+            .keyed_fields()
             .filter(|(f, _)| !types::is_option(f.ty))
             .map(|(field, _)| {
                 let MainField { name, .. } = field;
@@ -296,7 +316,7 @@ impl DecodeCtx<'_> {
         // --------------------------------------------------
         let optional_passes = self
             .input
-            .klv_fields()
+            .keyed_fields()
             .filter(|(f, _)| types::is_option(f.ty))
             .map(|(field, _)| {
                 let MainField { name, .. } = field;
@@ -308,7 +328,7 @@ impl DecodeCtx<'_> {
         // klv field names for struct literal (shorthand assignment)
         // rust is awesome
         // --------------------------------------------------
-        let klv_field_names = self.input.klv_fields().map(|(f, _)| &f.name);
+        let klv_field_names = self.input.keyed_fields().map(|(f, _)| &f.name);
         // --------------------------------------------------
         // non-klv fields: fill with `#name: <#ty>::default()
         // --------------------------------------------------

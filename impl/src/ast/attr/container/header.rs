@@ -2,7 +2,7 @@
 //! three frame header attributes, the fused `keylen(..)` included
 //!
 //! Defines [`HeaderXcoder`], which holds the optional encoder and decoder of a `key(..)` or
-//! `len(..)`, and the optional byte count of its `size(..)`. Both xcoders are optional because
+//! `len(..)`, and the byte count of its `size(..)`. Both xcoders are optional because
 //! `allow_unimplemented_encode` / `allow_unimplemented_decode` may suppress
 //! the missing-xcoder error. [`TryFrom<&syn::MetaList>`] drives the
 //! `parse_nested_meta` parse for `enc = ..`, `dec = ..` and `size(..)`
@@ -15,6 +15,7 @@
 // local
 // --------------------------------------------------
 use super::{
+    AllowUnimplemented,
     codec::{CodecAttr, CodecFields},
     keylen::KeylenXcoder,
 };
@@ -45,9 +46,9 @@ pub(crate) struct HeaderXcoder {
     /// The decoder, or `None` when unimplemented decoding is allowed
     pub(crate) dec: Option<XcoderType>,
 
-    /// The declared byte count of the key or length prefix (absent ⇒ variable-width); see
-    /// [`SizeBytes`]
-    pub(crate) size: Option<SizeBytes>,
+    /// The declared byte count of the key or length prefix ([`SizeBytes::Unset`] ⇒
+    /// variable-width); see [`SizeBytes`]
+    pub(crate) size: SizeBytes,
 }
 /// [`HeaderXcoder`] implementation of [`TryFrom`] for [`syn::MetaList`]
 ///
@@ -79,12 +80,13 @@ impl TryFrom<&syn::MetaList> for HeaderXcoder {
             }
         })?;
         // --------------------------------------------------
-        // return (size is validated during its own parse)
+        // return (size is validated during its own parse, and a list without `size(..)` declares
+        // no byte count)
         // --------------------------------------------------
         Ok(HeaderXcoder {
             enc: enc.map(|HeaderEncoder(enc)| enc),
             dec,
-            size,
+            size: size.unwrap_or_default(),
         })
     }
 }
@@ -119,12 +121,11 @@ impl HeaderAttrs {
     /// # Arguments
     ///
     /// * `cx` - Error accumulation context the errors are reported to
-    /// * `allow_encode` - Whether `allow_unimplemented_encode` is set
-    /// * `allow_decode` - Whether `allow_unimplemented_decode` is set
-    pub(super) fn report_missing(&self, cx: &Ctxt, allow_encode: bool, allow_decode: bool) {
-        self.key.report_missing(cx, allow_encode, allow_decode);
-        self.len.report_missing(cx, allow_encode, allow_decode);
-        self.keylen.report_missing(cx, allow_encode, allow_decode);
+    /// * `allow` - Whether `allow_unimplemented_encode` and `allow_unimplemented_decode` are set
+    pub(super) fn report_missing(&self, cx: &Ctxt, allow: AllowUnimplemented) {
+        self.key.report_missing(cx, allow);
+        self.len.report_missing(cx, allow);
+        self.keylen.report_missing(cx, allow);
     }
 }
 

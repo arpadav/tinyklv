@@ -30,7 +30,7 @@ single call.
 Run this example: `cargo run --example book_13_repeated_extraction`
 
 ```rust,no_run
-{{#include ../../../../examples/book_13_repeated_extraction.rs}}
+{{#include ../../../../examples/book/advanced/book_13_repeated_extraction.rs}}
 ```
 
 - `DrainFrames::drain_frames` returns `Vec<Self>` from a sentinel-framed stream.

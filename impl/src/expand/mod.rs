@@ -24,7 +24,7 @@ pub(crate) mod logger;
 // --------------------------------------------------
 use crate::{
     Ctxt,
-    ast::attr::{MainContainer, container::ContainerMode, size::SizeBytes},
+    ast::attr::{MainContainer, container::ContainerMode},
 };
 
 // --------------------------------------------------
@@ -116,7 +116,7 @@ fn usize_asserts(input: &MainContainer) -> TokenStream {
         Some((size.exact_width()?, at))
     });
     let len = match &input.attrs.mode {
-        ContainerMode::Separate { len, .. } => len.size.as_ref().and_then(SizeBytes::exact_width),
+        ContainerMode::Separate { len, .. } => len.size.exact_width(),
         ContainerMode::Fused { .. } => None,
     };
     // --------------------------------------------------

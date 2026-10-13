@@ -1,0 +1,5 @@
+error: `dec` takes a path, not a literal: `dec = my::path`, or the path in a string, `dec = "my::path"`.
+  --> tests/ui/fail/codec/field/field_dec_literal.rs:10:29
+   |
+10 |     #[klv(key = 0x01, dec = 5)]
+   |                             ^

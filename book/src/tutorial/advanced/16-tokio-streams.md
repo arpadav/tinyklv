@@ -38,7 +38,7 @@ two awaits.
 Run this example: `cargo run --example book_16_tokio_streams`
 
 ```rust
-{{#include ../../../../examples/book_16_tokio_streams.rs}}
+{{#include ../../../../examples/book/advanced/book_16_tokio_streams.rs}}
 ```
 
 ## Key takeaways

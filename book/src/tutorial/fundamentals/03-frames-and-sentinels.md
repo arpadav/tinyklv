@@ -18,7 +18,7 @@ you used on Tutorial 01.
 Run this example: `cargo run --example book_03_frames_and_sentinels`
 
 ```rust
-{{#include ../../../../examples/book_03_frames_and_sentinels.rs}}
+{{#include ../../../../examples/book/basics/book_03_frames_and_sentinels.rs}}
 ```
 
 ## Overview

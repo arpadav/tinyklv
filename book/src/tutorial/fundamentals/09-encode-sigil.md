@@ -41,7 +41,7 @@ field attribute omits the sigil.
 Run this example: `cargo run --example book_09_encode_sigil`
 
 ```rust
-{{#include ../../../../examples/book_09_encode_sigil.rs}}
+{{#include ../../../../examples/book/fields/book_09_encode_sigil.rs}}
 ```
 
 ## Overview

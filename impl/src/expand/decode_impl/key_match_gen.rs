@@ -7,10 +7,10 @@
 //! rejects a frame length other than `N`; [`LoopCtx::exact_guards`] runs the same checks on a frame
 //! that runs past the end of the input, before it is classed as truncation. A
 //! `size(implicit, exact = N)` arm cuts its own `N` bytes. A field's `break_on` decides what
-//! happens to each value it decodes ([`LoopCtx::field_break`]). [`LoopCtx::unknown_arm`] and
-//! [`LoopCtx::kept_sliced_unknown_arm`] emit the `_` arm that hands a key no field declares to
-//! the `unknown(..)` decoder, reading from the main stream or from a `Sliced` frame's bounded
-//! value
+//! happens to each value it decodes ([`LoopCtx::field_break`]). [`LoopCtx::unknown_from_input`]
+//! and [`LoopCtx::kept_sliced_unknown_arm`] emit the `_` arm, or its `match`, that hands a key no
+//! field declares to the `unknown(..)` decoder, reading from the main stream or from a `Sliced`
+//! frame's bounded value
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -18,13 +18,13 @@
 // --------------------------------------------------
 use super::{
     ErrorKind, LoopCtx,
-    framing::{DecodeFraming, UnknownDecoder},
-    loop_driver::{ParseSite, TakeInto},
+    framing::UnknownDecoder,
+    loop_driver::{CursorSite, ParseSite, TakeInto},
 };
 use crate::{
     ast::{
         attr::{
-            FieldKey, MainContainer, UnknownField,
+            FieldKey, MainContainer, UnknownField, ValueXcoder,
             size::{LenSource, SizeSpec},
         },
         symbol, types,
@@ -36,7 +36,20 @@ use crate::{
 // external
 // --------------------------------------------------
 use proc_macro2::{Literal, TokenStream, TokenTree};
-use quote::{quote, quote_spanned};
+use quote::{ToTokens, quote, quote_spanned};
+
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+/// The fewest alternatives of a `K1 | K2 | ..` pattern that `clippy::manual_range_patterns` reads
+/// as a range, a repeated key counted each time
+const RANGE_LINT_KEYS: usize = 3;
+
+/// The `K1 | K2 | ..` pattern of some keys, as the fields declare them
+pub(super) struct KeyPattern<'a> {
+    /// The keys, in field order
+    keys: Vec<&'a syn::Lit>,
+}
 
 /// Where an arm reads its value bytes from
 #[derive(Debug, Clone, Copy)]
@@ -55,6 +68,16 @@ pub(super) enum ValueSrc {
     /// `size(implicit, exact = N)` value, whose frame has no length; a decode error is swallowed
     /// via `.ok()`
     Exact(usize),
+}
+
+/// What a failed value or length decoder read, which decides whether its failure can be
+/// truncation ([`LoopCtx::value_err_arm`])
+#[derive(Debug, Clone, Copy)]
+pub(super) enum DecodedFrom {
+    /// `input`, the main stream, whose end can cut the value short
+    Input,
+    /// `&mut __subinput`, a `Sliced` frame's bounded value, every byte of which its `take` holds
+    Subinput,
 }
 
 /// [`ValueSrc`] implementation
@@ -95,6 +118,85 @@ impl ValueSrc {
     }
 }
 
+/// [`KeyPattern`] implementation
+impl KeyPattern<'_> {
+    /// Whether the pattern has no alternative, which no `match` arm or `matches!` can hold
+    pub(super) fn is_empty(&self) -> bool {
+        self.keys.is_empty()
+    }
+
+    /// Emits `item`, the arm or statement holding the pattern, behind the
+    /// `clippy::manual_range_patterns` allow the pattern needs, if any ([`Self::reads_as_range`])
+    ///
+    /// # Arguments
+    ///
+    /// * `item` - The arm or statement
+    ///
+    /// # Returns
+    ///
+    /// `item`, after the allow when the lint reads the pattern as a range
+    pub(super) fn allowed(&self, item: TokenStream) -> TokenStream {
+        let allow = self.reads_as_range().then(|| {
+            quote! {
+                #[allow(
+                    clippy::manual_range_patterns,
+                    reason = "the pattern is the keys as the fields declare them, which this lint reads as a range",
+                )]
+            }
+        });
+        quote! {
+            #allow
+            #item
+        }
+    }
+
+    /// Whether `clippy::manual_range_patterns` reads the pattern as a range: [`RANGE_LINT_KEYS`]
+    /// or more integer keys, each within `i128`, whose distinct values are consecutive in any
+    /// order
+    fn reads_as_range(&self) -> bool {
+        // --------------------------------------------------
+        // the key values, when every key is an integer within `i128`, the lint's own key type
+        // --------------------------------------------------
+        let values: Option<Vec<i128>> = self
+            .keys
+            .iter()
+            .map(|key| match key {
+                syn::Lit::Int(int) => int.base10_parse().ok(),
+                _ => None,
+            })
+            .collect();
+        // --------------------------------------------------
+        // enough alternatives, whose distinct values are consecutive
+        // --------------------------------------------------
+        self.keys.len() >= RANGE_LINT_KEYS
+            && values.is_some_and(|mut values| {
+                values.sort_unstable();
+                values.dedup();
+                values
+                    .windows(2)
+                    .all(|pair| matches!(pair, [low, high] if low.checked_add(1) == Some(*high)))
+            })
+    }
+}
+
+/// [`KeyPattern`] implementation of [`FromIterator`], the keys in iteration order
+impl<'a> FromIterator<&'a syn::Lit> for KeyPattern<'a> {
+    fn from_iter<I: IntoIterator<Item = &'a syn::Lit>>(keys: I) -> Self {
+        Self {
+            keys: keys.into_iter().collect(),
+        }
+    }
+}
+
+/// [`KeyPattern`] implementation of [`ToTokens`]
+impl ToTokens for KeyPattern<'_> {
+    /// Emits `K1 | K2 | ..`
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let keys = &self.keys;
+        tokens.extend(quote! { #(#keys)|* });
+    }
+}
+
 /// [`LoopCtx`] implementation of the known-key arms
 impl LoopCtx<'_> {
     /// Generates one arm per key of the `match` on the frame's key that `src_of` gives a source,
@@ -118,11 +220,6 @@ impl LoopCtx<'_> {
     /// # Returns
     ///
     /// The concatenated match arms
-    ///
-    /// # Panics
-    ///
-    /// When a key has no decoder. [`DecodeCtx::new`](super::DecodeCtx::new) returns before arm
-    /// generation unless every key has one
     pub(super) fn items_match(
         self,
         mut src_of: impl FnMut(Option<&SizeSpec>) -> Option<ValueSrc>,
@@ -138,18 +235,15 @@ impl LoopCtx<'_> {
             } = key;
             let src = src_of(codec.size.as_ref())?;
             // --------------------------------------------------
-            // decoder - the explicit codec, or the value type's `DecodeValue` impl
+            // decoder - the explicit codec, or the value type's `DecodeValue` impl; every key has
+            // one, as `DecodeCtx::new` returns before arm generation otherwise
             // --------------------------------------------------
-            let dec = if codec.fallback_dec {
-                let stream = self.stream;
-                quote! { <#ty as ::tinyklv::traits::DecodeValue<#stream>>::decode_value }
-            } else {
-                #[allow(
-                    clippy::unwrap_used,
-                    reason = "`DecodeCtx::new` returns before arm generation unless every key has a decoder"
-                )]
-                let dec = codec.dec.as_ref().unwrap();
-                quote! { #dec }
+            let dec = match codec.dec.as_ref()? {
+                ValueXcoder::Explicit(dec) => quote! { #dec },
+                ValueXcoder::TraitFallback => {
+                    let stream = self.stream;
+                    quote! { <#ty as ::tinyklv::traits::DecodeValue<#stream>>::decode_value }
+                }
             };
             // --------------------------------------------------
             // a `oneof(..)` arm's variant, then the latebind - optional transform post-decode,
@@ -183,21 +277,80 @@ impl LoopCtx<'_> {
     }
 }
 
-/// [`LoopCtx`] implementation of the unknown-key arms
+/// [`LoopCtx`] implementation of a decoder's error arm
 impl LoopCtx<'_> {
-    /// Emits the `_` arm of a `match` on the frame's key, where the `unknown(..)` decoder reads
-    /// the rest of a frame whose key no field declares from the main stream: every byte after the
-    /// header, a key + len frame's length included
+    /// Emits the `Err` arm of a `match` on a value or length decoder's result
     ///
     /// ```text
-    /// _ => match #decoder(#key)(input) {
+    /// Err(__err) => {
+    ///     let __err: ContextError = __err;
+    ///     #reject
+    /// }
+    /// ```
+    ///
+    /// The value is rejected with a [`Self::label`] naming `field`, else the struct's item, and
+    /// `decoder` in its reason. One read from the main stream ([`DecodedFrom::Input`]) is
+    /// truncation at the end of the input, else malformed
+    /// ([`LoopDriver::on_parse_fail`](super::loop_driver::LoopDriver::on_parse_fail)), `(its
+    /// <decoder> failed before the end of the input)`. One read from a `Sliced` frame's bounded
+    /// value ([`DecodedFrom::Subinput`]) is malformed
+    /// ([`LoopDriver::reject_value`](super::loop_driver::LoopDriver::reject_value)), `(its
+    /// <decoder> rejected the item's value)`, and never truncation: the `take` already holds
+    /// every byte of the frame. The error binding is located at the decoder, so a decoder of
+    /// another error type is reported there
+    ///
+    /// # Arguments
+    ///
+    /// * `from` - What the decoder read
+    /// * `at_dec` - The decoder's location
+    /// * `field` - The field the value is for, `None` for the struct's item
+    /// * `decoder` - How the reason names the decoder
+    ///
+    /// # Returns
+    ///
+    /// The single match arm, every path leaving the iteration
+    pub(super) fn value_err_arm(
+        self,
+        from: DecodedFrom,
+        at_dec: proc_macro2::Span,
+        field: Option<&syn::Ident>,
+        decoder: &str,
+    ) -> TokenStream {
+        let reject = match from {
+            DecodedFrom::Input => {
+                let reason = format!("its {decoder} failed before the end of the input");
+                let label = self.label(field, &reason);
+                self.driver
+                    .on_parse_fail(ParseSite::Value { label: &label })
+            }
+            DecodedFrom::Subinput => {
+                let reason = format!("its {decoder} rejected the item's value");
+                self.driver
+                    .reject_value(&self.label(field, &reason), ErrorKind::MalformedValue)
+            }
+        };
+        let err_ty = quote_spanned! {at_dec=>
+            let __err: ::tinyklv::__export::winnow::error::ContextError = __err;
+        };
+        quote! {
+            ::core::result::Result::Err(__err) => {
+                #err_ty
+                #reject
+            }
+        }
+    }
+}
+
+/// [`LoopCtx`] implementation of the unknown-key arms
+impl LoopCtx<'_> {
+    /// Emits the `match` of the `_` arm of a `match` on the frame's key, where the `unknown(..)`
+    /// decoder reads the rest of a frame whose key no field declares from the main stream: every
+    /// byte after the header, a key + len frame's length included
+    ///
+    /// ```text
+    /// match #decoder(#key)(input) {
     ///     Ok(__val) => #push,     // `Ok(_) => ()` when no field keeps the frame
     ///     Err(__err) => { let __err: ContextError = __err; #on_parse_fail }
-    /// },
-    /// // Separate
-    /// _ => {
-    ///     match #decoder(#key)(input) { .. }
-    ///     #progress_check
     /// }
     /// ```
     ///
@@ -206,9 +359,9 @@ impl LoopCtx<'_> {
     /// [`LoopDriver::read_input`](super::loop_driver::LoopDriver::read_input) hands it. Without a
     /// field to keep it the value is still decoded, which consumes it, and dropped. A failed
     /// decode is truncation or malformed as a [`ValueSrc::Inline`] arm's is
-    /// ([`Self::unknown_match`]). A separate frame ends with this arm, which then rejects a frame
-    /// whose key and value consumed no input ([`Self::progress_check`]); a fused one is checked
-    /// after its value ([`Self::body`])
+    /// ([`Self::unknown_match`]). The caller's arm checks the frame consumed input: a separate
+    /// frame's after this `match` ([`Self::after_key`]), a fused one's after its framing `match`
+    /// ([`Self::body`])
     ///
     /// # Arguments
     ///
@@ -216,29 +369,13 @@ impl LoopCtx<'_> {
     ///
     /// # Returns
     ///
-    /// The single match arm
-    pub(super) fn unknown_arm(self, unknown: UnknownDecoder) -> TokenStream {
+    /// The `match`
+    pub(super) fn unknown_from_input(self, unknown: UnknownDecoder) -> TokenStream {
         let UnknownDecoder { decoder, keep } = unknown;
         let decoded = self
             .driver
             .read_input(|cursor| self.unknown_call(decoder, cursor));
-        let decode = self.unknown_match(decoder, &decoded, keep, ValueSrc::Inline);
-        // --------------------------------------------------
-        // a separate frame ends with this arm, so it checks its own progress; a fused frame's
-        // body checks after its framing `match`
-        // --------------------------------------------------
-        match self.framing {
-            DecodeFraming::Separate { .. } => {
-                let progress = self.progress_check();
-                quote! {
-                    _ => {
-                        #decode
-                        #progress
-                    }
-                }
-            }
-            DecodeFraming::Fused { .. } => quote! { _ => #decode, },
-        }
+        self.unknown_match(decoder, &decoded, keep, DecodedFrom::Input)
     }
 
     /// Emits the `_` arm of a `Sliced` frame's `match` on its key, where the `unknown(..)` decoder
@@ -252,7 +389,7 @@ impl LoopCtx<'_> {
     /// ```
     ///
     /// The decoder is called with the key ([`Self::unknown_call`]) on the bounded `__subinput`,
-    /// where [`Self::unknown_arm`] hands it the main stream. A failed decode is a malformed
+    /// where [`Self::unknown_from_input`] hands it the main stream. A failed decode is a malformed
     /// value labelled with the field, and never truncation ([`Self::unknown_match`])
     ///
     /// # Arguments
@@ -269,7 +406,7 @@ impl LoopCtx<'_> {
         field: &UnknownField,
     ) -> TokenStream {
         let decoded = self.unknown_call(decoder, &quote! { &mut __subinput });
-        let decode = self.unknown_match(decoder, &decoded, Some(field), ValueSrc::HeaderSliced);
+        let decode = self.unknown_match(decoder, &decoded, Some(field), DecodedFrom::Subinput);
         quote! { _ => #decode, }
     }
 
@@ -283,7 +420,7 @@ impl LoopCtx<'_> {
     /// ```
     ///
     /// A decoded value is pushed into the field that keeps it, else dropped. A failed decode is
-    /// rejected as a value read from `src` ([`Self::value_err_arm`]), labelled with the field,
+    /// rejected as a value read from `from` ([`Self::value_err_arm`]), labelled with the field,
     /// else with the struct's item
     ///
     /// # Arguments
@@ -291,7 +428,7 @@ impl LoopCtx<'_> {
     /// * `decoder` - The `unknown(dec = ..)` decoder
     /// * `decoded` - Its call ([`Self::unknown_call`])
     /// * `keep` - The `#[klv(unknown)]` field, or `None` when no field keeps the frame
-    /// * `src` - What the decoder read: the main stream, or a `Sliced` frame's bounded value
+    /// * `from` - What the decoder read: the main stream, or a `Sliced` frame's bounded value
     ///
     /// # Returns
     ///
@@ -301,7 +438,7 @@ impl LoopCtx<'_> {
         decoder: &types::XcoderType,
         decoded: &TokenStream,
         keep: Option<&UnknownField>,
-        src: ValueSrc,
+        from: DecodedFrom,
     ) -> TokenStream {
         let on_ok = if let Some(field) = keep {
             let push = self.unknown_push(field);
@@ -310,7 +447,7 @@ impl LoopCtx<'_> {
             quote! { ::core::result::Result::Ok(_) => (), }
         };
         let on_err = self.value_err_arm(
-            src,
+            from,
             helpers::call_site_at(decoder),
             keep.map(|UnknownField { name, .. }| name),
             &format!("`{}` decoder", symbol::UNKNOWN_FRAMES),
@@ -319,67 +456,6 @@ impl LoopCtx<'_> {
             match #decoded {
                 #on_ok
                 #on_err
-            }
-        }
-    }
-
-    /// Emits the `Err` arm of a `match` on a value or length decoder's result
-    ///
-    /// ```text
-    /// Err(__err) => {
-    ///     let __err: ContextError = __err;
-    ///     #reject
-    /// }
-    /// ```
-    ///
-    /// The value is rejected with a [`Self::label`] naming `field`, else the struct's item, and
-    /// `decoder` in its reason. One read from the main stream ([`ValueSrc::Inline`]) is
-    /// truncation at the end of the input, else malformed
-    /// ([`LoopDriver::on_parse_fail`](super::loop_driver::LoopDriver::on_parse_fail)), `(its
-    /// <decoder> failed before the end of the input)`. One read from a `Sliced` frame's bounded
-    /// value is malformed
-    /// ([`LoopDriver::reject_value`](super::loop_driver::LoopDriver::reject_value)), `(its
-    /// <decoder> rejected the frame's value)`, and never truncation: the `take` already holds
-    /// every byte of the frame. The error binding is located at the decoder, so a decoder of
-    /// another error type is reported there
-    ///
-    /// # Arguments
-    ///
-    /// * `src` - What the decoder read
-    /// * `at_dec` - The decoder's location
-    /// * `field` - The field the value is for, `None` for the struct's item
-    /// * `decoder` - How the reason names the decoder
-    ///
-    /// # Returns
-    ///
-    /// The single match arm, every path leaving the iteration
-    pub(super) fn value_err_arm(
-        self,
-        src: ValueSrc,
-        at_dec: proc_macro2::Span,
-        field: Option<&syn::Ident>,
-        decoder: &str,
-    ) -> TokenStream {
-        let reject = match src {
-            ValueSrc::Inline => {
-                let reason = format!("its {decoder} failed before the end of the input");
-                let label = self.label(field, &reason);
-                self.driver
-                    .on_parse_fail(ParseSite::Value { label: &label })
-            }
-            ValueSrc::HeaderSliced | ValueSrc::StrictSliced | ValueSrc::Exact(_) => {
-                let reason = format!("its {decoder} rejected the frame's value");
-                self.driver
-                    .reject_value(&self.label(field, &reason), ErrorKind::MalformedValue)
-            }
-        };
-        let err_ty = quote_spanned! {at_dec=>
-            let __err: ::tinyklv::__export::winnow::error::ContextError = __err;
-        };
-        quote! {
-            ::core::result::Result::Err(__err) => {
-                #err_ty
-                #reject
             }
         }
     }
@@ -445,7 +521,7 @@ impl LoopCtx<'_> {
     /// The statements, every path leaving the loop
     fn exact_reject(self, name: &syn::Ident, lit: &syn::LitInt) -> TokenStream {
         let reason = format!(
-            "its frame length does not match `{}({} = {lit})`",
+            "its item length does not match `{}({} = {lit})`",
             symbol::SIZE,
             symbol::EXACT,
         );
@@ -517,10 +593,10 @@ impl LoopCtx<'_> {
 
     /// Emits the checks a frame running past the end of the input meets before it is classed as
     /// truncation: one per distinct `size(exact = N)` width of a key with a length prefix
-    /// ([`SizeSpec::len_check`]), in field order, rejecting a key of that width with a length
+    /// ([`CursorSite::exact_keys`]), in field order, rejecting a key of that width with a length
     /// other than `N`. A width that fields share tells the rejected field apart only once its
     /// check fails. Each check carries the `clippy::manual_range_patterns` allow its pattern
-    /// needs, if any ([`super::key_pattern`])
+    /// needs, if any ([`KeyPattern::allowed`])
     ///
     /// ```text
     /// if matches!(#key, K1) && #len != N1 { #reject(K1) }
@@ -543,13 +619,7 @@ impl LoopCtx<'_> {
         // the exact keys, (key, name, `N` as written), grouped by width in field order
         // --------------------------------------------------
         let mut groups: Vec<(usize, Vec<_>)> = Vec::new();
-        for FieldKey {
-            field, key, codec, ..
-        } in self.input.klv_keys()
-        {
-            let Some((width, lit)) = codec.size.as_ref().and_then(SizeSpec::len_check) else {
-                continue;
-            };
+        for (FieldKey { field, key, .. }, width, lit) in CursorSite::exact_keys(self.input) {
             let field = (key, &field.name, lit);
             match groups.iter_mut().find(|(w, _)| *w == width) {
                 Some((_, fields)) => fields.push(field),
@@ -560,8 +630,7 @@ impl LoopCtx<'_> {
         // one check per width, then one test per key where fields share the width
         // --------------------------------------------------
         let guards = groups.iter().map(|(width, fields)| {
-            let keys: Vec<_> = fields.iter().map(|(key, ..)| *key).collect();
-            let (pattern, allow) = super::key_pattern(&keys);
+            let pattern: KeyPattern = fields.iter().map(|(key, ..)| *key).collect();
             let reject = if let [(_, name, lit)] = fields.as_slice() {
                 self.exact_reject(name, lit)
             } else {
@@ -571,12 +640,11 @@ impl LoopCtx<'_> {
                 });
                 quote! { #(#rejects)* }
             };
-            quote! {
-                #allow
+            pattern.allowed(quote! {
                 if ::core::matches!(#key, #pattern) && #len != #width {
                     #reject
                 }
-            }
+            })
         });
         quote! { #(#guards)* }
     }
@@ -689,7 +757,7 @@ impl ArmParts<'_> {
             ValueSrc::Inline if self.size.is_some_and(SizeSpec::takes_len) => {
                 let Self { ctx, name, key, .. } = self;
                 let reason = format!(
-                    "an `Inline` frame has no length for its `{}({})` decoder",
+                    "an `Inline` item has no length for its `{}({})` decoder",
                     symbol::SIZE,
                     symbol::LENGTHED,
                 );
@@ -800,11 +868,11 @@ impl ArmParts<'_> {
         // --------------------------------------------------
         if let ValueSrc::StrictSliced = src {
             let (mapped, on_ok) = self.on_ok(at_dec);
-            let on_err = ctx.value_err_arm(src, at_dec, Some(name), "decoder");
+            let on_err = ctx.value_err_arm(DecodedFrom::Subinput, at_dec, Some(name), "decoder");
             let unread = ctx.driver.reject_label(
                 &ctx.label(
                     Some(name),
-                    "its decoder left bytes of the frame's value unread",
+                    "its decoder left bytes of the item's value unread",
                 ),
                 ErrorKind::MalformedValue,
             );
@@ -877,7 +945,7 @@ impl ArmParts<'_> {
             dec,
             ..
         } = self;
-        let on_err = ctx.value_err_arm(ValueSrc::Inline, at_dec, Some(name), "decoder");
+        let on_err = ctx.value_err_arm(DecodedFrom::Input, at_dec, Some(name), "decoder");
         quote! {
             #key => {
                 let __val = #dec (input);
@@ -938,5 +1006,37 @@ impl ArmParts<'_> {
             let logger = crate::expand::logger::debug_logger();
             quote! { #logger ("\t{}: {:?}", ::core::stringify!(#name), __val); }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::KeyPattern;
+
+    #[test]
+    /// Verifies the `clippy::manual_range_patterns` allow is emitted exactly for the keys the lint
+    /// reads as a range: three or more integer alternatives, repeats counted, whose distinct values
+    /// are consecutive, negative ones included
+    fn key_pattern_allows_only_a_lint_range() {
+        // --------------------------------------------------
+        // each key list as written, and whether it gets the allow
+        // --------------------------------------------------
+        let cases: [(&[&str], bool); 7] = [
+            (&["1", "2", "3"], true),
+            (&["3", "1", "2"], true),
+            (&["1", "1", "2"], true),
+            (&["-1", "0", "1"], true),
+            (&["1", "2"], false),
+            (&["1", "3", "4"], false),
+            (&[r#"b"KLV1""#, r#"b"KLV2""#, r#"b"KLV3""#], false),
+        ];
+        for (written, allowed) in cases {
+            let keys: Vec<syn::Lit> = written
+                .iter()
+                .map(|key| syn::parse_str(key).expect("a literal key"))
+                .collect();
+            let pattern: KeyPattern = keys.iter().collect();
+            assert_eq!(pattern.reads_as_range(), allowed, "keys {written:?}");
+        }
     }
 }

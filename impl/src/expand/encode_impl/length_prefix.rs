@@ -18,7 +18,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{field_length_plan::ValueWidth, staging::Staging};
+use super::{frame_body::ValueWidth, staging::Staging};
 use crate::ast::{attr::size::SizeBytes, types};
 
 // --------------------------------------------------
@@ -47,17 +47,17 @@ impl<'a> LengthPrefix<'a> {
     /// # Arguments
     ///
     /// * `len_encoder` - Encoder expression writing the length
-    /// * `size` - Optional parsed length-size declaration from container attrs
+    /// * `size` - The parsed length-size declaration from container attrs
     ///
     /// # Returns
     ///
     /// `LengthPrefix::Fixed` when an exact byte width is declared, or
     /// `LengthPrefix::Variable` for every non-exact length form
-    pub(super) fn new(len_encoder: &'a types::XcoderType, size: Option<&SizeBytes>) -> Self {
+    pub(super) fn new(len_encoder: &'a types::XcoderType, size: &SizeBytes) -> Self {
         // --------------------------------------------------
         // exact sizes become fixed-width length slots
         // --------------------------------------------------
-        match size.and_then(SizeBytes::exact_width) {
+        match size.exact_width() {
             Some(width) => Self::Fixed(FixedLengthSlot { len_encoder, width }),
             None => Self::Variable(VariableLength(len_encoder)),
         }

@@ -1,0 +1,5 @@
+error: Missing required `len` field to describe how to encode/decode length values.
+ --> tests/ui/fail/framing/key_len/len_missing.rs:8:8
+  |
+8 | struct Reading {
+  |        ^^^^^^^

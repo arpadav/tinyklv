@@ -32,7 +32,7 @@ the built-in macros.
 Run the full macro example: `cargo run --example book_10_macro`
 
 ```rust
-{{#include ../../../../examples/book_10_macro.rs}}
+{{#include ../../../../examples/book/fields/book_10_macro.rs}}
 ```
 
 See [Reference > Codecs > Utility macros](../../reference/codecs.md)

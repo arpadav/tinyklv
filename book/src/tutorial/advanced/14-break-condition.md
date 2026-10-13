@@ -42,7 +42,7 @@ frame reads as cut and streaming waits.
 Run this example: `cargo run --example book_14_break_condition`
 
 ```rust,no_run
-{{#include ../../../../examples/book_14_break_condition.rs}}
+{{#include ../../../../examples/book/advanced/book_14_break_condition.rs}}
 ```
 
 - `break_on = <literal>` stops on a key match; `break_on = <fn>` runs your
@@ -51,6 +51,6 @@ Run this example: `cargo run --example book_14_break_condition`
 
 For loop control beyond what `break_on` expresses, you can still drop the
 derive on the decode side and hand-write a `DecodeValue` impl with the logic
-inline (see `examples/14_break_condition_custom.rs`).
+inline (see `examples/packets/14_break_condition_custom.rs`).
 
 **Next:** [15 - Streaming partial packets](./15-streaming-decode.md)

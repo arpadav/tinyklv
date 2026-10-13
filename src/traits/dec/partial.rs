@@ -199,14 +199,25 @@ pub trait Partial: Sized {
     fn finalize(self) -> Result<Self::Final, PartialError>;
 }
 
+/// Sealed marker restricting [`PartialIterator`] to [`crate::decoder::Decoder`], so external
+/// crates cannot add their own implementations
+mod private {
+    use crate::decoder::Decoder;
+
+    pub trait Sealed {}
+    impl<P, S> Sealed for Decoder<P, S> {}
+    impl<P, S> Sealed for &mut Decoder<P, S> {}
+}
+
 /// Low-level iterator interface for advancing a [`crate::decoder::Decoder`] one packet at a time
 ///
-/// Implemented by [`crate::decoder::Decoder`] for the `&[u8]` stream specialisation
+/// This is a sealed trait: it is implemented by [`crate::decoder::Decoder`] for the `&[u8]` stream
+/// specialisation, and cannot be implemented downstream
 ///
 /// Callers outside of generated code and the decoder internals should prefer
 /// [`crate::decoder::Decoder::next`] or the [`Iterator`] impl on
 /// [`crate::decoder::DecoderIter`] rather than calling these methods directly
-pub trait PartialIterator<P: Partial> {
+pub trait PartialIterator<P: Partial>: private::Sealed {
     /// Continues decoding a packet that was interrupted with [`Packet::NeedMore`]
     ///
     /// Picks up from the stored in-flight partial, runs

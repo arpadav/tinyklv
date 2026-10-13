@@ -32,10 +32,10 @@ pub(super) use unknown::UnknownXcoder;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::size::SizeBytes;
 use crate::{Ctxt, ast::types::ungrouped, symbol};
 use break_on::BreakOn;
 use codec::CodecSlot;
+use default::PartialDefault;
 use header::{HeaderAttrs, HeaderXcoder};
 use keylen::KeylenXcoder;
 use sentinel::Sentinel;
@@ -75,6 +75,18 @@ pub(crate) enum ContainerMode {
         /// The fused key+length codec
         keylen: Box<KeylenXcoder>,
     },
+}
+
+/// The missing codecs a container allows: under `allow_unimplemented_encode` /
+/// `allow_unimplemented_decode` a missing encoder / decoder is no error, and its impl is not
+/// generated
+#[derive(Debug, Clone, Copy)]
+pub(super) struct AllowUnimplemented {
+    /// Whether a missing encoder is allowed
+    pub encode: bool,
+
+    /// Whether a missing decoder is allowed
+    pub decode: bool,
 }
 
 #[derive(Debug)]
@@ -212,11 +224,16 @@ impl Container {
                         // earlier entries of its type
                         // --------------------------------------------------
                         symbol::DEFAULT => {
-                            let mut new = DefaultXcoder::from(&list);
-                            if let Some(err) = new.errors.take() {
-                                cx.syn_error(err);
-                                new.reported = true;
-                            }
+                            let new = match DefaultXcoder::try_from(&list) {
+                                Ok(new) => new,
+                                Err(PartialDefault { entry, error }) => {
+                                    cx.syn_error(error);
+                                    DefaultXcoder {
+                                        reported: true,
+                                        ..entry
+                                    }
+                                }
+                            };
                             // `None` when the entry has no `typ`, or its parse stopped before one;
                             // either error is reported above
                             let Some(typ) = new.typ.as_ref().map(ungrouped) else {
@@ -369,11 +386,11 @@ impl Container {
         // `enc`/`dec` is missing; `unknown(..)`'s are reported once the fields are read, since
         // its `enc` is needed only to re-emit the frames the `#[klv(unknown)]` field keeps
         // --------------------------------------------------
-        headers.report_missing(
-            cx,
-            allow_unimplemented_encode.is_some(),
-            allow_unimplemented_decode.is_some(),
-        );
+        let allow = AllowUnimplemented {
+            encode: allow_unimplemented_encode.is_some(),
+            decode: allow_unimplemented_decode.is_some(),
+        };
+        headers.report_missing(cx, allow);
         // --------------------------------------------------
         // each type's merged `default(..)` entries are checked together, in the order the types
         // first appear
@@ -399,6 +416,18 @@ impl Container {
             trait_fallback,
         }
     }
+
+    /// The missing codecs the container allows
+    ///
+    /// # Returns
+    ///
+    /// Whether it sets `allow_unimplemented_encode` and `allow_unimplemented_decode`
+    pub(super) fn allow_unimplemented(&self) -> AllowUnimplemented {
+        AllowUnimplemented {
+            encode: self.allow_unimplemented_encode.is_some(),
+            decode: self.allow_unimplemented_decode.is_some(),
+        }
+    }
 }
 
 /// Validated container attributes where required fields are guaranteed present
@@ -406,10 +435,7 @@ impl Container {
 /// Produced from a [`Container`] by [`ContainerParsed::from_cont`], which
 /// resolves the key/length framing into a [`ContainerMode`] - verifying that
 /// exactly one of `key`+`len` or `keylen` is present and emitting compile
-/// errors via [`Ctxt`] otherwise. The underscore-prefixed fields
-/// (`_allow_unimplemented_decode`, `_allow_unimplemented_encode`,
-/// `_trait_fallback`) are not consumed during expansion but are retained for
-/// potential future diagnostics or tooling
+/// errors via [`Ctxt`] otherwise
 pub(crate) struct ContainerParsed {
     /// The stream type used for decoding; `None` means `&[u8]` will be used
     pub stream: Option<syn::Type>,
@@ -428,15 +454,6 @@ pub(crate) struct ContainerParsed {
 
     /// Whether a header-sized value its decoder fails on, or leaves bytes of unread, is an error
     pub strict: Option<syn::Path>,
-
-    /// Retained path for `allow_unimplemented_decode`, unused in expansion
-    pub _allow_unimplemented_decode: Option<syn::Path>,
-
-    /// Retained path for `allow_unimplemented_encode`, unused in expansion
-    pub _allow_unimplemented_encode: Option<syn::Path>,
-
-    /// Retained path for `trait_fallback`, unused in expansion
-    pub _trait_fallback: Option<syn::Path>,
 }
 /// [`ContainerParsed`] implementation
 impl ContainerParsed {
@@ -467,7 +484,7 @@ impl ContainerParsed {
     /// The [`ContainerParsed`] and the `unknown(..)` state when exactly one framing mode is fully
     /// specified, and a fused one has no `sentinel`, or `None` otherwise (errors are recorded in
     /// `cx`)
-    pub fn from_cont(
+    pub(super) fn from_cont(
         cx: &Ctxt,
         name: &syn::Ident,
         cont: Container,
@@ -497,7 +514,7 @@ impl ContainerParsed {
         // a zero-byte length prefix has no room for a value's length
         // --------------------------------------------------
         if let CodecAttr::Parsed(_, len) = &cont.headers.len
-            && let Some((0, exact)) = len.size.as_ref().and_then(SizeBytes::exact)
+            && let Some((0, exact)) = len.size.exact()
         {
             cx.error_spanned_by(exact, err!(LenZeroWidth));
         }
@@ -606,9 +623,6 @@ impl ContainerParsed {
             debug: cont.debug,
             deny_unknown_keys: cont.deny_unknown_keys,
             strict: cont.strict,
-            _allow_unimplemented_decode: cont.allow_unimplemented_decode,
-            _allow_unimplemented_encode: cont.allow_unimplemented_encode,
-            _trait_fallback: cont.trait_fallback,
         };
         Some((parsed, cont.unknown))
     }

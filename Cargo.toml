@@ -51,6 +51,154 @@ path = "tests/proptest_roundtrip/main.rs"
 name = "ui"
 path = "tests/ui/main.rs"
 
+[[example]]
+name = "01_hello_world"
+path = "examples/packets/01_hello_world.rs"
+
+[[example]]
+name = "02_custom_key_types"
+path = "examples/packets/02_custom_key_types.rs"
+
+[[example]]
+name = "03_strings_and_types"
+path = "examples/packets/03_strings_and_types.rs"
+
+[[example]]
+name = "04_optional_fields"
+path = "examples/packets/04_optional_fields.rs"
+
+[[example]]
+name = "05_basic_roundtrip"
+path = "examples/packets/05_basic_roundtrip.rs"
+
+[[example]]
+name = "06_custom_encoder_decoder"
+path = "examples/packets/06_custom_encoder_decoder.rs"
+
+[[example]]
+name = "07_sentinel_seeking"
+path = "examples/streams/07_sentinel_seeking.rs"
+
+[[example]]
+name = "08_nested_packets"
+path = "examples/packets/08_nested_packets.rs"
+
+[[example]]
+name = "09_ber_keyed"
+path = "examples/packets/09_ber_keyed.rs"
+
+[[example]]
+name = "10_defaults"
+path = "examples/packets/10_defaults.rs"
+
+[[example]]
+name = "11_repeated_extraction"
+path = "examples/streams/11_repeated_extraction.rs"
+
+[[example]]
+name = "12_enum_dispatch_stream"
+path = "examples/streams/12_enum_dispatch_stream.rs"
+
+[[example]]
+name = "13_variable_length_fields"
+path = "examples/packets/13_variable_length_fields.rs"
+
+[[example]]
+name = "14_break_condition_custom"
+path = "examples/packets/14_break_condition_custom.rs"
+
+[[example]]
+name = "15_tokio_stream_e2e"
+path = "examples/streams/15_tokio_stream_e2e.rs"
+
+[[example]]
+name = "16_latebind"
+path = "examples/packets/16_latebind.rs"
+
+[[example]]
+name = "book_01_first_packet"
+path = "examples/book/basics/book_01_first_packet.rs"
+
+[[example]]
+name = "book_02_out_of_order"
+path = "examples/book/basics/book_02_out_of_order.rs"
+
+[[example]]
+name = "book_03_frames_and_sentinels"
+path = "examples/book/basics/book_03_frames_and_sentinels.rs"
+
+[[example]]
+name = "book_04_default_codec"
+path = "examples/book/basics/book_04_default_codec.rs"
+
+[[example]]
+name = "book_05_custom_decoder"
+path = "examples/book/basics/book_05_custom_decoder.rs"
+
+[[example]]
+name = "book_06_decode_value_impl"
+path = "examples/book/basics/book_06_decode_value_impl.rs"
+
+[[example]]
+name = "book_07_a_subslice"
+path = "examples/book/fields/book_07_a_subslice.rs"
+
+[[example]]
+name = "book_07_b_size_lengthed"
+path = "examples/book/fields/book_07_b_size_lengthed.rs"
+
+[[example]]
+name = "book_08_latebind"
+path = "examples/book/fields/book_08_latebind.rs"
+
+[[example]]
+name = "book_09_encode_sigil"
+path = "examples/book/fields/book_09_encode_sigil.rs"
+
+[[example]]
+name = "book_10_macro"
+path = "examples/book/fields/book_10_macro.rs"
+
+[[example]]
+name = "book_11_a_default"
+path = "examples/book/fields/book_11_a_default.rs"
+
+[[example]]
+name = "book_11_b_fallback"
+path = "examples/book/fields/book_11_b_fallback.rs"
+
+[[example]]
+name = "book_12_nested_packets"
+path = "examples/book/advanced/book_12_nested_packets.rs"
+
+[[example]]
+name = "book_13_repeated_extraction"
+path = "examples/book/advanced/book_13_repeated_extraction.rs"
+
+[[example]]
+name = "book_14_break_condition"
+path = "examples/book/advanced/book_14_break_condition.rs"
+
+[[example]]
+name = "book_15_streaming_decode"
+path = "examples/book/advanced/book_15_streaming_decode.rs"
+
+[[example]]
+name = "book_16_tokio_streams"
+path = "examples/book/advanced/book_16_tokio_streams.rs"
+
+[[example]]
+name = "book_17_implicit"
+path = "examples/book/advanced/book_17_implicit.rs"
+
+[[example]]
+name = "book_18_keylen"
+path = "examples/book/advanced/book_18_keylen.rs"
+
+[[example]]
+name = "book_19_unknown"
+path = "examples/book/advanced/book_19_unknown.rs"
+
 [dependencies]
 # --------------------------------------------------
 # external

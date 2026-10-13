@@ -6,8 +6,9 @@
 //! it:
 //!
 //! * `encode_value_gen` - the `EncodeValue` impl
-//! * `field_length_plan` - the field length kinds
 //! * `fixed_width` - compile-time byte-width resolution
+//! * `frame_body` - what each frame writes after its key, and the value widths known at compile
+//!   time
 //! * `framing` - the frame header written around each field value, per the container's framing mode
 //! * `klv_item_gen` - field-level KLV item emission, the retained unknown frames included
 //! * `length_prefix` - the container's length prefix: a fixed-width slot or a variable-width length
@@ -20,10 +21,10 @@
 // --------------------------------------------------
 /// Generates required `EncodeValue` impl bodies
 mod encode_value_gen;
-/// Holds the field length kinds
-mod field_length_plan;
 /// Resolves fixed byte widths for primitive encode paths
 mod fixed_width;
+/// What each frame writes after its key, and the value widths known at compile time
+mod frame_body;
 /// Writes the frame header around each field value, per the container's framing mode
 mod framing;
 /// Generates per-field KLV item writes and the retained unknown frames' writes
@@ -98,7 +99,7 @@ impl<'a> EncodeCtx<'a> {
         // --------------------------------------------------
         // an encoder on every field, and a KLV field or no field at all; else no encode impl
         // --------------------------------------------------
-        if !input.every_keyed_field(|f| f.enc.is_some()) {
+        if !input.generates_with(|codec| codec.enc.is_some()) {
             return None;
         }
         // --------------------------------------------------
@@ -154,7 +155,7 @@ pub(super) fn gen_encode_impl(input: &MainContainer) -> Option<TokenStream> {
     // --------------------------------------------------
     // the `EncodeValue` impl, then the `EncodeFrame` impl when a sentinel is declared
     // --------------------------------------------------
-    let encode_value = ctx.encode_value_impl();
+    let encode_value = ctx.encode_value_impl()?;
     let encode_frame = ctx.encode_frame_impl();
     Some(quote! {
         #encode_value

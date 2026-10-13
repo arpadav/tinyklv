@@ -1,5 +1,0 @@
-error: Duplicate `key` attribute. Only one method of encoding and decoding keys is allowed.
- --> tests/ui/fail/framing/key_duplicate.rs:6:5
-  |
-6 |     key(dec = tinyklv::dec::binary::u8),
-  |     ^^^

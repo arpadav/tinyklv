@@ -10,8 +10,8 @@
 //!   read, and every other key reads `len` and runs the rest of the frame
 //!   ([`LoopCtx::after_key`]). With `unknown(..)` ([`LenRead::IfPrefixed`]) only the keys of
 //!   the fields with a length prefix read `len`; the frame of a key no field declares is read
-//!   whole by the `unknown` decoder ([`LoopCtx::unknown_arm`]), and rejected when it moved the
-//!   cursor nowhere
+//!   whole by the `unknown` decoder ([`LoopCtx::unknown_from_input`]), and rejected when it moved
+//!   the cursor nowhere
 //! * [`DecodeFraming::Fused`] reads `(key, Framing)` from the `keylen` codec and branches on the
 //!   framing at run time: `Sliced` is the separate body, `Inline` dispatches every field
 //!   against the main stream ([`ValueSrc::Inline`]). With `unknown(..)` an unknown key's
@@ -28,7 +28,7 @@
 // --------------------------------------------------
 use super::{
     ErrorKind, LoopCtx,
-    key_match_gen::ValueSrc,
+    key_match_gen::{DecodedFrom, KeyPattern, ValueSrc},
     loop_driver::{LoopDriver, ParseSite, TakeInto},
 };
 use crate::{
@@ -192,16 +192,6 @@ impl<'a> DecodeFraming<'a> {
             Self::Fused { .. } => quote! { #logger ("key: {}, framing: {:?}", #key, __framing); },
         }
     }
-
-    /// Whether [`LoopCtx::body`]'s unknown-key arm is a `break`, one of the reports
-    /// [`DecodeCtx::breaks`](super::DecodeCtx::breaks) ORs
-    ///
-    /// # Returns
-    ///
-    /// `true` for a fused frame without `unknown(..)`, whose unknown `Inline` key ends the loop
-    pub(super) fn unknown_key_breaks(self) -> bool {
-        matches!(self, Self::Fused { unknown: None, .. })
-    }
 }
 
 /// [`LoopCtx`] implementation of the frame header and body
@@ -219,7 +209,9 @@ impl LoopCtx<'_> {
     /// checks progress against
     ///
     /// The fused header result is bound with the type `Result<(_, Framing), _>`, located at the
-    /// `keylen` decoder, so a decoder with the wrong return type is reported at the decoder
+    /// `keylen` decoder, so a decoder with the wrong return type is reported at the decoder. It is
+    /// bound in a block of its own, which yields the key and the framing, so the result is dead
+    /// once the header is read rather than stored in every frame
     ///
     /// # Returns
     ///
@@ -268,11 +260,13 @@ impl LoopCtx<'_> {
                 };
                 quote! {
                     let __frame_offset = input.eof_offset();
-                    #header
-                    let (#key, __framing) = match __header {
-                        ::core::result::Result::Ok(__frame) => __frame,
-                        ::core::result::Result::Err(_) => {
-                            #on_fail
+                    let (#key, __framing) = {
+                        #header
+                        match __header {
+                            ::core::result::Result::Ok(__frame) => __frame,
+                            ::core::result::Result::Err(_) => {
+                                #on_fail
+                            }
                         }
                     };
                 }
@@ -283,7 +277,7 @@ impl LoopCtx<'_> {
     /// Emits the read of a separate frame's length, binding [`DecodeFraming::len`]: any failure
     /// is truncation, except under [`LenRead::IfPrefixed`], where a failure follows the rule of a
     /// value read from the main stream, as the length the `unknown` decoder reads does
-    /// ([`Self::value_err_arm`] with [`ValueSrc::Inline`]), naming the struct's item
+    /// ([`Self::value_err_arm`] with [`DecodedFrom::Input`]), naming the struct's item
     ///
     /// # Arguments
     ///
@@ -304,7 +298,7 @@ impl LoopCtx<'_> {
                 _,
             ) => {
                 let on_err = self.value_err_arm(
-                    ValueSrc::Inline,
+                    DecodedFrom::Input,
                     helpers::call_site_at(len_decoder),
                     None,
                     &format!("`{}` decoder", symbol::LENGTH),
@@ -362,9 +356,9 @@ impl LoopCtx<'_> {
     /// Under [`LenRead::IfPrefixed`] only the keys of the fields with a length prefix read the
     /// length and run `frame`, sharing one arm, left out when no field has a prefix. The arm
     /// carries the `clippy::manual_range_patterns` allow its pattern needs, if any
-    /// ([`super::key_pattern`]).
-    /// Every other key is an unknown one, whose frame the `unknown` decoder reads from the main
-    /// stream, its length included ([`Self::unknown_arm`]):
+    /// ([`KeyPattern::allowed`]). Every other key is an unknown one, whose frame the `unknown`
+    /// decoder reads from the main stream, its length included ([`Self::unknown_from_input`]),
+    /// and which is rejected when it consumed no input ([`Self::progress_check`]):
     ///
     /// ```text
     /// match key {
@@ -373,7 +367,10 @@ impl LoopCtx<'_> {
     ///         #len_header
     ///         #frame
     ///     }
-    ///     #unknown_arm
+    ///     _ => {
+    ///         #unknown_from_input
+    ///         #progress_check
+    ///     }
     /// }
     /// ```
     ///
@@ -419,27 +416,33 @@ impl LoopCtx<'_> {
                 // --------------------------------------------------
                 // the keys `sliced_body` dispatches, so each reaches the one length read
                 // --------------------------------------------------
-                let keys: Vec<_> = self
+                let pattern: KeyPattern = self
                     .input
                     .klv_keys()
                     .filter(|key| ValueSrc::implicit(key.codec.size.as_ref()).is_none())
                     .map(|key| key.key)
                     .collect();
-                let (pattern, allow) = super::key_pattern(&keys);
-                let prefixed = (!keys.is_empty()).then(|| {
+                let prefixed = (!pattern.is_empty()).then(|| {
                     let len = self.len_header(len_decoder);
-                    quote! {
-                        #allow
+                    pattern.allowed(quote! {
                         #pattern => {
                             #len
                             #frame
                         }
-                    }
+                    })
                 });
-                let unknown = self.unknown_arm(unknown);
+                // --------------------------------------------------
+                // every other key's frame, read whole by the `unknown` decoder, then rejected when
+                // it moved the cursor nowhere
+                // --------------------------------------------------
+                let unknown = self.unknown_from_input(unknown);
+                let progress = self.progress_check();
                 quote! {
                     #prefixed
-                    #unknown
+                    _ => {
+                        #unknown
+                        #progress
+                    }
                 }
             }
         };
@@ -471,7 +474,7 @@ impl LoopCtx<'_> {
     /// if input.eof_offset() == __frame_offset { #reject }
     /// // Fused, `unknown(..)`: the `_` arms read the unknown key's value
     /// Sliced(__len) => { #sliced, its `_` arm #kept_sliced_unknown_arm when the field keeps it },
-    /// Inline => match __key { #arms(Inline) #unknown_arm },
+    /// Inline => match __key { #arms(Inline) _ => #unknown_from_input, },
     /// ```
     ///
     /// Only a field with a length prefix gets a sliced arm; a `size(implicit)` one gets its arm in
@@ -482,12 +485,12 @@ impl LoopCtx<'_> {
     /// is classed as truncation ([`LoopCtx::take`]); an `Inline` frame has no length to check
     ///
     /// An unknown key follows the rule stated on `tinyklv::Framing`: a `Sliced` one is dropped
-    /// with its bytes, an `Inline` one ends the loop ([`LoopDriver::rewind_and_break`]), which is
-    /// reported by [`DecodeFraming::unknown_key_breaks`]. With `unknown(..)` the `unknown`
-    /// decoder reads it instead: an `Inline` one's main stream ([`Self::unknown_arm`]), and a
-    /// `Sliced` one's bounded value when the `#[klv(unknown)]` field keeps it
-    /// ([`Self::kept_sliced_unknown_arm`]). A separate frame's `_ => ()` drops an unknown key's
-    /// bytes; with `unknown(..)` no unknown key reaches it ([`LenRead::IfPrefixed`])
+    /// with its bytes, an `Inline` one ends the loop ([`LoopDriver::rewind_and_break`]). With
+    /// `unknown(..)` the `unknown` decoder reads it instead: an `Inline` one's main stream
+    /// ([`Self::unknown_from_input`]), and a `Sliced` one's bounded value when the
+    /// `#[klv(unknown)]` field keeps it ([`Self::kept_sliced_unknown_arm`]). A separate frame's
+    /// `_ => ()` drops an unknown key's bytes; with `unknown(..)` no unknown key reaches it
+    /// ([`LenRead::IfPrefixed`])
     ///
     /// A fused frame whose header and value together consumed no input is rejected
     /// ([`Self::progress_check`])
@@ -511,7 +514,8 @@ impl LoopCtx<'_> {
         // --------------------------------------------------
         let inline_arms = self.items_match(|_| Some(ValueSrc::Inline));
         let inline_unknown = if let Some(unknown) = unknown {
-            self.unknown_arm(unknown)
+            let unknown = self.unknown_from_input(unknown);
+            quote! { _ => #unknown, }
         } else {
             let end = LoopDriver::rewind_and_break();
             quote! {
@@ -556,7 +560,7 @@ impl LoopCtx<'_> {
     ///
     /// It runs after a fused frame's value ([`Self::body`]), against the frame start its header
     /// binds ([`Self::header`]), and after a separate frame's unknown value
-    /// ([`Self::unknown_arm`]), against the frame start `__checkpoint_inner`, so a separate frame's
+    /// ([`Self::after_key`]), against the frame start `__checkpoint_inner`, so a separate frame's
     /// header binds nothing for it. Each framing's form decodes it in fewer instructions than the
     /// other's would. The cursor is still at the frame start when it rejects. A header that
     /// consumed nothing is fine when its value moved the cursor. The rule is stated on

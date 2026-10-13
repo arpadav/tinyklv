@@ -42,7 +42,7 @@ format), as the example demonstrates at the end.
 Run this example: `cargo run --example book_12_nested_packets`
 
 ```rust
-{{#include ../../../../examples/book_12_nested_packets.rs}}
+{{#include ../../../../examples/book/advanced/book_12_nested_packets.rs}}
 ```
 
 - Nested KLV is encoded explicitly; there is no implicit recursion.

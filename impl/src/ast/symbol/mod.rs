@@ -28,7 +28,7 @@ use syn::parse::Parser;
 // constants
 // --------------------------------------------------
 /// The top-level KLV attribute name (e.g. `#[klv(..)]`)
-pub(crate) const KLV_ATTR: Symbol = Symbol(crate::ATTR_NAME);
+pub(crate) const KLV_ATTR: Symbol = Symbol("klv");
 /// The `key` sub-attribute identifier
 pub(crate) const KEY: Symbol = Symbol("key");
 /// The `oneof(K => Enum::Variant(Type), ..)` value of a field's `key`: the frames of each `K`

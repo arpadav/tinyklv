@@ -1,0 +1,5 @@
+error: Missing required `key` field to describe how to encode/decode key values.
+ --> tests/ui/fail/framing/key_len/key_missing.rs:8:8
+  |
+8 | struct Reading {
+  |        ^^^^^^^

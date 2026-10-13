@@ -50,7 +50,7 @@ two missing keys; no error, no panic.
 Run this example: `cargo run --example book_11_a_default`
 
 ```rust
-{{#include ../../../../examples/book_11_a_default.rs}}
+{{#include ../../../../examples/book/fields/book_11_a_default.rs}}
 ```
 
 ## Fallback Implementation
@@ -110,7 +110,7 @@ Where `Size` and `Color` in both examples implement `tinyklv::EncodeValue` and
 Run this example: `cargo run --example book_11_b_fallback`
 
 ```rust
-{{#include ../../../../examples/book_11_b_fallback.rs}}
+{{#include ../../../../examples/book/fields/book_11_b_fallback.rs}}
 ```
 
 ## Overview

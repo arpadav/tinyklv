@@ -1,0 +1,32 @@
+error[E0308]: mismatched types
+  --> tests/ui/fail/codec/field/keylen_field_dec_lengthed_arity.rs:14:29
+   |
+11 | #[derive(Klv)]
+   |          --- in this derive macro expansion
+...
+14 |     #[klv(key = 0x01, dec = id, size(lengthed, exact = 2))]
+   |                             ^^
+   |                             |
+   |                             expected `&mut &[u8]`, found `usize`
+   |                             arguments to this function are incorrect
+   |
+note: function defined here
+  --> tests/ui/fail/codec/field/keylen_field_dec_lengthed_arity.rs:7:4
+   |
+ 7 | fn id(input: &mut &[u8]) -> tinyklv::Result<u16> {
+   |    ^^ -----------------
+   = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0618]: expected function, found `Result<u16, tinyklv::__export::winnow::error::ContextError>`
+  --> tests/ui/fail/codec/field/keylen_field_dec_lengthed_arity.rs:14:29
+   |
+ 7 | fn id(input: &mut &[u8]) -> tinyklv::Result<u16> {
+   | ------------------------------------------------ `id` defined here returns `Result<u16, tinyklv::__export::winnow::error::ContextError>`
+...
+11 | #[derive(Klv)]
+   |          --- in this derive macro expansion
+...
+14 |     #[klv(key = 0x01, dec = id, size(lengthed, exact = 2))]
+   |                             ^^ call expression requires function
+   |
+   = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)

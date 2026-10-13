@@ -15,7 +15,7 @@ and enumeration) is decoded in different ways.
 Run this example: `cargo run --example book_04_default_codec`
 
 ```rust
-{{#include ../../../../examples/book_04_default_codec.rs}}
+{{#include ../../../../examples/book/basics/book_04_default_codec.rs}}
 ```
 
 ## Overview

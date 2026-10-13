@@ -22,7 +22,7 @@ the same bytes.
 Run this example: `cargo run --example book_18_keylen`
 
 ```rust
-{{#include ../../../../examples/book_18_keylen.rs}}
+{{#include ../../../../examples/book/advanced/book_18_keylen.rs}}
 ```
 
 ## Overview

@@ -70,7 +70,7 @@ fn main() {
 }
 ```
 
-Full annotated version: [`examples/01_hello_world.rs`](https://github.com/arpadav/tinyklv/blob/main/examples/01_hello_world.rs).
+Full annotated version: [`examples/packets/01_hello_world.rs`](https://github.com/arpadav/tinyklv/blob/main/examples/packets/01_hello_world.rs).
 
 ## Speed
 
@@ -177,7 +177,7 @@ struct Platform {
 - Repeated decode with user-defined break conditions
 - Nested `Klv` structs - compose packets from sub-packets
 - Generic structs and lifetimes, `Option<T>` fields, per-field/container defaults
-- Stream type is user-selected, where any `winnow::Stream` works
+- Stream type is user-selected: any `winnow::Stream + StreamIsPartial`
 
 ## Documentation
 

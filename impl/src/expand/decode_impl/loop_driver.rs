@@ -36,7 +36,7 @@
 // --------------------------------------------------
 use super::{ErrorKind, LoopCtx};
 use crate::{
-    ast::attr::{MainContainer, container::BreakOnSpec},
+    ast::attr::{FieldKey, MainContainer, container::BreakOnSpec},
     expand::helpers,
 };
 
@@ -78,20 +78,46 @@ impl CursorSite {
     ///
     /// # Returns
     ///
-    /// [`Self::Local`] when a field's frame length is checked against its `size(exact = N)`
-    /// ([`SizeSpec::len_check`](crate::ast::attr::size::SizeSpec::len_check)) and the stream is
-    /// `&[u8]`, else [`Self::Caller`]: a container without such a field decodes over the caller's
-    /// cursor in fewer instructions, and any other stream need not be `Clone`
+    /// [`Self::Local`] when a key's frame length is checked against its `size(exact = N)`
+    /// ([`Self::exact_keys`]) and the stream is `&[u8]`, else [`Self::Caller`]: a container
+    /// without such a key decodes over the caller's cursor in fewer instructions, and any other
+    /// stream need not be `Clone`
     pub(super) fn of(input: &MainContainer, stream: &syn::Type) -> Self {
-        let exact = input
-            .klv_keys()
-            .filter_map(|key| key.codec.size.as_ref())
-            .any(|size| size.len_check().is_some());
-        if exact && *stream == super::u8_slice() {
+        if Self::exact_keys(input).next().is_some() && *stream == super::u8_slice() {
             Self::Local
         } else {
             Self::Caller
         }
+    }
+
+    /// The keys whose frame length is checked against their `size(exact = N)`
+    /// ([`SizeSpec::len_check`](crate::ast::attr::size::SizeSpec::len_check)), which pick the
+    /// cursor and which a frame running past the end of the input meets
+    /// ([`LoopCtx::exact_guards`])
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - The container
+    ///
+    /// # Returns
+    ///
+    /// Each such key in field order, with its `N` and `N` as the field wrote it
+    pub(super) fn exact_keys<'a>(
+        input: &'a MainContainer<'a>,
+    ) -> impl Iterator<Item = (FieldKey<'a>, usize, &'a syn::LitInt)> {
+        input.klv_keys().filter_map(|key| {
+            let (width, lit) = key.codec.size.as_ref()?.len_check()?;
+            Some((key, width, lit))
+        })
+    }
+
+    /// The label of the block a [`Self::Local`] loop runs in, which every error exit leaves
+    ///
+    /// # Returns
+    ///
+    /// `'__tinyklv_decode`
+    fn label() -> syn::Lifetime {
+        syn::Lifetime::new("'__tinyklv_decode", proc_macro2::Span::call_site())
     }
 
     /// Emits the exit an error leaves the decode fn with, carrying `value`
@@ -108,7 +134,51 @@ impl CursorSite {
     fn error_exit(self, value: &TokenStream) -> TokenStream {
         match self {
             Self::Caller => quote! { return #value; },
-            Self::Local => quote! { break '__tinyklv_decode (#value); },
+            Self::Local => {
+                let label = Self::label();
+                quote! { break #label (#value); }
+            }
+        }
+    }
+
+    /// Emits the body of the one-shot `decode_value` fn: its frame loop over the caller's cursor,
+    /// or over a local copy inside the block [`Self::label`] labels, which every exit leaves and
+    /// after which the copy is written back to the caller's
+    ///
+    /// # Arguments
+    ///
+    /// * `partial_ty` - The partial accumulator type, whose default `__acc` starts at
+    /// * `frame_loop` - The loop and its tail ([`LoopCtx::frame_loop`])
+    ///
+    /// # Returns
+    ///
+    /// The fn body
+    pub(super) fn decode_value_body(
+        self,
+        partial_ty: &TokenStream,
+        frame_loop: &TokenStream,
+    ) -> TokenStream {
+        match self {
+            Self::Caller => quote! {
+                let checkpoint = input.checkpoint();
+                let mut __acc = <#partial_ty as ::core::default::Default>::default();
+                #frame_loop
+            },
+            Self::Local => {
+                let label = Self::label();
+                quote! {
+                    let mut __cursor = ::core::clone::Clone::clone(&*input);
+                    let __result = #label: {
+                        let input = &mut __cursor;
+                        let checkpoint = input.checkpoint();
+                        let mut __acc = <#partial_ty as ::core::default::Default>::default();
+                        let mut __exact_reject: ::core::option::Option<::tinyklv::traits::PartialError> = ::core::option::Option::None;
+                        #frame_loop
+                    };
+                    *input = __cursor;
+                    __result
+                }
+            }
         }
     }
 }
@@ -148,8 +218,6 @@ impl LoopDriver {
     /// also takes it, after its rewind, when the key decoder fails at the end of the input or
     /// without consuming a byte
     ///
-    /// Whether it is a `break` is reported by [`Self::clean_eof_breaks`]
-    ///
     /// # Returns
     ///
     /// `return Ok(NeedMore(__acc));` (streaming) or `break;` (one-shot)
@@ -162,20 +230,6 @@ impl LoopDriver {
             },
             Self::OneShot(_) => quote! { break; },
         }
-    }
-
-    /// Whether [`Self::clean_eof`] is a `break`, one of the reports
-    /// [`DecodeCtx::breaks`](super::DecodeCtx::breaks) ORs
-    ///
-    /// Every loop takes [`Self::clean_eof`] at the top of an iteration, so this also covers the
-    /// other exits that `break` only under one-shot ([`Self::truncated`] and every exit built on
-    /// it)
-    ///
-    /// # Returns
-    ///
-    /// `true` for one-shot
-    pub(super) fn clean_eof_breaks(self) -> bool {
-        matches!(self, Self::OneShot(_))
     }
 
     /// Emits the exit taken when the current frame runs past the end of the input
@@ -203,9 +257,8 @@ impl LoopDriver {
 
     /// Emits the exit that rewinds to the frame start and ends the loop, for either driver
     ///
-    /// A streaming loop reaches it only through a fused frame's unknown `Inline` key, reported by
-    /// [`DecodeFraming::unknown_key_breaks`](super::framing::DecodeFraming::unknown_key_breaks);
-    /// a one-shot loop already breaks at [`Self::clean_eof`]
+    /// A streaming loop reaches it only through a fused frame's unknown `Inline` key; a one-shot
+    /// loop already breaks at [`Self::clean_eof`]
     ///
     /// # Returns
     ///
@@ -586,9 +639,6 @@ impl LoopCtx<'_> {
     /// fn's message ([`LoopDriver::abort`]), each with the input where the fn left it. The fn is
     /// handed the cursor [`LoopDriver::read_input`] gives, and its call is located at the fn, so a
     /// fn of another signature is reported there
-    ///
-    /// Every form can `break`, so a `Some` is the report
-    /// [`DecodeCtx::breaks`](super::DecodeCtx::breaks) ORs
     ///
     /// # Returns
     ///

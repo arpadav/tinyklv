@@ -2,18 +2,16 @@
 //!
 //! Defines [`FieldXcoder`], which accumulates every recognized sub-attribute
 //! from one `#[klv(..)]` annotation on a struct field: the key literal or `oneof(..)`, the
-//! value's [`ValueCodec`] (encoder, decoder and size shape), the `latebind`
+//! value's [`WrittenCodec`] (encoder, decoder and size shape), the `latebind`
 //! post-decode step, field-level `default`, `break_on`, the skip, and the `unknown` flag of the
-//! field that keeps the frames whose key no field declares. The [`From<&syn::MetaList>`]
-//! impl drives the actual `parse_nested_meta` parse; duplicate-field errors
-//! are stored in `FieldXcoder::errors` so the caller can forward them to
-//! the [`crate::Ctxt`] accumulator
+//! field that keeps the frames whose key no field declares. The [`TryFrom<&syn::MetaList>`]
+//! impl drives the actual `parse_nested_meta` parse
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::oneof::{KeySpec, Oneof};
+use super::oneof::KeySpec;
 use crate::ast::attr::{size::SizeSpec, skip_if::SkipIf};
 use crate::ast::symbol;
 use crate::ast::types::{DefaultValue, LatebindXcoder, SiguledXcoder, XcoderType};
@@ -25,19 +23,15 @@ use quote::ToTokens;
 use syn::spanned::Spanned;
 use tk_syn_macros::handle_unique_nested_meta_values;
 
-#[derive(Debug, Default)]
-pub(crate) struct FieldXcoder {
-    /// The key for the field
-    pub key: Option<syn::Lit>,
-    /// The arms of a `key = oneof(..)`, written in place of a key literal
-    pub oneof: Option<Oneof>,
+#[derive(Debug)]
+pub(super) struct FieldXcoder {
+    /// The key of the field's frames: a key literal, or the arms of a `oneof(..)`
+    pub key: Option<KeySpec>,
     /// The encoder, decoder and size of the field's value
-    pub codec: ValueCodec,
+    pub codec: WrittenCodec,
     /// Post-decode conversion or in-place mutation (`latebind = path` or
     /// `latebind = &mut path`). `None` means no post-decode step
     pub latebind: Option<LatebindXcoder>,
-    /// syn errors
-    pub errors: Option<syn::Error>,
     /// Fallback value used when the field's key is absent from the input
     ///
     /// See [`DefaultValue`] for the two accepted forms
@@ -56,21 +50,35 @@ pub(crate) struct FieldXcoder {
     pub codec_settings: Vec<proc_macro2::Span>,
 }
 
-#[derive(Debug, Clone, Default)]
-/// The codec of the value a key's frames carry: a field's own, or one `oneof(..)` arm's
-pub(crate) struct ValueCodec {
+#[derive(Debug, Default)]
+/// The encoder, decoder and size a field writes for its value
+pub(super) struct WrittenCodec {
     /// The encoder, with optional dispatch sigil
     pub enc: Option<SiguledXcoder>,
     /// The decoder
     pub dec: Option<XcoderType>,
     /// The declared size shape of the value; see [`SizeSpec`]
     pub size: Option<SizeSpec>,
-    /// `true` if `enc` was synthesized from the `trait_fallback` container flag
-    /// rather than supplied by the user or a container `default(..)` match
-    pub fallback_enc: bool,
-    /// `true` if `dec` was synthesized from the `trait_fallback` container flag
-    /// rather than supplied by the user or a container `default(..)` match
-    pub fallback_dec: bool,
+}
+
+#[derive(Debug)]
+/// The codec of the value a key's frames carry: a field's own, or one `oneof(..)` arm's
+pub(crate) struct ValueCodec {
+    /// The encoder, or `None` when unimplemented encoding is allowed
+    pub enc: Option<ValueXcoder<SiguledXcoder>>,
+    /// The decoder, or `None` when unimplemented decoding is allowed
+    pub dec: Option<ValueXcoder<XcoderType>>,
+    /// The declared size shape of the value; see [`SizeSpec`]
+    pub size: Option<SizeSpec>,
+}
+
+#[derive(Debug)]
+/// Where a value's encoder or decoder comes from
+pub(crate) enum ValueXcoder<T> {
+    /// Written on the field, or on the container `default(typ = ..)` of its type
+    Explicit(T),
+    /// `trait_fallback`: the value type's `EncodeValue` or `DecodeValue` impl
+    TraitFallback,
 }
 /// [`ValueCodec`] implementation
 impl ValueCodec {
@@ -79,18 +87,18 @@ impl ValueCodec {
         self.size.as_ref().and_then(SizeSpec::implicit)
     }
 }
-/// [`FieldXcoder`] implementation of [`From`] for [`syn::MetaList`]
+/// [`FieldXcoder`] implementation of [`TryFrom`] for [`syn::MetaList`]
 ///
 /// Parses the nested meta arguments from a field-level `#[klv(key = .. | oneof(..), enc =
 /// .., dec = .., size(..), latebind = .., default = .., break_on = .., skip_if_default |
 /// skip_if = ..)]` attribute list, or the bare `#[klv(unknown)]`, into a [`FieldXcoder`]
 ///
-/// Duplicate-field errors and unknown-field errors are stored in
-/// `FieldXcoder::errors` rather than returned directly, so that the caller
-/// ([`super::super::Field::from_ast`]) can forward all diagnostics to the
-/// [`crate::Ctxt`] accumulator in one pass before aborting
-impl From<&syn::MetaList> for FieldXcoder {
-    fn from(input: &syn::MetaList) -> Self {
+/// A malformed, unknown or duplicate setting, and both skip forms, are returned as one
+/// [`syn::Error`], so that the caller ([`super::Field::from_ast`]) can forward the errors of
+/// every list to the [`crate::Ctxt`] accumulator in one pass before aborting
+impl TryFrom<&syn::MetaList> for FieldXcoder {
+    type Error = syn::Error;
+    fn try_from(input: &syn::MetaList) -> syn::Result<Self> {
         // --------------------------------------------------
         // init
         // --------------------------------------------------
@@ -151,33 +159,21 @@ impl From<&syn::MetaList> for FieldXcoder {
             }
         };
         // --------------------------------------------------
-        // a key literal, or the arms of a `oneof(..)`
-        // --------------------------------------------------
-        let (key, oneof) = match key {
-            Some(KeySpec::Literal(key)) => (Some(key), None),
-            Some(KeySpec::Oneof(oneof)) => (None, Some(oneof)),
-            None => (None, None),
-        };
-        // --------------------------------------------------
         // return
         // --------------------------------------------------
-        FieldXcoder {
+        if let Some(errors) = errors {
+            return Err(errors);
+        }
+        Ok(FieldXcoder {
             key,
-            oneof,
-            codec: ValueCodec {
-                enc,
-                dec,
-                size,
-                ..ValueCodec::default()
-            },
+            codec: WrittenCodec { enc, dec, size },
             latebind,
-            errors,
             default,
             break_on,
             skip_if,
             unknown,
             keyed_setting,
             codec_settings,
-        }
+        })
     }
 }

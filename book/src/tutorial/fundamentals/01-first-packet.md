@@ -61,7 +61,7 @@ default, `tinyklv::Klv` requires both encoding and decoding to be implemented.
 Run this example: `cargo run --example book_01_first_packet`
 
 ```rust
-{{#include ../../../../examples/book_01_first_packet.rs}}
+{{#include ../../../../examples/book/basics/book_01_first_packet.rs}}
 ```
 
 ## Note

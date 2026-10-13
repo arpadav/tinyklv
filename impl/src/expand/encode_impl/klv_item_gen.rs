@@ -1,9 +1,10 @@
 //! Field KLV item emission
 //!
 //! Turns each `#[klv(..)]` field into a complete key-length-value write. The
-//! module resolves the encoder call shape, picks the write the container's framing
-//! selects for each key, applies optional-field and skip guards, and hands the header write to
-//! the container framing. A `key = oneof(..)` field writes the frame of the arm its variant
+//! module resolves the encoder call shape, writes each key's frame through the
+//! [`FrameBody`](crate::expand::encode_impl::frame_body::FrameBody) the container's framing and
+//! the key's value pick, and applies optional-field and skip guards. A
+//! `key = oneof(..)` field writes the frame of the arm its variant
 //! names. The frames a `#[klv(unknown)]` field retains are written after the known
 //! fields, through the same framing, and a field with a `break_on` after them all
 //!
@@ -11,16 +12,10 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{
-    EncodeCtx, UnknownEncoder,
-    field_length_plan::{FieldLengthPlan, ValueWidth},
-    fixed_width,
-    length_prefix::LengthPrefix,
-    staging::Staging,
-};
+use super::{EncodeCtx, UnknownEncoder, frame_body::FrameBody};
 use crate::{
     ast::{
-        attr::{FieldKey, FieldKeys, FieldParsed, MainField, skip_if::SkipIf},
+        attr::{FieldKey, FieldKeys, FieldParsed, MainField, ValueXcoder, skip_if::SkipIf},
         types::{self, XcoderSigil},
     },
     expand::helpers,
@@ -30,7 +25,6 @@ use crate::{
 // external
 // --------------------------------------------------
 use quote::{format_ident, quote, quote_spanned};
-use syn::spanned::Spanned;
 
 /// [`EncodeCtx`] implementation of the field item writes
 impl EncodeCtx<'_> {
@@ -45,30 +39,30 @@ impl EncodeCtx<'_> {
     ///
     /// # Returns
     ///
-    /// A token stream containing every generated frame write
-    pub(super) fn klv_items(&self) -> proc_macro2::TokenStream {
+    /// A token stream containing every generated frame write, or `None` when a key has no value
+    /// encoder (`allow_unimplemented_encode`)
+    pub(super) fn klv_items(&self) -> Option<proc_macro2::TokenStream> {
         // --------------------------------------------------
         // one planned item for each attributed field, with or without a `break_on`
         // --------------------------------------------------
         let items = |breaks: bool| {
-            let items = self
-                .input
-                .klv_fields()
+            self.input
+                .keyed_fields()
                 .filter(move |(_, attrs)| attrs.break_on.is_some() == breaks)
-                .map(|(field, attrs)| self.klv_item(&FieldWrite { field, attrs }));
-            quote! { #(#items)* }
+                .map(|(field, attrs)| self.klv_item(&FieldWrite { field, attrs }))
+                .collect::<Option<proc_macro2::TokenStream>>()
         };
         // --------------------------------------------------
         // the fields, the retained unknown frames, then the fields with a `break_on`
         // --------------------------------------------------
-        let fields = items(false);
+        let fields = items(false)?;
         let unknown = self.unknown_items();
-        let breaking = items(true);
-        quote! {
+        let breaking = items(true)?;
+        Some(quote! {
             #fields
             #unknown
             #breaking
-        }
+        })
     }
 
     /// Generates one `#[klv(..)]` field's complete KLV item write
@@ -93,15 +87,16 @@ impl EncodeCtx<'_> {
     ///
     /// # Returns
     ///
-    /// A token stream containing the field's complete generated KLV item write
-    fn klv_item(&self, item: &FieldWrite<'_>) -> proc_macro2::TokenStream {
+    /// A token stream containing the field's complete generated KLV item write, or `None` when a
+    /// key has no value encoder
+    fn klv_item(&self, item: &FieldWrite<'_>) -> Option<proc_macro2::TokenStream> {
         let FieldWrite { field, attrs } = *item;
         let access = ValueAccess::new(field);
-        let frames =
-            FieldKey::of(field, attrs).map(|key| self.frame_write(&PlannedItemWrite { key }));
-        let write = match attrs.keys {
-            FieldKeys::One { .. } => quote! { #(#frames)* },
-            FieldKeys::Oneof(_) => {
+        let write = match &attrs.keys {
+            FieldKeys::One { .. } => FieldKey::of(field, attrs)
+                .map(|key| self.frame_write(key, &access))
+                .collect::<Option<proc_macro2::TokenStream>>()?,
+            FieldKeys::Oneof(oneof) => {
                 // --------------------------------------------------
                 // the reference the `match` reads, located at the field, where a variant no arm
                 // names is reported
@@ -115,10 +110,27 @@ impl EncodeCtx<'_> {
                         token
                     })
                     .collect();
-                let variants = FieldKey::of(field, attrs).map(|key| key.variant);
+                // --------------------------------------------------
+                // each arm's variant and the frame of its key, which writes the value the
+                // variant's pattern binds, located at the arm's type
+                // --------------------------------------------------
+                let arms = oneof
+                    .iter()
+                    .map(|oneof_key| {
+                        let key = FieldKey::arm(field, attrs, oneof_key);
+                        let bound_at = helpers::call_site_at(key.ty);
+                        let bound = ValueAccess::Bound {
+                            at: bound_at,
+                            binding: format_ident!("__val", span = bound_at),
+                        };
+                        let frame_write = self.frame_write(key, &bound)?;
+                        let variant = &oneof_key.arm.variant;
+                        Some(quote_spanned! { at => #variant(__val) => { #frame_write } })
+                    })
+                    .collect::<Option<proc_macro2::TokenStream>>()?;
                 quote_spanned! { at =>
                     match #value {
-                        #(#variants(__val) => { #frames })*
+                        #arms
                     }
                 }
             }
@@ -127,52 +139,36 @@ impl EncodeCtx<'_> {
         // wrap optional fields with their `Some` guard, then skipped fields with their skip
         // guard
         // --------------------------------------------------
-        item.skip_guard(access.guard(write))
+        Some(item.skip_guard(access.guard(write)))
     }
 
-    /// Generates one key's frame write
-    ///
-    /// Picks the write: implicit, staged, known or unknown width. A `size(implicit)` value is
-    /// written straight after its key with no length ([`PlannedItemWrite::write_implicit`]). A
-    /// variable-width length prefix stages the value in the scratch buffer
-    /// ([`PlannedItemWrite::staged_write`]). Under a fixed-width length prefix or a fused `keylen`
-    /// encoder the [`FieldLengthPlan`] picks a known-width or an unknown-width write, and the
-    /// fixed-width length slot or the `keylen` encoder writes it
+    /// Generates one key's frame write, through the [`FrameBody`] the container's framing and the
+    /// key's value pick ([`FrameBody::of`])
     ///
     /// # Arguments
     ///
-    /// * `item` - The key to write
+    /// * `key` - The key to write
+    /// * `access` - How the write reaches the key's value
     ///
     /// # Returns
     ///
-    /// A token stream containing the key's generated frame write
-    fn frame_write(&self, item: &PlannedItemWrite<'_>) -> proc_macro2::TokenStream {
-        let span = item.span();
-        let key = item.key.key;
-        let plan = item.length_plan();
-        let value_write = |dst: &proc_macro2::TokenStream| item.value_write(dst);
-        let staged_write = |dst: &proc_macro2::TokenStream| item.staged_write(dst);
-        let implicit = item.key.codec.implicit().is_some();
-        // --------------------------------------------------
-        // emit the item write the container framing selects
-        // --------------------------------------------------
-        self.framing
-            .write_frame(key, plan, value_write, span, |key_write, len| {
-                match (implicit, len) {
-                    (true, _) => item.write_implicit(key_write),
-                    (false, LengthPrefix::Fixed(len)) => match plan {
-                        FieldLengthPlan::KnownValueWidth(value) => {
-                            len.write_known(key_write, value, value_write, span)
-                        }
-                        FieldLengthPlan::UnknownValueWidth => {
-                            len.write_backfilled(key_write, value_write, span)
-                        }
-                    },
-                    (false, LengthPrefix::Variable(len)) => {
-                        len.write_staged(Staging::Scratch, key_write, staged_write, span)
-                    }
-                }
-            })
+    /// A token stream containing the key's generated frame write, or `None` when the key has no
+    /// value encoder
+    fn frame_write(
+        &self,
+        key: FieldKey<'_>,
+        access: &ValueAccess<'_>,
+    ) -> Option<proc_macro2::TokenStream> {
+        let item = PlannedItemWrite {
+            encoder: key.codec.enc.as_ref()?,
+            key,
+            access,
+        };
+        Some(FrameBody::of(self.framing, &item.key).write(
+            item.key.key,
+            |dst| item.value_write(dst),
+            item.span(),
+        ))
     }
 
     /// Generates the writes of the retained unknown frames, in the order the field holds them
@@ -180,12 +176,10 @@ impl EncodeCtx<'_> {
     /// One loop over the `#[klv(unknown)]` field writes each `(key, value)` frame. Under a separate
     /// header the key encoder writes the key and the `unknown(enc = ..)` encoder writes the rest of
     /// the frame, its length included when the frame has one, straight into `out`. Under a fused
-    /// header the value is written, then the `keylen` encoder writes the header from `(key,
-    /// value_len)` and it is rotated in front of the value
-    /// ([`KeylenEncoder::write_rotated`](super::framing::KeylenEncoder::write_rotated)). The key is
-    /// passed by value, as a field's literal key is, so the key type is `Copy`. The loop is located
-    /// at the field and the encoder call at the encoder, so a wrong element type or encoder
-    /// signature is reported where it is written
+    /// header the value is staged and the `keylen` encoder writes the header from `(key,
+    /// staged_len)` ([`FrameBody::unknown`]). The key is passed by value, as a field's literal key
+    /// is, so the key type is `Copy`. The loop is located at the field and the encoder call at the
+    /// encoder, so a wrong element type or encoder signature is reported where it is written
     ///
     /// # Returns
     ///
@@ -207,16 +201,7 @@ impl EncodeCtx<'_> {
         // --------------------------------------------------
         // the frame write the container framing selects
         // --------------------------------------------------
-        let frame_write = self.framing.write_frame(
-            &key,
-            FieldLengthPlan::UnknownValueWidth,
-            value_write,
-            span,
-            |key_write, _| {
-                let value_write = value_write(&quote_spanned! { span => out });
-                quote! { #key_write #value_write }
-            },
-        );
+        let frame_write = FrameBody::unknown(self.framing).write(&key, value_write, span);
         // --------------------------------------------------
         // one frame per retained `(key, value)`
         // --------------------------------------------------
@@ -403,10 +388,16 @@ impl FieldWrite<'_> {
 struct PlannedItemWrite<'a> {
     /// The key, its field, and the type, size and encoder that may fix the value length
     key: FieldKey<'a>,
+
+    /// The key's value encoder
+    encoder: &'a ValueXcoder<types::SiguledXcoder>,
+
+    /// How the write reaches the key's value: the field's, or a `oneof(..)` arm's bound local
+    access: &'a ValueAccess<'a>,
 }
 
 /// [`PlannedItemWrite`] implementation
-impl<'a> PlannedItemWrite<'a> {
+impl PlannedItemWrite<'_> {
     /// Source span used to attach diagnostics to generated field code
     ///
     /// # Returns
@@ -416,41 +407,6 @@ impl<'a> PlannedItemWrite<'a> {
     /// came in through a `macro_rules!` fragment
     fn span(&self) -> proc_macro2::Span {
         helpers::call_site_at(&self.key.field.name)
-    }
-
-    /// How the generated write reaches the key's value
-    ///
-    /// # Returns
-    ///
-    /// The field's [`ValueAccess`], or for a `oneof(..)` arm the value its variant's pattern
-    /// binds, located at the arm's type
-    fn access(&self) -> ValueAccess<'a> {
-        if self.key.variant.is_none() {
-            return ValueAccess::new(self.key.field);
-        }
-        let at = helpers::call_site_at(self.key.ty);
-        ValueAccess::Bound {
-            at,
-            binding: format_ident!("__val", span = at),
-        }
-    }
-
-    /// The key's value encoder
-    ///
-    /// # Returns
-    ///
-    /// `codec.enc`
-    ///
-    /// # Panics
-    ///
-    /// When the key has no value encoder. [`EncodeCtx::new`] returns before item generation
-    /// unless every key has one
-    fn value_encoder(&self) -> &'a types::SiguledXcoder {
-        #[allow(
-            clippy::unwrap_used,
-            reason = "`EncodeCtx::new` returns before item generation unless every key has an encoder"
-        )]
-        self.key.codec.enc.as_ref().unwrap()
     }
 
     /// Builds the encoder path used for the key's value
@@ -466,123 +422,15 @@ impl<'a> PlannedItemWrite<'a> {
         // --------------------------------------------------
         // resolve fallback trait encoder or explicit encoder path
         // --------------------------------------------------
-        if self.key.codec.fallback_enc {
-            let ty = self.key.ty;
-            quote! { <#ty as ::tinyklv::traits::EncodeValue>::encode_value }
-        } else {
-            let inner = &self.value_encoder().inner;
-            quote! { #inner }
-        }
-    }
-
-    /// Chooses how the field's value length is written under a fixed-width length prefix or a
-    /// `keylen` header
-    ///
-    /// Prefers writing the length immediately when an exact field size is declared, or when a
-    /// primitive type and its built-in encoder agree on a width. Otherwise the length is written
-    /// once the value is encoded
-    ///
-    /// # Returns
-    ///
-    /// The known value width when provable, else the unknown width
-    fn length_plan(&self) -> FieldLengthPlan<'a> {
-        // --------------------------------------------------
-        // explicit exact field sizes can be written immediately
-        // --------------------------------------------------
-        if let Some(value) = self.exact_width() {
-            return FieldLengthPlan::KnownValueWidth(value);
-        }
-        // --------------------------------------------------
-        // prove fixed width from primitive type and built-in encoder
-        // --------------------------------------------------
-        if !self.key.codec.fallback_enc {
-            let encoder = &self.value_encoder().inner;
-            if let (Some(type_width), Some(encoder_width)) = (
-                fixed_width::fixed_value_type_width(self.key.ty),
-                fixed_width::builtin_fixed_encoder_width(encoder),
-            ) && type_width == encoder_width
-            {
-                return FieldLengthPlan::KnownValueWidth(ValueWidth {
-                    field: &self.key.field.name,
-                    bytes: type_width,
-                    declared_at: encoder.span(),
-                });
+        match self.encoder {
+            ValueXcoder::Explicit(encoder) => {
+                let inner = &encoder.inner;
+                quote! { #inner }
             }
-        }
-        // --------------------------------------------------
-        // otherwise the width is known only once the value is written
-        // --------------------------------------------------
-        FieldLengthPlan::UnknownValueWidth
-    }
-
-    /// Writes a prefix, then the `size(implicit)` value straight into `out`, with no length
-    ///
-    /// Under `exact = N` the value write is checked in debug builds to be `N` bytes
-    /// ([`ValueWidth::write_after`])
-    ///
-    /// # Arguments
-    ///
-    /// * `prefix_write` - Generated statements that write the field key
-    ///
-    /// # Returns
-    ///
-    /// A block writing the complete frame into `out`
-    fn write_implicit(&self, prefix_write: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
-        let span = self.span();
-        let value_write = |dst: &proc_macro2::TokenStream| self.value_write(dst);
-        // --------------------------------------------------
-        // a value of no declared width is written unchecked
-        // --------------------------------------------------
-        let Some(value) = self.exact_width() else {
-            let value_write = value_write(&quote_spanned! { span => out });
-            return quote_spanned! { span =>
-                {
-                    #prefix_write
-                    #value_write
-                }
-            };
-        };
-        // --------------------------------------------------
-        // an `exact = N` value is checked to be `N` bytes
-        // --------------------------------------------------
-        value.write_after(prefix_write, value_write, span)
-    }
-
-    /// The key's value width, as its `size(exact = N)` declares it
-    ///
-    /// # Returns
-    ///
-    /// The width, `N` declared at its `size(..)`, or `None` without `exact = N`
-    fn exact_width(&self) -> Option<ValueWidth<'a>> {
-        let size = self.key.codec.size.as_ref()?;
-        Some(ValueWidth {
-            field: &self.key.field.name,
-            bytes: size.exact_width()?,
-            declared_at: size.span(),
-        })
-    }
-
-    /// The value encoder call staging the field value in `dst`, the [`Staging::Scratch`] buffer of
-    /// a variable-width length prefix, then, under `size(exact = N)`, the debug-build check that
-    /// the buffer holds `N` bytes ([`ValueWidth::check`])
-    ///
-    /// # Arguments
-    ///
-    /// * `dst` - The `&mut Vec<u8>` expression of the scratch buffer
-    ///
-    /// # Returns
-    ///
-    /// The value encoder call statement, then the check
-    fn staged_write(&self, dst: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
-        let value_write = self.value_write(dst);
-        let check = self.exact_width().map(|value| {
-            let buffer = Staging::Scratch.buffer();
-            let span = self.span();
-            value.check(&quote_spanned! { span => #buffer.len() }, span)
-        });
-        quote! {
-            #value_write
-            #check
+            ValueXcoder::TraitFallback => {
+                let ty = self.key.ty;
+                quote! { <#ty as ::tinyklv::traits::EncodeValue>::encode_value }
+            }
         }
     }
 
@@ -597,7 +445,14 @@ impl<'a> PlannedItemWrite<'a> {
     /// The value encoder call statement
     fn value_write(&self, dst: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let value_encoder_call = self.value_encoder_call();
-        let value_argument = self.access().argument(self.value_encoder().sigil);
+        // --------------------------------------------------
+        // `EncodeValue::encode_value` takes the value by reference
+        // --------------------------------------------------
+        let sigil = match self.encoder {
+            ValueXcoder::Explicit(encoder) => encoder.sigil,
+            ValueXcoder::TraitFallback => XcoderSigil::None,
+        };
+        let value_argument = self.access.argument(sigil);
         quote_spanned! { self.span() => #value_encoder_call(#value_argument, #dst); }
     }
 }

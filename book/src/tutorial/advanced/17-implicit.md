@@ -17,7 +17,7 @@ functions, the shape of [tutorial 05](../fundamentals/05-custom-decoder.md)'s.
 Run this example: `cargo run --example book_17_implicit`
 
 ```rust
-{{#include ../../../../examples/book_17_implicit.rs}}
+{{#include ../../../../examples/book/advanced/book_17_implicit.rs}}
 ```
 
 ## Overview

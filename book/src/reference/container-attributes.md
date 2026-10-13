@@ -158,8 +158,8 @@ is required only beside that field. Without it, a `keylen` struct skips a
 ```
 
 A value sized by its header is an error when its decoder fails or leaves part
-unread, labelled `` `S::f` value (its decoder rejected the frame's value) `` or
-`left bytes of the frame's value unread`, the cursor past the frame.
+unread, labelled `` `S::f` value (its decoder rejected the item's value) `` or
+`left bytes of the item's value unread`, the cursor past the frame.
 `08 05 1A 02 FF FE`, an `id` then a `name: Option<String>` its decoder
 rejects, is an error; without `strict` it decodes, `name` keeping what it had:
 `None`. Not rejected: a `size(implicit, exact = N)` value, a kept `Sliced`

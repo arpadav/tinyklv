@@ -8,7 +8,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::EncodeCtx;
+use super::{EncodeCtx, frame_body::FrameBody, framing::EncodeFraming, staging::Staging};
 
 // --------------------------------------------------
 // external
@@ -28,8 +28,8 @@ impl EncodeCtx<'_> {
     /// # Returns
     ///
     /// A token stream containing one `EncodeValue` trait implementation for the
-    /// container
-    pub(super) fn encode_value_impl(&self) -> proc_macro2::TokenStream {
+    /// container, or `None` when a key has no value encoder
+    pub(super) fn encode_value_impl(&self) -> Option<proc_macro2::TokenStream> {
         // --------------------------------------------------
         // split the container type
         // --------------------------------------------------
@@ -41,12 +41,21 @@ impl EncodeCtx<'_> {
         let reserve = self
             .reserve_bytes
             .map(|bytes| quote! { out.reserve(#bytes); });
-        let scratch_decl = self.framing.declare_scratch(self.input);
-        let klv_items = self.klv_items();
+        // --------------------------------------------------
+        // the scratch buffer, when a frame stages its value. A retained unknown frame is staged
+        // only under a fused header, which always declares the buffer
+        // --------------------------------------------------
+        let staged = matches!(self.framing, EncodeFraming::Fused { .. })
+            || self
+                .input
+                .klv_keys()
+                .any(|key| FrameBody::of(self.framing, &key).stages());
+        let scratch_decl = staged.then(|| Staging::Scratch.declare());
+        let klv_items = self.klv_items()?;
         // --------------------------------------------------
         // assemble the trait impl
         // --------------------------------------------------
-        quote! {
+        Some(quote! {
             #[automatically_derived]
             impl #impl_generics ::tinyklv::traits::EncodeValue for #name #ty_generics #where_clause {
                 fn encode_value(&self, out: &mut ::std::vec::Vec<u8>) {
@@ -55,6 +64,6 @@ impl EncodeCtx<'_> {
                     #klv_items
                 }
             }
-        }
+        })
     }
 }

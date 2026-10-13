@@ -23,7 +23,7 @@ applies - so the field attribute carries its own `dec = decode_celsius`.
 Run this example: `cargo run --example book_05_custom_decoder`
 
 ```rust
-{{#include ../../../../examples/book_05_custom_decoder.rs}}
+{{#include ../../../../examples/book/basics/book_05_custom_decoder.rs}}
 ```
 
 ## Overview

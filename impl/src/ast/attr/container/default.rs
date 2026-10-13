@@ -10,7 +10,7 @@
 // local
 // --------------------------------------------------
 use crate::Ctxt;
-use crate::ast::attr::{size::SizeSpec, skip_if::SkipIf};
+use crate::ast::attr::{size::SizeSpec, skip_if::SkipIf, unique::Unique};
 use crate::ast::symbol;
 use crate::ast::types::{SiguledXcoder, TypeType, XcoderType};
 
@@ -51,9 +51,6 @@ pub(crate) struct DefaultXcoder {
     /// When a matched field's frame is left out of the encode; see [`SkipIf`]
     pub skip_if: Option<SkipIf>,
 
-    /// syn errors
-    pub errors: Option<syn::Error>,
-
     /// Whether an error on an entry of this type is reported, so a matched field reports no
     /// missing encoder or decoder of its own
     pub reported: bool,
@@ -69,32 +66,31 @@ impl DefaultXcoder {
     /// * `new` - The later entry
     pub(super) fn merge(&mut self, cx: &Ctxt, new: Self) {
         let typ = &new.typ;
-        match (&self.dec, new.dec) {
-            (Some(_), Some(dec)) => cx.error_spanned_by(dec, err!(DuplicateDefault(typ; "`dec`"))),
-            (None, dec) => self.dec = dec,
-            (Some(_), None) => (),
-        }
-        match (&self.enc, new.enc) {
-            (Some(_), Some(enc)) => cx.error_spanned_by(enc, err!(DuplicateDefault(typ; "`enc`"))),
-            (None, enc) => self.enc = enc,
-            (Some(_), None) => (),
-        }
-        match (&self.size, new.size) {
-            (Some(_), Some(size)) => cx.syn_error(syn::Error::new(
+        self.dec = Unique::of(self.dec.take().into_iter().chain(new.dec), |dec| {
+            cx.error_spanned_by(dec, err!(DuplicateDefault(typ; "`dec`")));
+        })
+        .first();
+        self.enc = Unique::of(self.enc.take().into_iter().chain(new.enc), |enc| {
+            cx.error_spanned_by(enc, err!(DuplicateDefault(typ; "`enc`")));
+        })
+        .first();
+        self.size = Unique::of(self.size.take().into_iter().chain(new.size), |size| {
+            cx.syn_error(syn::Error::new(
                 size.span(),
                 err!(DuplicateDefault(typ; "`size(..)`")),
-            )),
-            (None, size) => self.size = size,
-            (Some(_), None) => (),
-        }
-        match (&self.skip_if, new.skip_if) {
-            (Some(_), Some(skip_if)) => cx.syn_error(syn::Error::new(
-                skip_if.span(),
-                err!(DuplicateDefault(typ; "`skip_if_default` / `skip_if`")),
-            )),
-            (None, skip_if) => self.skip_if = skip_if,
-            (Some(_), None) => (),
-        }
+            ));
+        })
+        .first();
+        self.skip_if = Unique::of(
+            self.skip_if.take().into_iter().chain(new.skip_if),
+            |skip_if| {
+                cx.syn_error(syn::Error::new(
+                    skip_if.span(),
+                    err!(DuplicateDefault(typ; "`skip_if_default` / `skip_if`")),
+                ));
+            },
+        )
+        .first();
         self.reported |= new.reported;
     }
 
@@ -125,17 +121,30 @@ impl DefaultXcoder {
         }
     }
 }
-/// [`DefaultXcoder`] implementation of [`From`] for [`syn::MetaList`]
+/// A `default(..)` entry that failed to parse
+///
+/// The parse stops at the first mistake, so the entry holds the settings written before it, which
+/// still merge into the entries of its type
+#[derive(Debug)]
+pub(crate) struct PartialDefault {
+    /// The settings parsed before the error
+    pub entry: DefaultXcoder,
+
+    /// The error: a malformed or duplicate setting, a missing type, or both skip forms
+    pub error: syn::Error,
+}
+
+/// [`DefaultXcoder`] implementation of [`TryFrom`] for [`syn::MetaList`]
 ///
 /// Parses the nested meta arguments from a `default(typ = .., enc = .., dec = .., size(..), ..)`
 /// attribute list into a [`DefaultXcoder`]
 ///
-/// Errors (a malformed or duplicate setting, a missing type, both skip forms) are recorded in
-/// `DefaultXcoder::errors` rather than returned directly, so that the caller can accumulate
-/// multiple diagnostics before aborting. What the entries of one type must provide together is
-/// checked once they are merged ([`DefaultXcoder::check`])
-impl From<&syn::MetaList> for DefaultXcoder {
-    fn from(input: &syn::MetaList) -> Self {
+/// An error is returned with the settings parsed before it ([`PartialDefault`]), so that the
+/// caller can accumulate multiple diagnostics before aborting. What the entries of one type must
+/// provide together is checked once they are merged ([`DefaultXcoder::check`])
+impl TryFrom<&syn::MetaList> for DefaultXcoder {
+    type Error = PartialDefault;
+    fn try_from(input: &syn::MetaList) -> Result<Self, Self::Error> {
         // --------------------------------------------------
         // init
         // --------------------------------------------------
@@ -190,14 +199,17 @@ impl From<&syn::MetaList> for DefaultXcoder {
         // --------------------------------------------------
         // return
         // --------------------------------------------------
-        DefaultXcoder {
+        let entry = DefaultXcoder {
             typ,
             enc,
             dec,
             size,
             skip_if,
-            errors,
             reported: false,
+        };
+        match errors {
+            None => Ok(entry),
+            Some(error) => Err(PartialDefault { entry, error }),
         }
     }
 }

@@ -1,5 +1,0 @@
-error: `sentinel` is searched for in the input's bytes, which a `&str` `stream` does not give; use `stream = &[u8]`, the default, or remove `sentinel`.
-  --> tests/ui/fail/framing/sentinel_str_stream.rs:18:16
-   |
-18 |     sentinel = "KLV",
-   |                ^^^^^

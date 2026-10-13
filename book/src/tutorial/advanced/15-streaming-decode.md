@@ -83,7 +83,7 @@ match Heartbeat::decode_partial(&mut body) {
     Ok(Packet::NeedMore(partial)) => {
         // save `partial`, append more body bytes, then resume
     }
-    Err(label) => report(label),
+    Err(error) => report(error),
 }
 ```
 
@@ -148,7 +148,7 @@ This example shows both levels:
 Run this example: `cargo run --example book_15_streaming_decode`
 
 ```rust
-{{#include ../../../../examples/book_15_streaming_decode.rs}}
+{{#include ../../../../examples/book/advanced/book_15_streaming_decode.rs}}
 ```
 
 ## Overview

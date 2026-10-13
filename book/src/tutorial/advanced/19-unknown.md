@@ -36,7 +36,7 @@ the kept frames in decode order after the fields, before any `break_on` one.
 Run this example: `cargo run --example book_19_unknown`
 
 ```rust
-{{#include ../../../../examples/book_19_unknown.rs}}
+{{#include ../../../../examples/book/advanced/book_19_unknown.rs}}
 ```
 
 ## Speed

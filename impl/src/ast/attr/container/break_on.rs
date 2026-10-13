@@ -43,16 +43,6 @@ impl std::fmt::Debug for BreakOnSpec {
     }
 }
 
-/// [`BreakOnSpec`] implementation of [`ToTokens`], emitting the right-hand side as written
-impl ToTokens for BreakOnSpec {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        match self {
-            BreakOnSpec::Literal(lit) => lit.to_tokens(tokens),
-            BreakOnSpec::Func(path) => path.to_tokens(tokens),
-        }
-    }
-}
-
 /// Newtype wrapper paralleling [`super::sentinel::Sentinel`]: `Some` once a `break_on = ..` has been
 /// parsed, `None` when the name-value was for some other keyword
 pub(crate) struct BreakOn(pub Option<BreakOnSpec>);

@@ -18,7 +18,7 @@ length is set to 4. The slice passed to the decoder is 4 bytes long, but the
 Run this example: `cargo run --example book_07_a_subslice`
 
 ```rust
-{{#include ../../../../examples/book_07_a_subslice.rs}}
+{{#include ../../../../examples/book/fields/book_07_a_subslice.rs}}
 ```
 
 ## Variable length
@@ -37,7 +37,7 @@ that length. Setting `size(lengthed)` on the field tells the derive to call
 Run this example: `cargo run --example book_07_b_size_lengthed`
 
 ```rust
-{{#include ../../../../examples/book_07_b_size_lengthed.rs}}
+{{#include ../../../../examples/book/fields/book_07_b_size_lengthed.rs}}
 ```
 
 ## Overview
