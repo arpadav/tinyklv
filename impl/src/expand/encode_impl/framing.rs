@@ -42,6 +42,12 @@ const DEFAULT_KEY_BYTES: usize = 1;
 /// Fallback per-field length-byte reserve estimate
 const DEFAULT_LEN_BYTES: usize = 1;
 
+/// The largest encode reserve estimate a `Vec::reserve` is emitted for: `i32::MAX`, the most bytes
+/// a `Vec<u8>` holds on a 32-bit target, the narrowest that has `std`. `Vec::reserve` panics past
+/// it there, so a larger estimate, which only a field's or length's `size(..)` of gigabytes makes,
+/// is not reserved and the buffer grows as it is written
+pub(super) const MAX_RESERVE_BYTES: usize = 0x7FFF_FFFF;
+
 /// The container's frame header encoder(s), carrying the borrowed encoder token(s)
 ///
 /// Mirrors [`ContainerMode`] on the encode codegen side
@@ -167,16 +173,17 @@ impl<'a> EncodeFraming<'a> {
     ///
     /// # Returns
     ///
-    /// The total encode reserve in bytes for all encoded value fields in the container
-    pub(super) fn value_reserve_bytes(self, input: &MainContainer) -> usize {
+    /// The total encode reserve in bytes for all encoded value fields in the container, or `None`
+    /// when it is more than [`MAX_RESERVE_BYTES`]
+    pub(super) fn value_reserve_bytes(self, input: &MainContainer) -> Option<usize> {
         // --------------------------------------------------
         // estimate per-field key and length bytes
         // --------------------------------------------------
         let (key_bytes, len_bytes) = self.header_reserve_bytes();
         // --------------------------------------------------
-        // sum known field widths into the encode reserve
+        // sum known field widths into the encode reserve, kept only within the largest
         // --------------------------------------------------
-        input
+        let bytes = input
             .klv_keys()
             .map(|key| {
                 let size = key.codec.size.as_ref();
@@ -192,7 +199,8 @@ impl<'a> EncodeFraming<'a> {
                     .saturating_add(len)
                     .saturating_add(value.unwrap_or(0))
             })
-            .fold(0, usize::saturating_add)
+            .fold(0, usize::saturating_add);
+        (bytes <= MAX_RESERVE_BYTES).then_some(bytes)
     }
 
     /// Declares the scratch buffer, when a field value is staged before its header is written

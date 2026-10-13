@@ -6,7 +6,8 @@
 //! encode writes them after the known fields, the key and then the unknown encoder, which writes
 //! the length itself. Without the field the frames are decoded and dropped; a struct with no other
 //! KLV field keeps every frame. A value its decoder rejects before the end of the input is
-//! malformed: both drivers reject it with an error naming the `#[klv(unknown)]` field. A frame
+//! malformed: both drivers reject it with an error naming the `#[klv(unknown)]` field, and a known
+//! key's length so rejected with one naming the struct's frame. A frame
 //! whose key and unknown value together consume nothing could only repeat, so it is rejected
 //! naming the struct's frame. A `break_on` key is checked right after it is read, before the
 //! unknown decoder could read its frame. A struct with a length-checked field decodes one-shot
@@ -342,6 +343,28 @@ fn a_malformed_unknown_value_before_the_end_of_the_input_is_rejected() {
     ]
     .concat();
     Reading::assert_rejects_at(&wire, wire.len() - frames::UNKNOWN_VARINT.len(), message);
+}
+
+/// A known key's length its decoder rejects before the end of the input is malformed, as an
+/// unknown value is: both drivers reject it at every chunk split, with an error naming the
+/// struct's frame, and leave the cursor where the decoder stopped
+#[test]
+fn a_malformed_known_length_before_the_end_of_the_input_is_rejected() {
+    let message = "`Reading` frame (its `len` decoder failed before the end of the input)";
+    #[rustfmt::skip]
+    let name: &[u8] = &[
+        // name: tag, 9 continuation bytes of its length
+        0x1A,
+        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    ];
+    let wire = [
+        frames::ID,
+        name,
+        // a 10th length byte carrying bits past the 64th, then an 11th, then id = 6
+        &[0xFF, 0x01, 0x08, 0x06],
+    ]
+    .concat();
+    Reading::assert_rejects_at(&wire, frames::ID.len() + name.len(), message);
 }
 
 /// A frame whose key and unknown value together consume nothing could only repeat: both drivers

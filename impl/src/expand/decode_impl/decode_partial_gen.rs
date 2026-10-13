@@ -52,14 +52,16 @@ impl DecodeCtx<'_> {
     /// Each iteration:
     ///
     /// 1. Leaves the loop through [`LoopDriver::clean_eof`] when the input is empty
-    /// 2. Checkpoints the frame start as `checkpoint_inner`
-    /// 3. Reads the frame header ([`LoopCtx::header`])
-    /// 4. Evaluates `break_on`, when set ([`LoopCtx::break_on`]); then a separate frame of a
-    ///    `size(implicit)` field's key, or with `unknown(..)` of a key no field declares, decodes
-    ///    its value and skips the steps below ([`LoopCtx::after_key`])
+    /// 2. Checkpoints the frame start as `__checkpoint_inner`
+    /// 3. Reads the frame header: a separate frame's key, a fused frame's key and length
+    ///    ([`LoopCtx::header`])
+    /// 4. Evaluates `break_on`, when set ([`LoopCtx::break_on`]); then a separate frame reads its
+    ///    length, but for a `size(implicit)` field's key, or with `unknown(..)` a key no field
+    ///    declares, whose value it decodes, skipping the steps below ([`LoopCtx::after_key`])
     /// 5. Logs the header, when `debug` is set
-    /// 6. Rejects a key outside the known set ([`LoopDriver::reject`]), when `deny_unknown_keys`
-    ///    is set; this runs before any value byte is consumed, in both framing modes
+    /// 6. Rejects a key outside the known set ([`LoopDriver::reject_label`]), when
+    ///    `deny_unknown_keys` is set; this runs before any value byte is consumed, in both framing
+    ///    modes
     /// 7. Decodes the value into its field ([`LoopCtx::body`]), then rejects a fused frame that
     ///    consumed no input
     ///
@@ -113,7 +115,7 @@ impl DecodeCtx<'_> {
                 if input.eof_offset() == 0 {
                     #clean_eof
                 }
-                let checkpoint_inner = input.checkpoint();
+                let __checkpoint_inner = input.checkpoint();
                 #header
                 #break_on
                 #frame
@@ -154,15 +156,16 @@ impl DecodeCtx<'_> {
     /// key is rejected with the `invalid key (expected one of the keys defined on ..)` message,
     /// never the truncation a declared length overrunning the input would otherwise produce. The
     /// pattern is the `|`-joined alternation of every field's `#[klv(key = ..)]` literal, each
-    /// `oneof(..)` arm's included, never
-    /// empty: a decode impl is generated only for a struct with at least one KLV field, and a
-    /// `#[klv(unknown)]` one needs the `unknown(..)` that `deny_unknown_keys` cannot sit beside.
+    /// `oneof(..)` arm's included. A struct with no field declares no key, so its gate rejects
+    /// every key, `if true { #reject }`; one whose only field is `#[klv(unknown)]` needs the
+    /// `unknown(..)` that `deny_unknown_keys` cannot sit beside.
     /// The gate carries the `clippy::manual_range_patterns` allow its pattern needs, if any
     /// ([`key_pattern`](super::key_pattern))
     ///
     /// # Arguments
     ///
-    /// * `driver` - The loop exit policy the rejection returns through ([`LoopDriver::reject`])
+    /// * `driver` - The loop exit policy the rejection returns through
+    ///   ([`LoopDriver::reject_label`])
     ///
     /// # Returns
     ///
@@ -171,20 +174,26 @@ impl DecodeCtx<'_> {
         let name = &self.input.ident;
         let key = self.framing.key();
         // --------------------------------------------------
-        // each klv field's declared key expressions, spliced with `|` separators
+        // each klv field's declared key expressions, spliced with `|` separators; with none,
+        // every key is unknown
         // --------------------------------------------------
         let keys: Vec<_> = self.input.klv_keys().map(|key| key.key).collect();
         let (pattern, allow) = super::key_pattern(&keys);
-        let reject = driver.reject(&quote! {
-            concat!(
-                "invalid key (expected one of the keys defined on `",
-                stringify!(#name),
+        let unknown = if keys.is_empty() {
+            quote! { true }
+        } else {
+            quote! { !::core::matches!(#key, #pattern) }
+        };
+        let reject = driver.reject_label(&quote! {
+            ::core::concat!(
+                "key (expected one of the keys defined on `",
+                ::core::stringify!(#name),
                 "`; to turn this off, remove `deny_unknown_keys`)",
             )
         });
         quote! {
             #allow
-            if !matches!(#key, #pattern) {
+            if #unknown {
                 #reject
             }
         }
@@ -246,7 +255,7 @@ impl DecodeCtx<'_> {
         quote! {
             #[doc(hidden)]
             #[automatically_derived]
-            #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::traits::ResumePartial`] for [`", stringify!(#stream), "`].")]
+            #[doc = ::core::concat!(" [`", ::core::stringify!(#name), "`] implementation of [`tinyklv::traits::ResumePartial`] for [`", ::core::stringify!(#stream), "`].")]
             impl #impl_generics ::tinyklv::traits::ResumePartial<#stream> for #name #ty_generics #where_clause {
 
                 fn resume_partial(
@@ -332,7 +341,7 @@ impl DecodeCtx<'_> {
         quote! {
             #[doc(hidden)]
             #[automatically_derived]
-            #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::DecodeValue`] for [`", stringify!(#stream), "`].")]
+            #[doc = ::core::concat!(" [`", ::core::stringify!(#name), "`] implementation of [`tinyklv::prelude::DecodeValue`] for [`", ::core::stringify!(#stream), "`].")]
             impl #impl_generics ::tinyklv::traits::DecodeValue<#stream> for #name #ty_generics #where_clause {
                 #[inline]
                 fn decode_value(input: &mut #stream) -> ::tinyklv::__export::winnow::Result<Self> {
@@ -370,7 +379,7 @@ impl DecodeCtx<'_> {
         quote! {
             #[doc(hidden)]
             #[automatically_derived]
-            #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::DecodePartial`] for [`", stringify!(#stream), "`]")]
+            #[doc = ::core::concat!(" [`", ::core::stringify!(#name), "`] implementation of [`tinyklv::prelude::DecodePartial`] for [`", ::core::stringify!(#stream), "`]")]
             impl #impl_generics ::tinyklv::traits::DecodePartial<#stream> for #name #ty_generics #where_clause {
                 type Partial = #partial_ty;
 
@@ -640,11 +649,38 @@ mod tests {
     }
 
     #[test]
+    /// Verifies `decoder()` is emitted only for a container with a sentinel, which the
+    /// `tinyklv::Decoder` it returns seeks to find each packet
+    fn decoder_is_emitted_iff_a_sentinel_is_declared() {
+        let sentinel = Input(syn::parse_quote! {
+            #[klv(
+                sentinel = b"RSM",
+                key(dec = decb::u8),
+                len(dec = decb::u8_as_usize),
+                allow_unimplemented_encode,
+            )]
+            struct Reading {
+                #[klv(key = 0x01, dec = decb::u8)]
+                id: u8,
+            }
+        });
+        let bare = Input(syn::parse_quote! {
+            #[klv(key(dec = decb::u8), len(dec = decb::u8_as_usize), allow_unimplemented_encode)]
+            struct Reading {
+                #[klv(key = 0x01, dec = decb::u8)]
+                id: u8,
+            }
+        });
+        assert!(sentinel.with_ctx(|ctx| ctx.decoder_fn().is_some()));
+        assert!(bare.with_ctx(|ctx| ctx.decoder_fn().is_none()));
+    }
+
+    #[test]
     /// Verifies `break_on = <key literal>` puts its own check into the loop, in both framings
     ///
     /// A fused loop breaks on an unknown `Inline` key without `break_on`, so whether the loop
-    /// breaks cannot tell a fused check apart from none; this pins the check itself: a separate
-    /// frame's `BreakType` decision, a fused frame's bare `break`
+    /// breaks cannot tell a fused check apart from none; this pins the check itself, a bare
+    /// `break` on the key
     fn break_on_literal_emits_its_check() {
         let separate = Input(syn::parse_quote! {
             #[klv(
@@ -667,9 +703,7 @@ mod tests {
         });
         let separate_check = quote! {
             if key == 0xFF {
-                ::tinyklv::BreakType::Done
-            } else {
-                ::tinyklv::BreakType::Proceed
+                break;
             }
         };
         let fused_check = quote! {
@@ -706,8 +740,8 @@ mod tests {
                 name: Vec<u8>,
             }
         });
-        let exact = quote! { octets(6usize)(&mut subinput) }.to_string();
-        let frame = quote! { octets(len)(&mut subinput) }.to_string();
+        let exact = quote! { octets(6usize)(&mut __subinput) }.to_string();
+        let frame = quote! { octets(len)(&mut __subinput) }.to_string();
         for driver in input.drivers() {
             let emitted = input.frame_loop(driver).to_string();
             assert!(emitted.contains(&exact), "{driver:?} exact: {emitted}");
@@ -955,7 +989,7 @@ mod tests {
                 }
                 assert_eq!(checks, 2, "{name}, {driver:?}: length checks");
                 let guard = quote! { if ::core::matches!(#key, 0x02) && #len != 2usize };
-                let opening = quote! { input.reset(&checkpoint_inner); #guard }.to_string();
+                let opening = quote! { input.reset(&__checkpoint_inner); #guard }.to_string();
                 let exit = driver.clean_eof().to_string();
                 let text = short.to_string();
                 assert!(

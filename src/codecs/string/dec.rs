@@ -21,7 +21,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::prelude::*;
+use crate::{ErrorKind, prelude::*};
 
 // --------------------------------------------------
 // external
@@ -107,24 +107,17 @@ pub fn to_string_utf16_le(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<St
     move |input| {
         if !len.is_multiple_of(2) {
             let checkpoint = input.checkpoint();
-            return Err(crate::__export::labeled_error(
-                input,
-                &checkpoint,
-                "Invalid UTF-16 slice length",
-            ));
+            let err =
+                crate::__export::labeled_error(input, &checkpoint, "Invalid UTF-16 slice length");
+            return Err(crate::__export::with_kind(err, ErrorKind::WrongLength));
         }
         take(len)
             .map(|slice: &[u8]| {
                 let utf16: Vec<u16> = slice
-                    .chunks_exact(2)
-                    .map(|chunk| {
-                        #[allow(
-                            clippy::unwrap_used,
-                            reason = "safe to unwrap, since `chunks_exact` returns exactly 2 bytes"
-                        )]
-                        let array: [u8; 2] = chunk.try_into().unwrap();
-                        u16::from_le_bytes(array)
-                    })
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|pair| u16::from_le_bytes(*pair))
                     .collect();
                 String::from_utf16_lossy(&utf16)
             })
@@ -150,24 +143,17 @@ pub fn to_string_utf16_be(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<St
     move |input| {
         if !len.is_multiple_of(2) {
             let checkpoint = input.checkpoint();
-            return Err(crate::__export::labeled_error(
-                input,
-                &checkpoint,
-                "Invalid UTF-16 slice length",
-            ));
+            let err =
+                crate::__export::labeled_error(input, &checkpoint, "Invalid UTF-16 slice length");
+            return Err(crate::__export::with_kind(err, ErrorKind::WrongLength));
         }
         take(len)
             .map(|slice: &[u8]| {
                 let utf16: Vec<u16> = slice
-                    .chunks_exact(2)
-                    .map(|chunk| {
-                        #[allow(
-                            clippy::unwrap_used,
-                            reason = "safe to unwrap, since `chunks_exact` returns exactly 2 bytes"
-                        )]
-                        let array: [u8; 2] = chunk.try_into().unwrap();
-                        u16::from_be_bytes(array)
-                    })
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
+                    .map(|pair| u16::from_be_bytes(*pair))
                     .collect();
                 String::from_utf16_lossy(&utf16)
             })

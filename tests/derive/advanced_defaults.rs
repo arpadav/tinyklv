@@ -454,14 +454,13 @@ fn default_bare_and_expr_mixed_absent() {
 }
 
 #[test]
-/// Tests that bare `default` on an `Option<T>` field unwraps through
-/// `unwrap_option_type` and calls `<T>::default()` (not `<Option<T>>::default()`)
+/// Tests that bare `default` on an `Option<T>` field is `<Option<T>>::default()`, `None`, not
+/// `Some(<T>::default())`
 fn default_bare_option_wrapped_absent() {
     let result = DefaultBareOptionWrapped::decode_value(&mut [].as_slice()).unwrap();
     assert_eq!(
-        result.flavor,
-        Some(Flavor::Vanilla),
-        "Option<Flavor> with bare `default` should be `Some(Flavor::default())`"
+        result.flavor, None,
+        "Option<Flavor> with bare `default` should be `None`"
     );
 }
 

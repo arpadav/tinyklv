@@ -8,6 +8,7 @@
 // local
 // --------------------------------------------------
 use crate::common::error::ContextErrorExt;
+use tinyklv::ErrorKind;
 
 // --------------------------------------------------
 // external
@@ -38,8 +39,8 @@ pub(super) trait DecoderExt {
     /// trailer
     fn assert_reads(self, wire: &[u8], value: Self::Value);
 
-    /// Asserts the decoder rejects `wire` as a value its type cannot hold, with the cursor
-    /// rewound to the start of `wire`
+    /// Asserts the decoder rejects `wire` as a value its type cannot hold, of kind
+    /// [`ErrorKind::MalformedValue`], with the cursor rewound to the start of `wire`
     ///
     /// # Arguments
     ///
@@ -47,12 +48,12 @@ pub(super) trait DecoderExt {
     ///
     /// # Panics
     ///
-    /// If the decode succeeds, fails without expecting a value that fits its type, or moves
-    /// the cursor
+    /// If the decode succeeds, fails without expecting a value that fits its type or of another
+    /// kind, or moves the cursor
     fn assert_rewinds(self, wire: &[u8]);
 
-    /// Asserts the decoder runs out of bytes on `wire`, failing with the cursor at the end of
-    /// input
+    /// Asserts the decoder runs out of bytes on `wire`, failing with an error of kind
+    /// [`ErrorKind::Truncated`] and the cursor at the end of input
     ///
     /// # Arguments
     ///
@@ -60,7 +61,7 @@ pub(super) trait DecoderExt {
     ///
     /// # Panics
     ///
-    /// If the decode succeeds, or fails with any of `wire` left unread
+    /// If the decode succeeds, fails with another kind, or fails with any of `wire` left unread
     fn assert_runs_out(self, wire: &[u8]);
 }
 
@@ -84,7 +85,9 @@ where
     fn assert_rewinds(mut self, wire: &[u8]) {
         let mut cursor = wire;
         match self(&mut cursor) {
-            Err(error) if error.expects_fits_target() => {}
+            Err(error)
+                if error.expects_fits_target()
+                    && ErrorKind::of(&error) == Some(ErrorKind::MalformedValue) => {}
             other => panic!("decoding {wire:02X?}: expected an overflow Err, got {other:?}"),
         }
         assert_eq!(cursor, wire, "the cursor after {wire:02X?}");
@@ -94,9 +97,10 @@ where
     fn assert_runs_out(mut self, wire: &[u8]) {
         let mut cursor = wire;
         let result = self(&mut cursor);
-        assert!(
-            result.is_err(),
-            "decoding {wire:02X?}: expected an Err, got {result:?}"
+        assert_eq!(
+            result.as_ref().err().and_then(ErrorKind::of),
+            Some(ErrorKind::Truncated),
+            "decoding {wire:02X?}: {result:?}"
         );
         assert!(
             cursor.is_empty(),

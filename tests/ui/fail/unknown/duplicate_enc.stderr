@@ -1,0 +1,5 @@
+error: Duplicate `enc` field in `unknown(..)`. Only one method of encoding unknown frames is allowed.
+  --> tests/ui/fail/unknown/duplicate_enc.rs:15:59
+   |
+15 |     unknown(dec = unknown_frame, enc = unknown_frame_enc, enc = unknown_frame_enc),
+   |                                                           ^^^^^^^^^^^^^^^^^^^^^^^

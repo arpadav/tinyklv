@@ -115,8 +115,8 @@ pub(super) trait BerWidth: OfBerCommon + Debug {
     #[track_caller]
     fn assert_length_boundary() {
         let decode = |input: &mut &[u8]| BerLength::<Self>::decode_value(input);
-        decode.assert_reads(&Self::length(None, 0xFF), BerLength::Long(Self::MAX));
-        decode.assert_reads(&Self::length(Some(0x00), 0xFF), BerLength::Long(Self::MAX));
+        decode.assert_reads(&Self::length(None, 0xFF), BerLength::new(Self::MAX));
+        decode.assert_reads(&Self::length(Some(0x00), 0xFF), BerLength::new(Self::MAX));
         decode.assert_rewinds(&Self::length(Some(0x01), 0x00));
     }
 }

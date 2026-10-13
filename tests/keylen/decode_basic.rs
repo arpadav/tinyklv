@@ -67,8 +67,9 @@ fn decode_debug_struct() {
     expected.assert_streams_to(&mut &wire[..]);
 }
 
-/// A `debug` struct whose fallback-decoded `Inline` value fails mid-buffer is malformed in
-/// both drivers
+/// A `debug` struct whose fallback-decoded `Inline` value fails mid-buffer is malformed: both
+/// drivers reject it naming the field, at every chunk split, with the cursor where the decoder
+/// left it
 #[test]
 fn decode_debug_struct_rejected_value() {
     #[rustfmt::skip]
@@ -78,5 +79,7 @@ fn decode_debug_struct_rejected_value() {
         // total = 7
         0x08, 0x07,
     ];
-    Traced::<Status>::assert_rejects_naming(&wire, &["Traced::value"]);
+    let message = "`Traced::value` value (its decoder failed before the end of the input)";
+    // the value's decoder rewinds to the value, after its one-byte header
+    Traced::<Status>::assert_rejects_at(&wire, 1, message);
 }

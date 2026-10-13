@@ -46,7 +46,8 @@ impl DecodeCtx<'_> {
     /// The `Default` impl seeds each field according to its `default` attribute:
     ///
     /// * no `default` attribute  -> `Option::<T>::None`
-    /// * bare `default`          -> `Some(<T as ::core::default::Default>::default())`
+    /// * bare `default`          -> `Some(<T as ::core::default::Default>::default())`, or on an
+    ///   `Option<T>` field its own default, `Option::<T>::None`
     /// * `default = <expr>`      -> `Some(#expr)`
     ///
     /// A manual `Default` impl (rather than `#[derive(Default)]`) is required
@@ -147,13 +148,13 @@ impl DecodeCtx<'_> {
                 // --------------------------------------------------
                 // #[klv(default)]
                 // --------------------------------------------------
-                Some(types::DefaultValue::Call) => quote! {
+                Some(types::DefaultValue::Call) if !types::is_option(field.ty) => quote! {
                     ::core::option::Option::<#ty>::Some(<#ty as ::core::default::Default>::default())
                 },
                 // --------------------------------------------------
-                // #[klv(..)] <-- field is required
+                // #[klv(..)] <-- field is required, or an `Option` field's default, `None`
                 // --------------------------------------------------
-                None => quote! {
+                Some(types::DefaultValue::Call) | None => quote! {
                     ::core::option::Option::<#ty>::None
                 },
             };
@@ -186,7 +187,7 @@ impl DecodeCtx<'_> {
         quote! {
             #[doc(hidden)]
             #[automatically_derived]
-            #[doc = concat!(" In-flight partial packet for [`", stringify!(#name), #mirror)]
+            #[doc = ::core::concat!(" In-flight partial packet for [`", ::core::stringify!(#name), #mirror)]
             #[derive(::core::fmt::Debug)]
             #vis struct #partial_name #impl_generics #where_clause {
                 #(#field_decls)*
@@ -276,14 +277,14 @@ impl DecodeCtx<'_> {
                     let #name = match self.#name {
                         Some(v) => v,
                         None => return ::core::result::Result::Err(
-                            concat!(
+                            ::core::concat!(
                                 "`",
-                                stringify!(#struct_name),
+                                ::core::stringify!(#struct_name),
                                 "::",
-                                stringify!(#name),
-                                "` is a required value missing from the packet. To prevent this, this field can be set as optional or an `",
-                                stringify!(#default_symbol),
-                                "` See tinyklv docs for more information.",
+                                ::core::stringify!(#name),
+                                "` is a required value missing from the packet; to allow this, make the field an `Option` or give it a `",
+                                ::core::stringify!(#default_symbol),
+                                "`",
                             )
                         ),
                     };

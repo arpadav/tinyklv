@@ -1,0 +1,5 @@
+error: Key `0x02` is already a key of field `payload`, which the frames of `0x02` decode into, so this one never decodes; give one of them another key.
+  --> tests/ui/fail/oneof/duplicate_key.rs:17:51
+   |
+17 |     #[klv(key = oneof(0x02 => Payload::Count(u8), 0x02 => Payload::Level(u16)))]
+   |                                                   ^^^^

@@ -43,13 +43,16 @@ mod pkt;
 // --------------------------------------------------
 // re-exports
 // --------------------------------------------------
-pub use iter::*;
-pub use pkt::*;
+pub use iter::{DecodeIterError, DecoderIter};
+pub use pkt::Packet;
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::traits::{DecodePartial, Partial, PartialIterator, ResumePartial, SeekSentinel};
+use crate::{
+    ErrorKind,
+    traits::{DecodePartial, Partial, PartialIterator, ResumePartial, SeekSentinel},
+};
 use buf::BufCursor;
 
 // --------------------------------------------------
@@ -244,9 +247,9 @@ impl<P, S> Decoder<P, S> {
     ///
     /// The returned [`DecoderIter`] borrows `self` mutably and yields `T`
     /// values (the `Partial::Final` type) until the buffer is exhausted or a
-    /// packet is incomplete. Buffered-but-undecoded bytes are retained between
-    /// iterations so that a later [`Self::feed`] + re-iteration can pick up
-    /// where decoding stopped
+    /// packet is incomplete. Buffered bytes that may still begin a packet are
+    /// retained between iterations so that a later [`Self::feed`] + re-iteration
+    /// can pick up where decoding stopped
     ///
     /// # Returns
     ///
@@ -311,7 +314,8 @@ where
     /// # Returns
     ///
     /// `Ok(T)` when the partial can be finalised with all required fields satisfied,
-    /// or `Err(DecodeIterError::Malformed)` when required fields are absent
+    /// or `Err(DecodeIterError::Malformed)` of kind [`ErrorKind::MissingRequired`] when required
+    /// fields are absent
     pub fn finish(self) -> Result<T, DecodeIterError> {
         let partial = self.partial.unwrap_or_default();
         partial.finalize().map_err(|label| {
@@ -319,7 +323,8 @@ where
             // no live input at finish time, so the error carries
             // the label anchored at EMPTY
             // --------------------------------------------------
-            DecodeIterError::Malformed(label_to_context_error!(EMPTY, label))
+            let err = label_to_context_error!(EMPTY, label);
+            DecodeIterError::Malformed(crate::__export::with_kind(err, ErrorKind::MissingRequired))
         })
     }
 }

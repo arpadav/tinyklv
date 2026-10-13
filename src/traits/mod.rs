@@ -29,7 +29,7 @@
 //! its width or self-delimits on the `len`-bounded sub-slice; *uses-len* - the signature takes the
 //! runtime length). `size(..)` controls both, along two orthogonal axes: `lengthed` (the decoder
 //! takes the runtime `len`; absent ⇒ internal) and the byte count `exact = N` (the value is `N`
-//! bytes: decode rejects any other frame length, encode takes the fixed-width fast path) or
+//! bytes: decode rejects any other item length, encode takes the fixed-width fast path) or
 //! `reserve = N` (an encode reserve only). `exact` and `reserve` are mutually exclusive. See the
 //! book's "Field attributes" reference for the full table.
 // --------------------------------------------------
@@ -44,6 +44,9 @@ mod native;
 // --------------------------------------------------
 // re-exports
 // --------------------------------------------------
-pub use coerce::*;
-pub use dec::*;
-pub use enc::*;
+pub use coerce::EncodeAs;
+pub use dec::{
+    BreakType, DecodeFrame, DecodePartial, DecodeValue, DrainFrames, Partial, PartialIterator,
+    ResumePartial, SeekSentinel,
+};
+pub use enc::{EncodeFrame, EncodeValue};

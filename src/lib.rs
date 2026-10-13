@@ -5,17 +5,22 @@
 // --------------------------------------------------
 pub mod codecs;
 pub mod decoder;
+mod error;
 pub mod framing;
 pub mod traits;
 
 // --------------------------------------------------
 // re-exports
 // --------------------------------------------------
-pub use codecs::*;
+pub use codecs::{dec, enc};
 pub use decoder::{Decoder, Packet};
+pub use error::ErrorKind;
 pub use framing::Framing;
-pub use tinyklv_impl::*;
-pub use traits::*;
+pub use tinyklv_impl::Klv;
+pub use traits::{
+    BreakType, DecodeFrame, DecodePartial, DecodeValue, DrainFrames, EncodeAs, EncodeFrame,
+    EncodeValue, Partial, PartialIterator, ResumePartial, SeekSentinel,
+};
 
 #[doc(hidden)]
 /// Internal re-exports and helpers used by `#[derive(Klv)]` expansions
@@ -25,6 +30,8 @@ pub mod __export {
     #[cfg(feature = "chrono")]
     pub use chrono;
     pub use memchr;
+    #[cfg(feature = "tracing")]
+    pub use tracing;
     pub use winnow;
 
     /// Builds a [`winnow::error::ContextError`] anchored at `input` carrying a
@@ -127,6 +134,41 @@ pub mod __export {
         relabeled
     }
 
+    /// Tags `err` with `kind`, for [`crate::ErrorKind::of`] to read back
+    ///
+    /// The tag follows `err`'s labels, and [`winnow::error::ContextError`]'s display names only
+    /// its first label, so the display is unchanged. `err` must carry a label already, or the
+    /// tag would be the label its display names
+    ///
+    /// Not part of the public API - may change without notice
+    ///
+    /// # Arguments
+    ///
+    /// * `err` - the error to tag, labelled already
+    /// * `kind` - what `err` is
+    ///
+    /// # Returns
+    ///
+    /// `err`, tagged with `kind`
+    #[must_use]
+    // `cold` keeps the tagging out of the calling decoder's body; `inline` compiles it in the
+    // calling crate, which leaves that decoder's success path untouched in release
+    #[cold]
+    #[inline]
+    pub fn with_kind(
+        mut err: winnow::error::ContextError,
+        kind: crate::ErrorKind,
+    ) -> winnow::error::ContextError {
+        use winnow::error::StrContext;
+        debug_assert!(
+            err.context()
+                .any(|context| matches!(context, StrContext::Label(_))),
+            "a kind tag ahead of every label would be the label the display names"
+        );
+        err.push(StrContext::Label(kind.tag()));
+        err
+    }
+
     /// A labelled parser error that [`relabeled_error`] carries as the cause of the error it
     /// builds, displayed as the parser's own error
     #[derive(Debug)]
@@ -159,7 +201,7 @@ pub mod __export {
 /// Importing `tinyklv::prelude::*` brings into scope the [`Decoder`],
 /// [`Packet`], all codec traits ([`DecodeValue`], [`EncodeValue`],
 /// [`EncodeFrame`], [`DecodeFrame`]), the [`BreakType`] loop-control enum, the
-/// [`Framing`] fused-`keylen` frame descriptor, the [`Klv`] derive macro, and
+/// [`Framing`] fused-`keylen` item descriptor, the [`Klv`] derive macro, and
 /// the winnow combinators and stream utilities that the derive-generated code
 /// depends on
 pub mod prelude {
@@ -178,7 +220,11 @@ pub mod prelude {
     // --------------------------------------------------
     // external
     // --------------------------------------------------
-    pub use winnow::{Parser as _, error::AddContext as _, prelude::*, stream::Stream as _};
+    pub use winnow::{
+        ModalParser, ModalResult, Parser,
+        error::{AddContext as _, ModalError as _, ParserError as _},
+        stream::{AsChar as _, ContainsToken as _, Stream as _, StreamIsPartial as _},
+    };
 }
 
 /// Convenience type alias for [`winnow::Result`] used throughout the tinyklv codec API

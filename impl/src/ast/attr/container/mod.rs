@@ -32,7 +32,8 @@ pub(super) use unknown::UnknownXcoder;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::{Ctxt, symbol};
+use super::size::SizeBytes;
+use crate::{Ctxt, ast::types::ungrouped, symbol};
 use break_on::BreakOn;
 use codec::CodecSlot;
 use header::{HeaderAttrs, HeaderXcoder};
@@ -52,9 +53,9 @@ use syn::{Token, punctuated::Punctuated};
 /// Produced by [`ContainerParsed::from_cont`] from the mutually-exclusive
 /// `key`+`len` and `keylen` attributes. Modelling the two as one enum makes the
 /// illegal "both present" and "neither present" states unrepresentable past
-/// validation, and each mode holds only the `sentinel` and `break_on` forms it supports. The
-/// `expand` pass picks the decode loop's frame header, `break_on` check and body, the frame
-/// header written around each encoded value, and the sentinel's packet framing, from it
+/// validation, and only the separate mode holds a `sentinel`. The `expand` pass picks the decode
+/// loop's frame header and body, the frame header written around each encoded value, and the
+/// sentinel's packet framing, from it
 #[derive(Debug, Clone)]
 pub(crate) enum ContainerMode {
     /// Classic mode: separate `key`/`len` xcoders; a value with a length prefix is sliced via
@@ -66,8 +67,6 @@ pub(crate) enum ContainerMode {
         len: Box<HeaderXcoder>,
         /// The recognition sentinel literal, if any, e.g. `b"HEARTBEAT"`
         sentinel: Option<syn::Lit>,
-        /// The break condition, if any: a key literal or a `fn(key, len) -> BreakType` path
-        break_on: Option<BreakOnSpec>,
     },
     /// Fused mode: one `keylen` codec, whose decoder returns `(key, Framing)` so framing can
     /// depend on the key, and whose encoder writes the header from `(key, value_len)`. It has no
@@ -75,9 +74,6 @@ pub(crate) enum ContainerMode {
     Fused {
         /// The fused key+length codec
         keylen: Box<KeylenXcoder>,
-        /// The key literal that stops the loop, if any; a `break_on` fn would need a length an
-        /// `Inline` frame does not have
-        break_on: Option<syn::Lit>,
     },
 }
 
@@ -95,7 +91,8 @@ pub(crate) struct Container {
     /// The recognition sentinel literal, e.g. `b"HEARTBEAT"`
     pub sentinel: Option<syn::Lit>,
 
-    /// The break condition: a key literal (stop on match) or a `fn(key, len) -> BreakType` path
+    /// The break condition: a key literal (stop on match) or a `fn(&key, &mut input) -> BreakType`
+    /// path
     pub break_on: Option<BreakOnSpec>,
 
     /// The key and length xcoder pairs and the fused key+length codec (mutually exclusive with
@@ -106,7 +103,8 @@ pub(crate) struct Container {
     /// parsed
     unknown: CodecAttr<UnknownXcoder>,
 
-    /// Per-type default xcoders keyed by the Rust type they apply to
+    /// Per-type default xcoders keyed by the Rust type they apply to, its invisible groups taken
+    /// away ([`ungrouped`]), as a field's type is looked up
     pub defaults: HashMap<syn::Type, DefaultXcoder>,
 
     /// Whether debug logging is enabled for this container
@@ -154,7 +152,7 @@ impl Container {
         let mut break_on = None;
         let mut headers = HeaderAttrs::default();
         let mut unknown = CodecAttr::default();
-        let mut defaults: HashMap<syn::Type, DefaultXcoder> = HashMap::new();
+        let mut defaults: Vec<(syn::Type, DefaultXcoder)> = Vec::new();
         let mut debug = None;
         let mut deny_unknown_keys = None;
         let mut allow_unimplemented_decode = None;
@@ -205,59 +203,24 @@ impl Container {
                     // e.g. `key(enc = <..>, dec = <..>),`
                     // --------------------------------------------------
                     syn::Meta::List(list) => match name {
+                        // --------------------------------------------------
+                        // an entry keeps what parsed before an error, and merges into the
+                        // earlier entries of its type
+                        // --------------------------------------------------
                         symbol::DEFAULT => {
-                            let new = DefaultXcoder::from(&list);
-                            if let Some(err) = new.errors {
+                            let mut new = DefaultXcoder::from(&list);
+                            if let Some(err) = new.errors.take() {
                                 cx.syn_error(err);
-                                continue;
+                                new.reported = true;
                             }
-                            // this should always be `Some` otherwise `new.errors` would have
-                            // been `Some` and caught above. but I don't want to unwrap
-                            let Some(new_typ) = new.typ.clone() else {
+                            // `None` when the entry has no `typ`, or its parse stopped before one;
+                            // either error is reported above
+                            let Some(typ) = new.typ.as_ref().map(ungrouped) else {
                                 continue;
                             };
-
-                            match defaults.get_mut(&new_typ) {
-                                Some(old) => {
-                                    match (&old.dec, &new.dec) {
-                                        (Some(_), Some(dec_path)) => cx.error_spanned_by(
-                                            dec_path,
-                                            err!(DuplicateDefault(new.typ; "decoder")),
-                                        ),
-                                        (None, _) => old.dec = new.dec,
-                                        _ => (),
-                                    }
-                                    match (&old.enc, &new.enc) {
-                                        (Some(_), Some(enc_path)) => cx.error_spanned_by(
-                                            enc_path,
-                                            err!(DuplicateDefault(new.typ; "encoder")),
-                                        ),
-                                        (None, _) => old.enc = new.enc,
-                                        _ => (),
-                                    }
-                                    match (&old.size, &new.size) {
-                                        (Some(_), Some(size)) => cx.syn_error(syn::Error::new(
-                                            size.span(),
-                                            err!(DuplicateDefault(new.typ; "size")),
-                                        )),
-                                        (None, _) => old.size = new.size,
-                                        _ => (),
-                                    }
-                                    match (&old.skip_if, &new.skip_if) {
-                                        (Some(_), Some(skip_if)) => {
-                                            cx.syn_error(syn::Error::new(
-                                                skip_if.span(),
-                                                err!(DuplicateDefault(new.typ; "skip")),
-                                            ));
-                                        }
-                                        (None, _) => old.skip_if = new.skip_if,
-                                        _ => (),
-                                    }
-                                }
-
-                                None => {
-                                    let _ = defaults.insert(new_typ, new);
-                                }
+                            match defaults.iter_mut().find(|(old, _)| *old == typ) {
+                                Some((_, old)) => old.merge(cx, new),
+                                None => defaults.push((typ, new)),
                             }
                         }
                         // --------------------------------------------------
@@ -401,6 +364,13 @@ impl Container {
             allow_unimplemented_decode.is_some(),
         );
         // --------------------------------------------------
+        // each type's merged `default(..)` entries are checked together, in the order the types
+        // first appear
+        // --------------------------------------------------
+        for (typ, default) in &mut defaults {
+            default.check(cx, typ);
+        }
+        // --------------------------------------------------
         // return
         // --------------------------------------------------
         Container {
@@ -409,7 +379,7 @@ impl Container {
             break_on: break_on.and_then(|x| x.0),
             headers,
             unknown,
-            defaults,
+            defaults: defaults.into_iter().collect(),
             debug,
             deny_unknown_keys,
             allow_unimplemented_decode,
@@ -433,8 +403,10 @@ pub(crate) struct ContainerParsed {
     pub stream: Option<syn::Type>,
 
     /// The validated key/length framing mode (classic separate or fused), with its `sentinel`
-    /// and `break_on`
     pub mode: ContainerMode,
+
+    /// The break condition, if any, checked right after each frame's key in either mode
+    pub break_on: Option<BreakOnSpec>,
 
     /// Whether debug logging is enabled for this container
     pub debug: Option<syn::Path>,
@@ -458,9 +430,10 @@ impl ContainerParsed {
     /// Resolves the key/length framing into a [`ContainerMode`]: exactly one of
     /// the separate `key`+`len` pair or the fused `keylen` codec must be
     /// present. Records errors in `cx` for the conflicting, half-specified, or
-    /// absent cases and for `sentinel` or a `break_on` function on a fused container, and
+    /// absent cases and for `sentinel` on a fused container, and
     /// returns `None` for them. It also records an error for `deny_unknown_keys` beside
-    /// `unknown(..)`, and still returns the container. The `sentinel`/`break_on`/`unknown`
+    /// `unknown(..)`, a key + len `sentinel` on a `&str` stream and a `len(size(exact = 0))`, and
+    /// still returns the container. The `sentinel`/`unknown`/`len`
     /// checks run before any early return, so they surface in the same compile as a framing
     /// conflict. An attribute that is present but unusable (it failed to parse,
     /// or was not written as a list) counts as present: its own error is not
@@ -477,24 +450,41 @@ impl ContainerParsed {
     /// # Returns
     ///
     /// The [`ContainerParsed`] and the `unknown(..)` state when exactly one framing mode is fully
-    /// specified, and a fused one has no `sentinel` and no `break_on` function, or `None`
-    /// otherwise (errors are recorded in `cx`)
+    /// specified, and a fused one has no `sentinel`, or `None` otherwise (errors are recorded in
+    /// `cx`)
     pub fn from_cont(
         cx: &Ctxt,
         name: &syn::Ident,
         cont: Container,
     ) -> Option<(Self, CodecAttr<UnknownXcoder>)> {
         // --------------------------------------------------
-        // `sentinel` / a `break_on` function beside any `keylen(..)`, reported before the
-        // framing resolution can return early
+        // `sentinel` beside any `keylen(..)`, reported before the framing resolution can return
+        // early
         // --------------------------------------------------
-        if cont.headers.keylen.is_present() {
-            if let Some(sentinel) = &cont.sentinel {
-                cx.error_spanned_by(sentinel, err!(KeylenWithSentinel));
-            }
-            if let Some(BreakOnSpec::Func(path)) = &cont.break_on {
-                cx.error_spanned_by(path, err!(KeylenWithBreakOnFn));
-            }
+        if cont.headers.keylen.is_present()
+            && let Some(sentinel) = &cont.sentinel
+        {
+            cx.error_spanned_by(sentinel, err!(KeylenWithSentinel));
+        }
+        // --------------------------------------------------
+        // a key + len `sentinel` is searched for in the input's bytes, which a `&str` stream does
+        // not give
+        // --------------------------------------------------
+        if !cont.headers.keylen.is_present()
+            && let Some(sentinel) = &cont.sentinel
+            && let Some(syn::Type::Reference(stream)) = &cont.stream
+            && let syn::Type::Path(referent) = &*stream.elem
+            && referent.path.is_ident("str")
+        {
+            cx.error_spanned_by(sentinel, err!(SentinelOnStrStream));
+        }
+        // --------------------------------------------------
+        // a zero-byte length prefix has no room for a value's length
+        // --------------------------------------------------
+        if let CodecAttr::Parsed(_, len) = &cont.headers.len
+            && let Some((0, exact)) = len.size.as_ref().and_then(SizeBytes::exact)
+        {
+            cx.error_spanned_by(exact, err!(LenZeroWidth));
         }
         // --------------------------------------------------
         // `unknown(..)` decodes a frame whose key no field declares, which `deny_unknown_keys`
@@ -521,7 +511,6 @@ impl ContainerParsed {
                 key,
                 len,
                 sentinel: cont.sentinel,
-                break_on: cont.break_on,
             },
             // --------------------------------------------------
             // classic mode, one half missing
@@ -569,24 +558,18 @@ impl ContainerParsed {
                 return None;
             }
             // --------------------------------------------------
-            // fused codec, no separate key/len; a `sentinel` or a `break_on` fn beside it was
-            // reported above
+            // fused codec, no separate key/len; a `sentinel` beside it was reported above
             // --------------------------------------------------
             HeaderAttrs {
                 keylen: CodecAttr::Parsed(_, keylen),
                 key: CodecAttr::Absent,
                 len: CodecAttr::Absent,
-            } => match (&cont.sentinel, cont.break_on) {
-                (None, None) => ContainerMode::Fused {
-                    keylen,
-                    break_on: None,
-                },
-                (None, Some(BreakOnSpec::Literal(lit))) => ContainerMode::Fused {
-                    keylen,
-                    break_on: Some(lit),
-                },
-                (Some(_), _) | (None, Some(BreakOnSpec::Func(_))) => return None,
-            },
+            } => {
+                if cont.sentinel.is_some() {
+                    return None;
+                }
+                ContainerMode::Fused { keylen }
+            }
             // --------------------------------------------------
             // fused codec alongside any separate key/len, usable or not: conflict
             // --------------------------------------------------
@@ -604,6 +587,7 @@ impl ContainerParsed {
         let parsed = ContainerParsed {
             stream: cont.stream,
             mode,
+            break_on: cont.break_on,
             debug: cont.debug,
             deny_unknown_keys: cont.deny_unknown_keys,
             _allow_unimplemented_decode: cont.allow_unimplemented_decode,

@@ -1,11 +1,11 @@
-//! `#[klv(break_on = <key literal>)]` on a fused `#[klv(keylen(..))]` container, through both
-//! drivers
+//! `#[klv(break_on = ..)]` on a fused `#[klv(keylen(..))]` container, through both drivers
 //!
-//! The literal ends the loop right after the header of the frame carrying that key: the header
+//! The key literal ends the loop right after the header of the frame carrying that key: the header
 //! stays consumed, its value is never read, the frames before it decode and the frames after it
 //! do not. That holds for a key a field declares too,
 //! even one whose `size(exact = N)` the frame's length breaks. Without the terminator, every
-//! frame decodes and streaming waits for more
+//! frame decodes and streaming waits for more. A fn is handed the input right after the header,
+//! and the loop ends where the fn leaves it
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -165,6 +165,53 @@ impl Terminated for Sealed {
     ];
 }
 
+/// [`Sealed`] ended by a fn that reads the checksum after its header
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    keylen(dec = header::dec_field),
+    allow_unimplemented_encode,
+    break_on = Checked::end_after_checksum,
+    default(typ = String, dec = value::dec_string),
+)]
+struct Checked {
+    /// field 1, a fixed32 of `size(exact = 4)` - read by the fn, never by the field
+    #[klv(key = 1, dec = Crc32::decode_value, size(exact = 4))]
+    checksum: Option<Crc32>,
+
+    /// field 2, wire 2 LEN - `Sliced(n)`
+    #[klv(key = 2)]
+    label: Option<String>,
+
+    /// field 3, wire 0 VARINT - `Inline` custom enum
+    #[klv(key = 3, dec = Status::decode_value)]
+    status: Option<Status>,
+}
+
+/// [`Checked`] implementation
+impl Checked {
+    /// Ends the message once the checksum after field 1's header is read
+    ///
+    /// # Arguments
+    ///
+    /// * `field` - the frame's field number
+    /// * `input` - the input right after the frame's header
+    ///
+    /// # Returns
+    ///
+    /// `Done` past the checksum, else `Proceed`, a checksum cut short included, which then
+    /// decodes as a frame cut short
+    fn end_after_checksum(field: &u32, input: &mut &[u8]) -> BreakType {
+        if *field != 1 {
+            return BreakType::Proceed;
+        }
+        match Crc32::decode_value(input) {
+            Ok(_) => BreakType::Done,
+            Err(_) => BreakType::Proceed,
+        }
+    }
+}
+
 /// A terminator framed `Sliced` stops the decode after its header: its length is read, its
 /// value bytes are not
 #[test]
@@ -175,6 +222,19 @@ fn sliced_terminator_stops_after_its_header() {
         &[0x7A, 0x02],
         // the value, never read
         &[0xAA, 0xBB],
+    );
+    Logbook::before().assert_stops_at(&wire, stop);
+}
+
+/// A terminator framed `Inline` stops the decode after its header too, its value never read
+#[test]
+fn inline_terminator_stops_after_its_header() {
+    #[rustfmt::skip]
+    let (wire, stop) = Logbook::wire(
+        // end (field 15, wire 0 VARINT, Inline)
+        &[0x78],
+        // the value, never read
+        &[0x05],
     );
     Logbook::before().assert_stops_at(&wire, stop);
 }
@@ -208,4 +268,23 @@ fn a_terminator_stops_before_its_exact_check() {
         let (wire, stop) = Sealed::wire(header, &[0xAA, 0xBB]);
         Sealed::before().assert_stops_at(&wire, stop);
     }
+}
+
+/// A fn reads past the header it follows, and the decode stops where it leaves the input: after
+/// the checksum's value, which the field never decodes
+#[test]
+fn a_fn_stops_after_the_value_it_reads() {
+    #[rustfmt::skip]
+    let (wire, header_end) = Sealed::wire(
+        // checksum (field 1, wire 5 I32, Sliced(4))
+        &[0x0D],
+        // its value, read by the fn
+        &[0xEF, 0xBE, 0xAD, 0xDE],
+    );
+    let before = Checked {
+        checksum: None,
+        label: Some("hi".to_owned()),
+        status: None,
+    };
+    before.assert_stops_at(&wire, header_end + 4);
 }

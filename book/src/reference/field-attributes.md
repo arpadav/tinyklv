@@ -24,12 +24,14 @@ encode time. Literal types match the codec in the container's
 payload: Option<Payload>,
 ```
 
-Routes several keys to one `Option<Enum>` field. A frame of key `K` holds a
-`Type`, decoded and encoded by the container `default(typ = Type, ..)`, with
-its framing, or by `trait_fallback`, and is stored as `Enum::Variant`; the
-last one decoded wins. Encode writes the set variant's
-frame at the field's place, nothing for `None`, and needs an arm per variant.
-An `enc`, `dec` or `size(..)` on the field is a compile error.
+Routes several keys to one `Option<Enum>` field (a plain `Enum` field is a
+required oneof). A frame of key `K` holds a `Type`, decoded and encoded by the
+container `default(typ = Type, ..)`, with its framing, or by `trait_fallback`,
+and is stored as `Enum::Variant`; the last one decoded wins. Arms of one `Type`
+share its `default`, so a second encoding needs a newtype. Encode writes the
+set variant's frame at the field's place, nothing for `None`, and needs an arm
+per variant: to match prost's bytes, declare fields in key order, a oneof at
+its lowest key. An `enc`, `dec` or `size(..)` on the field is a compile error.
 
 ## `dec = <path>`
 
@@ -43,7 +45,7 @@ Associates the codec pair for this field. `dec` must match
 an alias for `winnow::Result`
 
 `enc` must match `fn(&T, &mut Vec<u8>)`
-(when owned-argument, add the `&` sigil below). Either can be omitted when
+(a value-taking one takes the `*` sigil below). Either can be omitted when
 the container default covers the field type.
 
 ## `enc = <optional sigil> <path>`
@@ -51,9 +53,9 @@ the container default covers the field type.
 ```rust,ignore
 #[klv(
     key = 0x02,
-    enc = &encb::be_u16,
+    enc = &encs::from_string_utf8,
 )]
-temperature_centideg: u16,
+name: String,
 
 #[klv(
     key = 0x01,
@@ -68,11 +70,8 @@ sequence: u8,
 custom: MyStruct,
 ```
 
-Encoders by default expect `fn(&T, &mut Vec<u8>)`. The two sigils (`&` and `*`)
-rewrite how the field is handed to the encoder. See
-[Sigil coercion & `EncodeAs`](./sigil-coercion.md) for the full
-dispatch semantics, built-in `EncodeAs` implementations, and when to
-write your own.
+The two sigils (`&` and `*`) rewrite how the field is handed to the encoder:
+see [Sigil coercion & `EncodeAs`](./sigil-coercion.md).
 
 ## `size(..)`
 
@@ -92,23 +91,27 @@ Four keywords, one fact each: `implicit` writes and reads no length prefix,
 decoder, and `reserve = N` adds `N` bytes to the encoder's one up-front
 allocation. Only `lengthed` changes the decoder, to
 [`fn(len: usize) -> impl Fn(&mut S) -> Result<T>`](./codecs.md#function-signatures).
-"Value direct" is the fixed-width encode. An `exact = N` wider than a
-`len(size(exact = W))` prefix can hold is a compile error.
+Under `implicit, exact = N` the encoder must write `N` bytes; a release build
+does not check.
 
-Each line above is one row below, under a 1-byte `len`, with `n: u16 = 0x0102`
-taking `be_u16` and `s: String = "hi"` taking `to_string_utf8` from a
-`default(typ = ..)`:
+Each line above is one row below, under `len(.., size(exact = 1))`, with
+`n: u16 = 0x0102` taking `be_u16` and `s: String = "hi"` taking
+`to_string_utf8` from a `default(typ = String, .., size(lengthed))`.
+`len(size(exact = W))` sizes the slot back-filled after a value of unknown
+width; an `exact = N` value's length is written before it ("direct") and may be
+longer than `W`. A variable-width `len(..)` stages every value it prefixes. An
+`N` wider than `W` bytes can hold is a compile error.
 
-| `implicit` | `exact = N` | `lengthed` | decoder | decode | encode |
-|---|---|---|---|---|---|
-| | | | `fn(&mut S)` | read `len`, `take(len)` | key, `len`, value |
-| | ✓ | | `fn(&mut S)` | read `len`, error if `!= N`, `take(N)` | key, `len(N)`, value direct |
-| | | ✓ | `fn(usize) -> ..` | read `len`, `take(len)`, pass `len` | key, `len`, value |
-| | ✓ | ✓ | `fn(usize) -> ..` | read `len`, error if `!= N`, pass `N` | key, `len(N)`, value direct |
-| ✓ | | | `fn(&mut S)` | no `len`, no `take`; decoder stops itself | key, value |
-| ✓ | ✓ | | `fn(&mut S)` | no `len`, `take(N)` | key, value |
-| ✓ | ✓ | ✓ | `fn(usize) -> ..` | no `len`, `take(N)`, pass `N` | key, value |
-| ✓ | | ✓ | — | **compile error**: no length to pass | — |
+| `implicit` | `exact = N` | `lengthed` | decode | encode |
+|---|---|---|---|---|
+| | | | read `len`, `take(len)` | key, `len`, value |
+| | ✓ | | read `len`, error if `!= N`, `take(N)` | key, `len(N)`, value direct |
+| | | ✓ | read `len`, `take(len)`, pass `len` | key, `len`, value |
+| | ✓ | ✓ | read `len`, error if `!= N`, `take(N)`, pass `N` | key, `len(N)`, value direct |
+| ✓ | | | no `len`, no `take`; decoder stops itself | key, value |
+| ✓ | ✓ | | no `len`, `take(N)` | key, value |
+| ✓ | ✓ | ✓ | no `len`, `take(N)`, pass `N` | key, value |
+| ✓ | | ✓ | **compile error**: no length to pass | — |
 
 `reserve = N` changes no byte on the wire. It combines with any row without
 `exact`, and a field's own `exact` or `reserve` replaces its default's:
@@ -154,11 +157,11 @@ name: String,
 
 Leaves the field's frame out of the encode: `skip_if_default` when the field
 equals its type's `Default::default()`, `skip_if` when the `fn(&T) -> bool`
-returns `true`. A missing frame then decodes to `Default::default()`, unless
-the field sets its own `default`. On an `Option<T>` field the test takes the
-whole field: `None` is never written, `Some(0)` is. One form, once, on a field
-or per type in a container `default(typ = ..)`; a field's own replaces its
-default's.
+returns `true`; as in prost, `-0.0` equals `0.0` and is left out. A missing
+frame then decodes to `Default::default()`, unless the field sets its own
+`default`. On an `Option<T>` field the test takes the whole field: `None` is
+never written, `Some(0)` is. One form, once, on a field or per type in a
+container `default(typ = ..)`; a field's own replaces its default's.
 
 ## `latebind = <optional sigil> <path>`
 

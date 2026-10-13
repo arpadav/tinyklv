@@ -36,7 +36,7 @@ use crate::{
         attr::{container::DefaultXcoder, size::SizeSpec, skip_if::SkipIf},
         types::{
             DefaultValue, LatebindXcoder, SiguledXcoder, XcoderLike, XcoderSigil, is_option,
-            unwrap_option_type,
+            ungrouped, unwrap_option_type,
         },
     },
     symbol,
@@ -75,7 +75,8 @@ impl Field {
     /// A `key = oneof(..)` field is [`Field::Oneof`], whose arms each get their codec that way
     /// from their type, and an `enc`, `dec` or `size(..)` beside it is an error.
     /// Returns `None` when the field carries no `#[klv(..)]` attribute at all, or one that failed
-    /// to parse, whose error is the field's only one
+    /// to parse, whose error is the field's only one, or no key or more than one, which is
+    /// reported once and leaves the value codec unchecked
     ///
     /// # Arguments
     ///
@@ -89,8 +90,8 @@ impl Field {
     ///
     /// # Returns
     ///
-    /// `Some(Field)` if the field carried at least one `#[klv(..)]` attribute and each parsed, or
-    /// `None` if no KLV annotation was found or one failed to parse
+    /// `Some(Field)` if the field carried at least one `#[klv(..)]` attribute, each parsed, and it
+    /// is the `unknown` field or has one key, or `None` otherwise
     pub fn from_ast(
         cx: &Ctxt,
         field: &syn::Field,
@@ -175,17 +176,18 @@ impl Field {
             .iter()
             .filter_map(|f| f.oneof.as_ref())
             .collect::<Vec<_>>();
-        field_xcoder.key = match keys.len() + oneofs.len() {
+        let one_key = match keys.len() + oneofs.len() {
             0 => {
-                cx.error_spanned_by(field, err!(MissingKeyInField));
-                None
+                cx.error_spanned_by(name, err!(MissingKeyInField));
+                false
             }
-            1 => keys.first().cloned(),
+            1 => true,
             _ => {
-                cx.error_spanned_by(field, err!(DuplicateKey));
-                None
+                cx.error_spanned_by(field, err!(DuplicateKeyInField));
+                false
             }
         };
+        field_xcoder.key = keys.first().cloned();
         // --------------------------------------------------
         // get all klv attr encoders
         // --------------------------------------------------
@@ -301,7 +303,7 @@ impl Field {
         let typ_maybe_unwrapped = unwrap_option_type(&field.ty).unwrap_or(&field.ty);
         if field_xcoder.skip_if.is_none() {
             field_xcoder.skip_if = container_defaults
-                .get(typ_maybe_unwrapped)
+                .get(&ungrouped(typ_maybe_unwrapped))
                 .and_then(|default| default.skip_if.clone());
         }
         // --------------------------------------------------
@@ -311,6 +313,13 @@ impl Field {
         if field_xcoder.skip_if.is_some() && field_xcoder.default.is_none() && !is_option(&field.ty)
         {
             field_xcoder.default = Some(DefaultValue::Call);
+        }
+        // --------------------------------------------------
+        // a field without exactly one key, already reported, is checked no further: which
+        // frames its value codec would read is unknown
+        // --------------------------------------------------
+        if !one_key {
+            return None;
         }
         // --------------------------------------------------
         // each value codec is filled from its type's container default, else its trait impls
@@ -336,7 +345,13 @@ impl Field {
                 .arms
                 .iter()
                 .map(|arm| OneofKey {
-                    codec: fill.codec(ValueCodec::default(), false, false, &arm.ty, &arm.ty),
+                    codec: fill.codec(
+                        ValueCodec::default(),
+                        false,
+                        false,
+                        &arm.ty,
+                        Some(&arm.variant),
+                    ),
                     arm: arm.clone(),
                 })
                 .collect();
@@ -356,7 +371,7 @@ impl Field {
             keep_enc_none,
             keep_dec_none,
             typ_maybe_unwrapped,
-            name,
+            None,
         );
         // --------------------------------------------------
         // return
@@ -392,7 +407,9 @@ impl CodecFill<'_> {
     ///
     /// The container default of `ty` fills each of enc, dec, `implicit` and the size's byte count
     /// `own` left unset; `lengthed` comes with whichever dec is used. A missing encoder or
-    /// decoder is reported at `at`, unless `allow_unimplemented_*` or `trait_fallback` covers it
+    /// decoder is reported at the field's name, or at an arm's type, unless
+    /// `allow_unimplemented_*` or `trait_fallback` covers it, or an error on that side is already
+    /// reported
     ///
     /// # Arguments
     ///
@@ -400,7 +417,7 @@ impl CodecFill<'_> {
     /// * `keep_enc_none` - Leaves the encoder unset, a duplicate already reported
     /// * `keep_dec_none` - Leaves the decoder unset, a duplicate already reported
     /// * `ty` - The value's type
-    /// * `at` - Where an error points
+    /// * `arm` - The variant of a `oneof(..)` arm's value, `None` for the field's own
     ///
     /// # Returns
     ///
@@ -411,7 +428,7 @@ impl CodecFill<'_> {
         keep_enc_none: bool,
         keep_dec_none: bool,
         ty: &syn::Type,
-        at: &impl ToTokens,
+        arm: Option<&syn::Path>,
     ) -> ValueCodec {
         let Self {
             cx,
@@ -421,11 +438,15 @@ impl CodecFill<'_> {
             allow_decode,
             trait_fallback,
         } = *self;
+        let at = match arm {
+            Some(_) => ty.to_token_stream(),
+            None => name.to_token_stream(),
+        };
         // --------------------------------------------------
         // a container default fills each of enc, dec, `implicit` and the size's byte count the
         // field left unset; `lengthed` comes with whichever dec the field uses
         // --------------------------------------------------
-        let default = defaults.get(ty);
+        let default = defaults.get(&ungrouped(ty));
         let default_dec = own.dec.is_none()
             && !keep_dec_none
             && default.is_some_and(|default| default.dec.is_some());
@@ -445,6 +466,13 @@ impl CodecFill<'_> {
             Ok(size) => own.size = size,
             Err(err) => cx.syn_error(err),
         }
+        // --------------------------------------------------
+        // a side whose error is already reported, a duplicate or one on the type's container
+        // default, gets no missing-codec error
+        // --------------------------------------------------
+        let default_reported = default.is_some_and(|default| default.reported);
+        let enc_reported = keep_enc_none || default_reported;
+        let mut dec_reported = keep_dec_none || default_reported;
         // --------------------------------------------------
         // fallback to trait impls (opt-in via `trait_fallback`)
         //
@@ -468,7 +496,8 @@ impl CodecFill<'_> {
         if trait_fallback && !keep_dec_none && !allow_decode && own.dec.is_none() {
             let takes_len = own.size.as_ref().is_some_and(SizeSpec::takes_len);
             if takes_len {
-                cx.error_spanned_by(at, err!(SizeLengthedFallbackRequiresExplicitDec(name, ty)));
+                cx.error_spanned_by(&at, err!(SizeLengthedFallbackRequiresExplicitDec(name, ty)));
+                dec_reported = true;
             } else {
                 // placeholder - see encode comment above. `decode_impl::key_match_gen`
                 // branches on `fallback_dec` and emits the real qualified path
@@ -478,16 +507,26 @@ impl CodecFill<'_> {
             }
         }
         // --------------------------------------------------
-        // unimplemented encode error - only fires if fallback did not fill
+        // unimplemented encode error - only fires if fallback did not fill and no error on the
+        // encoder is reported
         // --------------------------------------------------
-        if !allow_encode && own.enc.is_none() {
-            cx.error_spanned_by(at, err!(UnimplementedEncode(name, ty)));
+        if !allow_encode && !enc_reported && own.enc.is_none() {
+            let unimplemented = match arm {
+                Some(variant) => err!(UnimplementedArmEncode(name, ty, variant)),
+                None => err!(UnimplementedEncode(name, ty)),
+            };
+            cx.error_spanned_by(&at, unimplemented);
         }
         // --------------------------------------------------
-        // unimplemented decode error - only fires if fallback did not fill
+        // unimplemented decode error - only fires if fallback did not fill and no error on the
+        // decoder is reported
         // --------------------------------------------------
-        if !allow_decode && own.dec.is_none() {
-            cx.error_spanned_by(at, err!(UnimplementedDecode(name, ty)));
+        if !allow_decode && !dec_reported && own.dec.is_none() {
+            let unimplemented = match arm {
+                Some(variant) => err!(UnimplementedArmDecode(name, ty, variant)),
+                None => err!(UnimplementedDecode(name, ty)),
+            };
+            cx.error_spanned_by(&at, unimplemented);
         }
         own
     }

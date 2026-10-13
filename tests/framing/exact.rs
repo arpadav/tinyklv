@@ -327,6 +327,19 @@ fn encode_writes_each_exact_width_as_the_length() {
     Telemetry::decoded().assert_decodes_from(&encoded);
 }
 
+/// A value its encoder writes in another byte count than its exact width fails the debug check:
+/// four octets for the six-octet `mac`, staged ahead of the length it is framed by
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "the value encoder of `mac` wrote a different byte count")]
+fn a_value_encoded_in_another_width_fails_the_debug_check() {
+    let short = Telemetry {
+        mac: Some(HwAddr(vec![0x02, 0x42, 0xAC, 0x11])),
+        ..Telemetry::decoded()
+    };
+    short.encoded();
+}
+
 /// A width a field inherits from its type's `default(..)` is checked
 #[test]
 fn a_width_inherited_from_a_default_is_checked() {

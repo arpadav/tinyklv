@@ -2,7 +2,8 @@
 //!
 //! A field skipped at its type's default, from its `default(typ = ..)`, or by its own predicate
 //! writes no key, length or value, and a missing frame decodes to the type's default. A field's
-//! own skip replaces its default's, and its own `default` is what a missing frame decodes to
+//! own skip replaces its default's, and its own `default` is what a missing frame decodes to: on an
+//! `Option` field, a bare `default` is `None`
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -123,6 +124,25 @@ impl Thermostat {
     }
 }
 
+/// A heater whose optional schedule is left out at its default, `None`
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    key(dec = varint::dec_u32, enc = varint::enc_u32),
+    len(dec = varint::dec_usize, enc = varint::enc_usize),
+)]
+struct Heater {
+    /// field 1, a schedule id
+    #[klv(
+        key = 0x08,
+        dec = varint::dec_i32,
+        enc = *varint::enc_i32,
+        size(implicit),
+        default,
+        skip_if_default,
+    )]
+    schedule: Option<i32>,
+}
+
 /// The worked example with `created_at` at its default encodes to exactly the plan's bytes, no
 /// frame for `created_at`, and decodes back from them
 #[test]
@@ -163,4 +183,13 @@ fn a_fields_own_skip_replaces_its_defaults() {
     };
     assert!(room.encoded().is_empty());
     room.assert_decodes_from(&[]);
+}
+
+/// A bare `default` on an `Option` field is the field's own default: an unset schedule writes no
+/// frame, and its missing frame decodes back to `None`
+#[test]
+fn a_bare_default_on_an_option_field_is_none() {
+    let unscheduled = Heater { schedule: None };
+    assert!(unscheduled.encoded().is_empty());
+    unscheduled.assert_decodes_from(&[]);
 }

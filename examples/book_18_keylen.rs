@@ -40,11 +40,11 @@ fn dec_varint(input: &mut &[u8]) -> tinyklv::Result<u64> {
     for shift in (0..u64::BITS).step_by(7) {
         let byte = decb::u8(input)?;
         value |= u64::from(byte & !MORE) << shift;
-        if byte & MORE == 0 {
+        if byte & MORE == 0 && u64::from(byte) <= u64::MAX >> shift {
             return Ok(value);
         }
     }
-    // an eleventh byte: too long for a `u64`
+    // an eleventh byte, or a tenth past the 64th bit: too long for a `u64`
     Err(winnow::error::ContextError::from_input(input))
 }
 

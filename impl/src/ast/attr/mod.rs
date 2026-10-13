@@ -25,15 +25,14 @@ pub(crate) use field::{FieldKeys, FieldParsed, KeySpec, ValueCodec};
 // local
 // --------------------------------------------------
 use crate::Ctxt;
-use container::{
-    BreakOnSpec, CodecAttr, ContainerMode, ContainerParsed, DefaultXcoder, UnknownXcoder,
-};
+use container::{CodecAttr, ContainerMode, ContainerParsed, DefaultXcoder, UnknownXcoder};
 use field::OneofKey;
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use std::collections::HashMap;
+use quote::ToTokens;
+use std::collections::{HashMap, hash_map::Entry};
 use syn::{Token, punctuated::Punctuated};
 
 /// Validated representation of a `#[derive(Klv)]`-annotated struct
@@ -116,9 +115,9 @@ pub(crate) struct FieldKey<'a> {
 /// The frames whose key no field declares: the container's `unknown(..)` codec and the field
 /// that keeps them, built once per container
 ///
-/// The codec's decoder reads every such frame but two: a keylen `Sliced` one no field keeps, whose
-/// bytes go with its `take`, and the container's `break_on` key's, which ends the loop first. The
-/// codec's encoder re-emits a kept frame, so it is needed only beside [`Self::keep`]
+/// The codec's decoder reads every such frame but a keylen `Sliced` one no field keeps, whose bytes
+/// go with its `take`, and one the container's `break_on` ends or skips first. The codec's encoder
+/// re-emits a kept frame, so it is needed only beside [`Self::keep`]
 #[derive(Debug)]
 pub(crate) struct UnknownFrames<'a> {
     /// The `unknown(dec = .., enc = ..)` codec
@@ -157,10 +156,9 @@ impl<'a> MainContainer<'a> {
     /// error under `keylen`, whose codec decides each frame's framing. The container's
     /// `unknown(..)` and the `#[klv(unknown)]` field that keeps its frames become one
     /// [`UnknownFrames`]: the field is an error without the codec, and the codec's `enc` is
-    /// required only beside the field. A key + len `break_on = <fn>` is an error unless the
-    /// derive reads every frame's length ([`Self::reads_every_len`]). Returns `None` and records
-    /// diagnostics in `cx` if any required attributes are absent or the struct variant is
-    /// unsupported
+    /// required only beside the field. A key two fields or arms share is an error. Returns `None`
+    /// and records diagnostics in `cx` if any required
+    /// attributes are absent or the struct variant is unsupported
     ///
     /// # Arguments
     ///
@@ -215,9 +213,9 @@ impl<'a> MainContainer<'a> {
         let (attrs, codec) = ContainerParsed::from_cont(cx, &item.ident, attrs)?;
         // --------------------------------------------------
         // the frames whose key no field declares: `unknown(..)` decodes each one but a keylen
-        // `Sliced` one no field keeps and the `break_on` key's, which ends the loop first, and
-        // its encoder re-emits the ones the `unknown` field keeps; an unusable codec already
-        // reported its error
+        // `Sliced` one no field keeps and one `break_on` ends or skips first, and its encoder
+        // re-emits the ones the `unknown` field keeps; an unusable codec already reported its
+        // error
         // --------------------------------------------------
         codec.report_missing(cx, allow_encode || keep.is_none(), allow_decode);
         let unknown = match (codec, keep) {
@@ -242,30 +240,39 @@ impl<'a> MainContainer<'a> {
             generics: &item.generics,
             _original: item,
         };
-        match &container.attrs.mode {
-            // --------------------------------------------------
-            // the `keylen` codec decides each frame's framing, so no field is `implicit`, after
-            // its default fills it
-            // --------------------------------------------------
-            ContainerMode::Fused { .. } => {
-                for key in container.klv_keys() {
-                    if let Some(span) = key.codec.implicit() {
-                        cx.syn_error(syn::Error::new(span, err!(ImplicitInKeylen)));
-                    }
+        container.report_shared_keys(cx);
+        // --------------------------------------------------
+        // the `keylen` codec decides each frame's framing, so no field is `implicit`, after its
+        // default fills it
+        // --------------------------------------------------
+        if let ContainerMode::Fused { .. } = container.attrs.mode {
+            for key in container.klv_keys() {
+                if let Some(span) = key.codec.implicit() {
+                    cx.syn_error(syn::Error::new(span, err!(ImplicitInKeylen)));
                 }
             }
-            // --------------------------------------------------
-            // a `break_on` fn is passed each frame's length, which the derive must read
-            // --------------------------------------------------
-            ContainerMode::Separate {
-                break_on: Some(BreakOnSpec::Func(path)),
-                ..
-            } if !container.reads_every_len() => {
-                cx.error_spanned_by(path, err!(BreakOnFnWithoutLength));
-            }
-            ContainerMode::Separate { .. } => (),
         }
         Some(container)
+    }
+
+    /// Reports each key a field or `oneof(..)` arm shares with an earlier one, at the later key:
+    /// its frames decode into the earlier one, so the later never decodes
+    ///
+    /// # Arguments
+    ///
+    /// * `cx` - Error accumulation context for recording the errors
+    fn report_shared_keys(&self, cx: &Ctxt) {
+        let mut fields: HashMap<String, &syn::Ident> = HashMap::new();
+        for key in self.klv_keys() {
+            match fields.entry(key_value(key.key)) {
+                Entry::Occupied(first) => {
+                    cx.error_spanned_by(key.key, err!(SharedKey(key.key, first.get())));
+                }
+                Entry::Vacant(slot) => {
+                    slot.insert(&key.field.name);
+                }
+            }
+        }
     }
 
     /// The struct's keyed fields, in declaration order
@@ -308,8 +315,8 @@ impl<'a> MainContainer<'a> {
         self.unknown.as_ref()?.keep.as_ref()
     }
 
-    /// Whether the derive reads the length of every key + len frame, which a `break_on = <fn>`
-    /// is passed and which decides where the length is read
+    /// Whether the derive reads the length of every key + len frame, which decides where the
+    /// length is read
     ///
     /// # Returns
     ///
@@ -319,12 +326,13 @@ impl<'a> MainContainer<'a> {
         self.unknown.is_none() && !self.klv_keys().any(|key| key.codec.implicit().is_some())
     }
 
-    /// Whether the struct has a field to generate for, keyed or the one that keeps
-    /// [`Self::unknown`] frames, and every key's value codec passes `has`
+    /// Whether the struct has something to generate for, a keyed field, the one that keeps
+    /// [`Self::unknown`] frames or no field at all, and every key's value codec passes `has`
     ///
-    /// Gates each generated half: a decode or encode impl needs a codec on every key, and
-    /// a struct without a field has nothing to generate. The frames' codec is the container's
-    /// `unknown(..)`, which each half checks itself
+    /// Gates each generated half: a decode or encode impl needs a codec on every key, and a
+    /// struct whose every field is without `#[klv(..)]` has nothing to generate. A struct with no
+    /// field decodes by skipping every frame, and encodes to nothing. The frames' codec is the
+    /// container's `unknown(..)`, which each half checks itself
     ///
     /// # Arguments
     ///
@@ -332,10 +340,11 @@ impl<'a> MainContainer<'a> {
     ///
     /// # Returns
     ///
-    /// `true` when a keyed or `#[klv(unknown)]` field exists and `has` holds for every key
+    /// `true` when a keyed or `#[klv(unknown)]` field exists, or no field does, and `has` holds
+    /// for every key
     pub(crate) fn every_keyed_field(&self, mut has: impl FnMut(&ValueCodec) -> bool) -> bool {
         let mut fields = self.klv_fields().peekable();
-        (self.kept().is_some() || fields.peek().is_some())
+        (self.kept().is_some() || fields.peek().is_some() || self.data.is_empty())
             && fields
                 .flat_map(|(field, attrs)| FieldKey::of(field, attrs))
                 .all(|key| has(key.codec))
@@ -393,6 +402,24 @@ impl<'a> FieldKey<'a> {
                 ty: &arm.ty,
                 variant: Some(&arm.variant),
             }))
+    }
+}
+
+/// The value a key literal is matched as, alike for literals written apart: `0x10`, `16` and
+/// `16u8`, or `b'A'` and `65`
+///
+/// # Arguments
+///
+/// * `lit` - The key literal
+///
+/// # Returns
+///
+/// An integer's or a byte's base-10 digits, else the literal as written
+fn key_value(lit: &syn::Lit) -> String {
+    match lit {
+        syn::Lit::Int(int) => int.base10_digits().to_owned(),
+        syn::Lit::Byte(byte) => byte.value().to_string(),
+        other => other.to_token_stream().to_string(),
     }
 }
 

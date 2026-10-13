@@ -40,8 +40,8 @@ An encoder appends bytes to a caller-owned buffer and returns nothing:
 fn(val: &T, out: &mut Vec<u8>)
 ```
 
-The `&` and `*` sigils rewrite how the field is handed in (a value-taking
-`fn(T, &mut Vec<u8>)` is reached via the `&`/`EncodeAs` path); see
+The `&` and `*` sigils rewrite how the field is handed in (`*` for a
+value-taking `fn(T, &mut Vec<u8>)`); see
 [Sigil coercion & `EncodeAs`](./sigil-coercion.md).
 
 Length codecs work in `usize`: the container `len(...)` decoder produces

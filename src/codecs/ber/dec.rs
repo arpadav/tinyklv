@@ -34,6 +34,10 @@ use crate::prelude::*;
 ///
 /// - Runs out of bytes: the cursor is left at the end of the input
 /// - The length does not fit a [`usize`]: the cursor is rewound to where it started
+/// - The first byte is `0x80`, BER's indefinite form: the cursor is rewound to where it started
+///
+/// Running out of bytes is [`crate::ErrorKind::Truncated`], the others
+/// [`crate::ErrorKind::MalformedValue`]
 ///
 /// # Example
 ///
@@ -47,10 +51,7 @@ use crate::prelude::*;
 /// assert_eq!(ber_length(&mut long).unwrap(), 201_usize);
 /// ```
 pub fn ber_length(input: &mut &[u8]) -> crate::Result<usize> {
-    Ok(match super::BerLength::<usize>::decode_value(input)? {
-        super::BerLength::Short(length) => usize::from(length),
-        super::BerLength::Long(length) => length,
-    })
+    super::BerLength::<usize>::decode_value(input).map(|length| length.value())
 }
 
 #[inline(always)]
@@ -78,6 +79,9 @@ pub fn ber_length(input: &mut &[u8]) -> crate::Result<usize> {
 /// - The value does not fit `T`: the cursor is rewound to where it started. A run holds at most
 ///   `ceil(bits(T) / 7)` bytes, leading `0x80` padding included, so a run whose byte at that
 ///   position is still a continuation byte is rejected there, without reading further
+///
+/// Running out of bytes is [`crate::ErrorKind::Truncated`], the other
+/// [`crate::ErrorKind::MalformedValue`]
 ///
 /// # Example
 ///

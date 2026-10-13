@@ -12,8 +12,13 @@ keywords = ["decode", "encode", "klv", "parsing", "tlv"]
 categories = ["development-tools", "encoding", "parsing"]
 edition = "2024"
 rust-version = "1.95"
-exclude = ["book", "examples", "tests", "benches", "plans"]
+include = ["/src", "/CHANGELOG.md", "/LICENSE", "/README.md"]
 publish = true
+
+[package.metadata.docs.rs]
+# `full`, not every feature: `bench`'s native-type impls are provisional, not public API
+features = ["full"]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [workspace]
 members = ["impl"]
@@ -59,7 +64,7 @@ winnow = { version = "1.0.2", features = ["binary", "parser"] }
 # --------------------------------------------------
 # workspace
 # --------------------------------------------------
-tinyklv-impl = { path = "impl", version = "0.2.0-rc.1" }
+tinyklv-impl = { path = "impl", version = "=0.2.0-rc.1" }
 
 [dev-dependencies]
 criterion = "^0.8"
@@ -92,7 +97,8 @@ name = "streaming_compaction"
 harness = false
 
 [[bench]]
-# safe `try_from(..).expect(..)` vs unchecked `unsafe` conversion in the fixed-width int decoders
+# the fixed-width int decoders (safe `try_from` vs unchecked `unsafe`), the BER decoders, and an
+# exact-sized slice decode
 name = "int_decode"
 harness = false
 
@@ -120,10 +126,8 @@ cast_possible_wrap = "allow"          # wire-format width casts
 cast_sign_loss = "allow"              # wire-format width casts
 cast_lossless = "allow"               # wire-format width casts
 inline_always = "allow"               # hot-path inlining convention
-wildcard_imports = "allow"            # prelude glob is the import surface
 float_cmp = "allow"                   # exact-roundtrip float eq in tests
 must_use_candidate = "allow"          # must_use applied deliberately
-module_name_repetitions = "allow"     # module-qualified names intentional
 too_many_lines = "allow"              # codegen/decode fns
 needless_for_each = "allow"           # for_each idiomatic in tests
 missing_errors_doc = "allow"          # decoders all return Result
@@ -133,12 +137,10 @@ cast_precision_loss = "allow"         # scale/precision casts in codecs
 unreadable_literal = "allow"          # numeric test fixtures
 iter_not_returning_iterator = "allow" # bounded Decoder iterator surface
 into_iter_without_iter = "allow"      # bounded Decoder iterator surface
-double_must_use = "allow"             # deliberate on must_use returns
 manual_let_else = "allow"             # test/example exemption
 struct_field_names = "allow"          # test/example exemption
 many_single_char_names = "allow"      # single-char loop vars in tests
 trivially_copy_pass_by_ref = "allow"  # small-Copy-by-ref in tests
-match_same_arms = "allow"             # explicit match in tests
 doc_markdown = "allow"                # doc-backtick nits in tests
 
 [profile.dev]

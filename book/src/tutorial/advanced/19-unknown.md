@@ -23,8 +23,9 @@ On the main stream, a frame cut short must consume the input to its end
 the rest. Failing anywhere else, or on a kept `Sliced` frame, is an error
 naming the `#[klv(unknown)]` field, or the struct's frame without one. The
 decoder advances only within the slice it is given, as `input.finish()` or
-`*input = &input[input.len()..]` do; `*input = &[]` panics in a debug build. A
-frame that consumes no byte, key included, is an error.
+`*input = &input[input.len()..]` do: in a key + len struct, one that sets
+`*input = &[]` and returns `Ok` panics with debug assertions or overflow checks
+on. A frame that consumes no byte, key included, is an error.
 
 ## Drop or keep
 
@@ -50,8 +51,8 @@ duplicated arms called every decoder from two sites and LLVM stopped inlining
 the larger ones: it measured 9-15% slower on varint-keyed wires with no unknown
 frame and up to 2.6x slower with them, so it is not built. A struct without
 `unknown(..)` is unaffected. Each listing is that arm decoding `02 02 22 22`
-(key, length, a big-endian `u16`) in an eight-field struct, built by rustc
-1.95.0 (LLVM 22.1.2) for `x86_64-unknown-linux-gnu` with
+(key, length, a big-endian `u16`) in an eight-field struct, not the benched one
+below, built by rustc 1.95.0 (LLVM 22.1.2) for `x86_64-unknown-linux-gnu` with
 `-C opt-level=3 -C lto=fat -C codegen-units=1` and no `-C target-cpu`.
 
 ```x86asm

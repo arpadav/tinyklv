@@ -68,8 +68,8 @@ pub(crate) const SENTINEL: Symbol = Symbol("sentinel");
 /// The `break_on` sub-attribute identifier
 ///
 /// On the container, either a key literal (a decoded key equal to it stops the loop -
-/// [`tinyklv::BreakType::Done`]) or a function path `fn(key, len) -> BreakType`. On a field, a
-/// function path `fn(&value) -> BreakType`
+/// [`tinyklv::BreakType::Done`]) or a function path `fn(&key, &mut input) -> BreakType`. On a
+/// field, a function path `fn(&value) -> BreakType`
 pub(crate) const BREAK_ON: Symbol = Symbol("break_on");
 /// The field-level `default` sub-attribute identifier
 ///
@@ -118,6 +118,7 @@ pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
     SENTINEL,
     BREAK_ON,
     UNKNOWN_FRAMES,
+    DEBUG,
     DENY_UNKNOWN_KEYS,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,
@@ -206,19 +207,18 @@ const KNOWN: &[Symbol] = &[
 
 /// [`Symbol`] implementation of [`From`] for [`syn::Path`]
 ///
-/// Resolves the path's last segment against [`KNOWN`]. If the ident matches a known
-/// KLV symbol, returns that constant (with its `&'static str` backing). Otherwise
-/// returns [`UNKNOWN`] - callers must treat this as the "default" match arm and
-/// emit errors referencing the original `syn::Path`, not the [`Symbol`]'s string
+/// Resolves a one-ident path against [`KNOWN`]. If the ident matches a known
+/// KLV symbol, returns that constant (with its `&'static str` backing). Otherwise,
+/// a path of several segments (`x::key`) included, returns [`UNKNOWN`] - callers must
+/// treat this as the "default" match arm and emit errors referencing the original
+/// `syn::Path`, not the [`Symbol`]'s string
 impl From<&syn::Path> for Symbol {
     fn from(path: &syn::Path) -> Self {
-        let last = path.segments.last().expect("path has no segments");
-        for sym in KNOWN {
-            if last.ident == sym.0 {
-                return *sym;
-            }
-        }
-        UNKNOWN
+        KNOWN
+            .iter()
+            .copied()
+            .find(|sym| path.is_ident(sym.0))
+            .unwrap_or(UNKNOWN)
     }
 }
 
@@ -272,5 +272,19 @@ impl std::fmt::Display for Symbols<'_> {
         symbols
             .iter()
             .try_for_each(|symbol| write!(f, "`{}` ", symbol.0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{KEY, Symbol, UNKNOWN};
+
+    #[test]
+    /// Verifies only a one-ident path is a symbol, so `#[klv(x::key(..))]` is no `key(..)`
+    fn a_qualified_path_is_no_symbol() {
+        let key: syn::Path = syn::parse_quote!(key);
+        let qualified: syn::Path = syn::parse_quote!(x::key);
+        assert!(Symbol::from(&key) == KEY);
+        assert!(Symbol::from(&qualified) == UNKNOWN);
     }
 }

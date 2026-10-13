@@ -3,14 +3,16 @@
 //! A `keylen` header may read its key without consuming it, as a self-describing format peeks
 //! the type byte its value decoder then reads. Such a frame decodes as long as the value moves
 //! the cursor; one where header and value together consume nothing could only repeat, so it is
-//! rejected. [`Peeked`]'s header spends the [`HeaderBudget`], so a loop that repeats it fails the
-//! test instead of hanging it
+//! rejected. A header that consumed bytes has moved the cursor, so a `Sliced(0)` frame after it is
+//! an empty value. [`Peeked`]'s header spends the [`HeaderBudget`], so a loop that repeats it
+//! fails the test instead of hanging it
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::common::drive::Drive;
+use crate::support::example::Reading;
 use crate::support::header_budget::HeaderBudget;
 use crate::support::value;
 use tinyklv::prelude::*;
@@ -162,4 +164,23 @@ fn header_consuming_nothing_then_sliced_zero_is_rejected() {
         0x04, 0x00,
     ];
     Peeked::assert_rejects_naming(&wire, Peeked::NO_PROGRESS);
+}
+
+/// A header that consumed bytes framing `Sliced(0)` has made progress: its empty value decodes,
+/// in both drivers and at every chunk split
+#[test]
+fn header_consuming_bytes_then_sliced_zero_is_an_empty_value() {
+    #[rustfmt::skip]
+    let wire = [
+        // count = 7 (field 1, wire 0 VARINT, Inline)
+        0x08, 0x07,
+        // label = "" (field 2, wire 2 LEN, Sliced(0))
+        0x12, 0x00,
+    ];
+    let expected = Reading {
+        count: 7,
+        label: Some(String::new()),
+        ..Reading::count_only()
+    };
+    expected.assert_decodes_from(&wire);
 }

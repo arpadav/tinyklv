@@ -17,15 +17,13 @@ use tinyklv::dec::ber as decber;
 use tinyklv::prelude::*;
 
 #[test]
-/// Tests that BER OID encoding of `0` produces an empty byte sequence
+/// Tests BER OID single-byte encoding of `0` as one zero byte, and its roundtrip
 fn ber_oid_zero() {
-    // Value 0 encodes as empty (while loop never executes)
     let mut encoded = Vec::new();
     tinyklv::enc::ber::ber_oid(0_u64, &mut encoded);
-    assert!(
-        encoded.is_empty(),
-        "BER OID value 0 should produce empty encoding"
-    );
+    assert_eq!(encoded, vec![0x00]);
+    let decoded = tinyklv::dec::ber::ber_oid::<u64>(&mut encoded.as_slice()).unwrap();
+    assert_eq!(decoded, 0_u64);
 }
 
 #[test]
@@ -144,10 +142,13 @@ fn ber_oid_struct_roundtrip() {
 }
 
 #[test]
-/// Tests that `ber_oid` errors on empty input
-fn ber_oid_empty_input_fails() {
-    let mut input: &[u8] = &[];
-    assert!(tinyklv::dec::ber::ber_oid::<u64>(&mut input).is_err());
+/// Tests that `ber_oid` runs out of bytes on a run cut anywhere before its terminator, empty
+/// input included
+fn ber_oid_cut_run_runs_out() {
+    let run = u64::oid_max_run();
+    for cut in 0..run.len() {
+        decber::ber_oid::<u64>.assert_runs_out(&run[..cut]);
+    }
 }
 
 #[test]

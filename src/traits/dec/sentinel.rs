@@ -62,7 +62,8 @@ where
     /// Advances `input` past the sentinel, length prefix, and all body bytes
     /// Pre-sentinel bytes are consumed and discarded. Returns an error only when
     /// the stream ends before a sentinel is found or the declared body length
-    /// cannot be satisfied
+    /// cannot be satisfied. On an error `input` is left past only the bytes that
+    /// cannot begin a packet, which [`crate::Decoder`] drops
     ///
     /// # Arguments
     ///

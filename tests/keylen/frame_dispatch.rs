@@ -3,7 +3,7 @@
 //!
 //! An unknown `Sliced` frame is skipped by its length; an unknown `Inline` frame ends the
 //! loop at its header; `deny_unknown_keys` rejects either. A repeated key keeps its last
-//! value
+//! value, or the one before it when a later `Sliced` value fails to decode
 //!
 //! Under `unknown(dec, enc)` the header frames an unknown frame as it frames any other, and the
 //! unknown decoder reads the body it left: the bounded slice of a `Sliced` frame, the main stream
@@ -197,7 +197,7 @@ fn deny_unknown_keys_rejects_before_the_value_is_taken() {
         // unknown field 9, wire 2 LEN, Sliced(5) - 1 of its 5 bytes
         0x4A, 0x05, 0x00,
     ];
-    StrictReading::assert_rejects_naming(&wire, &["invalid key", "StrictReading"]);
+    StrictReading::assert_rejects_naming(&wire, &["key (expected", "StrictReading"]);
 }
 
 /// Without `deny_unknown_keys` an unknown `Inline` frame has nothing to skip it by:
@@ -307,6 +307,26 @@ fn duplicate_key_last_wins() {
         Ok(&expected)
     );
     expected.assert_streams_to(&mut &wire[..]);
+}
+
+/// A key seen twice whose later `Sliced` value its decoder rejects keeps the earlier value, in
+/// both drivers and at every chunk split
+#[test]
+fn a_repeated_key_whose_later_value_fails_keeps_the_earlier_one() {
+    #[rustfmt::skip]
+    let wire = [
+        // count = 3
+        0x08, 0x03,
+        // label = "a"
+        0x12, 0x01, 0x61,
+        // label = `FF`, not UTF-8
+        0x12, 0x01, 0xFF,
+    ];
+    let expected = Reading {
+        label: Some("a".to_owned()),
+        ..Reading::count_only()
+    };
+    expected.assert_decodes_from(&wire);
 }
 
 /// Unknown frames of every wire type after the known fields, the `Inline` one first, decode into

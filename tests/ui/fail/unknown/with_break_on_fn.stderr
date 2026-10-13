@@ -1,5 +1,0 @@
-error: `break_on = <fn>` takes the frame's length, which the derive does not read for an `implicit` field's frame, nor, with `unknown(..)`, for a frame whose key no field declares; use a key literal (`break_on = 0x..`), or remove every `implicit` and `unknown(..)`.
-  --> tests/ui/fail/unknown/with_break_on_fn.rs:21:16
-   |
-21 |     break_on = stop
-   |                ^^^^

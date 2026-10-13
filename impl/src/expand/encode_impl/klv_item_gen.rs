@@ -5,7 +5,7 @@
 //! selects for each key, applies optional-field and skip guards, and hands the header write to
 //! the container framing. A `key = oneof(..)` field writes the frame of the arm its variant
 //! names. The frames a `#[klv(unknown)]` field retains are written after the known
-//! fields, through the same framing
+//! fields, through the same framing, and a field with a `break_on` after them all
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -20,7 +20,7 @@ use super::{
 };
 use crate::{
     ast::{
-        attr::{FieldKey, FieldKeys, FieldParsed, MainField, size::SizeSpec, skip_if::SkipIf},
+        attr::{FieldKey, FieldKeys, FieldParsed, MainField, skip_if::SkipIf},
         types::{self, XcoderSigil},
     },
     expand::helpers,
@@ -34,28 +34,41 @@ use syn::spanned::Spanned;
 
 /// [`EncodeCtx`] implementation of the field item writes
 impl EncodeCtx<'_> {
-    /// Generates all field KLV item writes for an `EncodeValue` body
+    /// Generates every frame write of an `EncodeValue` body
     ///
     /// Walks the parsed container fields and emits one planned KLV item write for
-    /// each keyed field. The `#[klv(unknown)]` field's frames are written by
-    /// [`Self::unknown_items`], and fields without KLV attributes are ignored so ordinary Rust
-    /// fields remain outside the generated wire output
+    /// each keyed field, in source order, then the frames the `#[klv(unknown)]` field retains
+    /// ([`Self::unknown_items`]). A field with a `break_on` is written last, after them all: its
+    /// `break_on` may end the decode, which then never reads a frame written after it. Fields
+    /// without KLV attributes are ignored so ordinary Rust fields remain outside the generated
+    /// wire output
     ///
     /// # Returns
     ///
-    /// A token stream containing all generated field item writes in source order
+    /// A token stream containing every generated frame write
     pub(super) fn klv_items(&self) -> proc_macro2::TokenStream {
         // --------------------------------------------------
-        // emit one planned item for each attributed field
+        // one planned item for each attributed field, with or without a `break_on`
         // --------------------------------------------------
-        let items = self
-            .input
-            .klv_fields()
-            .map(|(field, attrs)| self.klv_item(&FieldWrite { field, attrs }));
+        let items = |breaks: bool| {
+            let items = self
+                .input
+                .klv_fields()
+                .filter(move |(_, attrs)| attrs.break_on.is_some() == breaks)
+                .map(|(field, attrs)| self.klv_item(&FieldWrite { field, attrs }));
+            quote! { #(#items)* }
+        };
         // --------------------------------------------------
-        // concatenate generated item writes
+        // the fields, the retained unknown frames, then the fields with a `break_on`
         // --------------------------------------------------
-        quote! { #(#items)* }
+        let fields = items(false);
+        let unknown = self.unknown_items();
+        let breaking = items(true);
+        quote! {
+            #fields
+            #unknown
+            #breaking
+        }
     }
 
     /// Generates one `#[klv(..)]` field's complete KLV item write
@@ -122,8 +135,9 @@ impl EncodeCtx<'_> {
     /// Picks the write: implicit, staged, known or reserved. A `size(implicit)` value is
     /// written straight after its key with no length ([`PlannedItemWrite::write_implicit`]). A
     /// fused `keylen` encoder, or a variable-width length prefix, stages the value in the scratch
-    /// buffer. Under a fixed-width length prefix the [`FieldLengthPlan`] picks a known-width or a
-    /// reserved-slot write, and the fixed-width length slot writes it
+    /// buffer ([`PlannedItemWrite::staged_write`]). Under a fixed-width length prefix the
+    /// [`FieldLengthPlan`] picks a known-width or a reserved-slot write, and the fixed-width
+    /// length slot writes it
     ///
     /// # Arguments
     ///
@@ -136,20 +150,16 @@ impl EncodeCtx<'_> {
         let span = item.span();
         let key = item.key.key;
         let value_write = |dst: &proc_macro2::TokenStream| item.value_write(dst);
-        let implicit = item
-            .key
-            .codec
-            .size
-            .as_ref()
-            .filter(|size| size.implicit().is_some());
+        let staged_write = |dst: &proc_macro2::TokenStream| item.staged_write(dst);
+        let implicit = item.key.codec.implicit().is_some();
         // --------------------------------------------------
         // emit the item write the container framing selects
         // --------------------------------------------------
         self.framing
-            .write_frame(key, value_write, span, |key_write, len| {
+            .write_frame(key, staged_write, span, |key_write, len| {
                 match (implicit, len) {
-                    (Some(size), _) => item.write_implicit(size, key_write),
-                    (None, LengthPrefix::Fixed(len)) => match item.length_plan() {
+                    (true, _) => item.write_implicit(key_write),
+                    (false, LengthPrefix::Fixed(len)) => match item.length_plan() {
                         FieldLengthPlan::KnownValueWidth(value) => {
                             len.write_known(key_write, value, value_write, span)
                         }
@@ -157,15 +167,14 @@ impl EncodeCtx<'_> {
                             len.write_backfilled(key_write, value_write, span)
                         }
                     },
-                    (None, LengthPrefix::Variable(len)) => {
-                        len.write_staged(Staging::Scratch, key_write, value_write, span)
+                    (false, LengthPrefix::Variable(len)) => {
+                        len.write_staged(Staging::Scratch, key_write, staged_write, span)
                     }
                 }
             })
     }
 
-    /// Generates the writes of the retained unknown frames, after the known fields, in the order the
-    /// field holds them
+    /// Generates the writes of the retained unknown frames, in the order the field holds them
     ///
     /// One loop over the `#[klv(unknown)]` field writes each `(key, value)` frame. Under a separate
     /// header the key encoder writes the key and the `unknown(enc = ..)` encoder writes the rest of
@@ -179,7 +188,7 @@ impl EncodeCtx<'_> {
     /// # Returns
     ///
     /// The loop, or `None` when the struct keeps no unknown frames
-    pub(super) fn unknown_items(&self) -> Option<proc_macro2::TokenStream> {
+    fn unknown_items(&self) -> Option<proc_macro2::TokenStream> {
         let UnknownEncoder { encoder, keep } = self.unknown?;
         let name = &keep.name;
         let span = helpers::call_site_at(name);
@@ -279,7 +288,7 @@ impl<'a> ValueAccess<'a> {
         // --------------------------------------------------
         let (span, binding) = match self {
             Self::Required { name } => {
-                let span = name.span();
+                let span = helpers::call_site_at(name);
                 return match sigil {
                     XcoderSigil::None => quote_spanned! { span => &self.#name },
                     XcoderSigil::Ref => quote_spanned! { span =>
@@ -288,7 +297,7 @@ impl<'a> ValueAccess<'a> {
                     XcoderSigil::Deref => quote_spanned! { span => self.#name },
                 };
             }
-            Self::Optional { name, binding } => (name.span(), binding),
+            Self::Optional { name, binding } => (helpers::call_site_at(name), binding),
             Self::Bound { at, binding } => (*at, binding),
         };
         // --------------------------------------------------
@@ -322,7 +331,7 @@ impl<'a> ValueAccess<'a> {
         // --------------------------------------------------
         match self {
             Self::Required { .. } | Self::Bound { .. } => item_write,
-            Self::Optional { name, binding } => quote_spanned! { name.span() =>
+            Self::Optional { name, binding } => quote_spanned! { helpers::call_site_at(name) =>
                 if let ::core::option::Option::Some(ref #binding) = self.#name {
                     #item_write
                 }
@@ -396,9 +405,11 @@ impl<'a> PlannedItemWrite<'a> {
     ///
     /// # Returns
     ///
-    /// The span of the field's name
+    /// The derive's call-site span located at the field's name
+    /// ([`helpers::call_site_at`]), so the write's `self` and `out` resolve even when the name
+    /// came in through a `macro_rules!` fragment
     fn span(&self) -> proc_macro2::Span {
-        self.key.field.name.span()
+        helpers::call_site_at(&self.key.field.name)
     }
 
     /// How the generated write reaches the key's value
@@ -471,14 +482,8 @@ impl<'a> PlannedItemWrite<'a> {
         // --------------------------------------------------
         // explicit exact field sizes can be written immediately
         // --------------------------------------------------
-        if let Some(size) = &self.key.codec.size
-            && let Some(bytes) = size.exact_width()
-        {
-            return FieldLengthPlan::KnownValueWidth(ValueWidth {
-                field: &self.key.field.name,
-                bytes,
-                declared_at: size.span(),
-            });
+        if let Some(value) = self.exact_width() {
+            return FieldLengthPlan::KnownValueWidth(value);
         }
         // --------------------------------------------------
         // prove fixed width from primitive type and built-in encoder
@@ -510,23 +515,18 @@ impl<'a> PlannedItemWrite<'a> {
     ///
     /// # Arguments
     ///
-    /// * `size` - The field's `size(..)`
     /// * `prefix_write` - Generated statements that write the field key
     ///
     /// # Returns
     ///
     /// A block writing the complete frame into `out`
-    fn write_implicit(
-        &self,
-        size: &SizeSpec,
-        prefix_write: proc_macro2::TokenStream,
-    ) -> proc_macro2::TokenStream {
+    fn write_implicit(&self, prefix_write: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
         let span = self.span();
         let value_write = |dst: &proc_macro2::TokenStream| self.value_write(dst);
         // --------------------------------------------------
         // a value of no declared width is written unchecked
         // --------------------------------------------------
-        let Some(bytes) = size.exact_width() else {
+        let Some(value) = self.exact_width() else {
             let value_write = value_write(&quote_spanned! { span => out });
             return quote_spanned! { span =>
                 {
@@ -538,12 +538,45 @@ impl<'a> PlannedItemWrite<'a> {
         // --------------------------------------------------
         // an `exact = N` value is checked to be `N` bytes
         // --------------------------------------------------
-        let value = ValueWidth {
-            field: &self.key.field.name,
-            bytes,
-            declared_at: size.span(),
-        };
         value.write_after(prefix_write, value_write, span)
+    }
+
+    /// The key's value width, as its `size(exact = N)` declares it
+    ///
+    /// # Returns
+    ///
+    /// The width, `N` declared at its `size(..)`, or `None` without `exact = N`
+    fn exact_width(&self) -> Option<ValueWidth<'a>> {
+        let size = self.key.codec.size.as_ref()?;
+        Some(ValueWidth {
+            field: &self.key.field.name,
+            bytes: size.exact_width()?,
+            declared_at: size.span(),
+        })
+    }
+
+    /// The value encoder call staging the field value in `dst`, every field's
+    /// [`Staging::Scratch`] buffer, then, under `size(exact = N)`, the debug-build check that the
+    /// buffer holds `N` bytes ([`ValueWidth::check`])
+    ///
+    /// # Arguments
+    ///
+    /// * `dst` - The `&mut Vec<u8>` expression of the scratch buffer
+    ///
+    /// # Returns
+    ///
+    /// The value encoder call statement, then the check
+    fn staged_write(&self, dst: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+        let value_write = self.value_write(dst);
+        let check = self.exact_width().map(|value| {
+            let buffer = Staging::Scratch.buffer();
+            let span = self.span();
+            value.check(&quote_spanned! { span => #buffer.len() }, span)
+        });
+        quote! {
+            #value_write
+            #check
+        }
     }
 
     /// The value encoder call writing the field value into `dst`

@@ -4,7 +4,8 @@
 //! field's decode result into locals, so a binding pattern named `key`, `len` or `val` would
 //! turn into the user's constant and stop compiling. [`Logged`] is a `debug` struct, so the
 //! logged decode result is bound too. Both must decode and encode as if the constants were not
-//! there
+//! there. Each constant differs from every key, length and value on the wire, so a binding turned
+//! into a constant pattern never matches by chance
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -22,17 +23,17 @@ use tinyklv::prelude::*;
 /// Named like the derive's key local, of the key's type
 #[expect(non_upper_case_globals, reason = "named like the derive's key local")]
 #[expect(dead_code, reason = "the derive must not read it")]
-const key: u32 = 0x08;
+const key: u32 = 0x10;
 
 /// Named like the derive's length local, of its type
 #[expect(non_upper_case_globals, reason = "named like the derive's len local")]
 #[expect(dead_code, reason = "the derive must not read it")]
-const len: usize = 2;
+const len: usize = 5;
 
 /// Named like the derive's decode-result local
 #[expect(non_upper_case_globals, reason = "named like the derive's val local")]
 #[expect(dead_code, reason = "the derive must not read it")]
-const val: i32 = 3;
+const val: i32 = 9;
 
 /// The frames both messages decode from and encode to
 #[rustfmt::skip]

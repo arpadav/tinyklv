@@ -1,13 +1,13 @@
-//! The [`Framing`] returned by a fused `#[klv(keylen(dec = ..))]` decoder to describe a value frame
+//! The [`Framing`] a fused `#[klv(keylen(dec = ..))]` decoder returns to describe an item's value
 //!
 //! Classic `#[klv(key(..), len(..))]` slices a value with a length prefix via `take(len)`. The
-//! opt-in fused `keylen` codec instead decodes one frame header and returns `(key, Framing)`,
+//! opt-in fused `keylen` codec instead decodes one item header and returns `(key, Framing)`,
 //! letting the framing decision depend on the key. [`Framing`] tells the derive-generated decode
 //! loop how to bound the value bytes that follow the header, and states the rules the loop applies
-//! to each frame
+//! to each item
 //!
 //! On encode, each value is staged first, then the `keylen` encoder is handed `(key, value_len)`
-//! and writes the frame header: the key, and the length only when the key implies one. A `keylen`
+//! and writes the item header: the key, and the length only when the key implies one. A `keylen`
 //! container does not support `sentinel`, and its `break_on` takes a key literal only. Here key
 //! `0x01` is length-prefixed and key `0x02` is an `Inline` BER-OID varint:
 //!
@@ -65,36 +65,36 @@
 ///
 /// The key must determine the framing. The loop picks a decoder by its key alone, the field's or,
 /// for a `key = oneof(..)` arm, the arm's, and runs it on whatever framing the header returned, so
-/// an `Inline` frame for a known key feeds that decoder the unbounded main stream. A decoder
+/// an `Inline` item for a known key feeds that decoder the unbounded main stream. A decoder
 /// written for a bounded sub-slice (one that reads to the end of its input, such as a string) then
 /// reads past its own value. Have the `keylen` decoder return one framing per key, the one the
 /// key's decoder expects
 ///
 /// Any failure of the `keylen` decoder itself is truncation, wherever the cursor stopped: the loop
-/// rewinds to the start of the frame, then streaming decode returns `Packet::NeedMore` and one-shot
+/// rewinds to the start of the item, then streaming decode returns `Packet::NeedMore` and one-shot
 /// decode finalizes what it has. A header codec such as `be_u16` fails short of the end of the
 /// input when a chunk boundary splits it, so the end-of-input test the `Inline` values use would
 /// class a split header as malformed and drop the rest of the message. The cost: a garbage header
 /// in a complete buffer is never reported as malformed. Streaming decode waits for more bytes, and
-/// one-shot decode finalizes without that frame and every frame after it
+/// one-shot decode finalizes without that item and every item after it
 ///
-/// After a frame's value, the loop checks that the frame moved the cursor. A frame whose header and
+/// After an item's value, the loop checks that the item moved the cursor. An item whose header and
 /// value together consumed no input would repeat forever, so it is rejected with an error naming
-/// the struct's frame, in both decodes. A header that consumes nothing is fine when its value does,
-/// such as a header that peeks a type byte the value decoder then reads
+/// `` `<Struct>` frame ``, in both decodes. A header that consumes nothing is fine when its value
+/// does, such as a header that peeks a type byte the value decoder then reads
 ///
 /// Without `deny_unknown_keys`, a key with no field is skipped when [`Framing::Sliced`]. When
 /// [`Framing::Inline`] it has no length to skip it by, so the loop rewinds to the start of its
-/// frame and ends. With `unknown(dec = ..)`, an [`Framing::Inline`] one goes to that decoder
+/// item and ends. With `unknown(dec = ..)`, an [`Framing::Inline`] one goes to that decoder
 /// instead, which reads it from the main stream; a [`Framing::Sliced`] one goes to it only when a
 /// `#[klv(unknown)]` field keeps it, the decoder reading the bounded value, and is skipped
 /// otherwise. With `deny_unknown_keys`, an unknown key is rejected in either framing, before any of
 /// its value bytes are read
 ///
-/// In a `key(..)` + `len(..)` struct, the `unknown(dec = ..)` decoder reads an unknown frame from
+/// In a `key(..)` + `len(..)` struct, the `unknown(dec = ..)` decoder reads an unknown item from
 /// the main stream, its length included, and its failure follows the rule on [`Framing::Inline`].
 /// A decoder that reads the length and then finds the value short must leave the cursor at the end
-/// of the input, or a frame split across chunks reads as malformed. The decoder must advance its
+/// of the input, or an item split across chunks reads as malformed. The decoder must advance its
 /// input only within the slice it is given, as `*input = &input[input.len()..]` does to consume
 /// the rest, and never reassign it to another slice: `*input = &[]` panics in a debug build
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -110,9 +110,9 @@ pub enum Framing {
     /// return an error naming `` `<Struct>::<field>` ``, even when the value runs past the end of
     /// the input
     ///
-    /// For an unknown key whose frame the `#[klv(unknown)]` field keeps, a value the
+    /// For an unknown key whose item the `#[klv(unknown)]` field keeps, a value the
     /// `unknown(dec = ..)` decoder fails on is malformed: both decodes return an error naming that
-    /// field, the cursor past the frame
+    /// field, the cursor past the item
     Sliced(usize),
 
     /// The value is self-delimiting and carries no length on the wire
@@ -128,7 +128,7 @@ pub enum Framing {
     /// When the value decoder fails, the cursor position decides what happened:
     ///
     /// * at the end of the input, the value is truncated: the loop resets to the start of the
-    ///   frame, then streaming decode returns `Packet::NeedMore` and one-shot decode finalizes
+    ///   item, then streaming decode returns `Packet::NeedMore` and one-shot decode finalizes
     ///   what it has
     /// * anywhere else, the value is malformed. Streaming decode returns an error naming
     ///   `` `<Struct>::<field>` ``: for an unknown key's value, the `#[klv(unknown)]` field, or
@@ -148,7 +148,7 @@ pub enum Framing {
     /// without rewinding fails at the end of the input when that value is the last one, so its
     /// malformed value reads as truncation. Rewind to the start of the value before rejecting it
     ///
-    /// A `size(lengthed)` field's decoder takes the value's length, which an `Inline` frame does
+    /// A `size(lengthed)` field's decoder takes the value's length, which an `Inline` item does
     /// not carry. Its value is malformed wherever the cursor is: both decodes return an error
     /// naming `` `<Struct>::<field>` `` without running the decoder, the cursor at the value start
     Inline,

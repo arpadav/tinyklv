@@ -1,7 +1,7 @@
 //! `#[klv(break_on = ..)]` container-attribute tests
 //!
 //! Exercises both forms of the attribute - a key literal (stop the loop when a
-//! decoded key matches) and a function `fn(key, len) -> BreakType` - across the
+//! decoded key matches) and a function `fn(&key, &mut input) -> BreakType` - across the
 //! one-shot `decode_value` path AND the streaming `decoder()`/feed path,
 //! confirming the loop control fires identically. Field types are the shared
 //! custom enums (`Color`, `Priority`), not bare primitives.
@@ -12,6 +12,7 @@ use super::types::*;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
+use winnow::binary::length_take;
 
 // --------------------------------------------------
 // literal form: stop the loop on key 0xFF
@@ -115,9 +116,12 @@ fn literal_terminator_stops_streaming_before_decoy() {
 // --------------------------------------------------
 
 /// Reserved key `0xFE` is consumed-and-skipped; terminator `0xFF` stops the loop.
-fn skip_then_done(key: u8, _len: usize) -> BreakType {
+fn skip_then_done(key: &u8, input: &mut &[u8]) -> BreakType {
     match key {
-        0xFE => BreakType::Skip,
+        0xFE => match length_take(decb::u8_as_usize).parse_next(input) {
+            Ok(_) => BreakType::Skip,
+            Err(_) => BreakType::Proceed,
+        },
         0xFF => BreakType::Done,
         _ => BreakType::Proceed,
     }
@@ -138,9 +142,9 @@ struct FnControlled {
 }
 
 #[test]
-/// A `break_on` function: a reserved `0xFE` triple is skipped (its bytes consumed so the following
-/// fields stay aligned), the real fields decode, and a `0xFF` terminator stops the loop before the
-/// trailing decoy.
+/// A `break_on` function: a reserved `0xFE` triple is skipped (the function consumes its length and
+/// value so the following fields stay aligned), the real fields decode, and a `0xFF` terminator
+/// stops the loop before the trailing decoy.
 fn function_skip_and_done() {
     // reserved triple first (key 0xFE, len 3, garbage) - must be skipped, not misalign the rest
     let mut body = vec![0xFE, 0x03, 0x11, 0x22, 0x33];
@@ -167,8 +171,8 @@ fn function_skip_and_done() {
 // --------------------------------------------------
 
 /// Forbidden key `0xEE` aborts the decode with a static message.
-fn abort_on_forbidden(key: u8, _len: usize) -> BreakType {
-    if key == 0xEE {
+fn abort_on_forbidden(key: &u8, _: &mut &[u8]) -> BreakType {
+    if *key == 0xEE {
         BreakType::Abort("break_on_attr: forbidden key 0xEE")
     } else {
         BreakType::Proceed

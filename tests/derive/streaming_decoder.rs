@@ -10,7 +10,11 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use tinyklv::ErrorKind;
+use tinyklv::dec::ber as decber;
 use tinyklv::dec::binary as decb;
+use tinyklv::decoder::DecodeIterError;
+use tinyklv::enc::ber as encber;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
 
@@ -358,7 +362,8 @@ fn decoder_malformed_at_tail_does_not_panic() {
 
 #[test]
 /// A fresh-mode seek that cannot find the sentinel yet must report `NeedMore`
-/// (not `Malformed`) and retain the bytes for a later `feed`
+/// (not `Malformed`) and keep only the last `sentinel_len - 1` bytes, the ones
+/// that may still begin a sentinel, so stray bytes never pile up
 ///
 /// Regression: `next_fresh` previously returned `Malformed` on any `seek_sentinel`
 /// failure, conflating "the sentinel has not arrived in the buffer yet" with genuine
@@ -373,20 +378,22 @@ fn decoder_fresh_seek_miss_is_needmore() {
     // --------------------------------------------------
     let junk: &[u8] = &[0x00, 0xFF, 0x42, 0x13, 0x37];
     let mut dec = Sample::decoder();
-    dec.feed(junk);
     // --------------------------------------------------
-    // seek misses: must be NeedMore, and every byte is retained
+    // each seek misses: must be NeedMore, and the buffer stays at the last 3 bytes
     // --------------------------------------------------
-    let result = dec.next_fresh();
-    assert!(
-        matches!(result, Err(DecodeIterError::NeedMore)),
-        "missing sentinel must report NeedMore, got {result:?}"
-    );
-    assert_eq!(
-        dec.buffered(),
-        junk,
-        "seek miss must retain all bytes for a later feed"
-    );
+    for _ in 0..3 {
+        dec.feed(junk);
+        let result = dec.next_fresh();
+        assert!(
+            matches!(result, Err(DecodeIterError::NeedMore)),
+            "missing sentinel must report NeedMore, got {result:?}"
+        );
+        assert_eq!(
+            dec.buffered(),
+            &junk[2..],
+            "seek miss must keep only the bytes that may begin a sentinel"
+        );
+    }
     // --------------------------------------------------
     // once a real packet arrives the junk prefix is skipped and it decodes
     // --------------------------------------------------
@@ -404,13 +411,93 @@ fn decoder_fresh_seek_miss_is_needmore() {
     );
 }
 
+/// A packet behind the 4-byte sentinel `06 0E 2B 34` with a BER packet length
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    sentinel = b"\x06\x0E\x2B\x34",
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decber::ber_length, enc = encber::ber_length),
+)]
+struct Heading {
+    #[klv(key = 0x01, dec = decb::be_u16, enc = *encb::be_u16)]
+    degrees: u16,
+}
+
+#[test]
+/// A sentinel whose BER length overflows `usize` begins no packet: the seek skips it, and
+/// every good packet fed after it decodes
+fn decoder_skips_sentinel_with_invalid_length() {
+    #[rustfmt::skip]
+    let bad = [
+        // sentinel
+        0x06, 0x0E, 0x2B, 0x34,
+        // long-form length of 9 bytes, 2^64
+        0x89, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    ];
+    #[rustfmt::skip]
+    let good = [
+        // sentinel, length 4, degrees = 7
+        0x06, 0x0E, 0x2B, 0x34, 0x04, 0x01, 0x02, 0x00, 0x07,
+        // sentinel, length 4, degrees = 8
+        0x06, 0x0E, 0x2B, 0x34, 0x04, 0x01, 0x02, 0x00, 0x08,
+    ];
+    let mut dec = Heading::decoder();
+    dec.feed(&bad);
+    assert!(dec.next().is_none(), "the bad packet must not decode");
+    dec.feed(&good);
+    let got: Vec<Heading> = dec.iter().collect();
+    assert_eq!(got, [Heading { degrees: 7 }, Heading { degrees: 8 }]);
+    assert!(dec.buffered().is_empty());
+}
+
+/// A packet behind the 4-byte sentinel `06 0E 2B 34` with a two-byte big-endian packet length
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    sentinel = b"\x06\x0E\x2B\x34",
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::be_u16_as_usize, enc = encb::be_u16_from_usize),
+)]
+struct Bearing {
+    #[klv(key = 0x01, dec = decb::be_u16, enc = *encb::be_u16)]
+    degrees: u16,
+}
+
+#[test]
+/// A packet whose fixed-width length is cut between its two bytes waits for the rest: fed one
+/// byte at a time, the packet decodes once, and nothing is left buffered
+fn decoder_waits_for_a_cut_fixed_width_length() {
+    #[rustfmt::skip]
+    let wire = [
+        // sentinel
+        0x06, 0x0E, 0x2B, 0x34,
+        // packet length 5, as two bytes
+        0x00, 0x05,
+        // degrees = 7: key, two-byte length 2, value
+        0x01, 0x00, 0x02, 0x00, 0x07,
+    ];
+    let mut dec = Bearing::decoder();
+    let mut got = Vec::new();
+    for byte in wire {
+        dec.feed(&[byte]);
+        got.extend(dec.iter());
+    }
+    assert_eq!(got, [Bearing { degrees: 7 }]);
+    assert!(dec.buffered().is_empty());
+}
+
 #[test]
 /// `finish()` on a fresh decoder with no bytes and no partial yields an
-/// error naming the first missing required field
+/// error of kind `MissingRequired`, naming the first missing required field
 fn decoder_finish_on_empty() {
     let dec = Sample::decoder();
     let result = dec.finish();
-    assert!(result.is_err());
+    assert_eq!(
+        result.as_ref().err().and_then(DecodeIterError::kind),
+        Some(ErrorKind::MissingRequired),
+        "{result:?}"
+    );
 }
 
 #[test]

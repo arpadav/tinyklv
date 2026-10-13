@@ -8,6 +8,7 @@
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
+mod break_on;
 #[path = "../common/mod.rs"]
 #[expect(dead_code, reason = "a suite uses only part of the shared library")]
 mod common;
@@ -16,7 +17,9 @@ mod default_override;
 mod exact;
 mod exact_stateful;
 mod field_break_on;
+mod fieldless;
 mod implicit;
 mod oneof;
+mod reserve;
 mod skip;
 mod unknown;

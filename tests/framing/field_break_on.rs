@@ -1,13 +1,15 @@
 //! A field's `break_on`, a `fn(&value) -> BreakType` run right after that field's value decodes
 //!
-//! `Skip` discards the value, `Done` keeps it and ends the packet, and `Abort` rejects it, naming
-//! the field. It runs on a value read straight from the input and on one sliced by its length
+//! `Skip` discards the value, `Done` keeps it and ends the packet, and `Abort` rejects it with the
+//! fn's message. It runs on a value read straight from the input and on one sliced by its length.
+//! Encode writes a field with a `break_on` after every other frame
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use crate::common::drive::Drive;
+use crate::common::unknown::{self, Unknown};
 use crate::common::varint;
 use tinyklv::dec::binary as decb;
 use tinyklv::prelude::*;
@@ -144,10 +146,117 @@ impl Report {
     }
 }
 
+/// A log entry's status, a varint on the wire
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Status {
+    /// `0`
+    Clean,
+
+    /// `1`, which ends the log
+    Corrupt,
+}
+
+/// [`Status`] implementation
+impl Status {
+    /// Decodes a status code
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - the input, at the code's varint
+    ///
+    /// # Returns
+    ///
+    /// The status the code names
+    fn decode(input: &mut &[u8]) -> tinyklv::Result<Self> {
+        varint::dec_u32
+            .verify_map(|code| match code {
+                0 => Some(Self::Clean),
+                1 => Some(Self::Corrupt),
+                _ => None,
+            })
+            .parse_next(input)
+    }
+
+    /// Encodes the status code
+    ///
+    /// # Arguments
+    ///
+    /// * `out` - the buffer the code's varint is appended to
+    fn encode(&self, out: &mut Vec<u8>) {
+        let code = match self {
+            Self::Clean => 0,
+            Self::Corrupt => 1,
+        };
+        varint::enc_u32(code, out);
+    }
+
+    /// What a decoded status does to its log
+    ///
+    /// # Returns
+    ///
+    /// `Proceed` for clean, `Done` for corrupt
+    fn ends_log(&self) -> BreakType {
+        match self {
+            Self::Clean => BreakType::Proceed,
+            Self::Corrupt => BreakType::Done,
+        }
+    }
+}
+
+/// A log entry whose status, declared first, ends the decode when corrupt, keeping the frames no
+/// field declares
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    key(dec = varint::dec_u32, enc = varint::enc_u32),
+    len(dec = varint::dec_usize, enc = varint::enc_usize),
+    unknown(dec = unknown::unknown_dec, enc = unknown::unknown_enc),
+)]
+struct Log {
+    /// key 0x1A
+    #[klv(
+        key = 0x1A,
+        dec = Status::decode,
+        enc = Status::encode,
+        break_on = Status::ends_log,
+    )]
+    status: Status,
+
+    /// key 0x38
+    #[klv(key = 0x38, dec = varint::dec_u32, enc = *varint::enc_u32)]
+    count: u32,
+
+    /// every other frame, keyed by its tag
+    #[klv(unknown)]
+    extra: Vec<(u32, Unknown)>,
+}
+
+/// A field with a `break_on` is encoded after every other frame, though declared first, so the
+/// decode its `Done` ends has read them all: a corrupt log round-trips with its count and the
+/// frame it kept
+#[test]
+fn a_field_with_a_break_on_is_encoded_last() {
+    let log = Log {
+        status: Status::Corrupt,
+        count: 13,
+        extra: vec![(0x40, Unknown::Varint(5))],
+    };
+    #[rustfmt::skip]
+    let wire = [
+        // count = 13
+        0x38, 0x01, 0x0D,
+        // a kept frame: tag 0x40, varint 5
+        0x40, 0x05,
+        // status = corrupt, which ends the decode
+        0x1A, 0x01, 0x01,
+    ];
+    assert_eq!(log.encoded(), wire);
+    log.assert_stops_at(&wire, wire.len());
+}
+
 /// A field's `break_on` decides each value it decodes, in both drivers and at every chunk split:
 /// `Skip` drops a degraded health and keeps the one before it, `Done` keeps the checksum and
-/// leaves the frames after it unread, and `Abort` rejects a corrupt health naming the field, then
-/// (one-shot) the fn's message
+/// leaves the frames after it unread, and `Abort` rejects a corrupt health with the fn's message,
+/// after (one-shot) a label naming the field
 #[test]
 fn a_fields_break_on_skips_ends_or_rejects_its_value() {
     // --------------------------------------------------
@@ -174,6 +283,12 @@ fn a_fields_break_on_skips_ends_or_rejects_its_value() {
     // Abort
     // --------------------------------------------------
     let rejected = [Report::NOMINAL, Report::CORRUPT].concat();
-    Report::assert_rejects_naming(&rejected, &["`Report::health` value", "returned `Abort`"]);
+    for at in 0..=rejected.len() {
+        let (outcome, _) = Report::stream_split(&rejected, at);
+        assert!(
+            matches!(outcome, Err("sensor reported corrupt")),
+            "split at {at}: {outcome:?}",
+        );
+    }
     Report::assert_oneshot_label_chain(&rejected, "Report::health", "sensor reported corrupt");
 }

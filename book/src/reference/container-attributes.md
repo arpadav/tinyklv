@@ -10,10 +10,11 @@ and a minimal snippet showing the attribute in context.
 #[klv(stream = &[u8])]
 ```
 
-Names the input type that every codec in this container consumes. Any
-`winnow::Stream` type works. Defaults to `&[u8]` and is usually written
-only for clarity, or when the stream is something else (for example,
-`&str` for text-based KLV dialects, or a custom buffered-reader type).
+Names the input type `S` the codecs read, any `winnow::Stream`. Defaults to
+`&[u8]` and is usually written only for clarity, or for `&str` text-based KLV
+dialects. Under `keylen(..)` a value decoder is handed `S` for an `Inline`
+frame and `S::Slice` for a `Sliced` one, so on a stream whose `Slice` is
+another type it must take both.
 
 ## `sentinel = <elements of stream>`
 
@@ -23,10 +24,8 @@ only for clarity, or when the stream is something else (for example,
 
 Declares the magic bytes that mark the start of a frame. Adding a sentinel
 causes the derive to implement `SeekSentinel` and, via a blanket impl,
-`DecodeFrame`. Without a sentinel, only `DecodeValue` is produced.
-
-Usually, since stream defaults to `&[u8]`, a byte-string is used here. However,
-if the stream is `&str` then a `&'static str` can be used.
+`DecodeFrame`. It is a byte string searched for in the input's bytes, so on a
+`&str` stream it is a compile error.
 
 ## `break_on = <key literal | path>`
 
@@ -60,11 +59,11 @@ support; either half can be omitted to stay unimplemented.
 #[klv(len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)))]
 ```
 
-The decoded length value is always `usize`; `dec` must output a `usize` and `enc`
-must accept a `usize`. Use the `_as_usize` / `_from_usize` helpers from `decb` /
-`encb`. `len(size(exact = N))` declares a fixed-width `N`-byte length prefix.
-A `len(..)` with no `exact` uses the variable-width length path, which
-is the path used by BER-style length codecs.
+The length is a `usize`, which `dec` outputs and `enc` accepts: use the
+`_as_usize` / `_from_usize` helpers from `decb` / `encb`. `len(size(exact = N))`
+declares an `N`-byte slot, back-filled after a value of unknown width, so `enc`
+must write `N` bytes; a release build does not check. A `len(..)` with no
+`exact` is variable-width, for BER-style codecs.
 
 ## `keylen(dec = ..., enc = ...)`
 
@@ -134,8 +133,9 @@ separate error-path logging and are not controlled by this flag.
 ```
 
 Makes the generated `decode_value` return an error when it encounters a key
-it does not have a field for. Without it, unknown keys are skipped silently
-for forward compatibility, or decoded by `unknown(..)`.
+it does not have a field for. Without it, an unknown key is decoded by
+`unknown(..)` if given, else skipped, but a `keylen` `Inline` one ends the
+decode.
 
 ## `unknown(dec = ..., enc = ...)`
 
@@ -164,8 +164,9 @@ is required only beside that field. Without it, a `keylen` struct skips a
 #[klv(allow_unimplemented_encode)]
 ```
 
-Opts out of the encoder half of the derive. `EncodeValue` / `EncodeFrame`
-are not emitted. Useful for decode-only consumers of a third-party spec.
+Lets an encoder be missing, and then `EncodeValue` / `EncodeFrame` are not
+emitted; with every encoder given, they still are. Useful for decode-only
+consumers of a third-party spec.
 
 ## `allow_unimplemented_decode`
 
@@ -173,8 +174,8 @@ are not emitted. Useful for decode-only consumers of a third-party spec.
 #[klv(allow_unimplemented_decode)]
 ```
 
-Symmetric counterpart: opts out of `DecodeValue` / `DecodeFrame`. Use when
-the struct is an emitter-only producer.
+Symmetric counterpart for decoders and the decode impls. Use when the struct
+is an emitter-only producer.
 
 ## `trait_fallback`
 

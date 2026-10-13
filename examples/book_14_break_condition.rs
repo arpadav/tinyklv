@@ -5,13 +5,14 @@
 //!
 //! Demonstrates the `#[klv(break_on = ..)]` container attribute, which lets a
 //! derived decoder control its key-dispatch loop. The break expression is a
-//! function `fn(key, len) -> BreakType` (a key literal is also accepted as a
-//! shorthand for "stop on this key"). Here a reserved key (`0xFE`) is silently
-//! skipped, and a terminator key (`0xFF`) stops parsing before the junk bytes
-//! that follow. Both encode and decode come from the single derive
+//! function `fn(&key, &mut input) -> BreakType` (a key literal is also accepted
+//! as a shorthand for "stop on this key"). Here a reserved key (`0xFE`) is
+//! silently skipped, and a terminator key (`0xFF`) stops parsing before the junk
+//! bytes that follow. Both encode and decode come from the single derive
 use tinyklv::prelude::*;            // Klv proc-macro + traits + BreakType
 use tinyklv::dec::binary as decb;   // binary decoders
 use tinyklv::enc::binary as encb;   // binary encoders
+use winnow::binary::length_take;    // a length, then that many bytes
 
 /// Wire keys in use
 const KEY_RESERVED:   u8 = 0xFE;    // consume-and-skip
@@ -38,11 +39,14 @@ struct Heartbeat {
 }
 
 /// Classify each decoded key into a loop-control outcome. `break_on = classify`
-/// wires this into the generated decode loop: it runs after every key/len read,
-/// before the field is dispatched
-fn classify(key: u8, _len: usize) -> BreakType {
-    match key {
-        KEY_RESERVED   => BreakType::Skip,
+/// wires this into the generated decode loop: it runs right after every key,
+/// with the input after it. A skipped frame's length and value are read here
+fn classify(key: &u8, input: &mut &[u8]) -> BreakType {
+    match *key {
+        KEY_RESERVED => match length_take(decb::u8_as_usize).parse_next(input) {
+            Ok(_)  => BreakType::Skip,
+            Err(_) => BreakType::Proceed,
+        },
         KEY_TERMINATOR => BreakType::Done,
         _              => BreakType::Proceed,
     }

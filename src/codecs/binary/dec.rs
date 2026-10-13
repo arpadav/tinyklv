@@ -33,7 +33,7 @@ macro_rules! wrap {
         #[doc = ""]
         #[doc = " A single sized read + `from_be_bytes` (one bounds check, one load + byte-swap), rather"]
         #[doc = " than winnow's runtime-bounded shift/add integer loop. On insufficient input it returns the"]
-        #[doc = " same `take`-style backtrack error and leaves the cursor unadvanced"]
+        #[doc = " same `take`-style backtrack error and leaves the cursor at the end of the input"]
         #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
@@ -44,7 +44,9 @@ macro_rules! wrap {
         #[doc = " ```"]
         pub fn [<be_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
             const N: usize = ::core::mem::size_of::<$ty>();
-            let bytes = take(N).parse_next(input)?;
+            let bytes = take(N).parse_next(input).inspect_err(|_| {
+                let _ = input.finish();
+            })?;
             // SAFETY: `take(N)` yielded a slice of exactly `N` bytes, so reading `[u8; N]` from its
             // start is in-bounds; `u8` has alignment 1, so the pointer is always aligned for `[u8; N]`.
             let array = unsafe { *bytes.as_ptr().cast::<[u8; N]>() };
@@ -56,7 +58,7 @@ macro_rules! wrap {
         #[doc = ""]
         #[doc = " A single sized read + `from_le_bytes` (one bounds check, one load), rather than winnow's"]
         #[doc = " runtime-bounded shift/add integer loop. On insufficient input it returns the same"]
-        #[doc = " `take`-style backtrack error and leaves the cursor unadvanced"]
+        #[doc = " `take`-style backtrack error and leaves the cursor at the end of the input"]
         #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
@@ -67,7 +69,9 @@ macro_rules! wrap {
         #[doc = " ```"]
         pub fn [<le_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
             const N: usize = ::core::mem::size_of::<$ty>();
-            let bytes = take(N).parse_next(input)?;
+            let bytes = take(N).parse_next(input).inspect_err(|_| {
+                let _ = input.finish();
+            })?;
             // SAFETY: as for `be_` above - `take(N)` guarantees exactly `N` bytes and `u8` is align-1.
             let array = unsafe { *bytes.as_ptr().cast::<[u8; N]>() };
             Ok($ty::from_le_bytes(array))
@@ -82,7 +86,7 @@ macro_rules! wrap {
         #[doc = ""]
         #[doc = " A single sized read + `from_be_bytes` (one bounds check, one load + byte-swap), rather"]
         #[doc = " than winnow's runtime-bounded shift/add integer loop. On insufficient input it returns the"]
-        #[doc = " same `take`-style backtrack error and leaves the cursor unadvanced"]
+        #[doc = " same `take`-style backtrack error and leaves the cursor at the end of the input"]
         #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
@@ -93,7 +97,9 @@ macro_rules! wrap {
         #[doc = " ```"]
         pub fn [<be_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
             const N: usize = ::core::mem::size_of::<$ty>();
-            let bytes = take(N).parse_next(input)?;
+            let bytes = take(N).parse_next(input).inspect_err(|_| {
+                let _ = input.finish();
+            })?;
             let array = <[u8; N]>::try_from(bytes).expect("take(N) yields exactly N bytes");
             Ok($ty::from_be_bytes(array))
         }
@@ -103,7 +109,7 @@ macro_rules! wrap {
         #[doc = ""]
         #[doc = " A single sized read + `from_le_bytes` (one bounds check, one load), rather than winnow's"]
         #[doc = " runtime-bounded shift/add integer loop. On insufficient input it returns the same"]
-        #[doc = " `take`-style backtrack error and leaves the cursor unadvanced"]
+        #[doc = " `take`-style backtrack error and leaves the cursor at the end of the input"]
         #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
@@ -114,7 +120,9 @@ macro_rules! wrap {
         #[doc = " ```"]
         pub fn [<le_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
             const N: usize = ::core::mem::size_of::<$ty>();
-            let bytes = take(N).parse_next(input)?;
+            let bytes = take(N).parse_next(input).inspect_err(|_| {
+                let _ = input.finish();
+            })?;
             let array = <[u8; N]>::try_from(bytes).expect("take(N) yields exactly N bytes");
             Ok($ty::from_le_bytes(array))
         }
@@ -125,6 +133,8 @@ macro_rules! wrap_native {
         #[inline] // not always inline: thin winnow::binary delegation; the optimizer inlines the small wrapper, no need to force it across crate boundaries
         #[doc = concat!(" Wrapper for [`winnow::binary::", stringify!($ty), "`] with implied native-endianness generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
+        #[doc = " On insufficient input it leaves the cursor at the end of the input"]
+        #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
         #[doc = " ```"]
@@ -133,7 +143,11 @@ macro_rules! wrap_native {
         #[doc = concat!(" assert_eq!(result, Ok(1 as ", stringify!($ty), "));")]
         #[doc = " ```"]
         pub fn [<$ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
-            winnow::binary::$ty(winnow::binary::Endianness::Native).parse_next(input)
+            winnow::binary::$ty(winnow::binary::Endianness::Native)
+                .parse_next(input)
+                .inspect_err(|_| {
+                    let _ = input.finish();
+                })
         }
     }};
 

@@ -1,0 +1,8 @@
+error: Duplicate `key` field.
+       Currently only one key per field is supported.
+  --> tests/ui/fail/oneof/second_key.rs:15:5
+   |
+15 | /     #[klv(key = oneof(0x01 => Payload::Count(u8)))]
+16 | |     #[klv(key = 0x02)]
+17 | |     payload: Option<Payload>,
+   | |____________________________^

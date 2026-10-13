@@ -4,9 +4,9 @@
 //! floating-point types: `le_u16`/`le_i16`, `le_u32`/`le_i32`,
 //! `le_u64`/`le_i64`, `le_u128`/`le_i128`, `le_f32`, and `le_f64`. Includes
 //! byte-order assertions (low byte first), roundtrips across boundary values,
-//! short-input error cases, cursor non-advancement on failure, BE-vs-LE
-//! comparison tests, and float special values (NaN, inf, `E`). Also re-tests
-//! the single-byte `u8`/`i8` codecs for completeness
+//! short-input error cases, the cursor at the end of the input on a short
+//! read, BE-vs-LE comparison tests, and float special values (NaN, inf, `E`).
+//! Also re-tests the single-byte `u8`/`i8` codecs for completeness
 //!
 //! Author: aav
 #[test]
@@ -290,10 +290,13 @@ fn le_short_input_errors() {
 }
 
 #[test]
-/// A failed little-endian fixed-width decode must NOT advance the cursor
-fn le_short_input_does_not_advance_cursor() {
+/// A short little-endian fixed-width decode leaves the cursor at the end of the input
+fn le_short_input_leaves_cursor_at_end() {
     let buf = [0x01, 0x02, 0x03];
     let mut input: &[u8] = &buf;
     assert!(tinyklv::dec::binary::le_u32(&mut input).is_err());
-    assert_eq!(input.len(), 3, "cursor advanced on a failed le_u32");
+    assert!(
+        input.is_empty(),
+        "cursor not at the end after a short le_u32"
+    );
 }

@@ -51,6 +51,9 @@ pub(crate) enum SizeBytes {
 }
 /// [`SizeBytes`] implementation
 impl SizeBytes {
+    /// The most bytes a `Vec<u8>` holds; the encode reserves a byte count, which panics past it
+    const MAX: usize = isize::MAX.unsigned_abs();
+
     /// Resolves the byte count from the `exact = N` and `reserve = N` items of one `size(..)` list
     ///
     /// The mutually-exclusive `exact`⊕`reserve` is rejected here as a post-validation step,
@@ -64,21 +67,43 @@ impl SizeBytes {
     ///
     /// # Errors
     ///
-    /// Both items written (spanned at `reserve`), or a literal that does not parse as a `usize`
+    /// Both items written (spanned at `reserve`), or a literal that is not a `usize` of at most
+    /// [`Self::MAX`]
     fn from_items(exact: Option<syn::LitInt>, reserve: Option<syn::LitInt>) -> syn::Result<Self> {
         match (exact, reserve) {
             (Some(_), Some(r)) => Err(syn::Error::new_spanned(r, err!(SizeExactReserveConflict))),
             (Some(lit), None) => Ok(Self::Exact {
-                width: lit.base10_parse()?,
+                width: Self::count(&lit, symbol::EXACT)?,
                 lit,
             }),
-            (None, Some(r)) => r.base10_parse().map(Self::Reserve),
+            (None, Some(r)) => Self::count(&r, symbol::RESERVE).map(Self::Reserve),
             (None, None) => Ok(Self::Unset),
         }
     }
 
+    /// Parses the `N` of an `exact = N` or a `reserve = N`
+    ///
+    /// # Arguments
+    ///
+    /// * `lit` - `N` as written
+    /// * `keyword` - `exact` or `reserve`, which an error names
+    ///
+    /// # Errors
+    ///
+    /// A literal that does not parse as a `usize`, or is more than [`Self::MAX`]
+    fn count(lit: &syn::LitInt, keyword: symbol::Symbol) -> syn::Result<usize> {
+        let bytes = lit.base10_parse()?;
+        if bytes > Self::MAX {
+            return Err(syn::Error::new_spanned(
+                lit,
+                err!(SizeTooLarge(keyword, lit)),
+            ));
+        }
+        Ok(bytes)
+    }
+
     /// The exact wire width this declares and the literal it is written as, if any (`exact = N`)
-    fn exact(&self) -> Option<(usize, &syn::LitInt)> {
+    pub(super) fn exact(&self) -> Option<(usize, &syn::LitInt)> {
         match self {
             Self::Exact { width, lit } => Some((*width, lit)),
             Self::Unset | Self::Reserve(_) => None,

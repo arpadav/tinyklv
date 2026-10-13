@@ -25,7 +25,7 @@ pub mod enc;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::prelude::*;
+use crate::{ErrorKind, prelude::*};
 
 // --------------------------------------------------
 // external
@@ -33,10 +33,7 @@ use crate::prelude::*;
 use num_traits::{
     AsPrimitive, FromPrimitive, ToBytes, ToPrimitive, Unsigned, bounds::UpperBounded,
 };
-use winnow::{
-    stream::Stream,
-    token::{take, take_while},
-};
+use winnow::stream::Stream;
 
 // --------------------------------------------------
 // constants
@@ -47,8 +44,17 @@ const BER_LENGTH_LABEL: &str = "BER length value";
 /// The `StrContext::Label` naming a [`BerOid`] value in its decode errors
 const BER_OID_LABEL: &str = "BER-OID value";
 
+/// The `StrContext::Label` of a [`BerOid`] run that runs out of bytes before its terminator
+const OID_TERMINATOR: &str = "BER-OID missing terminator byte (MSB unset) at end of input";
+
 /// What a decoded BER value that overflows the target integer type was expected to be
 const FITS_TARGET: &str = "a value that fits the target integer type";
+
+/// What a BER length whose first byte is `0x80`, the indefinite form, was expected to be
+const DEFINITE_FORM: &str = "a definite-form length";
+
+/// What a BER length that runs out of bytes was expected to have
+const LENGTH_BYTES: &str = "enough bytes in stream for length encoding";
 
 /// The value bits one BER-OID byte carries, below its continuation bit
 const OID_GROUP_BITS: usize = 7;
@@ -77,6 +83,7 @@ mod private {
 /// integers `u8`..=`u128` and `usize`, and cannot be implemented downstream
 pub trait OfBerCommon:
     Copy
+    + From<u8>
     + ToBytes
     + Unsigned
     + UpperBounded
@@ -89,6 +96,7 @@ pub trait OfBerCommon:
 }
 impl<T> OfBerCommon for T where
     T: Copy
+        + From<u8>
         + ToBytes
         + Unsigned
         + UpperBounded
@@ -101,7 +109,11 @@ impl<T> OfBerCommon for T where
 }
 
 #[derive(Debug, PartialEq)]
-/// Enum representing Basic-Encoding-Rules (BER) Length Encoding
+/// Struct representing Basic-Encoding-Rules (BER) Length Encoding
+///
+/// The form follows from the length: below 128 the short form, the length in one byte; else the
+/// long form, `0x80 | num_bytes`, then the length in `num_bytes` big-endian bytes, leading zeros
+/// stripped
 ///
 /// Maximum precision: [`u128`]
 ///
@@ -119,71 +131,40 @@ impl<T> OfBerCommon for T where
 /// assert_eq!(vec![128 + 3, 129, 182, 2], v);
 /// assert_eq!(BerLength::new(8_500_738_u32), BerLength::decode_value(&mut &vec![128 + 3, 129, 182, 2][..]).unwrap());
 /// ```
-pub enum BerLength<T: OfBerCommon> {
-    /// The short form: a length of `0..=127` in a single byte
-    Short(u8),
-    /// The long form: the length as a `T`, written as `0x80 | num_bytes` then `num_bytes`
-    /// big-endian bytes
-    Long(T),
+pub struct BerLength<T: OfBerCommon> {
+    value: T,
 }
 /// [`BerLength`] implementation
 impl<T: OfBerCommon> BerLength<T> {
-    #[inline(always)]
-    /// Returns `true` when `val` can be represented in BER short form
+    /// Wraps an unsigned integer length in a [`BerLength`]
     ///
-    /// BER short form requires the value to be strictly less than 128 (0x80),
-    /// so that the single length byte has its MSB clear. Values >= 128 must
-    /// use long form encoding
-    fn can_be_short(val: &T) -> bool {
-        #![allow(
-            clippy::expect_used,
-            reason = "converting 128 -> u{8,16,32,64,128} should always be permissible, why did this panic?"
-        )]
-        val < &T::from_u8(0x80).expect(
-            "converting 128 -> u{8,16,32,64,128} should always be permissible, why did this panic?",
-        )
-    }
-
-    /// Creates a new [`BerLength`] from an unsigned integer, choosing the correct BER form
-    ///
-    /// Inspects `len` against the short-form threshold (< 128). Values that fit
-    /// in short form are stored as [`BerLength::Short`]; all others as
-    /// [`BerLength::Long`]. This is the canonical constructor used by both
-    /// [`BerLength::encode_value`] and the [`crate::traits::EncodeValue`] impl
+    /// This is the canonical constructor used by both [`BerLength::encode_value`] and the
+    /// [`crate::traits::DecodeValue`] impl. The length is stored verbatim; its form is chosen
+    /// when it is encoded
     ///
     /// # Arguments
     ///
     /// * `len` - The unsigned integer length to wrap
-    ///
-    /// # Returns
-    ///
-    /// A [`BerLength`] in either `Short` or `Long` variant depending on the magnitude of `len`
     ///
     /// # Example
     ///
     /// ```rust
     /// use tinyklv::codecs::ber::BerLength;
     ///
-    /// assert!(matches!(BerLength::new(47_u32), BerLength::Short(47)));
-    /// assert!(matches!(BerLength::new(200_u32), BerLength::Long(200)));
+    /// let length = BerLength::new(200_u32);
+    /// assert_eq!(length.value(), 200_u32);
     /// ```
-    ///
-    /// # Safety
-    ///
-    /// Uses `expect` internally when converting the value to `u8` for short form;
-    /// this cannot panic because the value is verified to be < 128 before the cast,
-    /// which is always representable as `u8`
     pub fn new(len: T) -> Self {
-        if Self::can_be_short(&len) {
-            #[allow(
-                clippy::expect_used,
-                reason = "if unsigned int is less than 128, then it can always fit into u8, why did this panic?"
-            )]
-            let short = len.to_u8().expect("if unsigned int is less than 128, then it can always fit into u8, why did this panic?");
-            BerLength::Short(short)
-        } else {
-            BerLength::Long(len)
-        }
+        Self { value: len }
+    }
+
+    /// Returns the wrapped length by copy
+    ///
+    /// Since `T: OfBerCommon` implies `Copy`, this returns the length without
+    /// moving or cloning
+    #[must_use]
+    pub fn value(&self) -> T {
+        self.value
     }
 
     /// Convenience static entry point: constructs a [`BerLength`] and immediately encodes it
@@ -212,14 +193,9 @@ impl<T: OfBerCommon> BerLength<T> {
         crate::EncodeValue::encode_value(&Self::new(len), out);
     }
 
-    /// Returns the wrapped length value as a [`u128`], regardless of which BER form was used
-    ///
-    /// Both `Short` and `Long` variants are widened to [`u128`] without loss
+    /// Returns the wrapped length widened to a [`u128`], without loss
     pub fn as_u128(&self) -> u128 {
-        match self {
-            BerLength::Short(len) => u128::from(*len),
-            BerLength::Long(len) => len.as_(),
-        }
+        self.value.as_()
     }
 }
 /// [`BerLength`] implementation of [`EncodeValue`]
@@ -250,34 +226,25 @@ impl<T: OfBerCommon> crate::EncodeValue for BerLength<T> {
     /// assert_eq!(buf, vec![128 + 1, 201]);
     /// ```
     fn encode_value(&self, out: &mut Vec<u8>) {
-        match self {
-            BerLength::Short(len) => out.push(*len),
-            BerLength::Long(len) => {
-                // --------------------------------------------------
-                // unreachable: new() routes values < 128 to Short; defensive re-check
-                // --------------------------------------------------
-                if Self::can_be_short(len) {
-                    #[allow(
-                        clippy::expect_used,
-                        reason = "if unsigned int is less than 128, then it can always fit into u8, why did this panic?"
-                    )]
-                    out.push(len.to_u8().expect("if unsigned int is less than 128, then it can always fit into u8, why did this panic?"));
-                    return;
-                }
-                // --------------------------------------------------
-                // count significant big-endian bytes (strip leading zeros)
-                // --------------------------------------------------
-                let be = len.to_be_bytes();
-                let bytes = be.as_ref();
-                let leading_zeros = bytes.iter().take_while(|&&b| b == 0).count();
-                let significant = bytes.len() - leading_zeros;
-                // --------------------------------------------------
-                // prefix byte with MSB set to 1, followed by the significant length bytes
-                // --------------------------------------------------
-                out.push(0b1000_0000 | (significant as u8));
-                out.extend(bytes.iter().skip(leading_zeros).copied());
-            }
+        // --------------------------------------------------
+        // short form: a length below 128 in one byte, its MSB clear
+        // --------------------------------------------------
+        if let Some(short @ 0..0x80) = self.value.to_u8() {
+            out.push(short);
+            return;
         }
+        // --------------------------------------------------
+        // count significant big-endian bytes (strip leading zeros)
+        // --------------------------------------------------
+        let be = self.value.to_be_bytes();
+        let bytes = be.as_ref();
+        let leading_zeros = bytes.iter().take_while(|&&b| b == 0).count();
+        let significant = bytes.len() - leading_zeros;
+        // --------------------------------------------------
+        // prefix byte with MSB set to 1, followed by the significant length bytes
+        // --------------------------------------------------
+        out.push(0b1000_0000 | (significant as u8));
+        out.extend(bytes.iter().skip(leading_zeros).copied());
     }
 }
 /// [`BerLength`] implementation of [`crate::traits::DecodeValue`]
@@ -289,6 +256,13 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerLength<T> {
     /// - Runs out of bytes: the cursor is left at the end of the input
     /// - The value does not fit `T`: the cursor is rewound to where it started. A long form may
     ///   carry more length bytes than `T` is wide, provided the leading ones are zero
+    /// - The first byte is `0x80`, BER's indefinite form: the cursor is rewound to where it
+    ///   started
+    ///
+    /// Running out of bytes is [`crate::ErrorKind::Truncated`], the others
+    /// [`crate::ErrorKind::MalformedValue`]
+    ///
+    /// A long form is read whatever its byte count, so `[0x81, 0x05]` reads as `[0x05]` does
     ///
     /// # Example
     ///
@@ -309,46 +283,66 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerLength<T> {
         // --------------------------------------------------
         // err if no bytes
         // --------------------------------------------------
-        let first_byte = take_one(input)?;
-        #[allow(
-            clippy::indexing_slicing,
-            reason = "take_one yields a slice of exactly one byte, so [0] is always in-bounds"
-        )]
-        let first_byte = first_byte[0];
+        let Some((&first_byte, rest)) = input.split_first() else {
+            return Err(value_error(
+                input,
+                &checkpoint,
+                BER_LENGTH_LABEL,
+                LENGTH_BYTES,
+                ErrorKind::Truncated,
+            ));
+        };
         // --------------------------------------------------
         // if MSB is not set, it's a short length (single byte)
         // --------------------------------------------------
         if first_byte & 0x80 == 0 {
-            return Ok(BerLength::Short(first_byte));
+            *input = rest;
+            return Ok(Self::new(T::from(first_byte)));
         }
         // --------------------------------------------------
         // extract the number of bytes used for length encoding
         // --------------------------------------------------
         let num_bytes = usize::from(first_byte & 0x7F);
         // --------------------------------------------------
-        // ensure there are enough bytes in the stream
-        // since 1 was taken from input, this should be
-        // `input.len() + 1 < num_bytes + 1`, which can
-        // be simplified to below:
+        // `0x80` alone is BER's indefinite form, which carries no length
         // --------------------------------------------------
-        if input.len() < num_bytes {
+        if num_bytes == 0 {
+            return Err(value_error(
+                input,
+                &checkpoint,
+                BER_LENGTH_LABEL,
+                DEFINITE_FORM,
+                ErrorKind::MalformedValue,
+            ));
+        }
+        // --------------------------------------------------
+        // ensure there are enough bytes in the stream
+        // --------------------------------------------------
+        let Some((bytes, rest)) = rest.split_at_checked(num_bytes) else {
             // consumed to the end, so a caller classes a split long form as truncation
             let _ = input.finish();
             return Err(value_error(
                 input,
                 &checkpoint,
                 BER_LENGTH_LABEL,
-                "enough bytes in stream for length encoding",
+                LENGTH_BYTES,
+                ErrorKind::Truncated,
             ));
-        }
+        };
         // --------------------------------------------------
-        // decode the length from the specified number of bytes
+        // decode the length from its last `size_of::<T>()` bytes, which
+        // always fit `T`; any bytes ahead of them must be zero
         // --------------------------------------------------
-        let bytes: &[u8] = take(num_bytes).parse_next(input)?;
-        let Some(output) = fold_be_digits(bytes.iter().copied(), 8).and_then(T::from_u128) else {
+        let (lead, tail) = bytes.split_at(bytes.len().saturating_sub(size_of::<T>()));
+        let folded = tail
+            .iter()
+            .fold(0u128, |acc, &byte| (acc << u8::BITS) | u128::from(byte));
+        let Some(output) = T::from_u128(folded).filter(|_| lead.iter().all(|&byte| byte == 0))
+        else {
             return Err(overflow_error(input, &checkpoint, BER_LENGTH_LABEL));
         };
-        Ok(BerLength::Long(output))
+        *input = rest;
+        Ok(Self::new(output))
     }
 }
 
@@ -455,6 +449,13 @@ impl<T: OfBerCommon> crate::EncodeValue for BerOid<T> {
         // --------------------------------------------------
         let start = out.len();
         let mut value = self.value.as_();
+        // --------------------------------------------------
+        // the loop writes no group for 0, whose one group is `00`
+        // --------------------------------------------------
+        if value == 0 {
+            out.push(0);
+            return;
+        }
         let mut first_byte = true;
         while value > 0 {
             // --------------------------------------------------
@@ -485,6 +486,9 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerOid<T> {
     ///   most `ceil(bits(T) / 7)` bytes, leading `0x80` padding included, so a run whose byte at
     ///   that position is still a continuation byte is rejected there, without reading further
     ///
+    /// Running out of bytes is [`crate::ErrorKind::Truncated`], the other
+    /// [`crate::ErrorKind::MalformedValue`]
+    ///
     /// # Example
     ///
     /// ```
@@ -507,47 +511,59 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerOid<T> {
         // most ceil(bits(T) / OID_GROUP_BITS) bytes, terminator included
         // --------------------------------------------------
         let max_bytes = (size_of::<T>() * 8).div_ceil(OID_GROUP_BITS);
-        let prefix: &[u8] = take_while(0..max_bytes, msb_is_set)
-            .context(winnow::error::StrContext::Label(
-                "BER-OID continuation bytes",
-            ))
-            .parse_next(input)?;
-        let terminator = winnow::binary::be_u8
-            .context(winnow::error::StrContext::Label(
-                "BER-OID missing terminator byte (MSB unset) at end of input",
-            ))
-            .parse_next(input)?;
+        let radix = T::from(OID_GROUP_MASK) + T::one();
+        let mut rest = *input;
+        let mut output = T::zero();
         // --------------------------------------------------
-        // a continuation byte where the terminator must be: the run
-        // is longer than `T` can hold
+        // fewer than `max_bytes` groups always fit `T`
         // --------------------------------------------------
-        if msb_is_set(terminator) {
-            return Err(overflow_error(input, &checkpoint, BER_OID_LABEL));
+        for _ in 1..max_bytes {
+            let Some((&byte, tail)) = rest.split_first() else {
+                return Err(truncated_run_error(input, &checkpoint));
+            };
+            output = output * radix + T::from(byte & OID_GROUP_MASK);
+            rest = tail;
+            if !msb_is_set(byte) {
+                *input = rest;
+                return Ok(BerOid::new(output));
+            }
         }
         // --------------------------------------------------
-        // accumulate one group per byte, prefix first then terminator
+        // byte `max_bytes` must end the run, and `T` must have room
+        // for one more group
         // --------------------------------------------------
-        let groups = prefix
-            .iter()
-            .copied()
-            .chain(std::iter::once(terminator))
-            .map(|b| b & OID_GROUP_MASK);
-        let Some(output) = fold_be_digits(groups, OID_GROUP_BITS).and_then(T::from_u128) else {
-            return Err(overflow_error(input, &checkpoint, BER_OID_LABEL));
+        let Some((&byte, tail)) = rest.split_first() else {
+            return Err(truncated_run_error(input, &checkpoint));
         };
-        Ok(BerOid::new(output))
+        if msb_is_set(byte) || output > T::max_value() / radix {
+            return Err(overflow_error(input, &checkpoint, BER_OID_LABEL));
+        }
+        *input = tail;
+        Ok(BerOid::new(output * radix + T::from(byte & OID_GROUP_MASK)))
     }
 }
 
-#[inline(always)]
-/// Consumes exactly one byte from the input and returns it as a 1-element slice
+/// Moves `input` to its end and builds the error for a [`BerOid`] run that runs out of bytes
+/// before its terminator
 ///
-/// Used at the start of the [`BerLength`] decoder to read the first byte before
-/// branching on short vs long form
+/// # Arguments
 ///
-/// Returns an error if the stream is empty
-fn take_one<'s>(input: &mut &'s [u8]) -> crate::Result<&'s [u8]> {
-    take(1usize).parse_next(input)
+/// * `input` - The input, consumed to the end so a caller classes a split run as truncation
+/// * `checkpoint` - The start of the value
+///
+/// # Returns
+///
+/// A [`winnow::error::ContextError`] labelled [`OID_TERMINATOR`], of kind
+/// [`ErrorKind::Truncated`]
+// `cold` keeps the error out of `BerOid`'s decode loop, which then spills fewer registers
+#[cold]
+fn truncated_run_error<I: Stream>(
+    input: &mut I,
+    checkpoint: &I::Checkpoint,
+) -> winnow::error::ContextError {
+    let _ = input.finish();
+    let err = crate::__export::labeled_error(input, checkpoint, OID_TERMINATOR);
+    crate::__export::with_kind(err, ErrorKind::Truncated)
 }
 
 /// Rewinds `input` to `checkpoint` and builds the error for a decoded value that overflows the
@@ -562,14 +578,21 @@ fn take_one<'s>(input: &mut &'s [u8]) -> crate::Result<&'s [u8]> {
 ///
 /// # Returns
 ///
-/// A [`winnow::error::ContextError`] labelled `label`, expecting [`FITS_TARGET`]
+/// A [`winnow::error::ContextError`] labelled `label`, expecting [`FITS_TARGET`], of kind
+/// [`ErrorKind::MalformedValue`]
 fn overflow_error<I: Stream>(
     input: &mut I,
     checkpoint: &I::Checkpoint,
     label: &'static str,
 ) -> winnow::error::ContextError {
     input.reset(checkpoint);
-    value_error(input, checkpoint, label, FITS_TARGET)
+    value_error(
+        input,
+        checkpoint,
+        label,
+        FITS_TARGET,
+        ErrorKind::MalformedValue,
+    )
 }
 
 /// Builds the error for a BER value that failed to decode
@@ -580,52 +603,30 @@ fn overflow_error<I: Stream>(
 /// * `checkpoint` - The start of the value
 /// * `label` - The `StrContext::Label` naming the value
 /// * `expected` - The `StrContext::Expected` description of what the value had to be
+/// * `kind` - What the failure is
 ///
 /// # Returns
 ///
-/// A [`winnow::error::ContextError`] labelled `label`, expecting `expected`
+/// A [`winnow::error::ContextError`] labelled `label`, expecting `expected`, of kind `kind`
 fn value_error<I: Stream>(
     input: &I,
     checkpoint: &I::Checkpoint,
     label: &'static str,
     expected: &'static str,
+    kind: ErrorKind,
 ) -> winnow::error::ContextError {
-    crate::__export::labeled_error(input, checkpoint, label).add_context(
+    let err = crate::__export::labeled_error(input, checkpoint, label).add_context(
         input,
         checkpoint,
         winnow::error::StrContext::Expected(winnow::error::StrContextValue::Description(expected)),
-    )
+    );
+    crate::__export::with_kind(err, kind)
 }
 
 #[inline(always)]
 /// Returns `true` when the most-significant bit of `b` is set (i.e. `b >= 0x80`)
 ///
-/// Used as the predicate for `take_while` in [`BerOid`]'s decoder to collect
-/// all continuation bytes before the final terminator byte
+/// [`BerOid`]'s decoder reads a run's bytes until one has it clear, the run's terminator
 fn msb_is_set(b: u8) -> bool {
     (b & OID_CONTINUATION_BIT) != 0
-}
-
-/// Combines big-endian digits of `bits` bits each into a [`u128`], the first digit most
-/// significant
-///
-/// [`BerLength`] folds its long-form length bytes (8 bits each), [`BerOid`] its
-/// [`OID_GROUP_BITS`]-bit groups
-///
-/// # Arguments
-///
-/// * `digits` - The digits, most significant first, each below `1 << bits`
-/// * `bits` - The width of one digit
-///
-/// # Returns
-///
-/// The value, or `None` when it overflows a [`u128`]
-fn fold_be_digits(digits: impl IntoIterator<Item = u8>, bits: usize) -> Option<u128> {
-    digits.into_iter().try_fold(0u128, |acc, digit| {
-        debug_assert!(
-            u128::from(digit) < 1 << bits,
-            "{digit:#x} is wider than {bits} bits"
-        );
-        acc.checked_mul(1 << bits)?.checked_add(u128::from(digit))
-    })
 }

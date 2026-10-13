@@ -22,11 +22,10 @@ mod sentinel;
 // --------------------------------------------------
 // re-exports
 // --------------------------------------------------
-pub use crate::prelude::*;
-pub use breaktype::*;
-pub use frame::*;
-pub use partial::*;
-pub use sentinel::*;
+pub use breaktype::BreakType;
+pub use frame::{DecodeFrame, DrainFrames};
+pub use partial::{DecodePartial, Partial, PartialIterator, ResumePartial};
+pub use sentinel::SeekSentinel;
 
 // --------------------------------------------------
 // constants

@@ -8,7 +8,12 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{EncodeCtx, framing::EncodeFraming, length_prefix::LengthPrefix, staging::Staging};
+use super::{
+    EncodeCtx,
+    framing::{EncodeFraming, MAX_RESERVE_BYTES},
+    length_prefix::LengthPrefix,
+    staging::Staging,
+};
 
 // --------------------------------------------------
 // external
@@ -53,12 +58,17 @@ impl EncodeCtx<'_> {
         let frame_write = match len {
             LengthPrefix::Fixed(len) => {
                 // --------------------------------------------------
-                // reserve the frame's capacity, then write the sentinel
+                // reserve the frame's capacity, unless it is too large, then write the sentinel
                 // --------------------------------------------------
                 let width = len.width();
-                let reserve_bytes = self.reserve_bytes;
+                let reserve = self.reserve_bytes.and_then(|bytes| {
+                    let frame = width.checked_mul(2)?.checked_add(bytes)?;
+                    (frame <= MAX_RESERVE_BYTES).then(|| {
+                        quote! { out.reserve(#bytes + 2 * #width + #sentinel.len()); }
+                    })
+                });
                 let sentinel_write = quote! {
-                    out.reserve(#reserve_bytes + 2 * #width + #sentinel.len());
+                    #reserve
                     out.extend_from_slice(#sentinel);
                 };
                 // --------------------------------------------------

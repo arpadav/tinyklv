@@ -2,8 +2,8 @@
 //!
 //! Both decode entry points run the same per-frame loop and differ only in how an iteration leaves
 //! it. [`LoopDriver`] owns the exits every framing shares, so each is spelled once per driver. The
-//! classic separate streaming header is the exception: it keeps its own malformed-key finalize so
-//! its output stays byte-identical (see `LoopCtx::header`):
+//! classic separate streaming header is the exception: it finalizes on a malformed key (see
+//! `LoopCtx::header`):
 //!
 //! * [`LoopDriver::Streaming`] - `resume_partial`: truncation rewinds and returns
 //!   `Packet::NeedMore`, an error returns a bare `&'static str` message, which reads
@@ -22,7 +22,7 @@
 //! [`LoopCtx`], which pairs a driver with those types
 //!
 //! The emitted tokens assume the loop's bindings: `input`, `checkpoint` (fn entry),
-//! `checkpoint_inner` (frame start), `__acc` (the partial accumulator), the frame's value length
+//! `__checkpoint_inner` (frame start), `__acc` (the partial accumulator), the frame's value length
 //! (`DecodeFraming::len`, wherever a `take` is cut or a `size(exact = N)` check reads it),
 //! inside a failed main-stream or kept `Sliced` unknown value arm, `__err` (the value decoder's
 //! error), inside the `Abort` arm of a field's `break_on`, `__msg` (its message) and, in a
@@ -33,17 +33,17 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{
-    LoopCtx,
-    framing::{DecodeFraming, LenRead},
+use super::LoopCtx;
+use crate::{
+    ast::attr::{MainContainer, container::BreakOnSpec},
+    expand::helpers,
 };
-use crate::ast::attr::{MainContainer, container::BreakOnSpec};
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use proc_macro2::TokenStream;
-use quote::{ToTokens, quote};
+use quote::{ToTokens, quote, quote_spanned};
 
 /// Which decode entry point a loop is emitted for, and therefore how it exits
 #[derive(Debug, Clone, Copy)]
@@ -93,15 +93,21 @@ impl CursorSite {
         }
     }
 
-    /// Emits the keyword an error leaves the decode fn with, its value following
+    /// Emits the exit an error leaves the decode fn with, carrying `value`
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The `Err` the decode fn returns
     ///
     /// # Returns
     ///
-    /// `return` (caller) or `break '__tinyklv_decode` (local)
-    fn error_exit(self) -> TokenStream {
+    /// `return #value;` (caller) or `break '__tinyklv_decode (#value);` (local), whose value is
+    /// parenthesised: syn reads a path's leading `::` right after a label as the `:` of a labelled
+    /// loop
+    fn error_exit(self, value: &TokenStream) -> TokenStream {
         match self {
-            Self::Caller => quote! { return },
-            Self::Local => quote! { break '__tinyklv_decode },
+            Self::Caller => quote! { return #value; },
+            Self::Local => quote! { break '__tinyklv_decode (#value); },
         }
     }
 }
@@ -109,14 +115,14 @@ impl CursorSite {
 /// How many bytes [`LoopCtx::take`] cuts off the input, and what it does with them
 #[derive(Debug, Clone, Copy)]
 pub(super) enum TakeInto {
-    /// Bind the frame's length in bytes as `subinput`, the bounded slice a known-key arm, or the
+    /// Bind the frame's length in bytes as `__subinput`, the bounded slice a known-key arm, or the
     /// `unknown` decoder of a kept `Sliced` frame, decodes from; a frame running past the end of
     /// the input first meets the `size(exact = N)` checks ([`LoopCtx::exact_guards`])
     Subinput,
-    /// Bind `N` bytes as `subinput` for a `size(implicit, exact = N)` value, whose frame has no
+    /// Bind `N` bytes as `__subinput` for a `size(implicit, exact = N)` value, whose frame has no
     /// length to check
     Exact(usize),
-    /// Drop the frame's length in bytes (`break_on` returned `Skip`, or no field reads them)
+    /// Drop the frame's length in bytes, which no field reads
     Discard,
 }
 
@@ -138,7 +144,8 @@ impl LoopDriver {
     /// Emits the exit taken when the input is empty at the top of an iteration
     ///
     /// Nothing was consumed, so there is nothing to rewind. The classic separate streaming header
-    /// also takes it, after its rewind, when the key decoder fails without consuming a byte
+    /// also takes it, after its rewind, when the key decoder fails at the end of the input or
+    /// without consuming a byte
     ///
     /// Whether it is a `break` is reported by [`Self::clean_eof_breaks`]
     ///
@@ -201,7 +208,7 @@ impl LoopDriver {
     ///
     /// # Returns
     ///
-    /// `input.reset(&checkpoint_inner); break;`
+    /// `input.reset(&__checkpoint_inner); break;`
     pub(super) fn rewind_and_break() -> TokenStream {
         let rewind = Self::rewind();
         quote! {
@@ -214,9 +221,9 @@ impl LoopDriver {
     ///
     /// # Returns
     ///
-    /// `input.reset(&checkpoint_inner);`
+    /// `input.reset(&__checkpoint_inner);`
     fn rewind() -> TokenStream {
-        quote! { input.reset(&checkpoint_inner); }
+        quote! { input.reset(&__checkpoint_inner); }
     }
 
     /// Emits a fatal exit carrying `msg`, with no finalize
@@ -232,21 +239,18 @@ impl LoopDriver {
     ///
     /// # Returns
     ///
-    /// `return Err(#msg);` (streaming) or `#exit Err(labeled_error(input, &checkpoint, #msg));`,
-    /// `#exit` the [`CursorSite`]'s error exit (one-shot)
+    /// `return Err(#msg);` (streaming) or `Err(labeled_error(input, &checkpoint, #msg))` through
+    /// the [`CursorSite`]'s error exit (one-shot)
     pub(super) fn reject(self, msg: &TokenStream) -> TokenStream {
         match self {
             Self::Streaming => quote! { return ::core::result::Result::Err(#msg); },
-            Self::OneShot(cursor) => {
-                let exit = cursor.error_exit();
-                quote! {
-                    #exit ::core::result::Result::Err(::tinyklv::__export::labeled_error(
-                        input,
-                        &checkpoint,
-                        #msg,
-                    ));
-                }
-            }
+            Self::OneShot(cursor) => cursor.error_exit(&quote! {
+                ::core::result::Result::Err(::tinyklv::__export::labeled_error(
+                    input,
+                    &checkpoint,
+                    #msg,
+                ))
+            }),
         }
     }
 
@@ -381,45 +385,42 @@ impl LoopDriver {
     /// # Returns
     ///
     /// `return Err(concat!("invalid ", #label));` (streaming) or `__err` relabelled with `label`,
-    /// after the [`CursorSite`]'s error exit (one-shot)
+    /// through the [`CursorSite`]'s error exit (one-shot)
     pub(super) fn reject_value(self, label: &TokenStream) -> TokenStream {
         match self {
             Self::Streaming => self.reject_label(label),
-            Self::OneShot(cursor) => {
-                let exit = cursor.error_exit();
-                quote! {
-                    #exit ::core::result::Result::Err(::tinyklv::__export::relabeled_error(
-                        input,
-                        &checkpoint_inner,
-                        #label,
-                        __err,
-                    ));
-                }
-            }
+            Self::OneShot(cursor) => cursor.error_exit(&quote! {
+                ::core::result::Result::Err(::tinyklv::__export::relabeled_error(
+                    input,
+                    &__checkpoint_inner,
+                    #label,
+                    __err,
+                ))
+            }),
         }
     }
 
     /// Emits the fatal exit for a field whose `break_on` returned `Abort(__msg)`, with no
     /// finalize
     ///
-    /// Both drivers name the field first, as for a malformed `Inline` value
-    /// ([`Self::reject_value`]); one-shot keeps `__msg` as the label after it
+    /// Both drivers keep `__msg`, as for the container's `break_on` ([`Self::reject`]). One-shot
+    /// names the field first, as for a malformed `Inline` value ([`Self::reject_value`])
     ///
     /// # Arguments
     ///
-    /// * `label` - Names the field (a [`Self::reject_label`] label)
+    /// * `label` - Names the field (a [`Self::reject_label`] label), for one-shot
     ///
     /// # Returns
     ///
-    /// `return Err(concat!("invalid ", #label));` (streaming) or a `ContextError` labelled
-    /// `__msg`, relabelled with `label` (one-shot)
+    /// `return Err(__msg);` (streaming) or a `ContextError` labelled `__msg`, relabelled with
+    /// `label` (one-shot)
     pub(super) fn reject_aborted_value(self, label: &TokenStream) -> TokenStream {
         match self {
-            Self::Streaming => self.reject_label(label),
+            Self::Streaming => self.reject(&quote! { __msg }),
             Self::OneShot(_) => {
                 let reject = self.reject_value(label);
                 quote! {
-                    let __err = ::tinyklv::__export::labeled_error(input, &checkpoint_inner, __msg);
+                    let __err = ::tinyklv::__export::labeled_error(input, &__checkpoint_inner, __msg);
                     #reject
                 }
             }
@@ -433,24 +434,24 @@ impl LoopCtx<'_> {
     /// value's `N`, off the main input
     ///
     /// The pre-check classes a short frame as truncation before `take` runs, so the `take` failure
-    /// arm of a bound `subinput` is unreachable in practice; it finalizes (streaming) or rewinds
-    /// and stops (one-shot). A short frame bound for `subinput` by its length first meets the
+    /// arm of a bound `__subinput` is unreachable in practice; it finalizes (streaming) or rewinds
+    /// and stops (one-shot). A short frame bound for `__subinput` by its length first meets the
     /// `size(exact = N)` checks ([`Self::exact_guards`]), so a wrong length is rejected rather than
     /// classed as truncation. The rewind comes before them, so either exit leaves the cursor at
     /// the frame start
     ///
     /// ```text
     /// if input.eof_offset() < #len {
-    ///     input.reset(&checkpoint_inner);
+    ///     input.reset(&__checkpoint_inner);
     ///     #exact_guards   // `TakeInto::Subinput` only
     ///     #clean_eof
     /// }
-    /// #bind               // `subinput`, or dropped
+    /// #bind               // `__subinput`, or dropped
     /// ```
     ///
     /// # Arguments
     ///
-    /// * `into` - How many bytes are cut, and whether they are bound as `subinput` or dropped
+    /// * `into` - How many bytes are cut, and whether they are bound as `__subinput` or dropped
     ///
     /// # Returns
     ///
@@ -472,7 +473,7 @@ impl LoopCtx<'_> {
             >(#len).parse_next(input)
         };
         // --------------------------------------------------
-        // bind the taken bytes as `subinput`, after the exact checks on a short frame, or drop
+        // bind the taken bytes as `__subinput`, after the exact checks on a short frame, or drop
         // them
         // --------------------------------------------------
         let (guards, bind) = match into {
@@ -496,7 +497,7 @@ impl LoopCtx<'_> {
         }
     }
 
-    /// Emits the binding of a pre-checked `take`'s bytes as `subinput`
+    /// Emits the binding of a pre-checked `take`'s bytes as `__subinput`
     ///
     /// A failed `take` finalizes (streaming) or rewinds and stops (one-shot)
     ///
@@ -506,7 +507,7 @@ impl LoopCtx<'_> {
     ///
     /// # Returns
     ///
-    /// The `let mut subinput` statement
+    /// The `let mut __subinput` statement
     fn bind_subinput(self, take: &TokenStream) -> TokenStream {
         let Self { driver, stream, .. } = self;
         let fail_arm = match driver {
@@ -520,26 +521,40 @@ impl LoopCtx<'_> {
             }
         };
         quote! {
-            let mut subinput: <#stream as ::tinyklv::__export::winnow::stream::Stream>::Slice = match #take {
+            let mut __subinput: <#stream as ::tinyklv::__export::winnow::stream::Stream>::Slice = match #take {
                 ::core::result::Result::Ok(s) => s,
                 ::core::result::Result::Err(_) => #fail_arm
             };
         }
     }
 
-    /// Emits the `break_on` check that runs right after the frame header, when `break_on` is set
+    /// Emits the `break_on` check that runs right after the frame's key, when `break_on` is set:
+    /// after a separate key, before its length, or after a fused header, which reads the length
+    /// with the key
     ///
-    /// * separate frame whose header reads the length ([`LenRead::Hoisted`]) - a `match` on the
-    ///   `BreakType` that the key literal (`Done` when the key equals it, else `Proceed`) or the
-    ///   user's `fn(key, len)` returns ([`Self::break_match`]); `Done` ends the loop with the
-    ///   key and length consumed, before any value byte is read
-    /// * separate frame of a container with a `size(implicit)` field or `unknown(..)` - only a key
-    ///   literal, as `if #key == #lit { break; }`, checked right after the key: the loop ends
-    ///   before the frame's length, if it has one, is read. The derive does not read every such
-    ///   frame's length, so a `break_on` fn is rejected at parse time
-    ///   ([`MainContainer::reads_every_len`])
-    /// * fused frame - only a key literal, as above, checked once the header is consumed, before
-    ///   any value byte is read
+    /// ```text
+    /// // a key literal
+    /// if #key == #lit {
+    ///     break;
+    /// }
+    /// // the user's `fn(&key, &mut input) -> BreakType`
+    /// let __after_key = input.checkpoint();
+    /// match #path(&#key, input) {
+    ///     Skip => continue,
+    ///     Done => break,
+    ///     Abort(__msg) => {
+    ///         #reject
+    ///     }
+    ///     _ => input.reset(&__after_key),
+    /// }
+    /// ```
+    ///
+    /// The key literal ends the loop with the input right after the key. The fn may read past the
+    /// key: `Proceed`, like any later `BreakType` variant, rewinds to just after the key, where
+    /// the frame then decodes; `Skip` continues, `Done` ends the loop and `Abort` rejects with the
+    /// fn's message ([`LoopDriver::reject`]), each with the input where the fn left it. The fn is
+    /// handed the cursor [`LoopDriver::read_input`] gives, and its call is located at the fn, so a
+    /// fn of another signature is reported there
     ///
     /// Every form can `break`, so a `Some` is the report
     /// [`DecodeCtx::breaks`](super::DecodeCtx::breaks) ORs
@@ -548,82 +563,45 @@ impl LoopCtx<'_> {
     ///
     /// The check, or `None` when `break_on` is unset
     pub(super) fn break_on(self) -> Option<TokenStream> {
-        let key = self.framing.key();
-        let stop_at = |lit: &syn::Lit| {
-            quote! {
-                if #key == #lit {
-                    break;
-                }
-            }
-        };
-        match self.framing {
-            DecodeFraming::Separate {
-                break_on, len_read, ..
-            } => match (break_on?, len_read) {
-                (BreakOnSpec::Literal(lit), LenRead::Hoisted) => Some(self.break_match(&quote! {
+        let mut key = self.framing.key();
+        // --------------------------------------------------
+        // a key literal ends the loop on its key
+        // --------------------------------------------------
+        let path = match self.input.attrs.break_on.as_ref()? {
+            BreakOnSpec::Literal(lit) => {
+                return Some(quote! {
                     if #key == #lit {
-                        ::tinyklv::BreakType::Done
-                    } else {
-                        ::tinyklv::BreakType::Proceed
+                        break;
                     }
-                })),
-                (BreakOnSpec::Func(path), LenRead::Hoisted) => {
-                    let len = self.framing.len();
-                    Some(self.break_match(&quote! { #path(#key, #len) }))
-                }
-                (BreakOnSpec::Literal(lit), LenRead::UnlessImplicit | LenRead::IfPrefixed(_)) => {
-                    Some(stop_at(lit))
-                }
-                // --------------------------------------------------
-                // rejected at parse time: the derive does not read every frame's length
-                // --------------------------------------------------
-                (BreakOnSpec::Func(_), LenRead::UnlessImplicit | LenRead::IfPrefixed(_)) => None,
-            },
-            DecodeFraming::Fused { break_on, .. } => break_on.map(stop_at),
-        }
-    }
-
-    /// Emits the `match` on a separate frame's `break_on` decision
-    ///
-    /// `Skip` discards the value via [`Self::take`] and continues, `Done` ends the loop right
-    /// after the header (no rewind, the header stays consumed), `Abort` is a
-    /// [`LoopDriver::reject`] with the user's message, and `Proceed` (and any future variant) falls
-    /// through to the value dispatch
-    ///
-    /// # Arguments
-    ///
-    /// * `decision` - The per-iteration `BreakType` scrutinee
-    ///
-    /// # Returns
-    ///
-    /// The break-handling `match`
-    fn break_match(self, decision: &TokenStream) -> TokenStream {
+                });
+            }
+            BreakOnSpec::Func(path) => path,
+        };
         // --------------------------------------------------
-        // `Skip` discards the value bytes
+        // the fn's call, located at the fn, and its `Abort`, which rejects with its message
         // --------------------------------------------------
-        let skip = self.take(TakeInto::Discard);
-        // --------------------------------------------------
-        // `Abort` rejects with the user's message
-        // --------------------------------------------------
+        let at_fn = helpers::call_site_at(path);
+        key.set_span(at_fn);
+        let decision = self
+            .driver
+            .read_input(|cursor| quote_spanned! {at_fn=> #path(&#key, #cursor) });
         let abort = self.driver.reject(&quote! { __msg });
         // --------------------------------------------------
-        // match the decision; `Proceed` falls through to the value dispatch
+        // match the decision, from a checkpoint just after the key
         // --------------------------------------------------
-        quote! {
+        Some(quote! {
+            let __after_key = input.checkpoint();
             match #decision {
-                ::tinyklv::BreakType::Proceed => (),
-                ::tinyklv::BreakType::Skip => {
-                    #skip
-                    continue;
-                }
+                ::tinyklv::BreakType::Skip => continue,
                 ::tinyklv::BreakType::Done => break,
                 ::tinyklv::BreakType::Abort(__msg) => {
                     #abort
                 }
-                // future `BreakType` variants behave as `Proceed`
-                _ => (),
+                // `Proceed`, and any later `BreakType` variant, decodes the frame from just after
+                // its key
+                _ => input.reset(&__after_key),
             }
-        }
+        })
     }
 
     /// Emits the tail expression that finalizes `__acc` once the loop ends

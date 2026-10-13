@@ -179,12 +179,37 @@ impl Fix {
     }
 }
 
+/// A relay address declared six bytes wide, which its four octets never fill
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    keylen(dec = header::dec_field, enc = Fix::enc_header),
+    allow_unimplemented_decode,
+)]
+struct WideRelay {
+    /// field 3, wire 2 LEN
+    #[klv(key = 3, enc = RelayAddr::encode_value, size(exact = 6))]
+    addr: RelayAddr,
+}
+
 /// Encode writes each exact width where the header carries a length, and the bytes decode back
 #[test]
 fn encode_writes_each_exact_width_as_the_length() {
     let encoded = Fix::decoded().encoded();
     assert_eq!(encoded, Fix::wire());
     Fix::decoded().assert_decodes_from(&encoded);
+}
+
+/// A value its encoder writes in another byte count than its exact width fails the debug check:
+/// four octets for a six-byte `addr`, staged ahead of the header that frames it
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "the value encoder of `addr` wrote a different byte count")]
+fn a_value_encoded_in_another_width_fails_the_debug_check() {
+    WideRelay {
+        addr: RelayAddr(Ipv4Addr::new(10, 0, 0, 1)),
+    }
+    .encoded();
 }
 
 /// A mismatched length is rejected before the frame is classed as truncation, so a frame running
@@ -240,7 +265,8 @@ fn a_malformed_inline_value_leaves_the_cursor_where_its_decoder_stopped() {
 }
 
 /// An `Inline` frame carries no length: the exact-width field's decoder reads its value from
-/// the main input, unchecked, in both drivers, consuming every byte
+/// the main input, unchecked, and both drivers decode it alike at every chunk split, one inside
+/// the value included
 #[test]
 fn an_inline_frame_has_no_length_to_check() {
     #[rustfmt::skip]
@@ -256,18 +282,7 @@ fn an_inline_frame_has_no_length_to_check() {
         stamp: Some(Timestamp(1_700_000_000)),
         ..Fix::seq_only()
     };
-    // --------------------------------------------------
-    // one-shot
-    // --------------------------------------------------
-    let mut cursor = &wire[..];
-    assert_eq!(Fix::decode_value(&mut cursor).as_ref(), Ok(&expected));
-    assert!(cursor.is_empty(), "{} bytes left", cursor.len());
-    // --------------------------------------------------
-    // streaming
-    // --------------------------------------------------
-    let mut cursor = &wire[..];
-    expected.assert_streams_to(&mut cursor);
-    assert!(cursor.is_empty(), "{} bytes left", cursor.len());
+    expected.assert_decodes_from(&wire);
 }
 
 /// An `Inline` frame for the `lengthed, exact` field has no length to hand its decoder: it is

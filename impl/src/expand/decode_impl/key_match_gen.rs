@@ -41,14 +41,14 @@ use quote::{quote, quote_spanned};
 /// Where an arm reads its value bytes from
 #[derive(Debug, Clone, Copy)]
 pub(super) enum ValueSrc {
-    /// `&mut subinput`, the bounded slice the frame body already cut using the header's length,
+    /// `&mut __subinput`, the bounded slice the frame body already cut using the header's length,
     /// which a `size(exact = N)` field first checks is `N` long; a known field's decode error is
     /// swallowed via `.ok()`
     HeaderSliced,
     /// `input` itself, because the value delimits itself; a decode error goes to
     /// [`LoopDriver::on_parse_fail`](super::loop_driver::LoopDriver::on_parse_fail)
     Inline,
-    /// `&mut subinput`, the `N` bytes the arm itself cuts off `input` for a
+    /// `&mut __subinput`, the `N` bytes the arm itself cuts off `input` for a
     /// `size(implicit, exact = N)` value, whose frame has no length; a decode error is swallowed
     /// via `.ok()`
     Exact(usize),
@@ -235,13 +235,13 @@ impl LoopCtx<'_> {
     /// reads the bounded value of a frame whose key no field declares, for the field that keeps it
     ///
     /// ```text
-    /// _ => match #decoder(#key)(&mut subinput) {
+    /// _ => match #decoder(#key)(&mut __subinput) {
     ///     Ok(__val) => #push,
     ///     Err(__err) => { let __err: ContextError = __err; #reject_value }
     /// },
     /// ```
     ///
-    /// The decoder is called with the key ([`Self::unknown_call`]) on the bounded `subinput`,
+    /// The decoder is called with the key ([`Self::unknown_call`]) on the bounded `__subinput`,
     /// where [`Self::unknown_arm`] hands it the main stream. A failed decode is a malformed
     /// value labelled with the field, and never truncation ([`Self::unknown_match`])
     ///
@@ -258,7 +258,7 @@ impl LoopCtx<'_> {
         decoder: &types::XcoderType,
         field: &UnknownField,
     ) -> TokenStream {
-        let decoded = self.unknown_call(decoder, &quote! { &mut subinput });
+        let decoded = self.unknown_call(decoder, &quote! { &mut __subinput });
         let decode = self.unknown_match(decoder, &decoded, Some(field), ValueSrc::HeaderSliced);
         quote! { _ => #decode, }
     }
@@ -313,7 +313,7 @@ impl LoopCtx<'_> {
         }
     }
 
-    /// Emits the `Err` arm of a `match` on a value decoder's result
+    /// Emits the `Err` arm of a `match` on a value or length decoder's result
     ///
     /// ```text
     /// Err(__err) => {
@@ -343,7 +343,7 @@ impl LoopCtx<'_> {
     /// # Returns
     ///
     /// The single match arm, every path leaving the iteration
-    fn value_err_arm(
+    pub(super) fn value_err_arm(
         self,
         src: ValueSrc,
         at_dec: proc_macro2::Span,
@@ -381,7 +381,7 @@ impl LoopCtx<'_> {
     /// # Arguments
     ///
     /// * `decoder` - The `unknown(dec = ..)` decoder
-    /// * `stream` - The cursor it reads: the main stream's, or `&mut subinput`
+    /// * `stream` - The cursor it reads: the main stream's, or `&mut __subinput`
     ///
     /// # Returns
     ///
@@ -460,8 +460,9 @@ impl LoopCtx<'_> {
     /// ```
     ///
     /// `Skip` discards the value, `Done` keeps it and ends the loop, whose tail finalizes the
-    /// accumulator, `Abort` rejects naming the field ([`LoopDriver::reject_aborted_value`]), and
-    /// `Proceed`, like any later variant, keeps it
+    /// accumulator, `Abort` rejects with its message ([`LoopDriver::reject_aborted_value`]), and
+    /// `Proceed`, like any later variant, keeps it. The call is located at the fn, so a fn of
+    /// another signature is reported there
     ///
     /// # Arguments
     ///
@@ -484,8 +485,9 @@ impl LoopCtx<'_> {
         let reject = self
             .driver
             .reject_aborted_value(&self.label(Some(name), &reason));
+        let decision = quote_spanned! {helpers::call_site_at(break_on)=> #break_on(&__val) };
         quote! {
-            match #break_on(&__val) {
+            match #decision {
                 ::tinyklv::BreakType::Skip => (),
                 ::tinyklv::BreakType::Done => {
                     #write
@@ -603,21 +605,21 @@ impl ArmParts<'_> {
     ///
     /// ```text
     /// // HeaderSliced
-    /// #key => __acc.#name = #dec #len_arg (&mut subinput).ok() #latebind .or(__acc.#name),
+    /// #key => __acc.#name = #dec #len_arg (&mut __subinput).ok() #latebind .or(__acc.#name),
     /// // HeaderSliced, `size(exact = N)`
     /// #key => {
     ///     #exact_check
-    ///     __acc.#name = #dec #len_arg (&mut subinput).ok() #latebind .or(__acc.#name);
+    ///     __acc.#name = #dec #len_arg (&mut __subinput).ok() #latebind .or(__acc.#name);
     /// },
     /// // Exact(N)
     /// #key => {
     ///     #take(N)
-    ///     __acc.#name = #dec #len_arg (&mut subinput).ok() #latebind .or(__acc.#name);
+    ///     __acc.#name = #dec #len_arg (&mut __subinput).ok() #latebind .or(__acc.#name);
     /// },
     /// // Inline
     /// #key => {
-    ///     let #val = #dec (input);
-    ///     match #val {
+    ///     let __val = #dec (input);
+    ///     match __val {
     ///         Ok(__val) => { __acc.#name = Some(__val) #latebind; }
     ///         Err(__err) => { let __err: ContextError = __err; #on_parse_fail }
     ///     }
@@ -627,18 +629,17 @@ impl ArmParts<'_> {
     /// // HeaderSliced or Exact(N), `break_on`
     /// #key => {
     ///     #prelude
-    ///     if let Ok(__val) = #dec #len_arg (&mut subinput) #latebind { #field_break }
+    ///     if let Ok(__val) = #dec #len_arg (&mut __subinput) #latebind { #field_break }
     /// },
-    /// // Inline, `break_on`: as Inline, matching `#val #latebind` and the `Ok` arm `#field_break`
+    /// // Inline, `break_on`: as Inline, matching `__val #latebind` and the `Ok` arm `#field_break`
     /// ```
     ///
-    /// `#val` is [`DecodeFraming::val`](super::framing::DecodeFraming::val). With `debug` set,
-    /// the decode result is logged before it is used (a sliced arm then binds it too). The
-    /// `Inline` error binding and `Some(__val)` are located at the decoder, so a decoder with
-    /// another error type (the rule is stated on `tinyklv::Framing::Inline`) or value type is
-    /// reported there. An `Inline` frame carries no length to pass a `lengthed` decoder, so its
-    /// value is malformed, rejected with a label naming the field and the cursor still at the
-    /// value start
+    /// With `debug` set, the decode result is logged before it is used (a sliced arm then binds
+    /// it as `__val` too). The `Inline` error binding and `Some(__val)` are located at the
+    /// decoder, so a decoder with another error type (the rule is stated on
+    /// `tinyklv::Framing::Inline`) or value type is reported there. An `Inline` frame carries no
+    /// length to pass a `lengthed` decoder, so its value is malformed, rejected with a label naming
+    /// the field and the cursor still at the value start
     ///
     /// # Returns
     ///
@@ -709,7 +710,7 @@ impl ArmParts<'_> {
         })
     }
 
-    /// Emits a sliced arm, which decodes `subinput` after `prelude`: the frame's length check
+    /// Emits a sliced arm, which decodes `__subinput` after `prelude`: the frame's length check
     /// ([`Self::exact_check`]), or the `take` that cuts an `implicit` value's `N` bytes
     ///
     /// `#len_arg` is the length a `lengthed` decoder is passed ([`SizeSpec::len_source`]): the
@@ -755,17 +756,14 @@ impl ArmParts<'_> {
         let (bind, decoded) = match log {
             None => (
                 None,
-                quote_spanned! {at_dec=> #dec #len_arg (&mut subinput) },
+                quote_spanned! {at_dec=> #dec #len_arg (&mut __subinput) },
             ),
             Some(log) => {
-                let val = ctx.framing.val();
-                let mut val_at_dec = val.clone();
-                val_at_dec.set_span(at_dec);
                 let bind = quote! {
-                    let #val = #dec #len_arg (&mut subinput);
+                    let __val = #dec #len_arg (&mut __subinput);
                     #log
                 };
-                (Some(bind), quote! { #val_at_dec })
+                (Some(bind), quote_spanned! {at_dec=> __val })
             }
         };
         // --------------------------------------------------
@@ -822,7 +820,6 @@ impl ArmParts<'_> {
             ..
         } = self;
         let at_dec = helpers::call_site_at(&dec);
-        let val = ctx.framing.val();
         let on_err = ctx.value_err_arm(ValueSrc::Inline, at_dec, Some(name), "decoder");
         let some_val = quote_spanned! {at_dec=> ::core::option::Option::Some(__val) };
         // --------------------------------------------------
@@ -838,9 +835,9 @@ impl ArmParts<'_> {
         };
         quote! {
             #key => {
-                let #val = #dec (input);
+                let __val = #dec (input);
                 #log
-                match #val #mapped {
+                match __val #mapped {
                     ::core::result::Result::Ok(__val) => {
                         #on_ok
                     }
@@ -859,8 +856,7 @@ impl ArmParts<'_> {
         let Self { ctx, name, .. } = *self;
         ctx.input.attrs.debug.is_some().then(|| {
             let logger = crate::expand::logger::debug_logger();
-            let val = ctx.framing.val();
-            quote! { #logger ("\t{}: {:?}", stringify!(#name), #val); }
+            quote! { #logger ("\t{}: {:?}", ::core::stringify!(#name), __val); }
         })
     }
 }

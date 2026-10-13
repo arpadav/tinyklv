@@ -15,8 +15,9 @@
 // local
 // --------------------------------------------------
 use super::{Decoder, Packet};
-use crate::traits::{
-    DecodePartial, DecodeValue, Partial, PartialIterator, ResumePartial, SeekSentinel,
+use crate::{
+    ErrorKind,
+    traits::{DecodePartial, DecodeValue, Partial, PartialIterator, ResumePartial, SeekSentinel},
 };
 
 // --------------------------------------------------
@@ -70,6 +71,23 @@ pub enum DecodeIterError {
     /// to guarantee forward progress on subsequent calls
     Malformed(ContextError),
 }
+/// [`DecodeIterError`] implementation
+impl DecodeIterError {
+    /// What a [`DecodeIterError::Malformed`] error is, for a caller to match on instead of its
+    /// text
+    ///
+    /// # Returns
+    ///
+    /// [`ErrorKind::of`] the malformed packet's error, or `None` for [`DecodeIterError::Eof`] and
+    /// [`DecodeIterError::NeedMore`], which the variant already tells apart
+    #[must_use]
+    pub fn kind(&self) -> Option<ErrorKind> {
+        match self {
+            Self::Malformed(error) => ErrorKind::of(error),
+            Self::Eof | Self::NeedMore => None,
+        }
+    }
+}
 /// [`DecodeIterError`] implementation of [`std::error::Error`]
 ///
 /// No `source()` is provided: the `Malformed` cause is a [`winnow::error::ContextError`], which does
@@ -96,8 +114,8 @@ impl core::fmt::Display for DecodeIterError {
 /// `&mut Decoder`. Yields `T` (the `Partial::Final` associated type) on each
 /// `next` call until the buffer is exhausted or a packet is incomplete
 ///
-/// Stopping iteration does not discard buffered bytes; call [`Decoder::feed`]
-/// to add more data then iterate again to continue decoding
+/// Stopping iteration keeps every buffered byte that may still begin a packet; call
+/// [`Decoder::feed`] to add more data then iterate again to continue decoding
 pub struct DecoderIter<'a, P, S> {
     pub(super) dec: &'a mut Decoder<P, S>,
 }
@@ -119,9 +137,9 @@ where
     ///
     /// In resume mode a `NeedMore` result re-stores the updated partial and
     /// returns `None` so the caller can feed more bytes. In fresh mode there are two
-    /// `NeedMore` paths: a sentinel that has not arrived in the buffer yet (the seek
-    /// misses), which retains the bytes for a later feed; versus a `NeedMore` from
-    /// inside a length-declared body, which is finalized best-effort - the body is
+    /// `NeedMore` paths: a packet that has not all arrived in the buffer yet (the seek
+    /// fails), which retains the bytes that may begin it for a later feed; versus a
+    /// `NeedMore` from inside a length-declared body, which is finalized best-effort - the body is
     /// already framed to an exact length and is not resumable, so the assembled partial
     /// is yielded as the value when all required fields are present, otherwise it is malformed
     /// Malformed results always advance past the offending bytes to guarantee forward progress
@@ -256,16 +274,17 @@ where
     ///
     /// Returns `Ok(T)` when decoding succeeds, or one of:
     /// * [`DecodeIterError::Eof`] - buffer is empty
-    /// * [`DecodeIterError::NeedMore`] - the sentinel has not arrived in the buffer
-    ///   yet (the seek missed); the bytes are retained and the cursor is not advanced
+    /// * [`DecodeIterError::NeedMore`] - the packet has not all arrived in the buffer yet;
+    ///   the cursor advances past the bytes the seek proved cannot begin a packet. A miss
+    ///   keeps only the last `sentinel_len - 1` bytes, and a found sentinel whose length or
+    ///   body is cut keeps the bytes from that sentinel on
     /// * [`DecodeIterError::Malformed`] - the body decode failed, or a best-effort
     ///   finalize of an incomplete framed body found required fields missing
     ///
-    /// Because a seek miss retains every buffered byte, a stream that never delivers the
-    /// sentinel (pure junk) - or a packet whose declared length never arrives - keeps the
-    /// buffer growing under repeated `feed` + `NeedMore`. Callers that must bound memory on
-    /// hostile input should cap the unproductive `NeedMore` window and [`Decoder::clear`] to
-    /// resync rather than feeding indefinitely
+    /// Stray bytes are scanned once and dropped, but a packet whose declared length never
+    /// arrives keeps the buffer growing under repeated `feed` + `NeedMore`. Callers that must
+    /// bound memory on hostile input should cap the unproductive `NeedMore` window and
+    /// [`Decoder::clear`] to resync rather than feeding indefinitely
     fn next_fresh(&mut self) -> Result<T, DecodeIterError> {
         // --------------------------------------------------
         // early exit
@@ -279,11 +298,12 @@ where
         let mut cursor: &[u8] = self.buf.pending();
         let before = cursor.len();
         // --------------------------------------------------
-        // seek sentinel; a miss means sentinel not yet in buffer - retain bytes for later feed
+        // seek sentinel; a failed seek means the packet is not all in the buffer yet - drop the
+        // bytes it proved cannot begin one, retain the rest for a later feed
         // --------------------------------------------------
-        let body = match T::seek_sentinel(&mut cursor) {
-            Ok(b) => b,
-            Err(_) => return Err(DecodeIterError::NeedMore),
+        let Ok(body) = T::seek_sentinel(&mut cursor) else {
+            self.buf.advance(before - cursor.len());
+            return Err(DecodeIterError::NeedMore);
         };
         // --------------------------------------------------
         // body is a complete length-delimited frame; decode it one-shot

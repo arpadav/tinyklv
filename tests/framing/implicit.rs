@@ -2,11 +2,12 @@
 //!
 //! An implicit value follows its key directly. One that delimits itself is decoded straight from
 //! the input in one read; one of `exact = N` is the `N` bytes after its key, and a `lengthed`
-//! decoder is passed `N`. Encode writes the key, then the value. A field with a length prefix
-//! beside it keeps its length, and a frame of an unknown key is skipped by its length. An implicit
-//! value cut at the end of the input is truncation: streaming waits for the rest, one-shot
-//! finalizes without it. A key-literal `break_on` is checked on every frame right after its key,
-//! an implicit field's too
+//! decoder is passed `N`. Encode writes the key, then the value, which debug builds check is `N`
+//! bytes under `exact = N`. A field with a length prefix beside it keeps its length, and a frame
+//! of an unknown key is skipped by its length. An implicit value or a key cut at the end of the
+//! input is truncation: streaming waits for the rest, one-shot finalizes without it. A
+//! `break_on`, a key literal or a fn, is checked on every frame right after its key, an implicit
+//! field's too
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -128,6 +129,18 @@ impl EncodeValue for Position {
     fn encode_value(&self, out: &mut Vec<u8>) {
         encb::be_i16(self.row, out);
         encb::be_i16(self.col, out);
+    }
+}
+
+/// [`Position`] implementation
+impl Position {
+    /// Encodes the row alone: two of the four bytes a position is wide
+    ///
+    /// # Arguments
+    ///
+    /// * `out` - the buffer the row is appended to
+    fn encode_row(&self, out: &mut Vec<u8>) {
+        encb::be_i16(self.row, out);
     }
 }
 
@@ -265,6 +278,89 @@ struct BeaconLog {
     callsign: Option<Callsign>,
 }
 
+/// A beacon log signed off by a callsign, which its `break_on` fn reads after the callsign's key
+#[derive(Klv, Debug, Default, PartialEq)]
+#[klv(
+    key(dec = varint::dec_u32),
+    len(dec = varint::dec_usize),
+    allow_unimplemented_encode,
+    break_on = SignedLog::end_after_callsign,
+)]
+struct SignedLog {
+    /// a varint, read until it ends
+    #[klv(key = 0x01, dec = Uptime::decode_value, size(implicit))]
+    uptime: Option<Uptime>,
+
+    /// four bytes
+    #[klv(key = 0x02, dec = Position::decode_value, size(implicit, exact = 4))]
+    position: Option<Position>,
+}
+
+/// [`SignedLog`] implementation
+impl SignedLog {
+    /// Ends the log once the six characters after a callsign's key are read
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - the frame's key
+    /// * `input` - the input right after the key
+    ///
+    /// # Returns
+    ///
+    /// `Done` past the callsign, else `Proceed`, a callsign cut short included, which then
+    /// decodes as a frame cut short
+    fn end_after_callsign(key: &u32, input: &mut &[u8]) -> BreakType {
+        if *key != 0x03 {
+            return BreakType::Proceed;
+        }
+        match Callsign::decode(6).parse_next(input) {
+            Ok(_) => BreakType::Done,
+            Err(_) => BreakType::Proceed,
+        }
+    }
+}
+
+/// A tank gauge whose level is read by the crate's big-endian `u16` decoder, with no length
+/// before it
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    key(dec = varint::dec_u32),
+    len(dec = varint::dec_usize),
+    allow_unimplemented_encode,
+)]
+struct Gauge {
+    /// a varint, read until it ends
+    #[klv(key = 0x08, dec = varint::dec_i32, size(implicit))]
+    channel: i32,
+
+    /// two bytes
+    #[klv(key = 0x20, dec = decb::be_u16, size(implicit))]
+    level: u16,
+}
+
+/// A radio's settings, implicit varints, its channel keyed by field 16, the first field number
+/// whose tag takes two varint bytes
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    key(dec = varint::dec_u32),
+    len(dec = varint::dec_usize),
+    allow_unimplemented_encode,
+    default(typ = i32, dec = varint::dec_i32, size(implicit)),
+)]
+struct Radio {
+    /// field 1
+    #[klv(key = 0x08)]
+    id: i32,
+
+    /// field 16, tag `80 01`
+    #[klv(key = 0x80)]
+    channel: i32,
+
+    /// field 3
+    #[klv(key = 0x18)]
+    power: i32,
+}
+
 /// A link's packet counters, implicit varints whose every read [`Scans`] counts
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -281,6 +377,23 @@ struct Counters {
     /// packets lost
     #[klv(key = 0x02)]
     lost: u64,
+}
+
+/// A beacon whose position encoder writes two of the four bytes its `exact = 4` declares
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    key(dec = varint::dec_u32, enc = varint::enc_u32),
+    len(dec = varint::dec_usize, enc = varint::enc_usize),
+)]
+struct RowBeacon {
+    /// four bytes declared, two written
+    #[klv(
+        key = 0x02,
+        dec = Position::decode_value,
+        enc = Position::encode_row,
+        size(implicit, exact = 4),
+    )]
+    position: Position,
 }
 
 /// The worked example encodes to the plan's exact bytes, and decodes back from them
@@ -318,6 +431,18 @@ fn a_break_on_literal_stops_at_an_implicit_fields_key() {
         ..BeaconLog::default()
     };
     decoded.assert_stops_at(&wire, Beacon::UPTIME.len() + 1);
+}
+
+/// A `break_on` fn beside implicit fields runs right after each key too, and the decode stops
+/// where it leaves the input: past the callsign it reads, before the position after it
+#[test]
+fn a_break_on_fn_beside_an_implicit_field_stops_where_it_leaves_the_input() {
+    let wire = [Beacon::UPTIME, Beacon::CALLSIGN, Beacon::POSITION].concat();
+    let decoded = SignedLog {
+        uptime: Beacon::uptime().uptime,
+        ..SignedLog::default()
+    };
+    decoded.assert_stops_at(&wire, Beacon::UPTIME.len() + Beacon::CALLSIGN.len());
 }
 
 /// An implicit value cut at the end of the input is truncation, whether it delimits itself or
@@ -362,6 +487,45 @@ fn an_implicit_value_cut_at_the_end_of_the_input_is_truncation() {
     }
 }
 
+/// A value of the crate's fixed-width decoder cut at the end of the input is truncation too:
+/// streamed as `08 03 20 01`, then `02`, the decode completes, as at every other split
+#[test]
+fn a_fixed_width_value_cut_at_the_end_of_the_input_is_truncation() {
+    #[rustfmt::skip]
+    let wire = [
+        // channel = 3: key, varint `03`
+        0x08, 0x03,
+        // level = 0x0102: key, `01 02`
+        0x20, 0x01, 0x02,
+    ];
+    Gauge {
+        channel: 3,
+        level: 0x0102,
+    }
+    .assert_decodes_from(&wire);
+}
+
+/// A key cut at the end of the input is truncation too: streamed as `08 05 80`, then `01 07 18
+/// 09`, the decode waits inside the two-byte tag and completes, as at every other split
+#[test]
+fn a_key_cut_at_the_end_of_the_input_is_truncation() {
+    #[rustfmt::skip]
+    let wire = [
+        // id = 5: key, varint `05`
+        0x08, 0x05,
+        // channel = 7: key `80 01`, varint `07`
+        0x80, 0x01, 0x07,
+        // power = 9: key, varint `09`
+        0x18, 0x09,
+    ];
+    Radio {
+        id: 5,
+        channel: 7,
+        power: 9,
+    }
+    .assert_decodes_from(&wire);
+}
+
 /// An implicit value that delimits itself is read once per frame, by one-shot and by streaming
 /// over the whole input
 #[test]
@@ -379,4 +543,15 @@ fn an_implicit_value_is_read_once_by_either_driver() {
     assert_eq!(scans, 2, "one-shot: one read per frame");
     let ((), scans) = Scans::count(|| expected.assert_streams_to(&mut &wire[..]));
     assert_eq!(scans, 2, "streaming: one read per frame");
+}
+
+/// An `exact = N` value whose encoder writes another width fails the debug check
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "wrote a different byte count than its fixed width")]
+fn an_exact_value_of_another_width_fails_the_debug_check() {
+    RowBeacon {
+        position: Position { row: -2, col: 515 },
+    }
+    .encoded();
 }

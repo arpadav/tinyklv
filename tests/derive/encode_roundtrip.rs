@@ -543,3 +543,41 @@ fn exact_and_reserve_encode_identically() {
         pair,
     );
 }
+
+/// A framed name whose `size(reserve = N)` is `isize::MAX` bytes, an encode reserve no `Vec<u8>`
+/// holds, which the frame's reserve adds to
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    sentinel = b"VST",
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)),
+)]
+struct Vast {
+    #[klv(
+        key = 0x01,
+        dec = decs::to_string_utf8,
+        enc = &encs::from_string_utf8,
+        size(lengthed, reserve = 9223372036854775807),
+    )]
+    name: String,
+}
+
+#[test]
+/// An encode reserve larger than a `Vec<u8>` can hold is not taken, by the frame or by the value
+/// it holds, so the encode writes the frame rather than panicking
+fn a_reserve_no_vec_can_hold_is_not_taken() {
+    let mut encoded = Vec::new();
+    Vast {
+        name: "hi".to_owned(),
+    }
+    .encode_frame(&mut encoded);
+    #[rustfmt::skip]
+    let frame = [
+        // the sentinel, then the frame's length
+        b'V', b'S', b'T', 0x04,
+        // name = "hi"
+        0x01, 0x02, b'h', b'i',
+    ];
+    assert_eq!(encoded, frame);
+}

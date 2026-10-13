@@ -4,8 +4,9 @@
 //! level and the [`BerLength`] typed-struct wrapper: short-form boundary
 //! values (`0`, `1`, `64`, `127`), the long-form boundary (`128`), long-form
 //! values through `u32::MAX`, explicit byte-layout assertions for known
-//! encodings, error cases on empty or truncated long-form input, and the value
-//! boundary at every target width
+//! encodings, a long form of a short length, error cases on empty, truncated
+//! long-form or indefinite-form input, and the value boundary at every target
+//! width
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -14,6 +15,7 @@
 use super::helpers::DecoderExt;
 use super::width::BerWidth;
 use crate::common::error::ContextErrorExt;
+use tinyklv::ErrorKind;
 use tinyklv::codecs::ber::BerLength;
 use tinyklv::dec::ber as decber;
 use tinyklv::prelude::*;
@@ -63,6 +65,12 @@ fn short_form_127() {
     assert!(encoded[0] & 0x80 == 0, "short form MSB must be 0");
     let decoded = tinyklv::dec::ber::ber_length(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, 127_usize);
+}
+
+#[test]
+/// Tests that `ber_length` stops right after a short form's one byte
+fn short_form_stops_after_its_byte() {
+    decber::ber_length.assert_reads(&[0x7F], 127);
 }
 
 #[test]
@@ -174,22 +182,49 @@ fn berlength_8500738_u32() {
 }
 
 #[test]
-/// Tests that `ber_length` errors on empty input
+/// Tests that a long form of a length below 128, `[0x81, 0x05]`, decodes to the same `BerLength`
+/// as its short form, and re-encodes to the short form `[0x05]`
+fn berlength_long_form_below_128_is_the_short_length() {
+    let decoded = BerLength::<u32>::decode_value(&mut &[0x81, 0x05][..]).unwrap();
+    assert_eq!(decoded, BerLength::new(5));
+    let mut encoded = Vec::new();
+    decoded.encode_value(&mut encoded);
+    assert_eq!(encoded, vec![0x05]);
+}
+
+#[test]
+/// Tests that `ber_length` rejects `0x80`, BER's indefinite form, which carries no length, as a
+/// malformed value, with the cursor rewound to the start of the value
+fn ber_length_indefinite_form_rewinds() {
+    let wire = [0x80, 0x05];
+    let mut input = &wire[..];
+    match tinyklv::dec::ber::ber_length(&mut input) {
+        Err(error)
+            if error.expects("a definite-form length")
+                && ErrorKind::of(&error) == Some(ErrorKind::MalformedValue) => {}
+        other => panic!("expected an indefinite-form Err, got {other:?}"),
+    }
+    assert_eq!(input, &wire[..]);
+}
+
+#[test]
+/// Tests that `ber_length` runs out of bytes on empty input
 fn ber_length_empty_input_fails() {
-    let mut input: &[u8] = &[];
-    assert!(tinyklv::dec::ber::ber_length(&mut input).is_err());
+    decber::ber_length.assert_runs_out(&[]);
 }
 
 #[test]
 /// Tests that a long-form prefix `0x82` claiming 2 extra bytes errors when only 1 byte follows,
-/// with the cursor at the end of input and an error expecting the bytes its long form claims, so a
-/// framed caller classes the split as truncation
+/// with the cursor at the end of input and a truncation error expecting the bytes its long form
+/// claims, so a framed caller classes the split as truncation
 fn ber_length_truncated_long_form_fails() {
     // Byte 0x82 claims 2 more bytes, but only 1 follows
     let wire = [0x82, 0x01];
     let mut input = &wire[..];
     match tinyklv::dec::ber::ber_length(&mut input) {
-        Err(error) if error.expects_length_bytes() => {}
+        Err(error)
+            if error.expects_length_bytes()
+                && ErrorKind::of(&error) == Some(ErrorKind::Truncated) => {}
         other => panic!("expected a truncated-length Err, got {other:?}"),
     }
     assert_eq!(input, &wire[2..]);

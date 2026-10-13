@@ -40,10 +40,9 @@ use syn::spanned::Spanned;
 /// Parses a value of type `T` from a [`syn::meta::ParseNestedMeta`], accepting
 /// the value either as raw tokens or wrapped in a [`syn::LitStr`]
 ///
-/// First attempts to parse the value stream as a [`syn::LitStr`]; if that
-/// succeeds, re-parses the string contents as `T` (allowing `enc = "my::path"`
-/// in addition to `enc = my::path`). If the value is not a string literal,
-/// falls back to parsing the raw token stream directly as `T`
+/// A [`syn::LitStr`] value has its string contents parsed as `T` (allowing
+/// `enc = "my::path"` in addition to `enc = my::path`); any other literal is rejected, naming
+/// both forms. Otherwise the raw token stream is parsed directly as `T`
 ///
 /// # Arguments
 ///
@@ -54,13 +53,14 @@ use syn::spanned::Spanned;
 /// `Ok(T)` on a successful parse, or a [`syn::Error`] if the value is present
 /// but cannot be parsed as `T` in either form
 fn pnm_parse_maybestr<T: syn::parse::Parse>(input: &syn::meta::ParseNestedMeta) -> syn::Result<T> {
-    match input.value() {
-        Ok(value) => match value.parse::<syn::LitStr>() {
-            Ok(litstr) => litstr.parse(),
-            Err(_) => value.parse(),
-        },
-        Err(err) => Err(err),
+    let value = input.value()?;
+    if value.peek(syn::LitStr) {
+        return value.parse::<syn::LitStr>()?.parse();
     }
+    if value.peek(syn::Lit) {
+        return Err(value.error(err!(LiteralSetting(input.path))));
+    }
+    value.parse()
 }
 
 /// Parses a value of type `T` from a [`syn::MetaNameValue`], accepting

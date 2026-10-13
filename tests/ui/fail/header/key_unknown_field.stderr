@@ -1,0 +1,6 @@
+error: Unknown field `encoder` in key/len.
+       Expected `enc = <..>`, `dec = <..>`, or `size(..)`.
+ --> tests/ui/fail/header/key_unknown_field.rs:5:41
+  |
+5 |     key(dec = tinyklv::dec::binary::u8, encoder = tinyklv::enc::binary::u8),
+  |                                         ^^^^^^^

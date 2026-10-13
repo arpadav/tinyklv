@@ -1,0 +1,18 @@
+error[E0308]: arguments to this function are incorrect
+  --> tests/ui/fail/codec/break_on_fn_key_len.rs:15:16
+   |
+11 | #[derive(Klv)]
+   |          --- expected `usize`, found `&mut &[u8]`
+...
+15 |     break_on = stop,
+   |                ^^^^ expected `u8`, found `&u8`
+   |
+note: function defined here
+  --> tests/ui/fail/codec/break_on_fn_key_len.rs:3:4
+   |
+ 3 | fn stop(key: u8, _len: usize) -> BreakType {
+   |    ^^^^ -------  -----------
+help: consider using clone here
+   |
+11 | #[derive(Klv.clone())]
+   |             ++++++++

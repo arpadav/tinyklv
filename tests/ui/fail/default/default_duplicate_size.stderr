@@ -1,4 +1,4 @@
-error: Duplicate 'size' found for `default(typ = u16)`. Only one default size is allowed per type; remove one.
+error: Duplicate `size(..)` for `default(typ = u16)`. Only one is allowed per type; remove one.
  --> tests/ui/fail/default/default_duplicate_size.rs:8:61
   |
 8 |     default(typ = u16, enc = *tinyklv::enc::binary::be_u16, size(reserve = 4)),

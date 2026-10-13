@@ -1,8 +1,8 @@
 //! Encode tests for the fused `#[klv(keylen(enc = ..))]` codec
 //!
 //! Every field is staged, framed by the fused encoder - the tag, plus a length only for
-//! wire 2 LEN - and appended. These tests pin the exact bytes of that framing for every
-//! wire shape
+//! wire 2 LEN - and appended; a skipped field writes no frame. These tests pin the exact bytes
+//! of that framing for every wire shape
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -95,6 +95,30 @@ struct Outgoing {
     label: Option<String>,
 }
 
+/// [`Measurement`] as proto3 writes it: each scalar left out at its default, by its type's
+/// `default(..)`, and `name` left out when empty, by its own `skip_if`
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    keylen(dec = header::dec_tag, enc = header::enc_tag),
+    default(typ = i32, dec = varint::dec_i32, enc = *varint::enc_i32, skip_if_default),
+    default(typ = f32, dec = decb::le_f32, enc = *encb::le_f32, skip_if_default),
+    default(typ = String, dec = value::dec_string, enc = &encs::from_string_utf8),
+)]
+struct Proto3Measurement {
+    /// field 1, wire 0 VARINT - left out at 0
+    #[klv(key = 0x08)]
+    id: i32,
+
+    /// field 2, wire 5 I32 - left out at 0.0
+    #[klv(key = 0x15)]
+    ratio: f32,
+
+    /// field 3, wire 2 LEN - left out when empty
+    #[klv(key = 0x1A, skip_if = String::is_empty)]
+    name: String,
+}
+
 /// The worked example encodes to its exact bytes: no length for the VARINT or the I32,
 /// a varint length for the LEN, and nothing for the unset field
 #[test]
@@ -181,4 +205,23 @@ fn encode_generic_trait_fallback_appends() {
     ];
     assert_eq!(out, [&prefix[..], &wire[..]].concat());
     assert_eq!(Tagged::<Status>::decode_value(&mut &wire[..]).unwrap(), tagged);
+}
+
+/// A field at its default under its type's `skip_if_default`, and one its own `skip_if` holds
+/// for, write no frame, and their missing frames decode back to their defaults in both drivers
+/// and at every chunk split
+#[test]
+fn skipped_fields_write_no_frame() {
+    let unnamed = Proto3Measurement {
+        id: 0,
+        ratio: 1.5,
+        name: String::new(),
+    };
+    #[rustfmt::skip]
+    let wire = [
+        // ratio = 1.5
+        0x15, 0x00, 0x00, 0xC0, 0x3F,
+    ];
+    assert_eq!(unnamed.encoded(), wire);
+    unnamed.assert_decodes_from(&wire);
 }

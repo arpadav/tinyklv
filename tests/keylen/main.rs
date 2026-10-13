@@ -16,6 +16,8 @@ mod const_locals;
 mod decode_basic;
 mod encode_roundtrip;
 mod exact;
+mod field_break_on;
+mod fieldless;
 mod frame_dispatch;
 mod frame_progress;
 mod framing_rules;

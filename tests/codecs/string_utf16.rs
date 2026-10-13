@@ -11,6 +11,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use tinyklv::ErrorKind;
 use tinyklv::codecs::string::dec::{to_string_utf16_be, to_string_utf16_le};
 use tinyklv::codecs::string::enc::{from_string_utf16_be, from_string_utf16_le};
 
@@ -52,12 +53,16 @@ fn utf16_le_empty_string() {
 }
 
 #[test]
-/// Tests `to_string_utf16_le(3)` errors on odd byte count
+/// Tests `to_string_utf16_le(3)` errors on odd byte count, of kind `WrongLength`
 fn utf16_le_odd_length_err() {
     // 3 bytes is odd - not a valid UTF-16 length
     let mut input: &[u8] = &[0x41, 0x00, 0x42];
     let result = to_string_utf16_le(3)(&mut input);
-    assert!(result.is_err(), "odd byte length should fail for UTF-16 LE");
+    assert_eq!(
+        result.as_ref().err().and_then(ErrorKind::of),
+        Some(ErrorKind::WrongLength),
+        "odd byte length should fail for UTF-16 LE: {result:?}"
+    );
 }
 
 #[test]
@@ -121,11 +126,15 @@ fn utf16_be_empty_string() {
 }
 
 #[test]
-/// Tests `to_string_utf16_be(3)` errors on odd byte count
+/// Tests `to_string_utf16_be(3)` errors on odd byte count, of kind `WrongLength`
 fn utf16_be_odd_length_err() {
     let mut input: &[u8] = &[0x00, 0x41, 0x00];
     let result = to_string_utf16_be(3)(&mut input);
-    assert!(result.is_err(), "odd byte length should fail for UTF-16 BE");
+    assert_eq!(
+        result.as_ref().err().and_then(ErrorKind::of),
+        Some(ErrorKind::WrongLength),
+        "odd byte length should fail for UTF-16 BE: {result:?}"
+    );
 }
 
 #[test]

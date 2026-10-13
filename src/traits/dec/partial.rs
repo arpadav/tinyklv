@@ -194,7 +194,8 @@ impl<P: Partial> Partial for Vec<P> {
 /// error raised after consuming bytes. A [`Packet::NeedMore`] from the inner parser is treated as
 /// "done for now": whatever was accumulated is best-effort-finalised and returned as
 /// `Packet::Ready`. The cursor has been rewound by the inner call so the next invocation can resume
-/// with more bytes
+/// with more bytes. A cut element that cannot finalise is not pushed: the cursor rewinds to its
+/// start, so the next invocation reads it whole
 ///
 /// An element that consumed zero bytes is never pushed, under the same rule as `Vec<T>`'s
 /// [`DecodeValue`] impl; the loop stops and returns what was accumulated
@@ -226,11 +227,14 @@ where
                 Ok(Packet::Ready(val)) => acc.push(val),
                 // --------------------------------------------------
                 // return the acc values, but try to coerce the
-                // last partial packet if possible
+                // last partial packet if possible; one that cannot
+                // finalise rewinds to its start for the next call
                 // --------------------------------------------------
                 Ok(Packet::NeedMore(partial)) => {
                     if let Ok(last_elem) = partial.finalize() {
                         acc.push(last_elem);
+                    } else {
+                        input.reset(&cp);
                     }
                     return Ok(Packet::Ready(acc));
                 }

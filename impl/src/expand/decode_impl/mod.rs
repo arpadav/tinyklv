@@ -15,7 +15,7 @@
 //!   and body per framing mode), `loop_driver` (the exits per entry point) and `key_match_gen`
 //!   (the per-field arms, and the checks that reject a frame length other than a field's
 //!   `size(exact = N)`)
-//! * this module - the `decoder()` constructor ([`DecodeCtx::decoder_fn`])
+//! * this module - the `decoder()` constructor, with a sentinel ([`DecodeCtx::decoder_fn`])
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -118,12 +118,12 @@ impl<'a> DecodeCtx<'a> {
     ///
     /// # Returns
     ///
-    /// The context, or `None` when the struct has no KLV field, or a field, framing or
-    /// `unknown(..)` decoder is missing (`allow_unimplemented_decode`), in which case no decode
-    /// impl is generated
+    /// The context, or `None` when every field of the struct is without `#[klv(..)]`, or a field,
+    /// framing or `unknown(..)` decoder is missing (`allow_unimplemented_decode`), in which case no
+    /// decode impl is generated
     fn new(input: &'a MainContainer<'a>) -> Option<Self> {
         // --------------------------------------------------
-        // a decoder on every field, and at least one field; else no decode impl
+        // a decoder on every field, and a KLV field or no field at all; else no decode impl
         // --------------------------------------------------
         if !input.every_keyed_field(|f| f.dec.is_some()) {
             return None;
@@ -161,7 +161,7 @@ impl<'a> DecodeCtx<'a> {
         })
     }
 
-    /// Generates the `decoder()` inherent method for a container
+    /// Generates the `decoder()` inherent method for a container with a sentinel
     ///
     /// Emits a `pub fn decoder<'z>() -> tinyklv::Decoder<XxxPartialPacket, &'z Stream>`
     /// associated function on the container. This is the idiomatic entry point for
@@ -170,8 +170,15 @@ impl<'a> DecodeCtx<'a> {
     ///
     /// # Returns
     ///
-    /// A [`proc_macro2::TokenStream`] containing the `impl` block with the `decoder()` method
-    fn decoder_fn(&self) -> TokenStream {
+    /// A [`proc_macro2::TokenStream`] containing the `impl` block with the `decoder()` method, or
+    /// `None` without a sentinel, which a `tinyklv::Decoder` seeks to find each packet
+    fn decoder_fn(&self) -> Option<TokenStream> {
+        let DecodeFraming::Separate {
+            sentinel: Some(_), ..
+        } = self.framing
+        else {
+            return None;
+        };
         let Self {
             input,
             ref lifetime,
@@ -187,16 +194,16 @@ impl<'a> DecodeCtx<'a> {
         // --------------------------------------------------
         // emit decoder() inherent method
         // --------------------------------------------------
-        quote! {
+        Some(quote! {
             #[automatically_derived]
             impl #impl_generics #name #ty_generics #where_clause {
                 #[inline(always)]
-                #[doc = concat!(" Construct a streaming [`tinyklv::Decoder`] for [`", stringify!(#name), "`].")]
+                #[doc = ::core::concat!(" Construct a streaming [`tinyklv::Decoder`] for [`", ::core::stringify!(#name), "`].")]
                 pub fn decoder<#lifetime>() -> ::tinyklv::Decoder<#partial_ty , #stream_lifetimed> {
                     ::tinyklv::Decoder::new()
                 }
             }
-        }
+        })
     }
 }
 
@@ -205,10 +212,10 @@ impl<'a> DecodeCtx<'a> {
 /// Assembles and returns the token stream for every decode-related impl block
 /// that `#[derive(Klv)]` emits. The output always includes the partial-packet
 /// struct, its `Partial` and `TryFrom` impls, the streaming `DecodePartial` and
-/// `ResumePartial` impls, the `decoder()` constructor, and the one-shot
-/// `DecodeValue` impl (which decodes directly into the struct in a single pass,
-/// rather than delegating to the partial machinery). If the container declares a
-/// `sentinel`, a `SeekSentinel` impl is prepended as well
+/// `ResumePartial` impls, and the one-shot `DecodeValue` impl (which decodes directly into the
+/// struct in a single pass, rather than delegating to the partial machinery). If the container
+/// declares a `sentinel`, a `SeekSentinel` impl is prepended and the `decoder()` constructor
+/// added as well
 ///
 /// The container's framing mode selects the frame header and body of both decode loops:
 /// separate `key`+`len` decoders, or the fused `keylen` decoder
@@ -221,8 +228,8 @@ impl<'a> DecodeCtx<'a> {
 ///
 /// A [`proc_macro2::TokenStream`] containing all decode-related impl blocks,
 /// concatenated in dependency order (sentinel first, then partial struct, then impls), or
-/// `None` when the struct has no KLV field, or a field, framing or `unknown(..)` decoder is
-/// missing (`allow_unimplemented_decode`)
+/// `None` when every field of the struct is without `#[klv(..)]`, or a field, framing or
+/// `unknown(..)` decoder is missing (`allow_unimplemented_decode`)
 pub(super) fn gen_decode_impl(input: &MainContainer) -> Option<TokenStream> {
     let ctx = DecodeCtx::new(input)?;
     // --------------------------------------------------

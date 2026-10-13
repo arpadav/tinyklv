@@ -5,8 +5,8 @@
 //! `be_u32`/`be_i32`, `be_u64`/`be_i64`, `be_u128`/`be_i128`, `be_f32`,
 //! and `be_f64`. Covers known-value decoding, explicit byte-order assertions,
 //! encode/decode roundtrips across boundary values, short-input error cases,
-//! cursor non-advancement on failure, and float special values (NaN, inf,
-//! negative zero, and `PI`/`E`)
+//! the cursor at the end of the input on a short read, and float special
+//! values (NaN, inf, negative zero, and `PI`/`E`)
 //!
 //! Author: aav
 #[test]
@@ -423,10 +423,14 @@ fn be_empty_input_errors() {
 }
 
 #[test]
-/// A failed fixed-width decode must NOT advance the cursor (callers see the un-eaten bytes)
-fn be_short_input_does_not_advance_cursor() {
+/// A short fixed-width decode leaves the cursor at the end of the input, so a caller classes
+/// the short read as truncation
+fn be_short_input_leaves_cursor_at_end() {
     let buf = [0x01, 0x02, 0x03];
     let mut input: &[u8] = &buf;
     assert!(tinyklv::dec::binary::be_u32(&mut input).is_err());
-    assert_eq!(input.len(), 3, "cursor advanced on a failed be_u32");
+    assert!(
+        input.is_empty(),
+        "cursor not at the end after a short be_u32"
+    );
 }

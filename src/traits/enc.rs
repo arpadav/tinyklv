@@ -7,10 +7,6 @@
 //! Decode counterparts live in [`crate::traits::dec`]
 //!
 //! Author: aav
-// --------------------------------------------------
-// local
-// --------------------------------------------------
-pub use super::*;
 
 /// Appends the encoded value portion of a KLV field to a caller-owned [`Vec<u8>`]
 ///

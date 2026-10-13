@@ -1,0 +1,22 @@
+error[E0308]: mismatched types
+  --> tests/ui/fail/codec/field_break_on_by_value.rs:18:66
+   |
+11 | #[derive(Klv)]
+   |          --- in this derive macro expansion
+...
+18 |     #[klv(key = 0x01, dec = tinyklv::dec::binary::u8, break_on = ends_report)]
+   |                                                                  ^^^^^^^^^^^
+   |                                                                  |
+   |                                                                  expected `u8`, found `&u8`
+   |                                                                  arguments to this function are incorrect
+   |
+note: function defined here
+  --> tests/ui/fail/codec/field_break_on_by_value.rs:3:4
+   |
+ 3 | fn ends_report(code: u8) -> BreakType {
+   |    ^^^^^^^^^^^ --------
+   = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)
+help: consider using clone here
+   |
+11 | #[derive(Klv.clone())]
+   |             ++++++++

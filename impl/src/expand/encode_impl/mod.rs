@@ -62,8 +62,8 @@ struct EncodeCtx<'a> {
     framing: EncodeFraming<'a>,
 
     /// The `EncodeValue` body's encode reserve ([`EncodeFraming::value_reserve_bytes`]), which a
-    /// back-filled sentinel frame's reserve includes
-    reserve_bytes: usize,
+    /// back-filled sentinel frame's reserve includes, or `None` when it is too large to reserve
+    reserve_bytes: Option<usize>,
 
     /// The frames the `#[klv(unknown)]` field keeps, and their encoder
     unknown: Option<UnknownEncoder<'a>>,
@@ -91,11 +91,12 @@ impl<'a> EncodeCtx<'a> {
     ///
     /// # Returns
     ///
-    /// The context, or `None` when the struct has no KLV field, or a field, unknown-frame or framing
-    /// encoder is missing (`allow_unimplemented_encode`), in which case no encode impl is generated
+    /// The context, or `None` when every field of the struct is without `#[klv(..)]`, or a field,
+    /// unknown-frame or framing encoder is missing (`allow_unimplemented_encode`), in which case no
+    /// encode impl is generated
     fn new(input: &'a MainContainer<'a>) -> Option<Self> {
         // --------------------------------------------------
-        // an encoder on every field, and at least one field; else no encode impl
+        // an encoder on every field, and a KLV field or no field at all; else no encode impl
         // --------------------------------------------------
         if !input.every_keyed_field(|f| f.enc.is_some()) {
             return None;
@@ -130,8 +131,8 @@ impl<'a> EncodeCtx<'a> {
 /// Generates all encode trait implementation tokens for a container
 ///
 /// Emits an `EncodeValue` impl when the container's framing mode carries its encoder(s) and
-/// every keyed `#[klv]` field carries an encoder, with at least one KLV field, the
-/// `#[klv(unknown)]` one included, and `unknown(..)` carries one when a `#[klv(unknown)]` field
+/// every keyed `#[klv]` field carries an encoder, with a KLV field, the `#[klv(unknown)]` one
+/// included, or no field at all, and `unknown(..)` carries one when a `#[klv(unknown)]` field
 /// keeps unknown frames. Without `allow_unimplemented_encode` a missing encoder is a compile error
 /// reported during parsing; with it, a missing field,
 /// unknown-frame or framing encoder suppresses the encode impls entirely. If a
@@ -145,8 +146,8 @@ impl<'a> EncodeCtx<'a> {
 /// # Returns
 ///
 /// A token stream containing the generated `EncodeValue` impl followed by the generated
-/// `EncodeFrame` impl when the container declares a sentinel, or `None` when the struct has no
-/// KLV field, or a field, unknown-frame or framing encoder is missing under
+/// `EncodeFrame` impl when the container declares a sentinel, or `None` when every field of the
+/// struct is without `#[klv(..)]`, or a field, unknown-frame or framing encoder is missing under
 /// `allow_unimplemented_encode`
 pub(super) fn gen_encode_impl(input: &MainContainer) -> Option<TokenStream> {
     let ctx = EncodeCtx::new(input)?;

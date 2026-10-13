@@ -6,12 +6,14 @@
 //! how the argument is passed to the xcoder function; [`SiguledXcoder`] which
 //! pairs a sigil with an inner xcoder; [`HeaderEncoder`], the sigil-free frame
 //! header encoder; and supporting types [`LatebindXcoder`] and [`DefaultValue`]. Also detects an
-//! `Option` field type and extracts its inner type ([`is_option`], [`unwrap_option_type`])
+//! `Option` field type and extracts its inner type ([`is_option`], [`unwrap_option_type`]), and
+//! takes a `macro_rules!` type fragment's invisible groups away to compare it ([`ungrouped`])
 //!
 //! Author: aav
 // --------------------------------------------------
 // external
 // --------------------------------------------------
+use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 use quote::ToTokens;
 
 /// A Rust type named by an attribute value: the `typ` of `default(..)` or the container's `stream`
@@ -97,10 +99,10 @@ impl ToTokens for XcoderLike {
 ///   (deref coercion handles `&String -> &str`, `&Vec<u8> -> &[u8]`, etc.)
 /// * `Ref`   (`enc = &func`) -> emit `func(EncodeAs::encode_as(&self.field))` -
 ///   dispatches via the [`EncodeAs`](`tinyklv::traits::EncodeAs`) trait:
-///   primitives pass by value (Copy), `String -> &str`, `Vec<T> -> &[T]`,
+///   primitives pass as `&T`, `String -> &str`, `Vec<T> -> &[T]`,
 ///   `Box<T>/Rc<T>/Arc<T> -> &T`. No clone, no heap allocation
 /// * `Deref` (`enc = *func`) -> emit `func(self.field)` - fn takes `T` by value
-///   (for `Copy` types and small primitives)
+///   (for `Copy` types and small primitives); the only sigil that passes a primitive by value
 pub(crate) enum XcoderSigil {
     None,
     Ref,
@@ -218,6 +220,52 @@ impl syn::parse::Parse for LatebindXcoder {
         let inner: XcoderLike = input.parse()?;
         Ok(LatebindXcoder { is_mut, inner })
     }
+}
+
+/// The type `ty` with its invisible groups taken away, to compare it with the same type written
+/// out
+///
+/// A `macro_rules!` passes a `$t:ty` fragment on wrapped in an invisible group, which parses as
+/// a [`syn::Type::Group`] that is unequal to the type it holds
+///
+/// # Arguments
+///
+/// * `ty` - The [`syn::Type`] to compare
+///
+/// # Returns
+///
+/// `ty` parsed again from its tokens with each invisible group's tokens in place of the group,
+/// or `ty` itself when those tokens do not parse as a type (a group can hold a type that only
+/// parses on its own, e.g. `dyn A + B` behind a `&`)
+pub(crate) fn ungrouped(ty: &syn::Type) -> syn::Type {
+    syn::parse2(flatten_invisible_groups(ty.to_token_stream())).unwrap_or_else(|_| ty.clone())
+}
+
+/// `stream` with each invisible group's tokens in place of the group, at every depth
+///
+/// # Arguments
+///
+/// * `stream` - The tokens to flatten
+///
+/// # Returns
+///
+/// The flattened tokens, every delimited group kept with its span
+fn flatten_invisible_groups(stream: TokenStream) -> TokenStream {
+    stream
+        .into_iter()
+        .flat_map(|tree| match tree {
+            TokenTree::Group(group) if group.delimiter() == Delimiter::None => {
+                flatten_invisible_groups(group.stream())
+            }
+            TokenTree::Group(group) => {
+                let mut flat =
+                    Group::new(group.delimiter(), flatten_invisible_groups(group.stream()));
+                flat.set_span(group.span());
+                TokenTree::Group(flat).into()
+            }
+            other => other.into(),
+        })
+        .collect()
 }
 
 /// Returns the inner type `T` of an `Option<T>`, if the type is an `Option`

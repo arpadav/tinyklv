@@ -19,8 +19,8 @@
 //!   `#[klv(unknown)]` field keeps it ([`LoopCtx::kept_sliced_unknown_arm`]). A frame that moved
 //!   the cursor nowhere is rejected after its value
 //!
-//! In either framing the `break_on` key ends the loop right after its header
-//! ([`LoopCtx::break_on`]), so its frame never reaches the `unknown` decoder
+//! In either framing `break_on` runs right after the key ([`LoopCtx::break_on`]), a fused header's
+//! length read with it, so a frame it ends or skips never reaches a field or the `unknown` decoder
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -33,11 +33,8 @@ use super::{
 };
 use crate::{
     ast::{
-        attr::{
-            MainContainer, UnknownField, UnknownFrames,
-            container::{BreakOnSpec, ContainerMode},
-        },
-        types,
+        attr::{MainContainer, UnknownField, UnknownFrames, container::ContainerMode},
+        symbol, types,
     },
     expand::helpers,
 };
@@ -51,7 +48,7 @@ use quote::{quote, quote_spanned};
 /// The container's frame header codec(s) and `unknown(..)` decoder, carrying the borrowed
 /// decoder tokens
 ///
-/// Each variant borrows the decoders, `sentinel` and `break_on` of its [`ContainerMode`], and the
+/// Each variant borrows the decoders and `sentinel` of its [`ContainerMode`], and the
 /// [`UnknownFrames`] decoder where that mode's loop reads unknown frames
 #[derive(Debug, Clone, Copy)]
 pub(super) enum DecodeFraming<'a> {
@@ -63,8 +60,6 @@ pub(super) enum DecodeFraming<'a> {
         len_decoder: &'a types::XcoderType,
         /// The sentinel the `SeekSentinel` impl scans for ahead of the frame length, if any
         sentinel: Option<&'a syn::Lit>,
-        /// The break condition, if any: a key literal or a `fn(key, len) -> BreakType` path
-        break_on: Option<&'a BreakOnSpec>,
         /// Where the frame's length is read
         len_read: LenRead<'a>,
     },
@@ -72,8 +67,6 @@ pub(super) enum DecodeFraming<'a> {
     Fused {
         /// Token expression decoding each frame header into `(key, Framing)`
         keylen_decoder: &'a types::XcoderType,
-        /// The key literal that stops the loop, if any
-        break_on: Option<&'a syn::Lit>,
         /// The decoder of an unknown key's value, with `unknown(..)`
         unknown: Option<UnknownDecoder<'a>>,
     },
@@ -82,14 +75,13 @@ pub(super) enum DecodeFraming<'a> {
 /// Where a separate frame header reads the frame's length, chosen once per container
 #[derive(Debug, Clone, Copy)]
 pub(super) enum LenRead<'a> {
-    /// With the key, before the `match` on it: the derive reads every frame's length
+    /// Right after the key, before the `match` on it: the derive reads every frame's length
     /// ([`MainContainer::reads_every_len`])
     Hoisted,
     /// After the key, for every key but a `size(implicit)` field's, whose value has no length
     UnlessImplicit,
     /// After the key, only for the key of a field with a length prefix: the `unknown(..)` decoder
-    /// reads every byte after a key no field declares, the frame's length included, but for the
-    /// `break_on` key, which ends the loop first
+    /// reads every byte after a key no field declares, the frame's length included
     IfPrefixed(UnknownDecoder<'a>),
 }
 
@@ -126,12 +118,7 @@ impl<'a> DecodeFraming<'a> {
             None => None,
         };
         match &input.attrs.mode {
-            ContainerMode::Separate {
-                key,
-                len,
-                sentinel,
-                break_on,
-            } => {
+            ContainerMode::Separate { key, len, sentinel } => {
                 let len_read = match unknown {
                     Some(unknown) => LenRead::IfPrefixed(unknown),
                     None if input.reads_every_len() => LenRead::Hoisted,
@@ -141,13 +128,11 @@ impl<'a> DecodeFraming<'a> {
                     key_decoder: key.dec.as_ref()?,
                     len_decoder: len.dec.as_ref()?,
                     sentinel: sentinel.as_ref(),
-                    break_on: break_on.as_ref(),
                     len_read,
                 })
             }
-            ContainerMode::Fused { keylen, break_on } => Some(Self::Fused {
+            ContainerMode::Fused { keylen } => Some(Self::Fused {
                 keylen_decoder: keylen.dec.as_ref()?,
-                break_on: break_on.as_ref(),
                 unknown,
             }),
         }
@@ -173,20 +158,11 @@ impl<'a> DecodeFraming<'a> {
         self.binding("len")
     }
 
-    /// The binding a known-key arm puts its value decoder's result in
+    /// Names the key or the length the frame binds
     ///
-    /// # Returns
-    ///
-    /// `val` (separate) or `__val` (fused), see [`Self::binding`]
-    pub(super) fn val(self) -> syn::Ident {
-        self.binding("val")
-    }
-
-    /// Names the key, the length or the decode result the frame binds
-    ///
-    /// The fused frame binds these three under an internal name, so a user `const` of the same
-    /// name in scope is neither turned into a pattern nor reported against the derive. The
-    /// separate frame binds the plain name, where such a `const` still becomes a pattern
+    /// The fused frame binds both under an internal name, so a user `const` of the same name in
+    /// scope is neither turned into a pattern nor reported against the derive. The separate frame
+    /// binds the plain name, where such a `const` still becomes a pattern
     ///
     /// # Arguments
     ///
@@ -230,16 +206,14 @@ impl<'a> DecodeFraming<'a> {
 
 /// [`LoopCtx`] implementation of the frame header and body
 impl LoopCtx<'_> {
-    /// Emits the frame header read, binding [`DecodeFraming::key`] and either
-    /// [`DecodeFraming::len`] or `__framing`
+    /// Emits the frame header read, binding [`DecodeFraming::key`], and `__framing` under a fused
+    /// header
     ///
-    /// The separate header keeps its own failure rules. Streaming: a key decoder that fails
-    /// without consuming a byte is truncation, one that consumed bytes is malformed and finalizes;
-    /// any length failure is truncation ([`Self::len_header`]). One-shot: any failure rewinds and
-    /// stops. Under [`LenRead::UnlessImplicit`] and [`LenRead::IfPrefixed`] it reads the key
-    /// alone, and [`Self::after_key`] reads the length after every key but an implicit field's,
-    /// or, under [`LenRead::IfPrefixed`], only after a prefixed field's key. The fused header
-    /// follows the rules stated on `tinyklv::Framing`: a failure is truncation
+    /// The separate header reads the key alone, with its own failure rules. Streaming: a key
+    /// decoder that fails at the end of the input, or without consuming a byte, is truncation, one
+    /// that fails anywhere else is malformed and finalizes. One-shot: any failure rewinds and
+    /// stops. [`Self::after_key`] reads the length. The fused header follows the
+    /// rules stated on `tinyklv::Framing`: a failure is truncation
     /// ([`LoopDriver::on_parse_fail`] with [`ParseSite::Header`]). It also binds
     /// `__frame_offset`, the input position at the frame start, which [`Self::progress_check`]
     /// checks progress against
@@ -261,56 +235,27 @@ impl LoopCtx<'_> {
         let truncated = driver.truncated();
         match (framing, driver) {
             // --------------------------------------------------
-            // separate key and length, streaming: a key failing without consuming a byte is
-            // truncation; a key that consumed bytes finalizes
+            // separate key, streaming: a key failing at the end of the input or without
+            // consuming a byte is truncation; any other key failure finalizes
             // --------------------------------------------------
-            (
-                DecodeFraming::Separate {
-                    key_decoder,
-                    len_decoder,
-                    len_read,
-                    ..
-                },
-                LoopDriver::Streaming,
-            ) => {
-                let clean_eof = driver.clean_eof();
-                let len =
-                    matches!(len_read, LenRead::Hoisted).then(|| self.len_header(len_decoder));
-                quote! {
-                    let __key_offset_before = input.eof_offset();
-                    let ::core::result::Result::Ok(#key) = #key_decoder.parse_next(input) else {
-                        let __consumed = __key_offset_before - input.eof_offset();
-                        input.reset(&checkpoint_inner);
-                        if __consumed == 0 {
-                            #clean_eof
-                        }
-                        return <#partial_ty as ::tinyklv::traits::Partial>::finalize(__acc).map(::tinyklv::decoder::Packet::Ready)
-                    };
-
-                    #len
-                }
-            }
-            // --------------------------------------------------
-            // separate key and length, one-shot: any failure is truncation
-            // --------------------------------------------------
-            (
-                DecodeFraming::Separate {
-                    key_decoder,
-                    len_decoder,
-                    len_read,
-                    ..
-                },
-                LoopDriver::OneShot(_),
-            ) => {
-                let len =
-                    matches!(len_read, LenRead::Hoisted).then(|| self.len_header(len_decoder));
-                quote! {
-                    let ::core::result::Result::Ok(#key) = #key_decoder.parse_next(input) else {
+            (DecodeFraming::Separate { key_decoder, .. }, LoopDriver::Streaming) => quote! {
+                let __key_offset_before = input.eof_offset();
+                let ::core::result::Result::Ok(#key) = #key_decoder.parse_next(input) else {
+                    if input.eof_offset() == 0 || input.eof_offset() == __key_offset_before {
                         #truncated
-                    };
-                    #len
-                }
-            }
+                    }
+                    input.reset(&__checkpoint_inner);
+                    return <#partial_ty as ::tinyklv::traits::Partial>::finalize(__acc).map(::tinyklv::decoder::Packet::Ready)
+                };
+            },
+            // --------------------------------------------------
+            // separate key, one-shot: any failure is truncation
+            // --------------------------------------------------
+            (DecodeFraming::Separate { key_decoder, .. }, LoopDriver::OneShot(_)) => quote! {
+                let ::core::result::Result::Ok(#key) = #key_decoder.parse_next(input) else {
+                    #truncated
+                };
+            },
             // --------------------------------------------------
             // fused keylen header: a failure is truncation, and `__frame_offset` records
             // the input position at the frame start
@@ -336,7 +281,9 @@ impl LoopCtx<'_> {
     }
 
     /// Emits the read of a separate frame's length, binding [`DecodeFraming::len`]: any failure
-    /// is truncation
+    /// is truncation, except under [`LenRead::IfPrefixed`], where a failure follows the rule of a
+    /// value read from the main stream, as the length the `unknown` decoder reads does
+    /// ([`Self::value_err_arm`] with [`ValueSrc::Inline`]), naming the struct's frame
     ///
     /// # Arguments
     ///
@@ -348,8 +295,28 @@ impl LoopCtx<'_> {
     fn len_header(self, len_decoder: &types::XcoderType) -> TokenStream {
         let len = self.framing.len();
         let truncated = self.driver.truncated();
-        match self.driver {
-            LoopDriver::Streaming => quote! {
+        match (self.framing, self.driver) {
+            (
+                DecodeFraming::Separate {
+                    len_read: LenRead::IfPrefixed(_),
+                    ..
+                },
+                _,
+            ) => {
+                let on_err = self.value_err_arm(
+                    ValueSrc::Inline,
+                    helpers::call_site_at(len_decoder),
+                    None,
+                    &format!("`{}` decoder", symbol::LENGTH),
+                );
+                quote! {
+                    let #len = match #len_decoder.parse_next(input) {
+                        ::core::result::Result::Ok(__len) => __len,
+                        #on_err
+                    };
+                }
+            }
+            (_, LoopDriver::Streaming) => quote! {
                 let #len = match #len_decoder.parse_next(input) {
                     ::core::result::Result::Ok(l) => l,
                     ::core::result::Result::Err(_) => {
@@ -357,7 +324,7 @@ impl LoopCtx<'_> {
                     }
                 };
             },
-            LoopDriver::OneShot(_) => quote! {
+            (_, LoopDriver::OneShot(_)) => quote! {
                 let ::core::result::Result::Ok(#len) = #len_decoder.parse_next(input) else {
                     #truncated
                 };
@@ -365,8 +332,16 @@ impl LoopCtx<'_> {
         }
     }
 
-    /// Emits what follows the frame header and `break_on`: `frame`, the rest of a frame that has
-    /// a length (the `debug` log, the `deny_unknown_keys` gate and [`Self::body`])
+    /// Emits what follows the frame header and `break_on`: a separate frame's length read
+    /// ([`Self::len_header`]) and `frame`, the rest of a frame that has a length (the `debug` log,
+    /// the `deny_unknown_keys` gate and [`Self::body`])
+    ///
+    /// Under [`LenRead::Hoisted`] every key reads the length, then runs `frame`:
+    ///
+    /// ```text
+    /// #len_header
+    /// #frame
+    /// ```
     ///
     /// Under [`LenRead::UnlessImplicit`] a `match` on the key comes first. A `size(implicit)`
     /// field's arm decodes its value with no length read ([`ValueSrc::implicit`]); every other
@@ -408,8 +383,8 @@ impl LoopCtx<'_> {
     ///
     /// # Returns
     ///
-    /// The `match`, or `frame` itself when the header already read the length or the framing has
-    /// none
+    /// The length read and `frame`, the `match`, or `frame` itself when the header has no separate
+    /// length
     pub(super) fn after_key(self, frame: TokenStream) -> TokenStream {
         let DecodeFraming::Separate {
             len_decoder,
@@ -420,11 +395,17 @@ impl LoopCtx<'_> {
             return frame;
         };
         // --------------------------------------------------
-        // the arms after the implicit fields': the length read and the rest of the frame, for
-        // every other key or for the prefixed fields' keys only
+        // the length read and the rest of the frame: for every key, or, in the arms after the
+        // implicit fields', for every other key or for the prefixed fields' keys only
         // --------------------------------------------------
         let rest = match len_read {
-            LenRead::Hoisted => return frame,
+            LenRead::Hoisted => {
+                let len = self.len_header(len_decoder);
+                return quote! {
+                    #len
+                    #frame
+                };
+            }
             LenRead::UnlessImplicit => {
                 let len = self.len_header(len_decoder);
                 quote! {
@@ -565,14 +546,14 @@ impl LoopCtx<'_> {
     ///     #reject
     /// }
     /// // Separate
-    /// if Offset::offset_from(&*input, &checkpoint_inner) == 0 {
+    /// if Offset::offset_from(&*input, &__checkpoint_inner) == 0 {
     ///     #reject
     /// }
     /// ```
     ///
     /// It runs after a fused frame's value ([`Self::body`]), against the frame start its header
     /// binds ([`Self::header`]), and after a separate frame's unknown value
-    /// ([`Self::unknown_arm`]), against the frame start `checkpoint_inner`, so a separate frame's
+    /// ([`Self::unknown_arm`]), against the frame start `__checkpoint_inner`, so a separate frame's
     /// header binds nothing for it. Each framing's form decodes it in fewer instructions than the
     /// other's would. The cursor is still at the frame start when it rejects. A header that
     /// consumed nothing is fine when its value moved the cursor. The rule is stated on
@@ -588,7 +569,7 @@ impl LoopCtx<'_> {
         let consumed_nothing = match self.framing {
             DecodeFraming::Fused { .. } => quote! { input.eof_offset() == __frame_offset },
             DecodeFraming::Separate { .. } => quote! {
-                ::tinyklv::__export::winnow::stream::Offset::offset_from(&*input, &checkpoint_inner) == 0
+                ::tinyklv::__export::winnow::stream::Offset::offset_from(&*input, &__checkpoint_inner) == 0
             },
         };
         quote! {

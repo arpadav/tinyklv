@@ -7,9 +7,14 @@ documentation = "https://docs.rs/tinyklv"
 homepage = "https://arpadvoros.com/tinyklv"
 repository = "https://github.com/arpadav/tinyklv"
 license = "MIT"
+readme = "README.md"
 keywords = ["decode", "encode", "klv", "parsing", "tlv"]
 categories = ["development-tools", "encoding", "parsing"]
+rust-version = "1.95"
 publish = true
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 pastey = "0.2.3"

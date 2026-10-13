@@ -51,6 +51,7 @@ mod partial_decode;
 mod repeated_decode;
 mod sentinel_seek;
 mod shadowed_debug_assert;
+mod shadowed_matches;
 mod sigil_dispatch;
 mod streaming_decoder;
 mod streaming_mixed_fields;

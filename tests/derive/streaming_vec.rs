@@ -206,6 +206,25 @@ fn vec_decode_partial_finalizes_cut_last_element() {
     );
 }
 
+#[test]
+/// `Vec<T>::decode_partial` does not push a cut element that cannot finalize: the cursor
+/// rewinds to the element's start, so the call after the rest arrives reads it whole
+fn vec_decode_partial_rewinds_cut_unfinalized_element() {
+    #[rustfmt::skip]
+    let wire = [
+        // channel = 3
+        0x01, 0x01, 0x03,
+        // value, its key and length only
+        0x02, 0x01,
+    ];
+    let mut cursor = &wire[..];
+    match Vec::<Reading>::decode_partial(&mut cursor) {
+        Ok(Packet::Ready(decoded)) => assert_eq!(decoded, []),
+        other => panic!("expected Ready, got {other:?}"),
+    }
+    assert_eq!(cursor, &wire[..], "the cut reading stays unconsumed");
+}
+
 /// A `Beacon` with `deny_unknown_keys`, so an unrecognised key is an error
 #[derive(Klv, Debug, PartialEq)]
 #[klv(

@@ -5,7 +5,8 @@
 //! (pinned in `tests/ui`). A field with no `size(exact)` reserves the slot and back-fills it:
 //! a 255-byte value is written, a 256-byte one rolls its item back. A two-byte and an eight-byte
 //! slot back-fill their lengths byte for byte. A length encoder that writes more bytes than its
-//! declared `size` fails the debug check on a known-width field
+//! declared `size` writes a known-width field's length as it is, while a value encoder that
+//! writes another width than its field's `size(exact)` fails the debug check
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -154,6 +155,28 @@ struct Thermostat {
     setpoint: u16,
 }
 
+/// Writes a setpoint's low byte alone, one of the two bytes its field declares
+fn low_byte(setpoint: u16, out: &mut Vec<u8>) {
+    out.push(setpoint as u8);
+}
+
+/// A value encoder narrower than its field's `size(exact = 2)`, under a one-byte length slot
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize, size(exact = 1)),
+)]
+struct Dial {
+    #[klv(
+        key = 0x01,
+        dec = decb::be_u16,
+        enc = *low_byte,
+        size(exact = 2),
+    )]
+    setpoint: u16,
+}
+
 #[test]
 /// A 255-byte value fills a one-byte length prefix exactly and round-trips
 fn widest_value_fits_one_byte_len() {
@@ -256,10 +279,26 @@ fn backfilled_eight_byte_len_is_written() {
 }
 
 #[test]
-#[cfg(debug_assertions)]
-#[should_panic(expected = "length encoder wrote a different byte count")]
-/// A length encoder that overruns its declared slot fails the debug check on a known-width field
-fn wide_len_encoder_fails_debug_check() {
+/// A length encoder that overruns its declared slot writes a known-width field's length as it is
+fn wide_len_encoder_writes_a_known_width_length_as_is() {
+    #[rustfmt::skip]
+    let wire = [
+        // key, then the length 2 as `two_byte_len` writes it
+        0x01, 0x00, 0x02,
+        // setpoint = 0x0102
+        0x01, 0x02,
+    ];
     let mut encoded = Vec::new();
     Thermostat { setpoint: 0x0102 }.encode_value(&mut encoded);
+    assert_eq!(encoded, wire);
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "wrote a different byte count than its fixed width")]
+/// A value encoder that writes another width than its field's `size(exact = 2)` fails the debug
+/// check: the slot holds the declared width, never a length back-filled from the bytes written
+fn narrow_value_encoder_fails_debug_check() {
+    let mut encoded = Vec::new();
+    Dial { setpoint: 0x0102 }.encode_value(&mut encoded);
 }

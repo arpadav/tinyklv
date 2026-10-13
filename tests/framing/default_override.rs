@@ -253,3 +253,34 @@ fn a_second_default_entry_adds_its_width() {
         &["`SplitSeismogram::north`", "size(exact = 4)"],
     );
 }
+
+/// A link's packet counters whose `i32` default is written as two entries, the second carrying
+/// only its skip
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    key(dec = varint::dec_u32, enc = varint::enc_u32),
+    len(dec = varint::dec_usize, enc = varint::enc_usize),
+    default(typ = i32, dec = varint::dec_i32, enc = *varint::enc_i32, size(implicit)),
+    default(typ = i32, skip_if_default),
+)]
+struct SplitCounters {
+    /// field 1 - left out at 0
+    #[klv(key = 0x08)]
+    sent: i32,
+
+    /// field 2 - left out at 0
+    #[klv(key = 0x10)]
+    lost: i32,
+}
+
+/// A second `default(..)` entry carrying only a skip adds it to the first entry's settings: a
+/// field at 0 is left out, and its missing frame decodes back to 0
+#[test]
+fn a_second_default_entry_adds_its_skip() {
+    let idle = SplitCounters { sent: 0, lost: 3 };
+    // lost = 3: tag, varint 3
+    let wire = [0x10, 0x03];
+    assert_eq!(idle.encoded(), wire);
+    idle.assert_decodes_from(&wire);
+}

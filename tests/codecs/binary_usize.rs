@@ -4,9 +4,10 @@
 //! `u8_as_usize`, `u16_as_usize`, `u32_as_usize`, `u64_as_usize`,
 //! `be_u16_as_usize`, `be_u32_as_usize`, `be_u64_as_usize`,
 //! `le_u16_as_usize`, `le_u32_as_usize`, and their `_from_usize` encoder
-//! counterparts. Covers known-value decoding for BE and LE variants,
-//! encode/decode roundtrips, and the `be_u32_from_usize`/`be_u32_as_usize`
-//! roundtrip across boundary values
+//! counterparts. Covers known-value decoding for BE and LE variants, the
+//! cursor after a short read, encode/decode roundtrips, the debug-build panic
+//! on a length past the target width, and the
+//! `be_u32_from_usize`/`be_u32_as_usize` roundtrip across boundary values
 //!
 //! Author: aav
 #[test]
@@ -49,6 +50,14 @@ fn u32_as_usize_one() {
 fn u64_as_usize_one() {
     let mut input: &[u8] = &(1_u64).to_ne_bytes();
     assert_eq!(tinyklv::dec::binary::u64_as_usize(&mut input), Ok(1_usize));
+}
+
+#[test]
+/// Tests a short native-endian `u32_as_usize` leaves the cursor at the end of the input
+fn u32_as_usize_short_input_leaves_cursor_at_end() {
+    let mut input: &[u8] = &[0x01, 0x02, 0x03];
+    assert!(tinyklv::dec::binary::u32_as_usize(&mut input).is_err());
+    assert!(input.is_empty(), "cursor not at the end after a short u32");
 }
 
 #[test]
@@ -139,6 +148,14 @@ fn u8_from_usize_zero() {
     let mut __v = Vec::new();
     tinyklv::enc::binary::u8_from_usize(0, &mut __v);
     assert_eq!(__v, vec![0x00]);
+}
+
+#[test]
+#[cfg(debug_assertions)]
+#[should_panic(expected = "length 300 changes under `as u8`")]
+/// Tests `u8_from_usize(300)` panics in a debug build, where `300 as u8` would write `0x2C`
+fn u8_from_usize_past_u8_panics_in_debug() {
+    tinyklv::enc::binary::u8_from_usize(300, &mut Vec::new());
 }
 
 #[test]

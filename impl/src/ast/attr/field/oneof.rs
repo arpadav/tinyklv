@@ -16,6 +16,7 @@ use crate::ast::symbol;
 // --------------------------------------------------
 // external
 // --------------------------------------------------
+use quote::ToTokens;
 use syn::{Token, punctuated::Punctuated};
 
 #[derive(Debug, Clone)]
@@ -52,15 +53,37 @@ pub(crate) struct Oneof {
 }
 /// [`Oneof`] implementation of [`TryFrom`] for [`syn::MetaList`]
 ///
-/// Parses the comma-separated arms of a `oneof(..)` list. A malformed arm is returned as a
-/// [`syn::Error`], so the caller can surface it via the [`crate::Ctxt`] accumulator
+/// Parses the comma-separated arms of a `oneof(..)` list. A malformed arm, an empty list, or an
+/// arm whose variant an earlier arm already names, which leaves encode no one key to write that
+/// variant under, is returned as a [`syn::Error`], so the caller can surface it via the
+/// [`crate::Ctxt`] accumulator
 impl TryFrom<&syn::MetaList> for Oneof {
     type Error = syn::Error;
     fn try_from(input: &syn::MetaList) -> syn::Result<Self> {
-        let arms = input.parse_args_with(Punctuated::<OneofArm, Token![,]>::parse_terminated)?;
-        Ok(Self {
-            arms: arms.into_iter().collect(),
-        })
+        let arms: Vec<OneofArm> = input
+            .parse_args_with(Punctuated::<OneofArm, Token![,]>::parse_terminated)?
+            .into_iter()
+            .collect();
+        if arms.is_empty() {
+            return Err(syn::Error::new_spanned(input, err!(OneofWithoutArms)));
+        }
+        let duplicates = arms.iter().enumerate().filter_map(|(at, arm)| {
+            let first = arms
+                .iter()
+                .take(at)
+                .find(|first| first.variant == arm.variant)?;
+            Some(syn::Error::new_spanned(
+                &arm.variant,
+                err!(OneofDuplicateVariant(first.key)),
+            ))
+        });
+        match duplicates.reduce(|mut all, duplicate| {
+            all.combine(duplicate);
+            all
+        }) {
+            Some(duplicates) => Err(duplicates),
+            None => Ok(Self { arms }),
+        }
     }
 }
 

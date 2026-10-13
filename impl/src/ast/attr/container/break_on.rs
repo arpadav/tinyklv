@@ -1,15 +1,15 @@
 //! Parsed model for the container-level `#[klv(break_on = ..)]` attribute
 //!
-//! `break_on` accepts two forms, distinguished by the right-hand side of the name-value:
+//! `break_on` accepts two forms, distinguished by the right-hand side of the name-value. Both run
+//! right after each frame's key, in either framing mode (a `keylen` header's key and length are
+//! read together):
 //!
-//! * a **literal** (e.g. `break_on = 0xFF`) - the loop stops right after a header whose key
-//!   equals it
-//!   * `key` + `len`: lowered to `tinyklv::BreakType::Done` on a match, else `Proceed`
-//!   * `keylen`: lowered to a bare `break` on a match
+//! * a **literal** (e.g. `break_on = 0xFF`) - the loop stops on a key equal to it, the input
+//!   right after the key
 //! * a **function path** (e.g. `break_on = classify`) - the user's
-//!   `fn(key, len) -> tinyklv::BreakType`
-//!   * `key` + `len`: called as `path(key, len)` after each header
-//!   * `keylen`: a compile error, since an `Inline` frame has no length to pass
+//!   `fn(&key, &mut input) -> tinyklv::BreakType`, which may read what follows the key: on
+//!   `Proceed` the input is rewound to just after the key and the frame decodes, on any other
+//!   outcome it stays where the fn left it
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -23,14 +23,13 @@ use crate::ast::symbol;
 use quote::ToTokens;
 
 /// The two forms a `break_on = ..` right-hand side may take
-///
-/// A `key` + `len` container's mode holds either; a `keylen` container's holds only the literal
 #[derive(Clone)]
 pub(crate) enum BreakOnSpec {
     /// `break_on = <literal>` - a decoded key equal to this literal stops the loop
     Literal(syn::Lit),
 
-    /// `break_on = <path>` - a user function `fn(key, len) -> BreakType` consulted per triple
+    /// `break_on = <path>` - a user function `fn(&key, &mut input) -> BreakType` consulted per
+    /// frame
     Func(syn::Path),
 }
 

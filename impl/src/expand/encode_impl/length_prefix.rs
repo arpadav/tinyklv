@@ -6,10 +6,10 @@
 //!
 //! [`FixedLengthSlot`](crate::expand::encode_impl::length_prefix::FixedLengthSlot) owns
 //! everything about a `len(size(exact = W))` slot: the largest length its `W` bytes can encode, the
-//! length write checked against `W` in debug builds, the write for a value of known width, and the
-//! complete write for a KLV unit whose body length is unknown until after the body is encoded:
-//! write the prefix, reserve the slot, write the value, then back-fill the slot or roll back the
-//! whole unit if the value is too large
+//! write for a value of known width, whose length is written directly, and the complete write for
+//! a KLV unit whose body length is unknown until after the body is encoded: write the prefix,
+//! reserve the slot, write the value, then back-fill the slot, the length checked against `W` in
+//! debug builds, or roll back the whole unit if the value is too large
 //!
 //! [`VariableLength`](crate::expand::encode_impl::length_prefix::VariableLength) writes the
 //! length of a staged value
@@ -111,7 +111,8 @@ impl FixedLengthSlot<'_> {
         n <= self.max_len()
     }
 
-    /// Writes `len` with the length encoder, checking in debug builds that it filled the slot
+    /// Writes `len` with the length encoder, checking in debug builds that it fills the slot it is
+    /// moved into
     ///
     /// The statements bind `__tail` to `out.len()` before the length is written, so `__tail` is
     /// where the written length starts. [`Self::write_backfilled`] reads it to move the length
@@ -153,9 +154,9 @@ impl FixedLengthSlot<'_> {
     ///
     /// # Returns
     ///
-    /// A block writing the complete frame into `out`, checking in debug builds that the length
-    /// encoder filled the slot and the value encoder wrote `value.bytes` bytes, or the
-    /// `compile_error!` when the slot cannot encode `value.bytes`
+    /// A block writing the complete frame into `out`, the length as its encoder writes it, which
+    /// may take more than the slot's width, checking in debug builds that the value encoder wrote
+    /// `value.bytes` bytes, or the `compile_error!` when the slot cannot encode `value.bytes`
     pub(super) fn write_known(
         self,
         prefix_write: proc_macro2::TokenStream,
@@ -183,7 +184,8 @@ impl FixedLengthSlot<'_> {
         // --------------------------------------------------
         // prefix, length, then value
         // --------------------------------------------------
-        let len_write = self.write_len(&bytes, span);
+        let len_encoder = self.len_encoder;
+        let len_write = quote_spanned! { span => #len_encoder(#bytes, out); };
         value.write_after(quote! { #prefix_write #len_write }, value_write, span)
     }
 
@@ -212,9 +214,14 @@ impl FixedLengthSlot<'_> {
         let value_write = value_write(&quote_spanned! { span => out });
         let len_write = self.write_len(&quote! { __body_len }, proc_macro2::Span::call_site());
         // --------------------------------------------------
-        // a slot narrower than usize rolls back an overflowing body
+        // a slot narrower than usize rolls back an overflowing body, compared as `u64`: the bound
+        // can exceed a 32-bit target's usize
         // --------------------------------------------------
-        if let Some(max_body_len) = self.max_len().checked_add(1) {
+        if let Some(max_body_len) = self
+            .max_len()
+            .checked_add(1)
+            .and_then(|bound| u64::try_from(bound).ok())
+        {
             let logger = crate::expand::logger::error_logger();
             return quote! {
                 {
@@ -225,7 +232,7 @@ impl FixedLengthSlot<'_> {
                     let __body_start = out.len();
                     #value_write
                     let __body_len = out.len() - __body_start;
-                    if __body_len >= #max_body_len {
+                    if __body_len as u64 >= #max_body_len {
                         #logger(
                             "tinyklv: KLV item body of {} bytes exceeds its {}-byte length prefix; omitting the item",
                             __body_len,
@@ -289,5 +296,32 @@ impl VariableLength<'_> {
         let buffer = staging.buffer();
         let header = quote_spanned! { span => #prefix_write #len_encoder(#buffer.len(), out); };
         staging.write(header, value_write, span)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FixedLengthSlot;
+    use crate::ast::types::XcoderType;
+
+    use quote::quote;
+
+    #[test]
+    /// Verifies a back-filled body is bounded as a `u64`: a four-byte slot's bound, `2^32`,
+    /// overflows a 32-bit target's `usize`, where a `usize` literal would wrap to 0 and roll back
+    /// every body
+    fn a_four_byte_slot_bounds_its_body_as_a_u64() {
+        let len_encoder: XcoderType = syn::parse_quote! { encb::be_u32_from_usize };
+        let slot = FixedLengthSlot {
+            len_encoder: &len_encoder,
+            width: 4,
+        };
+        let write = slot.write_backfilled(
+            quote! {},
+            |out| quote! { body(#out); },
+            proc_macro2::Span::call_site(),
+        );
+        let bound = quote! { if __body_len as u64 >= 4294967296u64 }.to_string();
+        assert!(write.to_string().contains(&bound), "{write}");
     }
 }

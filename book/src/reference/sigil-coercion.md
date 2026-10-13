@@ -1,10 +1,11 @@
 # Sigil coercion and `EncodeAs`
 
 An `enc` path (`#[klv(enc = ...)]` on a field, or `enc = ...` inside a
-container `default(...)` / `key(...)` / `len(...)` block) may carry a
-leading sigil - `&` or `*` - that tells the macro how to shape the call
-to the underlying encoder function. This page explains the three forms
-and when to use each.
+container `default(...)` / `unknown(...)` block) may carry a leading
+sigil - `&` or `*` - that tells the macro how to shape the call to the
+underlying encoder function. The `key(...)`, `len(...)` and `keylen(...)`
+encoders are passed the key and length by value: a sigil there is a
+compile error.
 
 ## Why sigils exist
 
@@ -49,7 +50,7 @@ But encoders come in three shapes (each appends into `out: &mut Vec<u8>`):
 
    Passing `&u8` to `fn u8(x: u8, ..)` is a type error. We need a bridge.
 
-The `&` and `*` sigils are those bridges.
+The `&` sigil bridges shape 2, the `*` sigil shape 3.
 
 ## The three forms
 
@@ -77,22 +78,18 @@ gps: GpsFix,
 ### With `&` sigil - `EncodeAs` bridge
 
 Use when your encoder takes a borrowed view that differs from `&T`
-(primitives by value, `String -> &str`, `Vec<T> -> &[T]`, smart pointers
-to inner):
+(`String -> &str`, `Vec<T> -> &[T]`, smart pointers to inner):
 
 ```rust,ignore
-#[klv(key = 0x02, dec = decb::be_u16, enc = &encb::be_u16)]
-temperature_centideg: u16,
+#[klv(key = 0x1A, enc = &encs::from_string_utf8)]
+name: String,
 ```
 
 Under the hood (simplified):
 
 ```rust,ignore
-encb::be_u16(EncodeAs::encode_as(&self.temperature_centideg), out)
+encs::from_string_utf8(EncodeAs::encode_as(&self.name), out)
 ```
-
-For primitives `EncodeAs::encode_as(&u16)` is `*self` - a `Copy` - so
-this compiles down to a plain call with zero overhead.
 
 ### With `*` sigil - by-value for `Copy` types
 
@@ -104,9 +101,8 @@ Use when your encoder takes `T` by value and `T: Copy`. Emits
 sequence: u8,
 ```
 
-This is the shortest path for primitive `Copy` types paired with
-value-taking encoders. Prefer `&` when in doubt - it works for
-non-`Copy` owned types too.
+This is the form the built-in primitive encoders in
+`tinyklv::codecs::binary::enc` take.
 
 ## The `EncodeAs` trait
 
@@ -143,16 +139,3 @@ Implement `EncodeAs` on your own type **only** when:
   (e.g. a newtype over `String` that should coerce to `&str`).
 
 This is rare.
-
-## Summary
-
-- `enc = path` - encoder takes `&T`, field is borrowed directly.
-- `enc = &path` - encoder takes the `EncodeAs::Borrowed` view of `T`.
-- `enc = *path` - encoder takes `T` by value (requires `T: Copy`).
-- Use the no-sigil form for custom types whose encoders take `&Self`
-  (including all `#[derive(Klv)]`-generated `encode_value` methods).
-- Use the `&` form for the built-in primitive encoders in
-  `tinyklv::codecs::binary::enc` and for owned containers like `String`
-  / `Vec<T>`.
-- Use the `*` form as a shortcut when both sides are primitive `Copy`
-  types.

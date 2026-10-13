@@ -1,12 +1,14 @@
 //! The fixed-prefix field length kinds
 //!
 //! It names the ways a field's value length is written under a fixed-width length prefix, so
-//! emission modules can choose a concrete write shape, and writes a value of known width
+//! emission modules can choose a concrete write shape, writes a value of known width, and checks
+//! in debug builds that a value is its known width
 //!
 //! Author: aav
 // --------------------------------------------------
 // external
 // --------------------------------------------------
+use proc_macro2::{Span, TokenStream};
 use quote::quote_spanned;
 
 /// A field value width known at compile time
@@ -37,23 +39,39 @@ impl ValueWidth<'_> {
     /// A block writing the prefix and the value into `out`
     pub(super) fn write_after(
         self,
-        prefix_write: proc_macro2::TokenStream,
-        value_write: impl FnOnce(&proc_macro2::TokenStream) -> proc_macro2::TokenStream,
-        span: proc_macro2::Span,
-    ) -> proc_macro2::TokenStream {
-        let bytes = self.bytes;
+        prefix_write: TokenStream,
+        value_write: impl FnOnce(&TokenStream) -> TokenStream,
+        span: Span,
+    ) -> TokenStream {
         let value_write = value_write(&quote_spanned! { span => out });
+        let check = self.check(&quote_spanned! { span => out.len() - __value_start }, span);
         quote_spanned! { span =>
             {
                 #prefix_write
                 let __value_start = out.len();
                 #value_write
-                ::core::debug_assert_eq!(
-                    out.len() - __value_start,
-                    #bytes,
-                    "tinyklv: fixed-width value encoder wrote a different byte count than its detected width",
-                );
+                #check
             }
+        }
+    }
+
+    /// Checks in debug builds that the value encoder wrote [`Self::bytes`] bytes
+    ///
+    /// # Arguments
+    ///
+    /// * `written` - The byte count the value encoder wrote
+    /// * `span` - Span of the emitted check
+    ///
+    /// # Returns
+    ///
+    /// The `debug_assert_eq!`, its message naming [`Self::field`]
+    pub(super) fn check(self, written: &TokenStream, span: Span) -> TokenStream {
+        let Self { field, bytes, .. } = self;
+        let message = format!(
+            "tinyklv: the value encoder of `{field}` wrote a different byte count than its fixed width"
+        );
+        quote_spanned! { span =>
+            ::core::debug_assert_eq!(#written, #bytes, #message);
         }
     }
 }

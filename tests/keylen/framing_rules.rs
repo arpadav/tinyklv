@@ -33,7 +33,7 @@ struct Limits {
     #[klv(key = 0x08)]
     count: i32,
 
-    /// field 4, wire 0 - `Inline`, refuses fewer than 2 bytes without consuming
+    /// field 4, wire 0 - `Inline`, a fixed two-byte value
     #[klv(key = 0x20, dec = decb::be_u16)]
     port: Option<u16>,
 }
@@ -197,7 +197,10 @@ fn overflowing_ber_oid_mid_buffer_is_labelled_error() {
         // label = "hi"
         0x12, 0x02, 0x68, 0x69,
     ];
-    Reading::assert_rejects_naming(&wire, &["Reading::level"]);
+    Reading::assert_rejects_naming(
+        &wire,
+        &["`Reading::level` value (its decoder failed before the end of the input)"],
+    );
     Reading::assert_oneshot_label_chain(&wire, "Reading::level", "BER-OID value");
 }
 
@@ -212,7 +215,10 @@ fn overflowing_ber_length_last_frame_is_labelled_error() {
         // size = 256 in two-byte long form, past `u8::MAX` - the final frame
         0x28, 0x82, 0x01, 0x00,
     ];
-    Reading::assert_rejects_naming(&wire, &["Reading::size"]);
+    Reading::assert_rejects_naming(
+        &wire,
+        &["`Reading::size` value (its decoder failed before the end of the input)"],
+    );
     Reading::assert_oneshot_label_chain(&wire, "Reading::size", "BER length value");
 }
 
@@ -250,18 +256,22 @@ fn split_inside_varint_value() {
     expected.assert_decodes_from(&wire);
 }
 
-/// An `Inline` decoder that refuses short input without consuming fails away from the end
-/// of input, so a cut fixed-width value is classed malformed, not truncation
+/// An `Inline` fixed-width value split anywhere, including between its two bytes, pauses, then
+/// completes to the value one-shot decodes: a short read leaves the cursor at the end of input
 #[test]
-fn short_fixed_inline_value_is_malformed() {
+fn split_inside_fixed_inline_value() {
     #[rustfmt::skip]
     let wire = [
         // count = 3
         0x08, 0x03,
-        // port: one of its two bytes
-        0x20, 0x01,
+        // port = 0x0102
+        0x20, 0x01, 0x02,
     ];
-    Limits::assert_rejects_naming(&wire, &["Limits::port"]);
+    let expected = Limits {
+        count: 3,
+        port: Some(0x0102),
+    };
+    expected.assert_decodes_from(&wire);
 }
 
 /// An `Inline` value is read once per frame, by one-shot and by streaming over the whole input

@@ -1,0 +1,5 @@
+error: Key `16` is already a key of field `count`, which the frames of `16` decode into, so this one never decodes; give one of them another key.
+  --> tests/ui/fail/key/shared.rs:12:17
+   |
+12 |     #[klv(key = 16)]
+   |                 ^^

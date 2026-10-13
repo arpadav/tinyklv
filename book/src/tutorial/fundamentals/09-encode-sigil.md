@@ -22,7 +22,7 @@ derive bridges the shapes with a leading sigil on `enc`:
 3. `enc = *f` - `f<T: Copy>(T, &mut Vec<u8>)`
 
 `tinyklv`'s provided encoders, by default, take the literal values themselves, so
-most need a sigil, e.g. `enc = &encb::u8`. 
+most need a sigil on a field, e.g. `enc = *encb::u8`. 
 
 For the full dispatch story - how `&` routes through `EncodeAs`, which
 types get zero-cost coercion, and when to implement `EncodeAs`
@@ -31,7 +31,7 @@ yourself - see [Sigil coercion and `EncodeAs`](../../reference/sigil-coercion.md
 ## Implementing `EncodeValue`
 
 And similar to decoding, `tinyklv::EncodeValue` is used to expose `T::encode_value`, 
-which by default takes in `&self`, so it can be used as `#[key(enc = MyStruct::encode_value)]`
+which by default takes in `&self`, so it can be used as `#[klv(enc = MyStruct::encode_value)]`
 
 ## Example 
 
@@ -48,9 +48,9 @@ Run this example: `cargo run --example book_09_encode_sigil`
 
 - Derive-called encoders receive `&self.field`; sigils rewrite that.
 - `enc = &f` routes through `EncodeAs` (owned containers, smart
-  pointers, primitives).
-- `enc = *f` is a shortcut for `Copy` primitive types.
-- Sigils are accepted on all encoder types, including container-attribute
-  `default(...)` blocks as well as on individual fields.
+  pointers).
+- `enc = *f` passes a `Copy` value, for the built-in primitive encoders.
+- Sigils are accepted on field and `default(...)` encoders; on a `key(...)`
+  or `len(...)` encoder one is a compile error.
 
 **Next:** [10 - Macros](./10-macros.md)

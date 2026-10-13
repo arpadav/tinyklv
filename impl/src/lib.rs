@@ -148,6 +148,13 @@ Options include {s}.",
     )]
     ExpectedAsPath(String),
 
+    #[error(
+        "\
+        `{0}` takes a path, not a literal: `{0} = my::path`, or the path in a string, \
+`{0} = \"my::path\"`."
+    )]
+    LiteralSetting(String),
+
     // --------------------------------------------------
     // stream
     // --------------------------------------------------
@@ -166,6 +173,14 @@ Options include {s}.",
     )]
     DuplicateSentinel,
 
+    #[error("\
+        `{s}` is searched for in the input's bytes, which a `&str` `{st}` does not give; use \
+`{st} = &[u8]`, the default, or remove `{s}`.",
+        s = symbol::SENTINEL,
+        st = symbol::STREAM,
+    )]
+    SentinelOnStrStream,
+
     // --------------------------------------------------
     // break_on
     // --------------------------------------------------
@@ -177,7 +192,7 @@ Options include {s}.",
 
     #[error("\
         `{s}` expects either a key literal (e.g. `{s} = 0xFF`) or a function path \
-        (e.g. `{s} = my_break_fn`, where `fn(key, len) -> tinyklv::BreakType`).",
+        (e.g. `{s} = my_break_fn`, where `fn(&key, &mut input) -> tinyklv::BreakType`).",
         s = symbol::BREAK_ON,
     )]
     InvalidBreakOn,
@@ -226,16 +241,6 @@ Use either `{kl}` OR `{k}`+`{l}`, not both.",
     KeylenWithSentinel,
 
     #[error("\
-        `{b} = <fn>` is not supported with `{kl}`: it takes the frame's length, which an \
-`Inline` frame does not have; use a key literal (`{b} = 0xFF`), or `{k}(..)` + `{l}(..)`.",
-        b = symbol::BREAK_ON,
-        kl = symbol::KEYLEN,
-        k = symbol::KEY,
-        l = symbol::LENGTH,
-    )]
-    KeylenWithBreakOnFn,
-
-    #[error("\
         `{s}({i})` is not supported with `{kl}`: the `{kl}` codec decides each frame's framing; \
 remove `{i}`, or use `{k}(..)` + `{l}(..)` in place of `{kl}(..)`.",
         s = symbol::SIZE,
@@ -245,16 +250,6 @@ remove `{i}`, or use `{k}(..)` + `{l}(..)` in place of `{kl}(..)`.",
         l = symbol::LENGTH,
     )]
     ImplicitInKeylen,
-
-    #[error("\
-        `{b} = <fn>` takes the frame's length, which the derive does not read for an `{i}` \
-field's frame, nor, with `{u}(..)`, for a frame whose key no field declares; use a key literal \
-(`{b} = 0x..`), or remove every `{i}` and `{u}(..)`.",
-        b = symbol::BREAK_ON,
-        i = symbol::IMPLICIT,
-        u = symbol::UNKNOWN_FRAMES,
-    )]
-    BreakOnFnWithoutLength,
 
     #[error("\
         Duplicate `{s}` attribute. Only one method of encoding and decoding keys is allowed.",
@@ -329,6 +324,15 @@ The derive passes the key and length by value; sigils apply to field encoders on
         l = symbol::LENGTH,
     )]
     DuplicateSizeInHeader,
+
+    #[error("\
+        A `{l}(..)` with `{s}({e} = 0)` has no bytes to write a value's length in, so every \
+value with a length prefix is lost; use `{e} = 1` or more, or remove `{e}`.",
+        l = symbol::LENGTH,
+        s = symbol::SIZE,
+        e = symbol::EXACT,
+    )]
+    LenZeroWidth,
 
     #[error("\
         Unknown `{s}` sub-attribute in {k}/{l}: `{0}`.
@@ -464,11 +468,13 @@ Expected {s}.",
     MissingTypeInDefault,
 
     #[error("\
-        Both `{e}` and `{d}` fields are missing: at least one is required.",
+        No `{df}({t} = {0}, ..)` sets an `{e}` or a `{d}`: at least one is required.",
+        df = symbol::DEFAULT,
+        t = symbol::TYPE,
         e = symbol::ENCODER,
         d = symbol::DECODER,
     )]
-    MissingEncDecInDefault,
+    MissingEncDecInDefault(String),
 
     #[error("\
         Duplicate `{s}` field.
@@ -510,8 +516,7 @@ remove `{l}`.",
     SizeLengthedWithoutDecInDefault,
 
     #[error("\
-        Duplicate '{1}' found for `{d}({t} = {0})`. Only one default {1} is allowed per type; \
-remove one.",
+        Duplicate {1} for `{d}({t} = {0})`. Only one is allowed per type; remove one.",
         d = symbol::DEFAULT,
         t = symbol::TYPE,
     )]
@@ -558,6 +563,21 @@ the field.",
     OneofFieldWithCodec,
 
     #[error("\
+        A `{k} = {o}(..)` names at least one arm, `K => Enum::Variant(Type)`; add one, or give \
+the field one key with `{k} = K`.",
+        k = symbol::KEY,
+        o = symbol::ONEOF,
+    )]
+    OneofWithoutArms,
+
+    #[error(
+        "\
+        The arm of key `{0}` already wraps its value in this variant, and encode writes a variant \
+under one key; give each arm its own variant, or remove one."
+    )]
+    OneofDuplicateVariant(String),
+
+    #[error("\
         Duplicate `{s}` field.",
         s = symbol::ENCODER,
     )]
@@ -592,6 +612,13 @@ exact width or a soft capacity estimate, not both.",
     )]
     SizeExactReserveConflict,
 
+    #[error(
+        "\
+        `{0} = {1}` is more bytes than a `Vec<u8>` can hold (`isize::MAX`), and the encode \
+reserves them, which panics; use a smaller `{0}`."
+    )]
+    SizeTooLarge(String, String),
+
     #[error("\
         Duplicate `{s}` field.",
         s = symbol::LATEBIND,
@@ -623,13 +650,20 @@ exact width or a soft capacity estimate, not both.",
     )]
     MissingKeyInField,
 
+    #[error(
+        "\
+        Key `{0}` is already a key of field `{1}`, which the frames of `{0}` decode into, so \
+this one never decodes; give one of them another key."
+    )]
+    SharedKey(String, String),
+
     #[error("\
 No encoder is found for field `{0}: {1}`.
 
 If encoding is not required, use `#[{k}({aue})]` on the struct.
 
 Otherwise, you can:
-    a. add a default encoder for all `{1}` types using `#[{k}({df}({t} = {1}, {e} = <..>)))]` on the struct
+    a. add a default encoder for all `{1}` types using `#[{k}({df}({t} = {1}, {e} = <..>))]` on the struct
     b. add an encoder to `{0}` using `#[{k}({e} = <..>)]`
     c. set `#[{k}({fi})]` on the struct to fall back to try and use `tinyklv::EncodeValue` trait implementation",
         k = symbol::KLV_ATTR,
@@ -647,7 +681,7 @@ No decoder is found for field `{0}: {1}`.
 If decoding is not required, use `#[{k}({aud})]` on the struct.
 
 Otherwise, you can:
-    a. add a default decoder for all `{1}` types using `#[{k}({df}({t} = {1}, {d} = <..>)))]` on the struct
+    a. add a default decoder for all `{1}` types using `#[{k}({df}({t} = {1}, {d} = <..>))]` on the struct
     b. add a decoder to `{0}` using `#[{k}({d} = <..>)]`
     c. set `#[{k}({fi})]` on the struct to fall back to try and use `tinyklv::DecodeValue` trait implementation",
         k = symbol::KLV_ATTR,
@@ -658,6 +692,40 @@ Otherwise, you can:
         fi = symbol::TRAIT_FALLBACK,
     )]
     UnimplementedDecode(String, String),
+
+    #[error("\
+No encoder is found for the `{2}({1})` arm of field `{0}`.
+
+If encoding is not required, use `#[{k}({aue})]` on the struct.
+
+Otherwise, you can:
+    a. add a default encoder for all `{1}` types using `#[{k}({df}({t} = {1}, {e} = <..>))]` on the struct
+    b. set `#[{k}({fi})]` on the struct to fall back to try and use `tinyklv::EncodeValue` trait implementation",
+        k = symbol::KLV_ATTR,
+        df = symbol::DEFAULT,
+        t = symbol::TYPE,
+        e = symbol::ENCODER,
+        aue = symbol::ALLOW_UNIMPLEMENTED_ENCODE,
+        fi = symbol::TRAIT_FALLBACK,
+    )]
+    UnimplementedArmEncode(String, String, String),
+
+    #[error("\
+No decoder is found for the `{2}({1})` arm of field `{0}`.
+
+If decoding is not required, use `#[{k}({aud})]` on the struct.
+
+Otherwise, you can:
+    a. add a default decoder for all `{1}` types using `#[{k}({df}({t} = {1}, {d} = <..>))]` on the struct
+    b. set `#[{k}({fi})]` on the struct to fall back to try and use `tinyklv::DecodeValue` trait implementation",
+        k = symbol::KLV_ATTR,
+        df = symbol::DEFAULT,
+        t = symbol::TYPE,
+        d = symbol::DECODER,
+        aud = symbol::ALLOW_UNIMPLEMENTED_DECODE,
+        fi = symbol::TRAIT_FALLBACK,
+    )]
+    UnimplementedArmDecode(String, String, String),
 
     #[error("\
 Field `{0}: {1}` has `{s}({l})` but no `{d} = ..` was set.

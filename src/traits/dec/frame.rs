@@ -12,7 +12,12 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::*;
+use super::{DecodeValue, SeekSentinel};
+
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use winnow::{Parser as _, error::AddContext as _};
 
 /// Full KLV decode pipeline: seeks the sentinel boundary then decodes the framed body
 ///
