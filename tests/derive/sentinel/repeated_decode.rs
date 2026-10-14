@@ -46,7 +46,7 @@ fn build_multi_record(values: &[u16]) -> Vec<u8> {
 fn drain_frames_empty_stream_returns_empty_vec() {
     let mut input: &[u8] = &[];
     let results = SimpleRecord::drain_frames(&mut input).unwrap();
-    assert!(results.is_empty());
+    assert_eq!(results, []);
 }
 
 #[test]

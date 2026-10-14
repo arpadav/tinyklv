@@ -133,7 +133,7 @@ fn drain_frames_two_framed_packets() {
 /// Verifies that `drain_frames` returns an empty `Vec` for an empty input
 fn drain_frames_empty_returns_empty() {
     let results = FramedPacket::drain_frames(&mut [].as_slice()).unwrap();
-    assert!(results.is_empty());
+    assert_eq!(results, []);
 }
 
 #[test]

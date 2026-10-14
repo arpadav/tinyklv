@@ -434,5 +434,5 @@ fn a_done_steps_over_the_trailer_of_each_record_in_a_vec() {
         Vec::<Ledger>::decode_value(&mut cursor),
         Ok(vec![Ledger { id: Some(7) }, Ledger { id: Some(8) }])
     );
-    assert!(cursor.is_empty());
+    assert_eq!(cursor, b"");
 }

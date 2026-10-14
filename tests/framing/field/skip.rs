@@ -181,7 +181,7 @@ fn a_fields_own_skip_replaces_its_defaults() {
         offset: 0,
         setpoint: Thermostat::ROOM,
     };
-    assert!(room.encoded().is_empty());
+    assert_eq!(room.encoded(), b"");
     room.assert_decodes_from(&[]);
 }
 
@@ -190,6 +190,6 @@ fn a_fields_own_skip_replaces_its_defaults() {
 #[test]
 fn a_bare_default_on_an_option_field_is_none() {
     let unscheduled = Heater { schedule: None };
-    assert!(unscheduled.encoded().is_empty());
+    assert_eq!(unscheduled.encoded(), b"");
     unscheduled.assert_decodes_from(&[]);
 }

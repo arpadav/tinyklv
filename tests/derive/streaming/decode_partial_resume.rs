@@ -248,7 +248,7 @@ fn decoder_resume_mid_value() {
     dec.feed(&frame[split..]);
     let got = dec.next().expect("complete feed yields Some");
     assert_eq!(got, want);
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }
 
 #[test]
@@ -272,7 +272,7 @@ fn decoder_resume_after_key_byte() {
     dec.feed(&frame[split..]);
     let got = dec.next().expect("complete feed yields Some");
     assert_eq!(got, want);
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }
 
 #[test]

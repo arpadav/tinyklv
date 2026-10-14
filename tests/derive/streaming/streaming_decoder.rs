@@ -62,7 +62,7 @@ fn decoder_one_shot_complete_packet() {
     let first = dec.next().expect("expected Ready");
     assert_eq!(first, Sample { a: 1, b: 2, c: 3 });
     assert!(dec.next().is_none(), "empty buffer must yield None");
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }
 
 #[test]
@@ -89,7 +89,7 @@ fn decoder_multiple_packets_one_feed() {
     assert_eq!(got[0], Sample { a: 1, b: 2, c: 3 });
     assert_eq!(got[1], Sample { a: 4, b: 5, c: 6 });
     assert_eq!(got[2], Sample { a: 7, b: 8, c: 9 });
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }
 
 #[test]
@@ -147,7 +147,7 @@ fn decoder_byte_by_byte_preserves_progress() {
     for (i, p) in packets.iter().enumerate() {
         assert_eq!(&got[i], p);
     }
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }
 
 #[test]
@@ -180,7 +180,7 @@ fn decoder_truncated_then_resumed() {
             c: 44
         }
     );
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }
 
 #[test]
@@ -224,7 +224,7 @@ fn decoder_irregular_chunks() {
     // --------------------------------------------------
     assert_eq!(got.len(), packets.len());
     assert_eq!(got, packets);
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }
 
 #[test]
@@ -497,7 +497,7 @@ fn decoder_reports_a_malformed_length_once() {
     dec.feed(&good);
     let got: Vec<Heading> = dec.iter().collect();
     assert_eq!(got, [Heading { degrees: 7 }, Heading { degrees: 8 }]);
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }
 
 /// A packet behind the sentinel `AA` whose packet and item lengths are winnow's own `be_u16`,
@@ -566,7 +566,7 @@ fn decoder_waits_for_a_length_its_decoder_leaves_unread() {
     ];
     let (got, left) = Ping::fed_in_two(&wire[..2], &wire[2..]);
     assert_eq!(got, [Ping { id: 7, note: None }]);
-    assert!(left.is_empty());
+    assert_eq!(left, b"");
 }
 
 #[test]
@@ -594,7 +594,7 @@ fn decoder_never_yields_a_packet_forged_in_a_body() {
         note: Some(String::from_utf8_lossy(&forged).into_owned()),
     };
     assert_eq!(got, [outer]);
-    assert!(left.is_empty());
+    assert_eq!(left, b"");
 }
 
 /// A packet behind the 4-byte sentinel `06 0E 2B 34` with a two-byte big-endian packet length
@@ -630,7 +630,7 @@ fn decoder_waits_for_a_cut_fixed_width_length() {
         got.extend(dec.iter());
     }
     assert_eq!(got, [Bearing { degrees: 7 }]);
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }
 
 #[test]
@@ -726,5 +726,5 @@ fn decoder_into_iter_pattern() {
             c: 13
         }
     );
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }

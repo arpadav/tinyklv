@@ -248,7 +248,7 @@ fn be_u16_lengthed_zero_len() {
 fn enc_be_u16_lengthed_zero_len() {
     let mut result = Vec::new();
     tinyklv::enc::binary::be_u16_lengthed(0)(0x1234_u16, &mut result);
-    assert!(result.is_empty());
+    assert_eq!(result, b"");
 }
 
 #[test]

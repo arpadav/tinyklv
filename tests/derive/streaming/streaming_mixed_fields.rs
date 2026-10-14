@@ -83,7 +83,7 @@ fn mixed_one_shot() {
     assert_eq!(got, pkt);
 
     assert!(dec.next().is_none(), "empty buffer must yield None");
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }
 
 #[test]
@@ -124,7 +124,7 @@ fn mixed_byte_by_byte() {
         assert_eq!(got[i].battery_pct, expected.battery_pct);
         assert_eq!(got[i].humidity, expected.humidity);
     }
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }
 
 #[test]
@@ -152,7 +152,7 @@ fn mixed_with_junk_prefix() {
     assert_eq!(got2, report2);
 
     assert!(dec.next().is_none());
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }
 
 #[test]
@@ -198,7 +198,7 @@ fn mixed_irregular_chunks() {
         assert_eq!(got[i].battery_pct, expected.battery_pct);
         assert_eq!(got[i].humidity, expected.humidity);
     }
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }
 
 #[test]
@@ -225,5 +225,5 @@ fn mixed_optional_absent() {
     assert_eq!(got.len(), 2);
     assert_eq!(got[0].humidity, Some(6500));
     assert_eq!(got[1].humidity, None);
-    assert!(dec.buffered().is_empty());
+    assert_eq!(dec.buffered(), b"");
 }

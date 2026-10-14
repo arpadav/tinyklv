@@ -7,7 +7,6 @@ description = "The fastest derive-macro Key-Length-Value (KLV) framework in Rust
 repository.workspace = true
 homepage.workspace = true
 documentation.workspace = true
-readme = "README.md"
 keywords.workspace = true
 categories.workspace = true
 edition.workspace = true

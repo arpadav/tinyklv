@@ -47,7 +47,7 @@ fn utf16_le_roundtrip_ascii() {
 fn utf16_le_empty_string() {
     let mut encoded = Vec::new();
     from_string_utf16_le("", &mut encoded);
-    assert!(encoded.is_empty());
+    assert_eq!(encoded, b"");
     let decoded = to_string_utf16_le(0)(&mut [].as_slice()).unwrap();
     assert_eq!(decoded, "");
 }
@@ -120,7 +120,7 @@ fn utf16_be_roundtrip_ascii() {
 fn utf16_be_empty_string() {
     let mut encoded = Vec::new();
     from_string_utf16_be("", &mut encoded);
-    assert!(encoded.is_empty());
+    assert_eq!(encoded, b"");
     let decoded = to_string_utf16_be(0)(&mut [].as_slice()).unwrap();
     assert_eq!(decoded, "");
 }

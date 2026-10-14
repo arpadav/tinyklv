@@ -45,7 +45,7 @@ struct Reading {
 /// `Vec<T>::decode_value` on empty stream returns empty Vec
 fn vec_decode_value_empty_stream() {
     let result = Vec::<Reading>::decode_value(&mut &[][..]).unwrap();
-    assert!(result.is_empty());
+    assert_eq!(result, []);
 }
 
 #[test]

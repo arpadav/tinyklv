@@ -68,7 +68,7 @@ fn be_u64_lengthed_zero_returns_zero() {
 fn enc_be_u16_lengthed_zero_produces_empty() {
     let mut result = Vec::new();
     encb::be_u16_lengthed(0)(0x1234_u16, &mut result);
-    assert!(result.is_empty());
+    assert_eq!(result, b"");
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn enc_be_u16_lengthed_zero_produces_empty() {
 fn enc_le_u32_lengthed_zero_produces_empty() {
     let mut result = Vec::new();
     encb::le_u32_lengthed(0)(0xDEADBEEF_u32, &mut result);
-    assert!(result.is_empty());
+    assert_eq!(result, b"");
 }
 
 #[test]
@@ -84,7 +84,7 @@ fn enc_le_u32_lengthed_zero_produces_empty() {
 fn enc_be_u64_lengthed_zero_produces_empty() {
     let mut result = Vec::new();
     encb::be_u64_lengthed(0)(u64::MAX, &mut result);
-    assert!(result.is_empty());
+    assert_eq!(result, b"");
 }
 
 /// KLV struct used to verify zero-length field semantics via the derive macro

@@ -7,7 +7,6 @@ description = "Implementation detail of the `tinyklv` crate"
 repository.workspace = true
 homepage.workspace = true
 documentation.workspace = true
-readme = "README.md"
 keywords.workspace = true
 categories.workspace = true
 edition.workspace = true
