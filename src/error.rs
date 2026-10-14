@@ -18,7 +18,7 @@ use winnow::error::{ContextError, StrContext};
 /// decode's. Every error of the BER decoders carries one, as do the UTF-16 decoders' odd-length
 /// rejection and every error the derive's decodes and sentinel seek return. An error built
 /// elsewhere, by a bare `winnow` parser such as a fixed-width integer's at the end of the input,
-/// or by a custom decoder, has none
+/// or by a custom decoder, has none, unless [`ErrorKind::tag`] tags it
 ///
 /// # Example
 ///
@@ -89,15 +89,82 @@ impl ErrorKind {
         error
             .context()
             .filter_map(|context| match context {
-                StrContext::Label(label) => Self::ALL.into_iter().find(|kind| kind.tag() == *label),
+                StrContext::Label(label) => {
+                    Self::ALL.into_iter().find(|kind| kind.label() == *label)
+                }
                 _ => None,
             })
             .last()
     }
 
+    /// Tags `error` with this kind, for [`ErrorKind::of`] to read back
+    ///
+    /// A custom decoder tags the errors it can classify. A packet length tagged
+    /// [`ErrorKind::MalformedValue`] can never be valid, so a [`crate::Decoder`] reports its
+    /// packet once and moves on, where it waits for more bytes after any other length failure
+    ///
+    /// The tag rides as a `StrContext::Label` after `error`'s own, and the display of a
+    /// [`ContextError`] names only its first label, so label `error` before tagging it: the tag
+    /// of an unlabelled error is the label its display names
+    ///
+    /// # Arguments
+    ///
+    /// * `error` - the error to tag
+    ///
+    /// # Returns
+    ///
+    /// `error`, tagged with this kind
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use tinyklv::{ErrorKind, decoder::DecodeIterError, prelude::*, traits::PartialIterator};
+    /// use tinyklv::{dec::binary as decb, enc::binary as encb};
+    /// use tinyklv::winnow::error::{ContextError, StrContext};
+    ///
+    /// /// A packet length past 64 is never valid
+    /// fn packet_len(input: &mut &[u8]) -> tinyklv::Result<usize> {
+    ///     let len = decb::u8_as_usize(input)?;
+    ///     if len > 64 {
+    ///         let mut error = ContextError::new();
+    ///         error.push(StrContext::Label("packet length past 64"));
+    ///         return Err(ErrorKind::MalformedValue.tag(error));
+    ///     }
+    ///     Ok(len)
+    /// }
+    ///
+    /// #[derive(Klv, Debug, PartialEq)]
+    /// #[klv(
+    ///     sentinel = b"\xAA",
+    ///     key(dec = decb::u8, enc = encb::u8),
+    ///     len(dec = packet_len, enc = encb::u8_from_usize),
+    /// )]
+    /// struct Ping {
+    ///     #[klv(key = 0x01, dec = decb::u8, enc = *encb::u8)]
+    ///     id: u8,
+    /// }
+    ///
+    /// // a packet of length 200, then one of length 3 holding `id` 7
+    /// let mut decoder = Ping::decoder();
+    /// decoder.feed(&[0xAA, 200, 0xAA, 0x03, 0x01, 0x01, 0x07]);
+    /// let result = decoder.next_fresh();
+    /// assert_eq!(
+    ///     result.as_ref().err().and_then(DecodeIterError::kind),
+    ///     Some(ErrorKind::MalformedValue),
+    /// );
+    /// assert_eq!(decoder.next(), Some(Ping { id: 7 }));
+    /// ```
+    #[must_use]
+    #[cold]
+    #[inline]
+    pub fn tag(self, mut error: ContextError) -> ContextError {
+        error.push(StrContext::Label(self.label()));
+        error
+    }
+
     /// The `StrContext::Label` text tagging an error with this kind, named after the kind's path
     /// so that no label describing a value reads the same
-    pub(crate) const fn tag(self) -> &'static str {
+    pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::Truncated => "tinyklv::ErrorKind::Truncated",
             Self::MalformedValue => "tinyklv::ErrorKind::MalformedValue",

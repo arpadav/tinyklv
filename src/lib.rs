@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 //! Author: aav
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
@@ -21,6 +22,9 @@ pub use traits::{
     BreakType, DecodeFrame, DecodePartial, DecodeValue, DrainFrames, EncodeAs, EncodeFrame,
     EncodeValue, Partial, PartialIterator, ResumePartial, SeekSentinel,
 };
+/// The `winnow` every codec signature is written in, so a custom decoder names the same
+/// [`winnow::error::ContextError`] and [`winnow::Parser`] without a `winnow` dependency of its own
+pub use winnow;
 
 #[doc(hidden)]
 /// Internal re-exports and helpers used by `#[derive(Klv)]` expansions
@@ -74,9 +78,10 @@ pub mod __export {
     /// [`labeled_error`] tagged with `kind`, for [`crate::ErrorKind::of`] to read back, as
     /// [`with_kind`] tags an error
     ///
-    /// The label and the tag are added in one `extend`, so a derive-generated decoder's error path
-    /// stays about the size [`labeled_error`] alone makes it, which the inlining and register
-    /// allocation of its success path depend on
+    /// The label and the tag are added in one `extend`, out of line (`label_with_kind`), so a
+    /// derive-generated decoder's error path stays one call, which the inlining and register
+    /// allocation of its success path depend on. The error itself is built inline: an error built
+    /// out of line is returned through memory, and so is the decoded value sharing its `Result`
     ///
     /// Not part of the public API - may change without notice
     ///
@@ -102,10 +107,30 @@ pub mod __export {
     where
         S: winnow::stream::Stream,
     {
-        use winnow::error::{ContextError, ParserError, StrContext};
+        use winnow::error::{ContextError, ParserError};
         let mut err = ContextError::from_input(input);
-        err.extend([StrContext::Label(label), StrContext::Label(kind.tag())]);
+        label_with_kind(&mut err, label, kind);
         err
+    }
+
+    /// Labels `err` with `label` and tags it with `kind`, in one `extend`, for [`kinded_error`]
+    ///
+    /// # Arguments
+    ///
+    /// * `err` - the error to label, without a label of its own
+    /// * `label` - a static description of what was being parsed
+    /// * `kind` - what `err` is
+    // as `with_kind`: `cold` keeps it out of the calling decoder's body, `inline` compiles it in
+    // the calling crate
+    #[cold]
+    #[inline]
+    fn label_with_kind(
+        err: &mut winnow::error::ContextError,
+        label: &'static str,
+        kind: crate::ErrorKind,
+    ) {
+        use winnow::error::StrContext;
+        err.extend([StrContext::Label(label), StrContext::Label(kind.label())]);
     }
 
     /// Names the site of a failed parse in `err`, so that its display shows `label` first, then
@@ -208,7 +233,7 @@ pub mod __export {
                 .any(|context| matches!(context, StrContext::Label(_))),
             "a kind tag ahead of every label would be the label the display names"
         );
-        err.push(StrContext::Label(kind.tag()));
+        err.push(StrContext::Label(kind.label()));
         err
     }
 
@@ -230,12 +255,28 @@ pub mod __export {
     /// chain. A nested [`LabeledCause`] is skipped, since this display already prints it
     impl std::error::Error for LabeledCause {
         fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-            let mut cause = self.0.cause()?;
-            while let Some(LabeledCause(inner)) = cause.downcast_ref::<LabeledCause>() {
-                cause = inner.cause()?;
-            }
-            Some(cause)
+            typed_cause(&self.0)
         }
+    }
+
+    /// The cause of `err` that an error displaying `err` reports as its `source`: the first in
+    /// its chain that is not a [`LabeledCause`], whose display `err`'s display already prints
+    ///
+    /// # Arguments
+    ///
+    /// * `err` - the error whose cause to find
+    ///
+    /// # Returns
+    ///
+    /// The cause, or `None` when the chain holds none but [`LabeledCause`]s
+    pub(crate) fn typed_cause(
+        err: &winnow::error::ContextError,
+    ) -> Option<&(dyn std::error::Error + 'static)> {
+        let mut cause = err.cause()?;
+        while let Some(LabeledCause(inner)) = cause.downcast_ref::<LabeledCause>() {
+            cause = inner.cause()?;
+        }
+        Some(cause)
     }
 }
 

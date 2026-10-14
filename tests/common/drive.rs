@@ -192,8 +192,8 @@ pub(crate) trait Drive {
     /// # Arguments
     ///
     /// * `wire` - the input; one-shot decodes it whole, streaming at every chunk split
-    /// * `needles` - the substrings every rejection contains: the streaming label, which also
-    ///   starts with `invalid `, and one label of the one-shot error's context chain
+    /// * `needles` - the substrings every rejection contains: the streaming label, and one label
+    ///   of the one-shot error's context chain
     ///
     /// # Panics
     ///
@@ -218,7 +218,7 @@ pub(crate) trait Drive {
         // --------------------------------------------------
         for at in 0..=wire.len() {
             match Self::stream_split(wire, at) {
-                (Err(err), _) if err.label().starts_with("invalid ") && names_all(err.label()) => {}
+                (Err(err), _) if names_all(err.label()) => {}
                 (other, left) => failures.push(format!("split at {at}: {other:?}, {left} left")),
             }
         }
@@ -231,10 +231,9 @@ pub(crate) trait Drive {
     /// Asserts both drivers reject `wire` with exactly `message`, leaving the cursor `at` bytes
     /// into it
     ///
-    /// Streaming returns `message` after an `invalid ` prefix at every chunk split, and stops at
-    /// `at` at every split from `at` on: a split before it can cut short a frame the whole wire
-    /// holds, which is then rejected at its start. One-shot carries `message` as its error's only
-    /// label
+    /// Streaming returns `message` at every chunk split, and stops at `at` at every split from
+    /// `at` on: a split before it can cut short a frame the whole wire holds, which is then
+    /// rejected at its start. One-shot carries `message` as its error's only label
     ///
     /// # Arguments
     ///
@@ -260,9 +259,7 @@ pub(crate) trait Drive {
             let (outcome, left) = Self::stream_split(wire, split);
             let stopped = wire.len() - left;
             match outcome {
-                Err(err)
-                    if err.label().strip_prefix("invalid ") == Some(message)
-                        && (split < at || stopped == at) => {}
+                Err(err) if err.label() == message && (split < at || stopped == at) => {}
                 other => {
                     failures.push(format!("split at {split}: {other:?}, stopped at {stopped}"));
                 }

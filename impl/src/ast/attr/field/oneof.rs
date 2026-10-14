@@ -16,7 +16,6 @@ use crate::ast::symbol;
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use quote::ToTokens;
 use syn::{Token, punctuated::Punctuated};
 
 #[derive(Debug, Clone)]
@@ -53,10 +52,8 @@ pub(crate) struct Oneof {
 }
 /// [`Oneof`] implementation of [`TryFrom`] for [`syn::MetaList`]
 ///
-/// Parses the comma-separated arms of a `oneof(..)` list. A malformed arm, an empty list, or an
-/// arm whose variant an earlier arm already names, which leaves encode no one key to write that
-/// variant under, is returned as a [`syn::Error`], so the caller can surface it via the
-/// [`crate::Ctxt`] accumulator
+/// Parses the comma-separated arms of a `oneof(..)` list. A malformed arm or an empty list is
+/// returned as a [`syn::Error`], so the caller can surface it via the [`crate::Ctxt`] accumulator
 impl TryFrom<&syn::MetaList> for Oneof {
     type Error = syn::Error;
     fn try_from(input: &syn::MetaList) -> syn::Result<Self> {
@@ -67,23 +64,7 @@ impl TryFrom<&syn::MetaList> for Oneof {
         if arms.is_empty() {
             return Err(syn::Error::new_spanned(input, err!(OneofWithoutArms)));
         }
-        let duplicates = arms.iter().enumerate().filter_map(|(at, arm)| {
-            let first = arms
-                .iter()
-                .take(at)
-                .find(|first| first.variant == arm.variant)?;
-            Some(syn::Error::new_spanned(
-                &arm.variant,
-                err!(OneofDuplicateVariant(first.key)),
-            ))
-        });
-        match duplicates.reduce(|mut all, duplicate| {
-            all.combine(duplicate);
-            all
-        }) {
-            Some(duplicates) => Err(duplicates),
-            None => Ok(Self { arms }),
-        }
+        Ok(Self { arms })
     }
 }
 
@@ -97,6 +78,18 @@ pub(crate) struct OneofArm {
     pub variant: syn::Path,
     /// The type of the variant's one field, whose codec the arm's frames use
     pub ty: syn::Type,
+}
+/// [`OneofArm`] implementation
+impl OneofArm {
+    /// The name of the arm's variant, the last segment of its path: every arm names a variant of
+    /// the field's own enum, so `Shape::A` and `self::Shape::A` name the same one
+    ///
+    /// # Returns
+    ///
+    /// The variant's identifier, `None` only for a path of no segment, which no arm parses to
+    pub(in crate::ast::attr) fn variant_name(&self) -> Option<&syn::Ident> {
+        self.variant.segments.last().map(|segment| &segment.ident)
+    }
 }
 /// [`OneofArm`] implementation of [`syn::parse::Parse`]
 impl syn::parse::Parse for OneofArm {

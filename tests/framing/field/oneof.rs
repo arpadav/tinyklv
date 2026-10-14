@@ -6,7 +6,8 @@
 //! `exact = N`. Arms of one type are told apart by their keys alone. Each arm's key is a declared
 //! key, to `deny_unknown_keys` and beside `unknown(..)` alike. The last arm decoded wins,
 //! whichever arm came before it. Encode writes the one variant that is set, with its arm's key and
-//! framing, at the field's place among the others; `None` writes nothing. An arm's frame cut short
+//! framing, at the field's place among the others, after reserving the widest arm's frame; `None`
+//! writes nothing. An arm's frame cut short
 //! at the end of the input is truncation: streaming pauses at the frame's start and completes once
 //! the rest arrives
 //!
@@ -18,7 +19,9 @@ use crate::common::drive::Drive;
 use crate::common::frames;
 use crate::common::unknown::{self, Unknown};
 use crate::common::varint;
+use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
+use tinyklv::enc::binary as encb;
 use tinyklv::enc::string as encs;
 use tinyklv::prelude::*;
 
@@ -186,6 +189,30 @@ struct Gauge {
     level: Option<Level>,
 }
 
+/// A sample's value: a one-byte flag or an eight-byte count
+#[derive(Debug, PartialEq)]
+enum Sample {
+    /// key `0x01`, one byte
+    Flag(u8),
+
+    /// key `0x02`, eight bytes
+    Count(u64),
+}
+
+/// A probe whose oneof arms are of known widths, each framed with a one-byte length
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    key(dec = decb::u8, enc = encb::u8),
+    len(dec = decb::u8_as_usize, enc = encb::u8_from_usize),
+    default(typ = u8, dec = decb::u8, enc = *encb::u8),
+    default(typ = u64, dec = decb::be_u64, enc = *encb::be_u64),
+)]
+struct Probe {
+    /// keys `0x01` and `0x02`: a flag or a count
+    #[klv(key = oneof(0x01 => Sample::Flag(u8), 0x02 => Sample::Count(u64)))]
+    sample: Option<Sample>,
+}
+
 /// The last arm on the wire wins, in both drivers and at every chunk split: a note after a count,
 /// a count after a note, and the second of two notes
 #[test]
@@ -239,6 +266,20 @@ fn an_unset_oneof_writes_nothing_between_the_fields_around_it() {
     let wire = [frames::ID, Reading::UNIT].concat();
     assert_eq!(unset.encoded(), wire);
     unset.assert_decodes_from(&wire);
+}
+
+/// Encode reserves the widest arm's frame before it writes: an empty buffer holds the count's ten
+/// bytes after the flag's three, and the frame is the one written without it
+#[test]
+fn encode_reserves_the_widest_arm() {
+    let probe = Probe {
+        sample: Some(Sample::Flag(7)),
+    };
+    let mut out = Vec::new();
+    probe.encode_value(&mut out);
+    // flag = 7: key, length 1, `07`
+    assert_eq!(out, [0x01, 0x01, 0x07]);
+    assert!(out.capacity() >= 10, "capacity {}", out.capacity());
 }
 
 /// Arms of one type keep their own keys: each variant encodes to, and decodes from in both drivers

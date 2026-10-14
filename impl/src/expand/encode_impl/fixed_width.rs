@@ -2,14 +2,20 @@
 //!
 //! A single primitive-width registry feeds two encode-only lookups: by field
 //! type, used for reserve estimates and fixed-value fast paths, and by built-in
-//! encoder path, used to prove a value encoder writes that same fixed width
+//! encoder path, the width a value encoder is expected to write, measured unless the encoder is
+//! the crate's own ([`foreign_encoder`])
 //! Neither lookup guesses from arbitrary paths
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::ast::types;
+use crate::{ast::types, expand::helpers};
+
+// --------------------------------------------------
+// external
+// --------------------------------------------------
+use quote::{format_ident, quote};
 
 // --------------------------------------------------
 // constants
@@ -18,7 +24,8 @@ use crate::ast::types;
 /// docs import it as
 ///
 /// The ASCII encoders in `enc::string` share the native-endian encoders' bare primitive names, so
-/// a bare name is only fixed width under one of these
+/// a bare name is only fixed width under one of these. A user module of either name may hold an
+/// encoder of another width, which [`foreign_encoder`] tells from the crate's
 const BINARY_ENCODE_MODULES: [&str; 2] = ["binary", "encb"];
 
 /// Generates [`primitive_type_width`] from the single fixed-width primitive list
@@ -86,9 +93,9 @@ pub(super) fn fixed_value_type_width(ty: &syn::Type) -> Option<usize> {
         return None;
     }
     // --------------------------------------------------
-    // only direct primitive type paths are fixed width
+    // only direct primitive type paths are fixed width, a `macro_rules!` `$t:ty` included
     // --------------------------------------------------
-    let syn::Type::Path(path) = ty else {
+    let syn::Type::Path(path) = types::ungrouped(ty) else {
         return None;
     };
     primitive_type_width(&path.path.get_ident()?.to_string())
@@ -97,10 +104,12 @@ pub(super) fn fixed_value_type_width(ty: &syn::Type) -> Option<usize> {
 /// Returns the fixed byte width of a tinyklv built-in binary encoder
 ///
 /// Recognizes only built-in primitive encoder paths: big-endian and little-endian names, `be_` or
-/// `le_` followed by a registered primitive name, and native-endian names, the bare primitive
-/// name (`encb::u8`) under a [`BINARY_ENCODE_MODULES`] segment. Custom encoders, macros,
-/// expressions, ASCII encoders, and lengthed encoders return `None` and use a conservative length
-/// plan
+/// `le_` followed by a registered primitive name wider than a byte, and native-endian names, the
+/// bare primitive name (`encb::u8`) under a [`BINARY_ENCODE_MODULES`] segment, each the name of
+/// an encoder in the crate's binary module. Custom encoders, macros, expressions, ASCII encoders,
+/// and lengthed encoders return `None` and use a conservative length plan. A user's encoder of a
+/// recognized name is taken for the built-in one, so the width is the one the value is expected
+/// to take, not a proof
 ///
 /// # Arguments
 ///
@@ -109,7 +118,7 @@ pub(super) fn fixed_value_type_width(ty: &syn::Type) -> Option<usize> {
 /// # Returns
 ///
 /// `Some(width)` for a recognized built-in fixed-width encoder, or `None` when
-/// the encoder cannot be proven to write a stable byte width
+/// the encoder is not named as one
 pub(super) fn builtin_fixed_encoder_width(encoder: &types::XcoderLike) -> Option<usize> {
     // --------------------------------------------------
     // only path-like built-in encoders can be recognized
@@ -118,7 +127,7 @@ pub(super) fn builtin_fixed_encoder_width(encoder: &types::XcoderLike) -> Option
         return None;
     };
     // --------------------------------------------------
-    // extract primitive name from be_ or le_ encoder path
+    // extract primitive name from be_ or le_ encoder path, a single byte having no byte order
     // --------------------------------------------------
     let mut segments = path.segments.iter().rev();
     let ident = segments.next()?.ident.to_string();
@@ -126,7 +135,7 @@ pub(super) fn builtin_fixed_encoder_width(encoder: &types::XcoderLike) -> Option
         .strip_prefix("be_")
         .or_else(|| ident.strip_prefix("le_"))
     {
-        return primitive_type_width(stem);
+        return primitive_type_width(stem).filter(|&width| width > 1);
     }
     // --------------------------------------------------
     // a bare primitive name only under the binary module
@@ -141,6 +150,48 @@ pub(super) fn builtin_fixed_encoder_width(encoder: &types::XcoderLike) -> Option
     primitive_type_width(&ident)
 }
 
+/// The local a value encoder [`builtin_fixed_encoder_width`] recognizes is bound to, and the value
+/// is written through, so a generic encoder's parameters are inferred from that call
+///
+/// # Arguments
+///
+/// * `encoder` - The recognized value encoder's path
+///
+/// # Returns
+///
+/// `__encoder`, located at the encoder's name, where a call of the wrong signature is reported
+pub(super) fn encoder_binding(encoder: &syn::Path) -> syn::Ident {
+    let at = encoder.segments.last().map_or_else(
+        || helpers::call_site_at(encoder),
+        |segment| helpers::call_site_at(&segment.ident),
+    );
+    format_ident!("__encoder", span = at)
+}
+
+/// Whether a value encoder [`builtin_fixed_encoder_width`] recognizes is not the crate's own
+/// encoder of its name, so may write another width
+///
+/// The encoder's [`encoder_binding`] is compared by address with the crate's binary encoder of
+/// its last segment's name. The comparison is a constant `false` for the crate's own encoder,
+/// reached by any path, and `true` for any other: equal addresses are one function's code, so a
+/// `false` never stands for an encoder of another width
+///
+/// # Arguments
+///
+/// * `encoder` - The recognized value encoder's path
+///
+/// # Returns
+///
+/// The `bool` expression
+/// `!::core::ptr::eq(__encoder as *const (), ::tinyklv::enc::binary::<name> as *const ())`
+pub(super) fn foreign_encoder(encoder: &syn::Path) -> proc_macro2::TokenStream {
+    let binding = encoder_binding(encoder);
+    let name = encoder.segments.last().map(|segment| &segment.ident);
+    quote! {
+        !::core::ptr::eq(#binding as *const (), ::tinyklv::enc::binary::#name as *const ())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{builtin_fixed_encoder_width, primitive_type_width, types};
@@ -150,7 +201,7 @@ mod tests {
     ///
     /// The ASCII encoders in `enc::string` share the native-endian names but write a variable
     /// width, so a bare name off the binary module is refused, while `be_` and `le_` names are
-    /// recognized on any path
+    /// recognized on any path but for a single-byte primitive, which has no byte order
     fn builtin_fixed_encoder_width_bare_name_needs_binary_module() {
         // --------------------------------------------------
         // binary encoders resolve to their primitive widths
@@ -175,6 +226,8 @@ mod tests {
         // --------------------------------------------------
         for path in [
             "enca::u8",
+            "encb::be_u8",
+            "le_i8",
             "tinyklv::enc::string::i8",
             "tinyklv::codecs::string::enc::u32",
             "u8",

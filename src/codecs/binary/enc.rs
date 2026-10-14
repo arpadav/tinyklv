@@ -1019,7 +1019,7 @@ let padded = tinyklv::codecs::binary::enc::le_f64_lengthed(10);
 mod tests {
 
     // Adapters wrapping the `super` writers (`fn(input, &mut Vec<u8>)`) as
-    // `Vec`-returning fns, so the assertions below can compare by value.
+    // `Vec`-returning fns, so the assertions below can compare by value
     macro_rules! vec_adapter {
         ($name:ident, $ty:ty) => {
             fn $name(input: $ty) -> Vec<u8> {

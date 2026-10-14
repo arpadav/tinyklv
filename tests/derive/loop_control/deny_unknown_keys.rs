@@ -40,21 +40,21 @@ fn strict_known_key_only_ok() {
 
 #[test]
 /// Verifies that `deny_unknown_keys` produces an error when an unrecognized key appears alongside
-/// valid keys, worded the same by both drivers
+/// valid keys, labelled the same by both drivers, the one-shot error displayed after `invalid `
 fn strict_unknown_key_fails() {
     let data: &[u8] = &[
         0x01, 0x02, 0xAB, 0xCD, // known key 0x01
         0xFF, 0x01, 0x00, // unknown key 0xFF
     ];
-    let message = "invalid key (expected one of the keys defined on `Strict`; to turn this off, \
-                   remove `deny_unknown_keys`)";
+    let label = "key (expected one of the keys defined on `Strict`; to turn this off, remove \
+                 `deny_unknown_keys`)";
     let result = Strict::decode_value(&mut &data[..]).map_err(|error| error.to_string());
-    assert_eq!(result, Err(message.to_owned()));
+    assert_eq!(result, Err(format!("invalid {label}")));
     assert_eq!(
         Strict::decode_partial(&mut &data[..])
             .err()
             .map(PartialError::label),
-        Some(message)
+        Some(label)
     );
 }
 

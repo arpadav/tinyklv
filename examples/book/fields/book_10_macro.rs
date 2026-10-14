@@ -1,7 +1,5 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Book tutorial 10 - `scale!`, `cast!`, and their encode counterparts
-//! See `book/tutorial/10-macros.md` for the full narrative
+//! See `book/src/tutorial/fundamentals/10-macros.md` for the full narrative
 //!
 //! Demonstrates `tinyklv::scale!`, `tinyklv::cast!`, and their encode
 //! counterparts used inline in `#[klv(...)]` attributes. Any macro
@@ -10,9 +8,9 @@
 //! `default(typ = T, dec = ...)`. The example maps a `u16` wire range to
 //! floating-point heading and altitude values, and a `u16` wire type to a
 //! `u32` in-memory field via `cast!`
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 // u16 [0, 65535] -> degrees [0.0, 360.0)
 const HEADING_SCALE: f64 = 360.0 / 65535.0;
@@ -21,9 +19,7 @@ const HEADING_SCALE: f64 = 360.0 / 65535.0;
 const ALTITUDE_SCALE: f64 = 19900.0 / 65535.0;
 const ALTITUDE_OFFSET: f64 = -900.0;
 
-fn decode_altitude(
-    input: &mut &[u8],
-) -> tinyklv::Result<f64> {
+fn decode_altitude(input: &mut &[u8]) -> tinyklv::Result<f64> {
     let raw = decb::be_u16.parse_next(input)?;
     Ok(raw as f64 * ALTITUDE_SCALE + ALTITUDE_OFFSET)
 }
@@ -89,11 +85,11 @@ struct TelemetryPacket {
 
 fn main() {
     let pkt = TelemetryPacket {
-        node_id:      0x0A,
-        heading_deg:  180.0,
-        altitude_m:   5000.0,
+        node_id: 0x0A,
+        heading_deg: 180.0,
+        altitude_m: 5000.0,
         sample_count: 1024,
-        quality:      99,
+        quality: 99,
     };
 
     // encode -> decode roundtrip
@@ -101,31 +97,30 @@ fn main() {
     pkt.encode_frame(&mut frame);
 
     // junk before sentinel, then the frame
+    #[rustfmt::skip]
     let mut data: Vec<u8> = vec![
         0x00, 0x00, 0xDE, 0xAD, 0x00,
     ];
     data.extend(&frame);
 
-    let decoded = TelemetryPacket::decode_frame(
-        &mut data.as_slice(),
-    ).unwrap();
+    let decoded = TelemetryPacket::decode_frame(&mut data.as_slice()).unwrap();
 
     // heading: u16 roundtrip loses sub-scale precision
     let heading_tolerance = HEADING_SCALE;
     assert!(
-        (decoded.heading_deg - pkt.heading_deg).abs()
-            < heading_tolerance,
+        (decoded.heading_deg - pkt.heading_deg).abs() < heading_tolerance,
         "heading: {} vs {}",
-        decoded.heading_deg, pkt.heading_deg,
+        decoded.heading_deg,
+        pkt.heading_deg,
     );
 
     // altitude: same precision loss from u16 quantisation
     let altitude_tolerance = ALTITUDE_SCALE;
     assert!(
-        (decoded.altitude_m - pkt.altitude_m).abs()
-            < altitude_tolerance,
+        (decoded.altitude_m - pkt.altitude_m).abs() < altitude_tolerance,
         "altitude: {} vs {}",
-        decoded.altitude_m, pkt.altitude_m,
+        decoded.altitude_m,
+        pkt.altitude_m,
     );
 
     assert_eq!(decoded.sample_count, pkt.sample_count);
@@ -135,9 +130,6 @@ fn main() {
     println!(
         "roundtrip OK: heading={:.2}°, alt={:.1}m, \
          samples={}, quality={}",
-        decoded.heading_deg,
-        decoded.altitude_m,
-        decoded.sample_count,
-        decoded.quality,
+        decoded.heading_deg, decoded.altitude_m, decoded.sample_count, decoded.quality,
     );
 }

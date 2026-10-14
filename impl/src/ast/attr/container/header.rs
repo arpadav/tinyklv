@@ -132,7 +132,7 @@ impl HeaderAttrs {
 #[cfg(test)]
 mod tests {
     use crate::{
-        Ctxt, Error,
+        Error,
         ast::{attr::MainContainer, symbol},
     };
 
@@ -207,12 +207,9 @@ mod tests {
                     id: u8,
                 }
             };
-            let cx = Ctxt::new();
-            let _ = MainContainer::from_ast(&cx, &item);
-            let Err(errors) = cx.check() else {
+            let Err(messages) = MainContainer::parsed(&item) else {
                 panic!("{name}: reports an error");
             };
-            let messages: Vec<String> = errors.into_iter().map(|err| err.to_string()).collect();
             assert_eq!(
                 messages,
                 [expected.to_string()],
@@ -270,12 +267,9 @@ mod tests {
                     id: u8,
                 }
             };
-            let cx = Ctxt::new();
-            let _ = MainContainer::from_ast(&cx, &item);
-            let Err(errors) = cx.check() else {
+            let Err(messages) = MainContainer::parsed(&item) else {
                 panic!("{name}: reports an error");
             };
-            let messages: Vec<String> = errors.into_iter().map(|err| err.to_string()).collect();
             assert_eq!(
                 messages,
                 [Error::SigilOnHeaderEncoder.to_string()],

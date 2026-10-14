@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Example 03 - UTF-8 strings + variable-length fields
 //!
 //! Fixed-width fields use a plain `fn(&mut Stream) -> Result<T>` decoder
@@ -13,12 +11,12 @@
 //! * Mixing fixed-width `be_u32` and variable-length UTF-8 on one struct
 //! * The split between `dec::binary` / `enc::binary` and `enc::string`
 //!
-//! See also: book Tutorial 03
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::dec::string as decs;   // string decoders
-use tinyklv::enc::binary as encb;   // binary encoders
-use tinyklv::enc::string as encs;   // string encoders
+//! See also: `book/src/tutorial/fundamentals/07-val-lengths.md`
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::dec::string as decs; // string decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::enc::string as encs; // string encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -40,7 +38,7 @@ struct StationRegistration {
     #[klv(
         key = 0x02,
         size(lengthed),
-        dec = decs::to_string_utf8,
+        dec = decs::to_string_utf8_strict,
         enc = &encs::from_string_utf8,
     )]
     /// Variable-length UTF-8 region name; `size(lengthed)` selects the
@@ -50,7 +48,7 @@ struct StationRegistration {
     #[klv(
         key = 0x03,
         size(lengthed),
-        dec = decs::to_string_utf8,
+        dec = decs::to_string_utf8_strict,
         enc = &encs::from_string_utf8,
     )]
     /// Variable-length UTF-8 station identifier
@@ -60,9 +58,9 @@ struct StationRegistration {
 fn main() {
     // build
     let original = StationRegistration {
-        serial:      0x00_AB_CD_12,
+        serial: 0x00_AB_CD_12,
         region_name: String::from("North-Atlantic"),
-        station_id:  String::from("WX-042"),
+        station_id: String::from("WX-042"),
     };
 
     // encode - emits three KLV triples, the last two with a length prefix
@@ -71,9 +69,7 @@ fn main() {
     original.encode_value(&mut encoded);
 
     // decode - rebuilds the struct from the KLV triples
-    let decoded = StationRegistration::decode_value(
-        &mut encoded.as_slice(),
-    ).unwrap();
+    let decoded = StationRegistration::decode_value(&mut encoded.as_slice()).unwrap();
 
     // assert - UTF-8 strings survive the round-trip unchanged
     assert_eq!(decoded, original);

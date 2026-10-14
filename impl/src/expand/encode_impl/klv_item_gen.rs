@@ -6,7 +6,8 @@
 //! the key's value pick, and applies optional-field and skip guards. A
 //! `key = oneof(..)` field writes the frame of the arm its variant
 //! names. The frames a `#[klv(unknown)]` field retains are written after the known
-//! fields, through the same framing, and a field with a `break_on` after them all
+//! fields, through the same framing, and a field that may end the decode, with a `break_on` or
+//! keyed by the struct's `break_on` literal, after them all
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -32,8 +33,10 @@ impl EncodeCtx<'_> {
     ///
     /// Walks the parsed container fields and emits one planned KLV item write for
     /// each keyed field, in source order, then the frames the `#[klv(unknown)]` field retains
-    /// ([`Self::unknown_items`]). A field with a `break_on` is written last, after them all: its
-    /// `break_on` may end the decode, which then never reads a frame written after it. Fields
+    /// ([`Self::unknown_items`]). A field that may end the decode is written last, after them all,
+    /// since the decode then never reads a frame written after it: one with a `break_on`, and one
+    /// whose key is the struct's `break_on` literal
+    /// ([`MainContainer::breaks_on`](crate::ast::attr::MainContainer::breaks_on)). Fields
     /// without KLV attributes are ignored so ordinary Rust fields remain outside the generated
     /// wire output
     ///
@@ -43,17 +46,22 @@ impl EncodeCtx<'_> {
     /// encoder (`allow_unimplemented_encode`)
     pub(super) fn klv_items(&self) -> Option<proc_macro2::TokenStream> {
         // --------------------------------------------------
-        // one planned item for each attributed field, with or without a `break_on`
+        // one planned item for each attributed field, the ones that may end the decode or the
+        // rest
         // --------------------------------------------------
         let items = |breaks: bool| {
             self.input
                 .keyed_fields()
-                .filter(move |(_, attrs)| attrs.break_on.is_some() == breaks)
+                .filter(move |&(field, attrs)| {
+                    let ends = attrs.break_on.is_some()
+                        || FieldKey::of(field, attrs).any(|key| self.input.breaks_on(key.key));
+                    ends == breaks
+                })
                 .map(|(field, attrs)| self.klv_item(&FieldWrite { field, attrs }))
                 .collect::<Option<proc_macro2::TokenStream>>()
         };
         // --------------------------------------------------
-        // the fields, the retained unknown frames, then the fields with a `break_on`
+        // the fields, the retained unknown frames, then the fields that may end the decode
         // --------------------------------------------------
         let fields = items(false)?;
         let unknown = self.unknown_items();
@@ -164,9 +172,11 @@ impl EncodeCtx<'_> {
             key,
             access,
         };
-        Some(FrameBody::of(self.framing, &item.key).write(
+        let body = FrameBody::of(self.framing, &item.key);
+        let binding = body.encoder_binding();
+        Some(body.write(
             item.key.key,
-            |dst| item.value_write(dst),
+            |dst| item.value_write(binding.as_ref(), dst),
             item.span(),
         ))
     }
@@ -438,13 +448,20 @@ impl PlannedItemWrite<'_> {
     ///
     /// # Arguments
     ///
+    /// * `binding` - The local the frame bound the encoder to, called in its place
+    ///   ([`FrameBody::encoder_binding`])
     /// * `dst` - The `&mut Vec<u8>` expression the value is written into
     ///
     /// # Returns
     ///
     /// The value encoder call statement
-    fn value_write(&self, dst: &proc_macro2::TokenStream) -> proc_macro2::TokenStream {
-        let value_encoder_call = self.value_encoder_call();
+    fn value_write(
+        &self,
+        binding: Option<&syn::Ident>,
+        dst: &proc_macro2::TokenStream,
+    ) -> proc_macro2::TokenStream {
+        let value_encoder_call =
+            binding.map_or_else(|| self.value_encoder_call(), |binding| quote! { #binding });
         // --------------------------------------------------
         // `EncodeValue::encode_value` takes the value by reference
         // --------------------------------------------------

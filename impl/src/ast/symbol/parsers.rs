@@ -137,7 +137,7 @@ create_parser!(RESERVE: syn::LitInt; pnm);
 ///
 /// Modelled on [`parse_pnm_default_value`]'s bare form: an `Err` from `value()` means the flag was
 /// present with no value (the valid form); an `Ok` means the user wrote `<flag> = ..`, which is
-/// rejected
+/// rejected, as is a `<flag>(..)` list
 ///
 /// # Arguments
 ///
@@ -149,12 +149,13 @@ create_parser!(RESERVE: syn::LitInt; pnm);
 ///
 /// # Errors
 ///
-/// The flag written with a value
+/// The flag written with a value or a list
 fn pnm_parse_flag(input: &syn::meta::ParseNestedMeta) -> syn::Result<proc_macro2::Span> {
+    let flag = input.path.to_token_stream();
     match input.value() {
-        Ok(_) => Err(input.error(format!(
-            "`{}` is a flag and takes no value",
-            input.path.to_token_stream(),
+        Ok(_) => Err(input.error(format!("`{flag}` is a flag and takes no value"))),
+        Err(_) if input.input.peek(syn::token::Paren) => Err(input.error(format!(
+            "`{flag}` is a flag and takes no list: write `{flag}`"
         ))),
         Err(_) => Ok(input.path.span()),
     }

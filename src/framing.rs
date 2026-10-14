@@ -1,7 +1,8 @@
 //! The [`Framing`] a fused `#[klv(keylen(dec = ..))]` decoder returns to describe an item's value
 //!
-//! Classic `#[klv(key(..), len(..))]` slices a field's length-prefixed value via `take(len)`. The
-//! opt-in fused `keylen` codec instead decodes one item header and returns `(key, Framing)`,
+//! A key + len `#[klv(key(..), len(..))]` slices a field's length-prefixed value via
+//! `take(len)`. The opt-in fused `keylen` codec instead decodes one item header and returns
+//! `(key, Framing)`,
 //! letting the framing decision depend on the key. [`Framing`] tells the derive-generated decode
 //! loop how to bound the value bytes that follow the header, and states the rules the loop applies
 //! to each item
@@ -72,11 +73,11 @@
 ///
 /// Any failure of the `keylen` decoder itself is truncation, wherever the cursor stopped: the loop
 /// rewinds to the start of the item, then streaming decode returns `Packet::NeedMore` and one-shot
-/// decode finalizes what it has. A header codec such as `be_u16` fails short of the end of the
-/// input when a chunk boundary splits it, so the end-of-input test the `Inline` values use would
-/// class a split header as malformed and drop the rest of the message. The cost: a garbage header
-/// in a complete buffer is never reported as malformed. Streaming decode waits for more bytes, and
-/// one-shot decode finalizes without that item and every item after it
+/// decode finalizes what it has. A `keylen` decoder need not leave the cursor at the end of the
+/// input when a chunk boundary splits its header, so the end-of-input test the `Inline` values use
+/// would class a split header as malformed and drop the rest of the message. The cost: a garbage
+/// header in a complete buffer is never reported as malformed. Streaming decode waits for more
+/// bytes, and one-shot decode finalizes without that item and every item after it
 ///
 /// After an item's value, the loop checks that the item moved the cursor. An item whose header and
 /// value together consumed no input would repeat forever, so it is rejected with an error naming
@@ -91,7 +92,7 @@
 /// otherwise. With `deny_unknown_keys`, an unknown key is rejected in either framing, before any of
 /// its value bytes are read
 ///
-/// In a `key(..)` + `len(..)` struct, the `unknown(dec = ..)` decoder reads an unknown item from
+/// In a key + len struct, the `unknown(dec = ..)` decoder reads an unknown item from
 /// the main stream, its length included, and its failure follows the rule on [`Framing::Inline`].
 /// A decoder that reads the length and then finds the value short must leave the cursor at the end
 /// of the input, or an item split across chunks reads as malformed. The decoder must advance its
@@ -99,7 +100,7 @@
 /// `input.finish()` do to consume the rest: a decoder that reassigns it to another slice, such as
 /// `*input = &[]`, and then returns `Ok` panics when debug assertions or overflow checks are on
 ///
-/// In a `key(..)` + `len(..)` struct with `unknown(..)`, the length of a known key's item also
+/// In a key + len struct with `unknown(..)`, the length of a known key's item also
 /// follows the rule on [`Framing::Inline`], a malformed one rejected with an error naming
 /// `` `<Struct>` item ``, so the `len(dec = ..)` decoder must return [`crate::Result<usize>`],
 /// whose error is winnow's `ContextError`. A decoder with another error type is a compile error,
@@ -111,7 +112,7 @@ pub enum Framing {
     ///
     /// The decode loop pre-checks that at least this many bytes remain, `take`s them, and runs the
     /// value decoder against the resulting sub-slice. This is the framing every length-prefixed
-    /// field of a classic `key`+`len` struct uses, and the one wire types that carry a length
+    /// field of a key + len struct uses, and the one wire types that carry a length
     /// prefix (or a fixed width) resolve to
     ///
     /// For a field declaring `size(exact = N)`, a length other than `N` is malformed: both decodes

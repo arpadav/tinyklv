@@ -9,7 +9,7 @@
 //! * [`DecodePartial`] - the streaming-aware counterpart to [`DecodeValue`],
 //!   returning [`Packet`] instead of a plain `Result` to distinguish "need more bytes"
 //!   from "malformed"
-//! * [`ResumePartial`] - the internal re-entry point that resumes a paused partial
+//! * [`ResumePartial`] - the re-entry point that resumes a paused partial
 //!   decode from an existing [`DecodePartial::Partial`] state
 //! * [`PartialError`] - why a partial decode or a finalize failed: its [`ErrorKind`] and a label
 //!
@@ -42,9 +42,9 @@ use winnow::{error::ContextError, stream::Stream as _};
 /// ```rust
 /// use tinyklv::{ErrorKind, traits::PartialError};
 ///
-/// let error = PartialError::new(&(ErrorKind::MissingRequired, "`Reading::id` is missing"));
-/// assert_eq!(error.kind(), ErrorKind::MissingRequired);
-/// assert_eq!(error.to_string(), "`Reading::id` is missing");
+/// let error = PartialError::aborted("tamper-detection key");
+/// assert_eq!(error.kind(), ErrorKind::Aborted);
+/// assert_eq!(error.to_string(), "tamper-detection key");
 /// ```
 #[derive(Clone, Copy)]
 pub struct PartialError(Rejection);
@@ -66,6 +66,8 @@ impl PartialError {
     /// `rejection` is a constant, such as `&(ErrorKind::MissingRequired, "..")`, which the
     /// compiler places in a `static`
     ///
+    /// Not part of the public API - may change without notice
+    ///
     /// # Arguments
     ///
     /// * `rejection` - what the error is, and the label naming what was rejected, and why
@@ -73,6 +75,7 @@ impl PartialError {
     /// # Returns
     ///
     /// The error
+    #[doc(hidden)]
     #[inline]
     #[must_use]
     pub const fn new(rejection: &'static (ErrorKind, &'static str)) -> Self {
@@ -309,10 +312,7 @@ where
     fn decode_partial(input: &mut S) -> Result<Packet<Self, Self::Partial>, PartialError>;
 }
 
-#[doc(hidden)]
 /// Re-entry point for resuming a paused partial decode from an existing [`DecodePartial::Partial`] state
-///
-/// This is used internally and is not expected to be called directly
 ///
 /// Generic over the stream type `S`, same as [`DecodePartial`]. The derive
 /// macro emits this impl alongside [`DecodePartial`]; [`DecodePartial::decode_partial`]
@@ -320,6 +320,27 @@ where
 ///
 /// This holds the streaming decode loop, which the derive's
 /// [`DecodeValue::decode_value`] also runs, one-shot
+///
+/// [`crate::Decoder::next`] and [`crate::Decoder::finish`] resume through it, so code generic over
+/// the type a [`crate::Decoder`] decodes bounds it too. A [`crate::Decoder`] enters resume mode
+/// through [`PartialIterator::next_resume`]
+///
+/// # Example
+///
+/// ```rust
+/// use tinyklv::{ResumePartial, SeekSentinel, decoder::DecodeIterError, prelude::*};
+///
+/// /// Ends the stream of any sentinel-framed type
+/// fn end_of_stream<P, T>(decoder: Decoder<P, &[u8]>) -> Result<T, DecodeIterError>
+/// where
+///     P: Partial<Final = T> + Default,
+///     for<'a> T: DecodePartial<&'a [u8], Partial = P>
+///         + ResumePartial<&'a [u8]>
+///         + SeekSentinel<&'a [u8]>,
+/// {
+///     decoder.finish()
+/// }
+/// ```
 pub trait ResumePartial<S>: DecodePartial<S>
 where
     S: winnow::stream::Stream,
@@ -339,9 +360,15 @@ where
     ///
     /// # Returns
     ///
-    /// `Ok(Packet::Ready(Self))` when all required fields are present,
-    /// `Ok(Packet::NeedMore(Self::Partial))` when more bytes are needed,
-    /// or `Err(PartialError)` on an unrecoverable parse error
+    /// `Ok(Packet::Ready(Self))` when the decode loop ends first, such as at a `break_on` stop,
+    /// and finalizes; `Ok(Packet::NeedMore(Self::Partial))` when the input runs out, between
+    /// items or inside one, even with every required field present
+    ///
+    /// # Errors
+    ///
+    /// - An item is malformed or rejected: a [`PartialError`] naming it, returned at once
+    /// - The decode loop ends with a required field missing: [`ErrorKind::MissingRequired`],
+    ///   naming it
     fn resume_partial(
         input: &mut S,
         partial: Self::Partial,
@@ -365,11 +392,11 @@ impl<P: Partial> Partial for Vec<P> {
 /// [`Vec`] implementation of [`DecodePartial`] for all `T` that implement [`DecodePartial`]
 ///
 /// Parses inner items until one returns [`Packet::NeedMore`], consumes no byte, or propagates an
-/// error raised after consuming bytes. A [`Packet::NeedMore`] from the inner parser is treated as
-/// "done for now": whatever was accumulated is best-effort-finalised and returned as
-/// `Packet::Ready`. The cursor has been rewound by the inner call so the next invocation can resume
-/// with more bytes. A cut element that cannot finalise is not pushed: the cursor rewinds to its
-/// start, so the next invocation reads it whole
+/// error raised after consuming bytes. A [`Packet::NeedMore`] from the inner parser ends the call
+/// with `Packet::Ready` of what was accumulated. A cut element that can finalise is pushed, the
+/// cursor left inside it where the inner call rewound, so the next invocation reads the rest of
+/// that element as a new one. A cut element that cannot finalise is not pushed: the cursor rewinds
+/// to its start, so the next invocation reads it whole
 ///
 /// An element that consumed zero bytes is never pushed, under the same rule as `Vec<T>`'s
 /// [`DecodeValue`] impl; the loop stops and returns what was accumulated

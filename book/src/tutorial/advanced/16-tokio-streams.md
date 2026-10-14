@@ -24,29 +24,17 @@ while let Some(chunk) = rx.recv().await {
 }
 ```
 
-Every complete packet is emitted immediately after the chunk that
-completes it arrives. Partial frames stay in the internal buffer until
-the next feed.
+Every complete packet is emitted once the chunk that completes it arrives.
 
 ## Full example
 
-The example simulates a byte source with a Tokio mpsc channel. The
-producer slices each encoded frame into two halves and sends them as
-separate chunks, proving the receiver reassembles a frame split across
-two awaits.
+The example sends each encoded packet in two halves through a Tokio mpsc
+channel, and the receiver reassembles it across two awaits.
 
 Run this example: `cargo run --example book_16_tokio_streams`
 
 ```rust
 {{#include ../../../../examples/book/advanced/book_16_tokio_streams.rs}}
 ```
-
-## Key takeaways
-
-- `tinyklv` stays sync; async is the caller's concern, one `feed()`
-  call away.
-- Use `feed()` + `iter()` for real-time packet processing.
-- `tokio` appears only as a transport dependency - no library-level
-  async feature flag.
 
 **Next:** [17 - Values with no length](./17-implicit.md)

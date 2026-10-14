@@ -12,7 +12,7 @@ enum Payload {
     default(typ = u8, dec = tinyklv::dec::binary::u8, enc = *tinyklv::enc::binary::u8),
 )]
 struct Reading {
-    #[klv(key = oneof(0x02 => Payload::Count(u8), 0x03 => Payload::Count(u8)))]
+    #[klv(key = oneof(0x02 => Payload::Count(u8), 0x03 => self::Payload::Count(u8)))]
     payload: Option<Payload>,
 }
 

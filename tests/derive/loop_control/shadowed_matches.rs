@@ -11,6 +11,7 @@
 // --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::prelude::*;
+use tinyklv::{ErrorKind, traits::PartialError};
 
 /// Named like `core`'s, and matches everything
 #[expect(unused_macros, reason = "the derive below must not expand it")]
@@ -45,6 +46,17 @@ fn user_matches_does_not_hijack_the_unknown_key_gate() {
         // level = 5
         0x08, 0x01, 0x05,
     ];
-    assert!(Gauge::decode_value(&mut &wire[..]).is_err());
-    assert!(Gauge::decode_partial(&mut &wire[..]).is_err());
+    assert_eq!(
+        Gauge::decode_value(&mut &wire[..])
+            .err()
+            .as_ref()
+            .and_then(ErrorKind::of),
+        Some(ErrorKind::UnknownKey)
+    );
+    assert_eq!(
+        Gauge::decode_partial(&mut &wire[..])
+            .err()
+            .map(PartialError::kind),
+        Some(ErrorKind::UnknownKey)
+    );
 }

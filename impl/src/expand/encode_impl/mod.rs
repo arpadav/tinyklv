@@ -1,7 +1,7 @@
 //! Orchestration of the encode code-generation pass
 //!
 //! Top-level entry point for the `tinyklv::prelude::EncodeValue` and
-//! `tinyklv::prelude::EncodeFrame` derive implementations. It derives an [`EncodeCtx`] from the
+//! `tinyklv::traits::EncodeFrame` derive implementations. It derives an [`EncodeCtx`] from the
 //! container once, then assembles the impls its methods emit, each from the sub-module that owns
 //! it:
 //!

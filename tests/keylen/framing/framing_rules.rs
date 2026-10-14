@@ -19,6 +19,7 @@ use crate::support::{header, value};
 use tinyklv::codecs::ber::BerLength;
 use tinyklv::dec::ber as decber;
 use tinyklv::dec::binary as decb;
+use tinyklv::dec::string as decs;
 use tinyklv::prelude::*;
 
 /// Message whose `Inline` port uses a decoder the end-of-input rule reaches but misclassifies
@@ -37,6 +38,36 @@ struct Limits {
     /// field 4, wire 0 - `Inline`, a fixed two-byte value
     #[klv(key = 0x20, dec = decb::be_u16)]
     port: Option<u16>,
+}
+
+/// Message whose `Inline` value is a length byte, then that many bytes of text
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    keylen(dec = header::dec_u8),
+    allow_unimplemented_encode,
+)]
+struct Greeting {
+    /// key `0x01` - `Inline`
+    #[klv(key = 0x01, dec = Greeting::dec_text)]
+    text: Option<String>,
+}
+
+/// [`Greeting`] implementation
+impl Greeting {
+    /// Decodes a length byte, then that many bytes of text
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - the byte stream positioned at the length byte
+    ///
+    /// # Returns
+    ///
+    /// The text, or the error of the decoder that ran out of bytes
+    fn dec_text(input: &mut &[u8]) -> tinyklv::Result<String> {
+        let len = decb::u8_as_usize(input)?;
+        decs::to_string_utf8(len)(input)
+    }
 }
 
 /// Message whose keylen header is built from crate codecs: a `be_u16` key, which fails short
@@ -294,6 +325,21 @@ fn split_inside_fixed_inline_value() {
     let expected = Limits {
         count: 3,
         port: Some(0x0102),
+    };
+    expected.assert_decodes_from(&wire);
+}
+
+/// An `Inline` length-prefixed string split anywhere, `01 05 68 65` included, pauses, then
+/// completes: a string decoder short of its length leaves the cursor at the end of input
+#[test]
+fn split_inside_lengthed_inline_value() {
+    #[rustfmt::skip]
+    let wire = [
+        // text = "hello": key, length 5, the text
+        0x01, 0x05, b'h', b'e', b'l', b'l', b'o',
+    ];
+    let expected = Greeting {
+        text: Some("hello".to_owned()),
     };
     expected.assert_decodes_from(&wire);
 }

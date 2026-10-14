@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Example 05 - encode/decode symmetry
 //!
 //! `#[derive(Klv)]` generates matched pairs of traits: `EncodeValue`/`DecodeValue`
@@ -17,10 +15,10 @@
 //! * `decode_value` vs `decode_frame`
 //! * Sentinel + outer-length accounting
 //!
-//! See also: book Tutorial 05
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+//! See also: `book/src/tutorial/fundamentals/09-encode-sigil.md`
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -51,8 +49,8 @@ struct AtmoSample {
 fn main() {
     // build
     let original = AtmoSample {
-        pressure_pa:          101_325, // standard atmosphere
-        temperature_centideg: 2_050,   // 20.50 C
+        pressure_pa: 101_325,        // standard atmosphere
+        temperature_centideg: 2_050, // 20.50 C
     };
 
     // encode - value bytes contain only the field KLV triples
@@ -76,14 +74,10 @@ fn main() {
     );
 
     // decode - value form round-trips
-    let from_value = AtmoSample::decode_value(
-        &mut value_bytes.as_slice(),
-    ).unwrap();
+    let from_value = AtmoSample::decode_value(&mut value_bytes.as_slice()).unwrap();
 
     // decode - frame form round-trips
-    let from_frame = AtmoSample::decode_frame(
-        &mut frame_bytes.as_slice(),
-    ).unwrap();
+    let from_frame = AtmoSample::decode_frame(&mut frame_bytes.as_slice()).unwrap();
 
     // assert - both decode paths reconstruct the original
     assert_eq!(from_value, original);

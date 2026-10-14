@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Example 10 - container `default(typ=...)` + field-level `default`
 //!
 //! Two ergonomics features compose cleanly on one struct:
@@ -16,9 +14,9 @@
 //! * Hand-written `DecodeValue` / `EncodeValue` impls on two custom enums
 //! * `default(typ = ...)` removing boilerplate from field attributes
 //! * `default = 1_u16` giving a decode-time fallback for an absent key
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 /// Three-level signal strength indicator stored as one byte
@@ -43,12 +41,15 @@ impl DecodeValue<&[u8]> for SignalStrength {
 
 impl EncodeValue for SignalStrength {
     fn encode_value(&self, out: &mut Vec<u8>) {
-        encb::u8(match self {
-            SignalStrength::None      => 0,
-            SignalStrength::Weak      => 1,
-            SignalStrength::Good      => 2,
-            SignalStrength::Excellent => 3,
-        }, out);
+        encb::u8(
+            match self {
+                SignalStrength::None => 0,
+                SignalStrength::Weak => 1,
+                SignalStrength::Good => 2,
+                SignalStrength::Excellent => 3,
+            },
+            out,
+        );
     }
 }
 
@@ -75,12 +76,15 @@ impl DecodeValue<&[u8]> for NetworkMode {
 
 impl EncodeValue for NetworkMode {
     fn encode_value(&self, out: &mut Vec<u8>) {
-        encb::u8(match self {
-            NetworkMode::Offline   => 0,
-            NetworkMode::WiFi      => 1,
-            NetworkMode::Cellular  => 2,
-            NetworkMode::Satellite => 3,
-        }, out);
+        encb::u8(
+            match self {
+                NetworkMode::Offline => 0,
+                NetworkMode::WiFi => 1,
+                NetworkMode::Cellular => 2,
+                NetworkMode::Satellite => 3,
+            },
+            out,
+        );
     }
 }
 
@@ -128,22 +132,21 @@ struct RadioConfig {
 fn main() {
     // build - a complete config touching every field
     let original = RadioConfig {
-        uplink_signal:   SignalStrength::Good,
+        uplink_signal: SignalStrength::Good,
         downlink_signal: SignalStrength::Excellent,
-        mode:            NetworkMode::Satellite,
-        channel:         14,
+        mode: NetworkMode::Satellite,
+        channel: 14,
     };
 
     // encode + decode - full round-trip through the container defaults
     let mut encoded = Vec::new();
     original.encode_value(&mut encoded);
-    let decoded = RadioConfig::decode_value(
-        &mut encoded.as_slice(),
-    ).unwrap();
+    let decoded = RadioConfig::decode_value(&mut encoded.as_slice()).unwrap();
     assert_eq!(decoded, original);
 
     // build a partial stream by hand, deliberately omitting key 0x04 so
     // that the `default = 1_u16` fallback is exercised on decode
+    #[rustfmt::skip]
     let partial = [
         // key 0x01, len=1, SignalStrength::Weak:
             0x01, 0x01, 0x01,
@@ -155,13 +158,11 @@ fn main() {
     ];
 
     // decode - the decoder applies the default value for the missing channel key
-    let dec_partial = RadioConfig::decode_value(
-        &mut partial.as_slice(),
-    ).unwrap();
+    let dec_partial = RadioConfig::decode_value(&mut partial.as_slice()).unwrap();
 
     // assert - present keys carry their real values, channel falls back to 1
-    assert_eq!(dec_partial.uplink_signal,   SignalStrength::Weak);
+    assert_eq!(dec_partial.uplink_signal, SignalStrength::Weak);
     assert_eq!(dec_partial.downlink_signal, SignalStrength::Good);
-    assert_eq!(dec_partial.mode,            NetworkMode::WiFi);
+    assert_eq!(dec_partial.mode, NetworkMode::WiFi);
     assert_eq!(dec_partial.channel, 1, "absent key yields default value");
 }

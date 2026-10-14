@@ -76,7 +76,7 @@ const EMPTY: &[u8] = &[];
 /// ```ignore
 /// // feed bytes as they arrive; `next` yields each ready packet. A packet cut
 /// // across reads stays buffered across `feed` calls - no manual resume is needed
-/// let mut dec: Decoder<MyPacketPartial, &[u8]> = Decoder::new();
+/// let mut dec: Decoder<MyPacketPartialPacket, &[u8]> = Decoder::new();
 /// let mut scratch = [0u8; 2048];
 /// loop {
 ///     let n = socket.recv(&mut scratch)?;
@@ -130,7 +130,7 @@ impl<P, S> Decoder<P, S> {
     /// use tinyklv::Decoder;
     ///
     /// // type inference requires the partial type to be known from context
-    /// // let mut dec: Decoder<MyPacketPartial, &[u8]> = Decoder::new();
+    /// // let mut dec: Decoder<MyPacketPartialPacket, &[u8]> = Decoder::new();
     /// ```
     #[inline]
     pub fn new() -> Self {
@@ -302,9 +302,9 @@ where
     /// and the buffered bytes are discarded - no further decoding is possible
     /// after this call
     ///
-    /// If no partial is in-flight, a default partial is finalised; depending
-    /// on the `T` type this may succeed (all fields optional) or fail (required
-    /// fields missing)
+    /// If no partial is in-flight, as in fresh mode, which never stores one, a default partial is
+    /// finalised; depending on the `T` type this may succeed (all fields optional) or fail
+    /// (required fields missing)
     ///
     /// # Returns
     ///

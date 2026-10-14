@@ -481,10 +481,7 @@ pub(crate) enum FieldKeys {
 }
 #[cfg(test)]
 mod tests {
-    use crate::{
-        Ctxt,
-        ast::attr::{MainContainer, ValueXcoder, size::SizeSpec},
-    };
+    use crate::ast::attr::{MainContainer, ValueXcoder, size::SizeSpec};
 
     use quote::ToTokens;
 
@@ -512,10 +509,7 @@ mod tests {
                 own_exact: Name,
             }
         };
-        let cx = Ctxt::new();
-        let container = MainContainer::from_ast(&cx, &item);
-        cx.check().expect("the input parses");
-        let container = container.expect("the input is a container");
+        let container = MainContainer::parsed(&item).expect("the input parses");
         let filled: Vec<String> = container
             .klv_keys()
             .map(|key| {

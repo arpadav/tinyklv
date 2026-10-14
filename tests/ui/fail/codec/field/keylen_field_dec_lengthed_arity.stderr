@@ -17,11 +17,11 @@ note: function defined here
    |    ^^ -----------------
    = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0618]: expected function, found `Result<u16, tinyklv::__export::winnow::error::ContextError>`
+error[E0618]: expected function, found `Result<u16, ContextError>`
   --> tests/ui/fail/codec/field/keylen_field_dec_lengthed_arity.rs:14:29
    |
  7 | fn id(input: &mut &[u8]) -> tinyklv::Result<u16> {
-   | ------------------------------------------------ `id` defined here returns `Result<u16, tinyklv::__export::winnow::error::ContextError>`
+   | ------------------------------------------------ `id` defined here returns `Result<u16, ContextError>`
 ...
 11 | #[derive(Klv)]
    |          --- in this derive macro expansion

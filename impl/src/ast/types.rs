@@ -301,9 +301,10 @@ pub(crate) fn is_option(ty: &syn::Type) -> bool {
 
 /// Determines whether a [`syn::Type`] is an `Option` and extracts its inner type
 ///
-/// Checks whether `ty` is a single-segment path whose ident is `Option` and
-/// whose first generic argument is a type. Returns both the boolean flag and
-/// the optional inner type so callers can use either piece without a second pass
+/// Checks whether `ty`, inside any invisible groups a `macro_rules!` `$t:ty` fragment comes in,
+/// is `Option`, `std::option::Option` or `core::option::Option` whose first generic argument is a
+/// type. Returns both the boolean flag and the optional inner type so callers can use either piece
+/// without a second pass
 ///
 /// # Arguments
 ///
@@ -314,13 +315,25 @@ pub(crate) fn is_option(ty: &syn::Type) -> bool {
 /// A tuple `(is_option, inner)` where `is_option` is `true` when `ty` is
 /// `Option<..>`, and `inner` is `Some(&T)` for `Option<T>` or `None` otherwise
 fn is_option_helper(ty: &syn::Type) -> (bool, Option<&syn::Type>) {
-    if let syn::Type::Path(syn::TypePath { path, .. }) = ty
-        && let Some(syn::PathSegment {
-            ident: id,
-            arguments:
-                syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments { args, .. }),
-        }) = path.segments.first()
+    let path = match ty {
+        syn::Type::Group(group) => return is_option_helper(&group.elem),
+        syn::Type::Path(syn::TypePath { qself: None, path }) => path,
+        _ => return (false, None),
+    };
+    let mut segments = path.segments.iter().rev();
+    if let Some(syn::PathSegment {
+        ident: id,
+        arguments:
+            syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments { args, .. }),
+    }) = segments.next()
         && id == "Option"
+        && match (segments.next(), segments.next(), segments.next()) {
+            (None, ..) => path.leading_colon.is_none(),
+            (Some(module), Some(krate), None) => {
+                module.ident == "option" && (krate.ident == "std" || krate.ident == "core")
+            }
+            _ => false,
+        }
     {
         return (
             true,

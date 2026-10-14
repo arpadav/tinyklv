@@ -6,8 +6,6 @@ Optional types are handled with ease. During encoding, they are omitted when `No
 and encoded as expected when `Some`. During decoding, they simply default to `None`,
 but when encountered, it will populate it as `Some`.
 
-This can be useful in majority of cases. 
-
 ### `default` / `default = expr` field attributes
 
 ***NOTE:*** _these are different than the `default` container attributes, which define

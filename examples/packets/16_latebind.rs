@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Example 16 - `latebind` post-decode hook, consuming and mutating forms
 //!
 //! The `latebind` field attribute runs a second pass on the decoded value
@@ -22,10 +20,10 @@
 //! * Encoding a field whose in-memory type differs from what is provided
 //!   in the stream
 //!
-//! See also: book Tutorial 16
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+//! See also: `book/src/tutorial/fundamentals/08-latebind.md`
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// Device status variants carried as a one-byte discriminant
@@ -49,9 +47,9 @@ fn status_from_u8(v: u8) -> Status {
 /// Encode a `Status` back to its `u8` discriminant
 fn enc_status(s: &Status, out: &mut Vec<u8>) {
     let byte = match s {
-        Status::Idle    => 0,
-        Status::Active  => 1,
-        Status::Error   => 2,
+        Status::Idle => 0,
+        Status::Active => 1,
+        Status::Error => 2,
         Status::Unknown => 0xFF,
     };
     encb::u8(byte, out);
@@ -129,14 +127,14 @@ fn main() {
     // consuming form: round-trip a Status through its u8 representation
 
     // build
-    let device = Device { status: Status::Active };
+    let device = Device {
+        status: Status::Active,
+    };
     // encode
     let mut frame = Vec::new();
     device.encode_frame(&mut frame);
     // decode
-    let decoded = Device::decode_frame(
-        &mut frame.as_slice(),
-    ).unwrap();
+    let decoded = Device::decode_frame(&mut frame.as_slice()).unwrap();
     // assert - the latebind promoted the decoded u8 into the Active variant
     assert_eq!(decoded.status, Status::Active);
 
@@ -144,15 +142,17 @@ fn main() {
 
     // build
     let tele = Telemetry {
-        position: Coordinate { x: 1.5, y: 2.5, z: 0.0 },
+        position: Coordinate {
+            x: 1.5,
+            y: 2.5,
+            z: 0.0,
+        },
     };
     // encode - only X and Y are written
     let mut frame = Vec::new();
     tele.encode_frame(&mut frame);
     // decode - latebind mutates Z to GLOBAL_Z
-    let decoded = Telemetry::decode_frame(
-        &mut frame.as_slice(),
-    ).unwrap();
+    let decoded = Telemetry::decode_frame(&mut frame.as_slice()).unwrap();
 
     // assert - X and Y round-tripped, Z came from the mutating latebind
     assert_eq!(decoded.position.x, 1.5);

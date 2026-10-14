@@ -1,7 +1,6 @@
 # Field attributes
 
-Attributes declared on individual struct fields with `#[klv(...)]`. Each
-section gives syntax, a short semantic summary, and a minimal snippet.
+Attributes declared on individual struct fields with `#[klv(...)]`.
 
 ## `key = <literal>`
 
@@ -24,14 +23,12 @@ encode time. Literal types match the codec in the container's
 payload: Option<Payload>,
 ```
 
-Routes several keys to one `Option<Enum>` field (a plain `Enum` field is a
-required oneof). A frame of key `K` holds a `Type`, decoded and encoded by the
-container `default(typ = Type, ..)`, with its framing, or by `trait_fallback`,
-and is stored as `Enum::Variant`; the last one decoded wins. Arms of one `Type`
-share its `default`, so a second encoding needs a newtype. Encode writes the
-set variant's frame at the field's place, nothing for `None`, and needs an arm
-per variant: to match prost's bytes, declare fields in key order, a oneof at
-its lowest key. An `enc`, `dec` or `size(..)` on the field is a compile error.
+Routes several keys to one `Option<Enum>` field, or a required plain `Enum`.
+An item of key `K` holds a `Type`, coded by the container
+`default(typ = Type, ..)` or `trait_fallback`, and is stored as
+`Enum::Variant`; the last one wins. Encode writes the set variant's item in the
+field's place; for prost's bytes, declare fields in key order, a oneof at its
+lowest key. The field takes no `enc`, `dec` or `size(..)`.
 
 ## `dec = <path>`
 
@@ -41,12 +38,9 @@ sequence: u8,
 ```
 
 Associates the codec pair for this field. `dec` must match
-`fn(&mut S) -> tinyklv::Result<T>`, where `tinyklv::Result` is
-an alias for `winnow::Result`
-
-`enc` must match `fn(&T, &mut Vec<u8>)`
-(a value-taking one takes the `*` sigil below). Either can be omitted when
-the container default covers the field type.
+`fn(&mut S) -> tinyklv::Result<T>`, and `enc` `fn(&T, &mut Vec<u8>)` (a
+value-taking one takes the `*` sigil below). Either can be omitted when the
+container default covers the field type.
 
 ## `enc = <optional sigil> <path>`
 
@@ -133,17 +127,12 @@ battery_pct: u8,
 ```
 
 Fallback value used when the key is absent in the decoded stream. Without
-either form, an absent key raises a parse error.
+either form, a missing non-`Option` field is an error.
 
 | Form | Emitted fallback |
 |------|------------------|
 | `default` (no value) | `<FieldType as ::core::default::Default>::default()` |
 | `default = <expr>` | the inline expression, evaluated once per decode call |
-
-Use bare `default` when the field type already has a sensible zero value
-(primitives, `Option<T>`, `Vec<T>`, `String`, or any user type with
-`#[derive(Default)]`). Use `default = <expr>` when the fallback is a
-specific constant, a sentinel, or a non-`Default` value.
 
 ## `skip_if_default` / `skip_if = <path>`
 
@@ -155,10 +144,10 @@ count: u64,
 name: String,
 ```
 
-Leaves the field's frame out of the encode: `skip_if_default` when the field
+Leaves the field's item out of the encode: `skip_if_default` when the field
 equals its type's `Default::default()`, `skip_if` when the `fn(&T) -> bool`
 returns `true`; as in prost, `-0.0` equals `0.0` and is left out. A missing
-frame then decodes to `Default::default()`, unless the field sets its own
+item then decodes to `Default::default()`, unless the field sets its own
 `default`. On an `Option<T>` field the test takes the whole field: `None` is
 never written, `Some(0)` is. One form, once, on a field or per type in a
 container `default(typ = ..)`; a field's own replaces its default's.
@@ -210,11 +199,11 @@ keys.
 extra: Vec<(u8, Vec<u8>)>,
 ```
 
-Keeps every frame whose key no field declares, as `(key, value)` in wire
+Keeps every item whose key no field declares, as `(key, value)` in wire
 order, decoded by the container
 [`unknown(dec = ..)`](./container-attributes.md#unknowndec---enc--). Its
 `enc` writes them before any `break_on` field, after the rest. A malformed kept
-frame is an error naming this field. One per struct, beside a container
+item is an error naming this field. One per struct, beside a container
 `unknown(..)`, with no other setting.
 
 ## Cross-reference
@@ -222,7 +211,6 @@ frame is an error naming this field. One per struct, beside a container
 | Attribute | First introduced in |
 |-----------|--------------------|
 | `key = <lit>` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
-| `key = oneof(..)` | Reference only |
 | `dec = <path>` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
 | `enc = <path>` | [09 - Encoding & sigils](../tutorial/fundamentals/09-encode-sigil.md) |
 | `enc = &<path>` | [09 - Encoding & sigils](../tutorial/fundamentals/09-encode-sigil.md) |
@@ -233,6 +221,4 @@ frame is an error naming this field. One per struct, beside a container
 | `default = <expr>` | [11 - Optional fields & default](../tutorial/fundamentals/11-default-fallback.md) |
 | `latebind = <path>` | [08 - Latebind transforms](../tutorial/fundamentals/08-latebind.md) |
 | `latebind = &mut <path>` | [08 - Latebind transforms](../tutorial/fundamentals/08-latebind.md) |
-| `skip_if_default` / `skip_if` | Reference only |
-| `break_on = <path>` | Reference only |
-| `unknown` | [19 - Unknown frames](../tutorial/advanced/19-unknown.md) |
+| `unknown` | [19 - Unknown items](../tutorial/advanced/19-unknown.md) |

@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Example 09 - BER-OID keys and BER-encoded lengths
 //!
 //! Basic Encoding Rules (BER) give a compact, variable-width representation
@@ -16,11 +14,11 @@
 //! * BER-OID key codec from `dec::ber` / `enc::ber`
 //! * BER length codec wrapped in small helper fns
 //! * `u64` key type carrying values that map to 1/2/3-byte keys
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
-use tinyklv::dec::ber as decber;    // BER decoders
-use tinyklv::enc::ber as encber;    // BER encoders
+use tinyklv::dec::ber as decber; // BER decoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::ber as encber; // BER encoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -60,8 +58,8 @@ fn main() {
     // build - one field per BER width class
     let original = ProcessControl {
         device_class: 0x05,
-        set_point:    75_000, // e.g. flow setpoint in ml/min
-        alarm_code:   0x00FF, // warning bit pattern
+        set_point: 75_000,  // e.g. flow setpoint in ml/min
+        alarm_code: 0x00FF, // warning bit pattern
     };
 
     // encode - bytes include BER keys of 1, 2, and 3 bytes respectively
@@ -69,9 +67,7 @@ fn main() {
     original.encode_frame(&mut frame);
 
     // decode - round-trip through the BER codecs
-    let decoded = ProcessControl::decode_frame(
-        &mut frame.as_slice(),
-    ).unwrap();
+    let decoded = ProcessControl::decode_frame(&mut frame.as_slice()).unwrap();
 
     // assert - all three BER-keyed fields survive
     assert_eq!(decoded, original);

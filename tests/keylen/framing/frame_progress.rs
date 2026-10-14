@@ -146,6 +146,77 @@ impl Peeked {
     }
 }
 
+/// Self-describing message padded with type byte `0x7E`, which its `break_on` skips: the header
+/// frames padding `Sliced(0)` and consumes nothing of it
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    keylen(dec = Padded::header),
+    allow_unimplemented_encode,
+    break_on = Padded::skip_padding,
+)]
+struct Padded {
+    /// type byte `0x01`, then one value byte - `Inline`
+    #[klv(key = 0x01, dec = Peeked::small)]
+    small: Option<u8>,
+}
+
+/// [`Padded`] implementation
+impl Padded {
+    /// Decodes a frame header as [`Peeked::header`] does, the padding type byte framing `Sliced(0)`
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - the byte stream positioned at a frame header; never advanced
+    ///
+    /// # Returns
+    ///
+    /// `Ok((type byte, framing))`, or an error on empty input
+    ///
+    /// # Panics
+    ///
+    /// On the read past the [`HeaderBudget`]
+    fn header(input: &mut &[u8]) -> tinyklv::Result<(u8, Framing)> {
+        let (kind, framing) = Peeked::header(input)?;
+        match kind {
+            0x7E => Ok((kind, Framing::Sliced(0))),
+            _ => Ok((kind, framing)),
+        }
+    }
+
+    /// Skips the padding, reading nothing of it
+    ///
+    /// # Arguments
+    ///
+    /// * `kind` - the frame's type byte
+    /// * `_input` - the input right after the frame's header, never read
+    ///
+    /// # Returns
+    ///
+    /// `Skip` for padding, else `Proceed`
+    fn skip_padding(kind: &u8, _input: &mut &[u8]) -> BreakType {
+        if *kind == 0x7E {
+            BreakType::Skip
+        } else {
+            BreakType::Proceed
+        }
+    }
+}
+
+/// A `Skip` of a frame whose header and value consumed nothing could only repeat it: both drivers
+/// reject it, rather than loop
+#[test]
+fn a_skip_that_consumed_nothing_is_rejected() {
+    #[rustfmt::skip]
+    let wire = [
+        // small = 7 (type 0x01)
+        0x01, 0x07,
+        // padding (type 0x7E, Sliced(0)) - the type byte is never consumed
+        0x7E,
+    ];
+    Padded::assert_rejects_naming(&wire, &["`Padded` item", "consumed no input"]);
+}
+
 /// A header that consumes nothing, followed by an `Inline` value that does, decodes in both
 /// drivers and across every split, including between a type byte and its value
 #[test]

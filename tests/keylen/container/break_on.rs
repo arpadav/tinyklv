@@ -5,7 +5,8 @@
 //! do not. That holds for a key a field declares too,
 //! even one whose `size(exact = N)` the frame's length breaks. Without the terminator, every
 //! frame decodes and streaming waits for more. A fn is handed the input right after the header,
-//! and the loop ends where the fn leaves it
+//! and the loop ends where the fn leaves it, but a `Skip` or `Done` that read nothing steps over a
+//! `Sliced` item's value and stops after an `Inline` item's header
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -287,4 +288,151 @@ fn a_fn_stops_after_the_value_it_reads() {
         status: None,
     };
     before.assert_stops_at(&wire, header_end + 4);
+}
+
+/// Account record whose receiver skips the notes in it: a `u8` key, then a `u8` length for every
+/// key but `0x04`, whose value is `Inline`
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    keylen(dec = Account::header),
+    allow_unimplemented_encode,
+    break_on = Account::skip_notes,
+)]
+struct Account {
+    /// key `0x01` - `Sliced(n)`
+    #[klv(key = 0x01, dec = value::dec_string)]
+    name: Option<String>,
+
+    /// key `0x02` - `Sliced(1)`
+    #[klv(key = 0x02, dec = decb::u8)]
+    is_admin: Option<u8>,
+}
+
+/// [`Account`] implementation
+impl Account {
+    /// Decodes an item header: a `u8` key, then a `u8` length unless the key is `0x04`
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - the byte stream positioned at an item header
+    ///
+    /// # Returns
+    ///
+    /// `Ok((key, framing))`, or the error of the decoder that ran out of bytes
+    fn header(input: &mut &[u8]) -> tinyklv::Result<(u8, Framing)> {
+        let key = decb::u8(input)?;
+        if key == 0x04 {
+            return Ok((key, Framing::Inline));
+        }
+        Ok((key, Framing::Sliced(decb::u8_as_usize(input)?)))
+    }
+
+    /// Skips a note, key `0x03` (`Sliced`) or `0x04` (`Inline`), reading nothing of it
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - the item's key
+    /// * `_input` - the input right after the item's header, never read
+    ///
+    /// # Returns
+    ///
+    /// `Skip` for a note, else `Proceed`
+    fn skip_notes(key: &u8, _input: &mut &[u8]) -> BreakType {
+        match key {
+            0x03 | 0x04 => BreakType::Skip,
+            _ => BreakType::Proceed,
+        }
+    }
+}
+
+/// A `Skip` that reads nothing steps over the `Sliced` item's value its header framed, so a note
+/// holding the bytes of another item never decodes as one
+#[test]
+fn a_skip_steps_over_the_sliced_value_it_read_nothing_of() {
+    #[rustfmt::skip]
+    let wire = [
+        // name = "bob"
+        0x01, 0x03, 0x62, 0x6F, 0x62,
+        // a note, length 3, holding the item `is_admin = 1`
+        0x03, 0x03, 0x02, 0x01, 0x01,
+    ];
+    let expected = Account {
+        name: Some("bob".to_owned()),
+        is_admin: None,
+    };
+    expected.assert_decodes_from(&wire);
+}
+
+/// A `Skip` that reads nothing of an `Inline` item, which has no length to step over it by, stops
+/// the decode right after its header
+#[test]
+fn a_skip_stops_after_an_inline_header_it_read_nothing_of() {
+    #[rustfmt::skip]
+    let (wire, stop) = ([
+        // name = "bob"
+        0x01, 0x03, 0x62, 0x6F, 0x62,
+        // an `Inline` note, never read
+        0x04, 0x02, 0x01, 0x01,
+    ], 6);
+    let expected = Account {
+        name: Some("bob".to_owned()),
+        is_admin: None,
+    };
+    expected.assert_stops_at(&wire, stop);
+}
+
+/// A ledger record ended by a trailer item, key `0xFF`, whose value its `break_on` never reads
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    keylen(dec = Account::header),
+    allow_unimplemented_encode,
+    break_on = Ledger::end_at_trailer,
+)]
+struct Ledger {
+    /// key `0x01` - `Sliced(1)`
+    #[klv(key = 0x01, dec = decb::u8)]
+    id: Option<u8>,
+}
+
+/// [`Ledger`] implementation
+impl Ledger {
+    /// Ends the record at its trailer, reading nothing of it
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - the item's key
+    /// * `_input` - the input right after the item's header, never read
+    ///
+    /// # Returns
+    ///
+    /// `Done` for the trailer, else `Proceed`
+    fn end_at_trailer(key: &u8, _input: &mut &[u8]) -> BreakType {
+        if *key == 0xFF {
+            BreakType::Done
+        } else {
+            BreakType::Proceed
+        }
+    }
+}
+
+/// A `Vec` of records each ended by a `Done` that reads nothing steps over every trailer's value,
+/// so a trailer holding the bytes of an item never decodes as the next record
+#[test]
+fn a_done_steps_over_the_trailer_of_each_record_in_a_vec() {
+    #[rustfmt::skip]
+    let record = |id: u8| [
+        // id
+        0x01, 0x01, id,
+        // trailer, length 3, holding the item `id = 9`
+        0xFF, 0x03, 0x01, 0x01, 0x09,
+    ];
+    let wire = [record(7), record(8)].concat();
+    let mut cursor = &wire[..];
+    assert_eq!(
+        Vec::<Ledger>::decode_value(&mut cursor),
+        Ok(vec![Ledger { id: Some(7) }, Ledger { id: Some(8) }])
+    );
+    assert!(cursor.is_empty());
 }

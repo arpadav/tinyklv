@@ -1,15 +1,13 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Book tutorial 02 - out-of-order key decoding
-//! See `book/tutorial/02-out-of-order.md` for the full narrative
+//! See `book/src/tutorial/fundamentals/02-out-of-order.md` for the full narrative
 //!
 //! Shows that `DecodeValue` does not require keys to appear in declaration
 //! order. The same `Heartbeat` struct from tutorial 01 is decoded from a
 //! stream where the temperature key arrives before the sequence key - the
 //! generated loop collects them in any order and assembles the struct at the
 //! end
-use tinyklv::prelude::*;            // Klv and DecodeValue are already imported here
-use tinyklv::dec::binary as decb;   // binary decoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::prelude::*; // Klv and DecodeValue are already imported here
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -36,6 +34,7 @@ struct Heartbeat {
 
 fn main() {
     // manually construct the packet
+    #[rustfmt::skip]
     let out_of_order_stream = [
         0x02,       // temperature key
         0x02,       // value len = 2
@@ -52,9 +51,7 @@ fn main() {
     };
 
     // decode the value
-    let decoded = Heartbeat::decode_value(
-        &mut out_of_order_stream.as_slice()
-    ).unwrap();
+    let decoded = Heartbeat::decode_value(&mut out_of_order_stream.as_slice()).unwrap();
 
     // they equal!
     assert_eq!(decoded, original_constructed);

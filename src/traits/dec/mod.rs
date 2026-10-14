@@ -32,8 +32,8 @@ pub use sentinel::SeekSentinel;
 // --------------------------------------------------
 // constants
 // --------------------------------------------------
-/// The pre-allocation byte budget for decoding value vectors, which [`DecodeValue::NUM_ELEM`]
-/// divides by the element size
+/// The pre-allocation byte budget for decoding value vectors, which the [`Vec`] impl of
+/// [`DecodeValue`] divides by the element size
 ///
 /// TODO: investigate what is best/optimal for pre-sizing? right
 /// now arbitrarily set to 4096, which is baked into the binary
@@ -64,10 +64,6 @@ pub trait DecodeValue<S>: Sized
 where
     S: winnow::stream::Stream,
 {
-    /// The number of elements to pre-allocate, if the [`DecodeValue`] is
-    /// implemented for a [`Vec`] type. Otherwise, this is ignored
-    const NUM_ELEM: usize = DECODE_VEC_PREALLOC_BYTE_BUDGET / ::core::mem::size_of::<Self>();
-
     /// Decodes `Self` by consuming bytes from `input`
     ///
     /// # Arguments
@@ -111,9 +107,6 @@ where
     S: winnow::stream::Stream,
     T: DecodeValue<S>,
 {
-    /// The number of elements to pre-allocate
-    const NUM_ELEM: usize = DECODE_VEC_PREALLOC_BYTE_BUDGET / ::core::mem::size_of::<T>();
-
     #[inline(always)]
     fn decode_value(input: &mut S) -> crate::Result<Self> {
         // --------------------------------------------------
@@ -122,7 +115,8 @@ where
         // Vec::with_capacity() is significantly faster than
         // Vec::new() when the capacity is known in advance
         // --------------------------------------------------
-        let cap = input.eof_offset().min(Self::NUM_ELEM).max(1);
+        let num_elem = const { DECODE_VEC_PREALLOC_BYTE_BUDGET / ::core::mem::size_of::<T>() };
+        let cap = input.eof_offset().min(num_elem).max(1);
         let mut acc = Vec::with_capacity(cap);
         loop {
             let before = input.eof_offset();

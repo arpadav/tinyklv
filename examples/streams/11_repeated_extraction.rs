@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Example 11 - draining a concatenated stream of KLV frames
 //!
 //! Autonomous-vehicle and robotics pipelines frequently pack many framed
@@ -16,9 +14,9 @@
 //! * Concatenating N `encode_frame` outputs into one byte stream
 //! * Draining that stream with a `while let Ok` loop on `decode_frame`
 //! * Asserting count and per-field correctness against the source data
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, PartialEq, Clone, Copy)]
 #[klv(
@@ -65,11 +63,36 @@ struct Waypoint {
 fn main() {
     // build - five distinct survey waypoints
     let waypoints = [
-        Waypoint { index: 0, lat_deg: 37.7749, lon_deg: -122.4194, speed_limit_dms: 30 },
-        Waypoint { index: 1, lat_deg: 37.7750, lon_deg: -122.4200, speed_limit_dms: 20 },
-        Waypoint { index: 2, lat_deg: 37.7751, lon_deg: -122.4210, speed_limit_dms: 15 },
-        Waypoint { index: 3, lat_deg: 37.7748, lon_deg: -122.4215, speed_limit_dms: 25 },
-        Waypoint { index: 4, lat_deg: 37.7745, lon_deg: -122.4220, speed_limit_dms: 30 },
+        Waypoint {
+            index: 0,
+            lat_deg: 37.7749,
+            lon_deg: -122.4194,
+            speed_limit_dms: 30,
+        },
+        Waypoint {
+            index: 1,
+            lat_deg: 37.7750,
+            lon_deg: -122.4200,
+            speed_limit_dms: 20,
+        },
+        Waypoint {
+            index: 2,
+            lat_deg: 37.7751,
+            lon_deg: -122.4210,
+            speed_limit_dms: 15,
+        },
+        Waypoint {
+            index: 3,
+            lat_deg: 37.7748,
+            lon_deg: -122.4215,
+            speed_limit_dms: 25,
+        },
+        Waypoint {
+            index: 4,
+            lat_deg: 37.7745,
+            lon_deg: -122.4220,
+            speed_limit_dms: 30,
+        },
     ];
 
     // encode - every waypoint becomes its own sentinel-prefixed frame,
@@ -89,7 +112,7 @@ fn main() {
     // assert - count and field-level equality for every waypoint
     assert_eq!(decoded.len(), waypoints.len());
     for (got, want) in decoded.iter().zip(waypoints.iter()) {
-        assert_eq!(got.index,           want.index);
+        assert_eq!(got.index, want.index);
         assert!((got.lat_deg - want.lat_deg).abs() < 1e-9);
         assert!((got.lon_deg - want.lon_deg).abs() < 1e-9);
         assert_eq!(got.speed_limit_dms, want.speed_limit_dms);

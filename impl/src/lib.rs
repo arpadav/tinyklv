@@ -1,12 +1,12 @@
 //! Proc-macro implementation crate for `#[derive(Klv)]`
 //!
-//! Drives the full derive pipeline for the [`tinyklv`] crate's `Klv` derive
-//! macro. When a struct is annotated with `#[derive(Klv)]` and the appropriate
-//! `#[klv(..)]` attribute, this crate:
+//! Drives the full derive pipeline for the [`tinyklv`](https://docs.rs/tinyklv)
+//! crate's `Klv` derive macro. When a struct is annotated with `#[derive(Klv)]`
+//! and the appropriate `#[klv(..)]` attribute, this crate:
 //!
 //! 1. Parses the derive input and all `#[klv(..)]` attributes into an AST
 //!    representation (`ast` module)
-//! 2. Accumulates diagnostics via [`Ctxt`] and emits compile errors for any
+//! 2. Accumulates diagnostics via `Ctxt` and emits compile errors for any
 //!    invalid or missing annotations
 //! 3. Conditionally generates `EncodeValue`/`EncodeFrame` and
 //!    `DecodeValue`/`DecodePartial`/`ResumePartial`/`SeekSentinel` implementations
@@ -26,6 +26,8 @@ mod err;
 mod ast;
 mod ctxt;
 mod expand;
+#[cfg(test)]
+mod test_support;
 
 // --------------------------------------------------
 // local
@@ -40,7 +42,7 @@ use syn::{DeriveInput, parse_macro_input};
 /// Entry point for the `#[derive(Klv)]` proc-macro
 ///
 /// Parses the annotated struct into a [`syn::DeriveInput`], delegates the full
-/// AST parsing and code-generation pipeline to [`expand::derive`], and converts
+/// AST parsing and code-generation pipeline to `expand::derive`, and converts
 /// any [`syn::Error`] diagnostics into compile errors via
 /// [`syn::Error::into_compile_error`]
 ///

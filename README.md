@@ -120,7 +120,7 @@ maintainable code in the suite. A hand-rolled decoder is a panic-adjacent
 slice-indexing loop with one `Option` per field to juggle, repeated for every
 record shape, plus a second hand-written sub-parser for every level of nesting.
 From the benchmark's `manual` nested decoder
-([`benches/suite/approaches/manual/nested.rs`](https://github.com/arpadav/tinyklv/blob/main/benches/suite/approaches/manual/nested.rs)):
+([`benches/suite/approaches/manual/compound.rs`](https://github.com/arpadav/tinyklv/blob/main/benches/suite/approaches/manual/compound.rs)):
 
 ```rust,ignore
 fn decode(body: &[u8]) -> Option<Platform> {

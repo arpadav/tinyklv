@@ -16,7 +16,10 @@ use super::{
     length_prefix::{FixedLengthSlot, LengthPrefix, VariableLength},
     staging::Staging,
 };
-use crate::ast::attr::{FieldKey, ValueXcoder};
+use crate::ast::{
+    attr::{FieldKey, ValueXcoder},
+    types::XcoderLike,
+};
 
 // --------------------------------------------------
 // external
@@ -41,6 +44,15 @@ pub(super) enum FrameBody<'a> {
     /// A value of known width under a fixed-width length slot: the width as its length, then the
     /// value, checked in debug builds to be that wide
     Known(KeyEncoder<'a>, FixedLengthSlot<'a>, ValueWidth<'a>),
+    /// A value of expected width under a fixed-width length slot, and its built-in encoder's path:
+    /// the width as its length, then the value, the slot back-filled when a user's encoder of that
+    /// name writes another width
+    Expected(
+        KeyEncoder<'a>,
+        FixedLengthSlot<'a>,
+        ValueWidth<'a>,
+        &'a syn::Path,
+    ),
     /// A value of unknown width under a fixed-width length slot: the slot reserved, the value, then
     /// the slot back-filled
     Backfilled(KeyEncoder<'a>, FixedLengthSlot<'a>),
@@ -57,8 +69,9 @@ impl<'a> FrameBody<'a> {
     /// The body of a field key's frame
     ///
     /// A fused header stages every value. Under a separate header a `size(implicit)` value has no
-    /// length, a fixed-width length slot writes a value's known width ([`ValueWidth::exact`], else
-    /// [`ValueWidth::builtin`]) or is back-filled, and a variable-width length stages the value
+    /// length, a fixed-width length slot writes a value's known width ([`ValueWidth::exact`]) or
+    /// expected width ([`ValueWidth::builtin`]) or is back-filled, and a variable-width length
+    /// stages the value
     ///
     /// # Arguments
     ///
@@ -83,9 +96,10 @@ impl<'a> FrameBody<'a> {
             return Self::Implicit(key_encoder, exact);
         }
         match len {
-            LengthPrefix::Fixed(slot) => match exact.or_else(|| ValueWidth::builtin(key)) {
-                Some(width) => Self::Known(key_encoder, slot, width),
-                None => Self::Backfilled(key_encoder, slot),
+            LengthPrefix::Fixed(slot) => match (exact, ValueWidth::builtin(key)) {
+                (Some(width), _) => Self::Known(key_encoder, slot, width),
+                (None, Some((width, encoder))) => Self::Expected(key_encoder, slot, width, encoder),
+                (None, None) => Self::Backfilled(key_encoder, slot),
             },
             LengthPrefix::Variable(len) => Self::Staged(key_encoder, len, exact),
         }
@@ -114,6 +128,19 @@ impl<'a> FrameBody<'a> {
     /// `true` for [`Self::Staged`] and [`Self::Keylen`]
     pub(super) fn stages(self) -> bool {
         matches!(self, Self::Staged(..) | Self::Keylen(..))
+    }
+
+    /// The local the frame's value write calls its encoder through
+    ///
+    /// # Returns
+    ///
+    /// The [`fixed_width::encoder_binding`] of [`Self::Expected`], else `None`, the encoder called
+    /// as written
+    pub(super) fn encoder_binding(self) -> Option<syn::Ident> {
+        let Self::Expected(.., encoder) = self else {
+            return None;
+        };
+        Some(fixed_width::encoder_binding(encoder))
     }
 
     /// Writes the frame: its key, or the `keylen` header it goes into, and its value
@@ -154,6 +181,17 @@ impl<'a> FrameBody<'a> {
             }
             Self::Known(key_encoder, slot, width) => {
                 slot.write_known(key_encoder.write(key, span), width, value_write, span)
+            }
+            Self::Expected(key_encoder, slot, width, encoder) => {
+                let key_write = key_encoder.write(key, span);
+                let binding = fixed_width::encoder_binding(encoder);
+                slot.write_expected(
+                    quote! { #key_write let #binding = #encoder; },
+                    width,
+                    &fixed_width::foreign_encoder(encoder),
+                    value_write,
+                    span,
+                )
             }
             Self::Backfilled(key_encoder, slot) => {
                 slot.write_backfilled(key_encoder.write(key, span), value_write, span)
@@ -242,17 +280,24 @@ impl<'a> ValueWidth<'a> {
     ///
     /// # Returns
     ///
-    /// The width, declared at the encoder, or `None` under the trait fallback encoder, or when the
-    /// type or the encoder has no fixed width, or the two widths differ
-    fn builtin(key: &FieldKey<'a>) -> Option<Self> {
+    /// The width, declared at the encoder, and the encoder's path, or `None` under the trait
+    /// fallback encoder, or when the type or the encoder has no fixed width, or the two widths
+    /// differ
+    fn builtin(key: &FieldKey<'a>) -> Option<(Self, &'a syn::Path)> {
         let Some(ValueXcoder::Explicit(encoder)) = &key.codec.enc else {
             return None;
         };
+        let XcoderLike::Path(path) = &encoder.inner else {
+            return None;
+        };
         let bytes = fixed_width::fixed_value_type_width(key.ty)?;
-        (fixed_width::builtin_fixed_encoder_width(&encoder.inner)? == bytes).then(|| Self {
-            field: &key.field.name,
-            bytes,
-            declared_at: encoder.inner.span(),
+        (fixed_width::builtin_fixed_encoder_width(&encoder.inner)? == bytes).then(|| {
+            let width = Self {
+                field: &key.field.name,
+                bytes,
+                declared_at: encoder.inner.span(),
+            };
+            (width, path)
         })
     }
 

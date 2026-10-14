@@ -51,7 +51,7 @@ pub(crate) enum SizeBytes {
 }
 /// [`SizeBytes`] implementation
 impl SizeBytes {
-    /// The most bytes a `Vec<u8>` holds; the encode reserves a byte count, which panics past it
+    /// The most bytes a `Vec<u8>` holds
     const MAX: usize = isize::MAX.unsigned_abs();
 
     /// Resolves the byte count from the `exact = N` and `reserve = N` items of one `size(..)` list

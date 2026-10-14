@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Example 13 - `size(lengthed)` for length-parameterised value decoders
 //!
 //! A fixed-width value decoder has the signature
@@ -21,13 +19,13 @@
 //! * `size(lengthed)` on a `String` field
 //! * Mixing fixed-width and variable-length fields in one struct
 //! * BER length codec scaling to small and large payloads on the same struct
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::dec::string as decs;   // string decoders
-use tinyklv::enc::binary as encb;   // binary encoders
-use tinyklv::enc::string as encs;   // string encoders
-use tinyklv::dec::ber as decber;    // BER decoders
-use tinyklv::enc::ber as encber;    // BER encoders
+use tinyklv::dec::ber as decber; // BER decoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::dec::string as decs; // string decoders
+use tinyklv::enc::ber as encber; // BER encoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::enc::string as encs; // string encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -51,7 +49,7 @@ struct SensorLog {
     #[klv(
         key = 0x02_u64,
         size(lengthed),
-        dec = decs::to_string_utf8,
+        dec = decs::to_string_utf8_strict,
         enc = &encs::from_string_utf8,
     )]
     annotation: String,
@@ -61,29 +59,25 @@ fn main() {
     // build - a short annotation whose BER length fits in one byte
     let small = SensorLog {
         timestamp_s: 1_700_000_000,
-        annotation:  String::from("OK"),
+        annotation: String::from("OK"),
     };
 
     // encode + decode - round-trip through the single-byte BER length path
     let mut small_frame = Vec::new();
     small.encode_frame(&mut small_frame);
-    let dec_small = SensorLog::decode_frame(
-        &mut small_frame.as_slice(),
-    ).unwrap();
+    let dec_small = SensorLog::decode_frame(&mut small_frame.as_slice()).unwrap();
     assert_eq!(dec_small, small);
 
     // build - a long annotation forcing the outer BER length into multiple bytes
     let large = SensorLog {
         timestamp_s: 1_700_000_001,
-        annotation:  "X".repeat(200), // 200 > 127 -> multi-byte BER length
+        annotation: "X".repeat(200), // 200 > 127 -> multi-byte BER length
     };
 
     // encode + decode - round-trip through the multi-byte BER length path
     let mut large_frame = Vec::new();
     large.encode_frame(&mut large_frame);
-    let dec_large = SensorLog::decode_frame(
-        &mut large_frame.as_slice(),
-    ).unwrap();
+    let dec_large = SensorLog::decode_frame(&mut large_frame.as_slice()).unwrap();
 
     // assert - both payloads survive; the long one proves `size(lengthed)`
     // correctly threaded the length into the string decoder

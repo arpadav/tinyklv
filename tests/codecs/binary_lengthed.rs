@@ -250,3 +250,20 @@ fn enc_be_u16_lengthed_zero_len() {
     tinyklv::enc::binary::be_u16_lengthed(0)(0x1234_u16, &mut result);
     assert!(result.is_empty());
 }
+
+#[test]
+/// Tests that a lengthed decode short of `len` bytes leaves the cursor at the end of the input
+fn lengthed_short_input_leaves_cursor_at_end() {
+    let mut input: &[u8] = &[0x01, 0x02];
+    assert!(tinyklv::dec::binary::be_u32_lengthed(4)(&mut input).is_err());
+    assert!(
+        input.is_empty(),
+        "cursor not at the end after a short be_u32_lengthed"
+    );
+    let mut input: &[u8] = &[0x01, 0x02];
+    assert!(tinyklv::dec::binary::le_u32_lengthed(4)(&mut input).is_err());
+    assert!(
+        input.is_empty(),
+        "cursor not at the end after a short le_u32_lengthed"
+    );
+}

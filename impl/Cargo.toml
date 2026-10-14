@@ -1,17 +1,18 @@
 [package]
 name = "tinyklv-impl"
-version = "0.2.0-rc.1"
-authors = ["Arpad Voros <arpadav@gmail.com>"]
-license = "MIT"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "Implementation detail of the `tinyklv` crate"
-repository = "https://github.com/arpadav/tinyklv"
-homepage = "https://arpadvoros.com/tinyklv"
-documentation = "https://docs.rs/tinyklv"
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
 readme = "README.md"
-keywords = ["decode", "encode", "klv", "parsing", "tlv"]
-categories = ["development-tools", "encoding", "parsing"]
-edition = "2024"
-rust-version = "1.95"
+keywords.workspace = true
+categories.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+include = ["/src", "/LICENSE", "/README.md"]
 publish = true
 
 [package.metadata.docs.rs]
@@ -25,7 +26,7 @@ proc-macro = true
 # --------------------------------------------------
 # external
 # --------------------------------------------------
-pastey = "0.2.3"
+pastey = "0.2.3" # the `paste!` that tk-syn-macros' `create_parser!` expands to here
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", features = ["extra-traits", "full"] }
@@ -33,16 +34,16 @@ thiserror = "2.0"
 # --------------------------------------------------
 # workspace
 # --------------------------------------------------
-tk-syn-macros = { path = "tk-syn-macros", version = "=0.2.0-rc.1" }
+tk-syn-macros.workspace = true
 
 [features]
 tracing = []
 
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
-wildcard_imports = "allow"        # prelude glob is the import surface
+wildcard_imports = "allow"        # the attribute parsers glob the symbol and type tables
 too_many_lines = "allow"          # codegen fns
-needless_pass_by_value = "allow"  # proc-macro helpers consume owned AST
+needless_pass_by_value = "allow"  # quote! helpers take the TokenStreams they splice
 default_trait_access = "allow"    # Default::default() clear in token code
 used_underscore_binding = "allow" # _-prefixed fields mark retained AST
-similar_names = "allow"           # short domain names (lat/lon)
+similar_names = "allow"           # decoder / decoded pairs in codegen

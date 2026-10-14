@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Example 06 - hand-written encoder / decoder functions
 //!
 //! The built-in `dec::binary` / `enc::binary` helpers cover integers and
@@ -20,9 +18,9 @@
 //! * Custom decode/encode fns with free-function signatures
 //! * Mixing hand-written codecs with built-in `be_u16`
 //! * Fixed-point (scaled integer) quantisation
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 /// Scale factor: i32 full range covers +/- 180 degrees with ~84 nano-degree steps
 const LON_SCALE: f64 = 180.0 / (i32::MAX as f64);
@@ -90,9 +88,9 @@ struct GpsFix {
 fn main() {
     // build - a Paris fix with a sharp HDOP
     let original = GpsFix {
-        latitude_deg:    48.856_6,
-        longitude_deg:    2.352_2,
-        hdop_centiunits:     95, // HDOP = 0.95
+        latitude_deg: 48.856_6,
+        longitude_deg: 2.352_2,
+        hdop_centiunits: 95, // HDOP = 0.95
     };
 
     // encode - the custom fns produce 4-byte scaled i32 values for lat/lon
@@ -100,13 +98,11 @@ fn main() {
     original.encode_frame(&mut frame);
 
     // decode - the hand-written decoders invert the scaling
-    let decoded = GpsFix::decode_frame(
-        &mut frame.as_slice(),
-    ).unwrap();
+    let decoded = GpsFix::decode_frame(&mut frame.as_slice()).unwrap();
 
     // assert - scaled integers introduce ~1e-7 degree quantisation;
     // tolerate that but require exact equality on the integer field
-    assert!((decoded.latitude_deg  - original.latitude_deg ).abs() < 1e-6);
+    assert!((decoded.latitude_deg - original.latitude_deg).abs() < 1e-6);
     assert!((decoded.longitude_deg - original.longitude_deg).abs() < 1e-6);
     assert_eq!(decoded.hdop_centiunits, original.hdop_centiunits);
 }

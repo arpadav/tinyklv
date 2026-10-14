@@ -2,12 +2,12 @@
 //!
 //! Both decode entry points run the same per-frame loop and differ only in how an iteration leaves
 //! it. [`LoopDriver`] owns the exits every framing shares, so each is spelled once per driver. The
-//! classic separate streaming header is the exception: it finalizes on a malformed key (see
+//! key + len streaming header is the exception: it finalizes on a malformed key (see
 //! `LoopCtx::header`):
 //!
 //! * [`LoopDriver::Streaming`] - `resume_partial`: truncation rewinds and returns
-//!   `Packet::NeedMore`, an error returns a `tinyklv::traits::PartialError` of a message and its
-//!   kind, the message reading `invalid <label>` for a rejection the derive labels
+//!   `Packet::NeedMore`, an error returns a `tinyklv::traits::PartialError` of a label and its
+//!   kind, the label a one-shot error carries for the same rejection
 //!   ([`LoopDriver::reject_label`])
 //! * [`LoopDriver::OneShot`] - `decode_value`: truncation rewinds and `break`s to the finalize
 //!   tail, an error leaves the fn with a `ContextError` labelled at the input position, except a
@@ -22,7 +22,7 @@
 //! The exits that slice or finalize also name the stream and accumulator types, so they live on
 //! [`LoopCtx`], which pairs a driver with those types
 //!
-//! The emitted tokens assume the loop's bindings: `input`, `checkpoint` (fn entry),
+//! The emitted tokens assume the loop's bindings: `input`, `__checkpoint` (fn entry),
 //! `__checkpoint_inner` (frame start), `__acc` (the partial accumulator), the frame's value length
 //! (`DecodeFraming::len`, wherever a `take` is cut or a `size(exact = N)` check reads it),
 //! inside a failed main-stream, kept `Sliced` unknown or `strict` sliced value arm, `__err` (the
@@ -34,7 +34,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{ErrorKind, LoopCtx};
+use super::{ErrorKind, LoopCtx, framing::DecodeFraming};
 use crate::{
     ast::attr::{FieldKey, MainContainer, container::BreakOnSpec},
     expand::helpers,
@@ -83,7 +83,7 @@ impl CursorSite {
     /// without such a key decodes over the caller's cursor in fewer instructions, and any other
     /// stream need not be `Clone`
     pub(super) fn of(input: &MainContainer, stream: &syn::Type) -> Self {
-        if Self::exact_keys(input).next().is_some() && *stream == super::u8_slice() {
+        if Self::exact_keys(input).next().is_some() && super::is_u8_slice(stream) {
             Self::Local
         } else {
             Self::Caller
@@ -160,7 +160,7 @@ impl CursorSite {
     ) -> TokenStream {
         match self {
             Self::Caller => quote! {
-                let checkpoint = input.checkpoint();
+                let __checkpoint = ::tinyklv::__export::winnow::stream::Stream::checkpoint(input);
                 let mut __acc = <#partial_ty as ::core::default::Default>::default();
                 #frame_loop
             },
@@ -170,7 +170,7 @@ impl CursorSite {
                     let mut __cursor = ::core::clone::Clone::clone(&*input);
                     let __result = #label: {
                         let input = &mut __cursor;
-                        let checkpoint = input.checkpoint();
+                        let __checkpoint = ::tinyklv::__export::winnow::stream::Stream::checkpoint(input);
                         let mut __acc = <#partial_ty as ::core::default::Default>::default();
                         let mut __exact_reject: ::core::option::Option<::tinyklv::traits::PartialError> = ::core::option::Option::None;
                         #frame_loop
@@ -214,7 +214,7 @@ pub(super) enum ParseSite<'a> {
 impl LoopDriver {
     /// Emits the exit taken when the input is empty at the top of an iteration
     ///
-    /// Nothing was consumed, so there is nothing to rewind. The classic separate streaming header
+    /// Nothing was consumed, so there is nothing to rewind. The key + len streaming header
     /// also takes it, after its rewind, when the key decoder fails at the end of the input or
     /// without consuming a byte
     ///
@@ -262,7 +262,7 @@ impl LoopDriver {
     ///
     /// # Returns
     ///
-    /// `input.reset(&__checkpoint_inner); break;`
+    /// `Stream::reset(input, &__checkpoint_inner); break;`
     pub(super) fn rewind_and_break() -> TokenStream {
         let rewind = Self::rewind();
         quote! {
@@ -275,9 +275,9 @@ impl LoopDriver {
     ///
     /// # Returns
     ///
-    /// `input.reset(&__checkpoint_inner);`
+    /// `Stream::reset(input, &__checkpoint_inner);`
     fn rewind() -> TokenStream {
-        quote! { input.reset(&__checkpoint_inner); }
+        quote! { ::tinyklv::__export::winnow::stream::Stream::reset(input, &__checkpoint_inner); }
     }
 
     /// Emits a fatal exit, with no finalize: streaming returns `partial_error`, one-shot an error
@@ -295,7 +295,7 @@ impl LoopDriver {
     ///
     /// # Returns
     ///
-    /// `return Err(#partial_error);` (streaming) or `Err(kinded_error(input, &checkpoint, #label,
+    /// `return Err(#partial_error);` (streaming) or `Err(kinded_error(input, &__checkpoint, #label,
     /// #kind))` through the [`CursorSite`]'s error exit (one-shot)
     fn reject(
         self,
@@ -308,7 +308,7 @@ impl LoopDriver {
             Self::OneShot(cursor) => cursor.error_exit(&quote! {
                 ::core::result::Result::Err(::tinyklv::__export::kinded_error(
                     input,
-                    &checkpoint,
+                    &__checkpoint,
                     #label,
                     #kind,
                 ))
@@ -318,22 +318,23 @@ impl LoopDriver {
 
     /// Emits a fatal exit naming `label`, with no finalize ([`Self::reject`])
     ///
-    /// Streaming prefixes the `invalid ` that a one-shot `ContextError`'s display prints before
-    /// its label, so both read `invalid <label>`
+    /// Both drivers label the error `label`, which a `ContextError`'s display prints after
+    /// `invalid `: the one-shot error's, and the one a `tinyklv::Decoder` turns the streaming
+    /// error into
     ///
     /// # Arguments
     ///
     /// * `label` - A `::core::concat!(..)` of string literals naming what was rejected, so that
-    ///   streaming can splice it into its own `concat!`
+    ///   the streaming error is a constant
     /// * `kind` - What the error is
     ///
     /// # Returns
     ///
-    /// The [`Self::reject`] exit, streaming's error `PartialError::new(&(#kind,
-    /// concat!("invalid ", #label)))`, a constant
+    /// The [`Self::reject`] exit, streaming's error `PartialError::new(&(#kind, #label))`, a
+    /// constant
     pub(super) fn reject_label(self, label: &TokenStream, kind: ErrorKind) -> TokenStream {
         let partial_error = quote! {
-            ::tinyklv::traits::PartialError::new(&(#kind, ::core::concat!("invalid ", #label)))
+            ::tinyklv::traits::PartialError::new(&(#kind, #label))
         };
         self.reject(label, kind, &partial_error)
     }
@@ -442,7 +443,7 @@ impl LoopDriver {
             ParseSite::Value { label } => {
                 let malformed = self.reject_value(label, ErrorKind::MalformedValue);
                 quote! {
-                    if input.eof_offset() == 0 {
+                    if ::tinyklv::__export::winnow::stream::Stream::eof_offset(input) == 0 {
                         #truncated
                     }
                     #malformed
@@ -525,8 +526,8 @@ impl LoopCtx<'_> {
     /// the frame start
     ///
     /// ```text
-    /// if input.eof_offset() < #len {
-    ///     input.reset(&__checkpoint_inner);
+    /// if Stream::eof_offset(input) < #len {
+    ///     Stream::reset(input, &__checkpoint_inner);
     ///     #exact_guards   // `TakeInto::Subinput` only
     ///     #clean_eof
     /// }
@@ -543,18 +544,21 @@ impl LoopCtx<'_> {
     pub(super) fn take(self, into: TakeInto) -> TokenStream {
         let Self { driver, stream, .. } = self;
         let len = match into {
-            TakeInto::Subinput | TakeInto::Discard => self.framing.len().into_token_stream(),
+            TakeInto::Subinput | TakeInto::Discard => DecodeFraming::len().into_token_stream(),
             TakeInto::Exact(width) => width.into_token_stream(),
         };
         // --------------------------------------------------
         // the `take` of the value bytes off the input
         // --------------------------------------------------
         let take = quote! {
-            ::tinyklv::__export::winnow::token::take::<
-                usize,
-                #stream,
-                ::tinyklv::__export::winnow::error::ContextError,
-            >(#len).parse_next(input)
+            ::tinyklv::__export::winnow::Parser::parse_next(
+                &mut ::tinyklv::__export::winnow::token::take::<
+                    ::core::primitive::usize,
+                    #stream,
+                    ::tinyklv::__export::winnow::error::ContextError,
+                >(#len),
+                input,
+            )
         };
         // --------------------------------------------------
         // bind the taken bytes as `__subinput`, after the exact checks on a short frame, or drop
@@ -572,7 +576,7 @@ impl LoopCtx<'_> {
         let rewind = LoopDriver::rewind();
         let exit = driver.clean_eof();
         quote! {
-            if input.eof_offset() < #len {
+            if ::tinyklv::__export::winnow::stream::Stream::eof_offset(input) < #len {
                 #rewind
                 #guards
                 #exit
@@ -606,83 +610,147 @@ impl LoopCtx<'_> {
         };
         quote! {
             let mut __subinput: <#stream as ::tinyklv::__export::winnow::stream::Stream>::Slice = match #take {
-                ::core::result::Result::Ok(s) => s,
+                ::core::result::Result::Ok(__subinput) => __subinput,
                 ::core::result::Result::Err(_) => #fail_arm
             };
         }
     }
 
-    /// Emits the `break_on` check that runs right after the frame's key, when `break_on` is set:
-    /// after a separate key, before its length, or after a fused header, which reads the length
-    /// with the key
+    /// Emits the `break_on` check that runs right after the frame's key, when `break_on` is set,
+    /// with the rest of the frame: after a separate key, before its length, or after a fused
+    /// header, which reads the length with the key
     ///
     /// ```text
     /// // a key literal
     /// if #key == #lit {
     ///     break;
     /// }
+    /// #frame
     /// // the user's `fn(&key, &mut input) -> BreakType`
-    /// let __after_key = input.checkpoint();
-    /// match #path(&#key, input) {
-    ///     Skip => continue,
+    /// let __after_key = Stream::checkpoint(input);
+    /// match { let __decision: BreakType = #path(&#key, input); __decision } {
+    ///     Skip => {
+    ///         #progress_check
+    ///         continue;
+    ///     }
     ///     Done => break,
     ///     Abort(__msg) => {
     ///         #reject
     ///     }
-    ///     _ => input.reset(&__after_key),
+    ///     _ => {
+    ///         Stream::reset(input, &__after_key);
+    ///         #frame
+    ///     }
+    /// }
+    /// // a fused header's `Skip` and `Done` first step over an item the fn read nothing of
+    /// Skip | Done => {
+    ///     if Offset::offset_from(&*input, &__after_key) == 0 {
+    ///         let Sliced(__len) = __framing else { break; };
+    ///         #take(Discard)
+    ///     }
+    ///     break; // `Done` only
     /// }
     /// ```
     ///
     /// The key literal ends the loop with the input right after the key. The fn may read past the
     /// key: `Proceed`, like any later `BreakType` variant, rewinds to just after the key, where
-    /// the frame then decodes; `Skip` continues, `Done` ends the loop and `Abort` rejects with the
-    /// fn's message ([`LoopDriver::abort`]), each with the input where the fn left it. The fn is
-    /// handed the cursor [`LoopDriver::read_input`] gives, and its call is located at the fn, so a
-    /// fn of another signature is reported there
+    /// the frame then decodes; `Skip` continues, rejecting first a frame that moved the cursor
+    /// nowhere, which the loop would repeat forever ([`Self::progress_check`]), `Done` ends the
+    /// loop and `Abort` rejects with the fn's message ([`LoopDriver::abort`]), each with the input
+    /// where the fn left it. A fused header has read the item's length, which the fn is not
+    /// handed, so a `Skip` or `Done` that left the input right after the header steps over a
+    /// `Sliced` item's value, and ends the loop there after an `Inline` one, which has no length
+    /// to step over it by. A fused `Skip` then leaves the `match` for the progress check that
+    /// follows every fused frame ([`Self::frame_loop`]), since a check of its own in the arm
+    /// costs instructions on every frame that proceeds. The fn is handed the cursor
+    /// [`LoopDriver::read_input`] gives, and its call, that cursor and the `BreakType` it must
+    /// return are located at the fn, so a fn of another signature is reported there
+    ///
+    /// # Arguments
+    ///
+    /// * `frame` - The rest of the frame, decoded once the check lets it proceed
+    ///   ([`Self::after_key`])
     ///
     /// # Returns
     ///
-    /// The check, or `None` when `break_on` is unset
-    pub(super) fn break_on(self) -> Option<TokenStream> {
-        let mut key = self.framing.key();
+    /// The check and `frame`, or `frame` itself when `break_on` is unset
+    pub(super) fn break_on(self, frame: TokenStream) -> TokenStream {
+        let mut key = DecodeFraming::key();
         // --------------------------------------------------
         // a key literal ends the loop on its key
         // --------------------------------------------------
-        let path = match self.input.attrs.break_on.as_ref()? {
-            BreakOnSpec::Literal(lit) => {
-                return Some(quote! {
+        let path = match self.input.attrs.break_on.as_ref() {
+            None => return frame,
+            Some(BreakOnSpec::Literal(lit)) => {
+                return quote! {
                     if #key == #lit {
                         break;
                     }
-                });
+                    #frame
+                };
             }
-            BreakOnSpec::Func(path) => path,
+            Some(BreakOnSpec::Func(path)) => path,
         };
         // --------------------------------------------------
         // the fn's call, located at the fn, and its `Abort`, which rejects with its message
         // --------------------------------------------------
         let at_fn = helpers::call_site_at(path);
         key.set_span(at_fn);
-        let decision = self
-            .driver
-            .read_input(|cursor| quote_spanned! {at_fn=> #path(&#key, #cursor) });
+        let decision = self.driver.read_input(|cursor| {
+            let cursor = cursor.clone().into_iter().map(|mut token| {
+                token.set_span(at_fn);
+                token
+            });
+            quote_spanned! {at_fn=>
+                { let __decision: ::tinyklv::BreakType = #path(&#key, #(#cursor)*); __decision }
+            }
+        });
         let abort = self.driver.abort();
+        // --------------------------------------------------
+        // a fused header has read the item's length, which the fn is not handed: a `Skip` or
+        // `Done` that read nothing steps over a `Sliced` item, and an `Inline` one, with no
+        // length to step over it by, ends the loop after its header. A `Skip` repeats the loop,
+        // so an item that moved the cursor nowhere is rejected first: a separate `Skip` by its
+        // own check, a fused one by the check after the frame
+        // --------------------------------------------------
+        let (skip, done) = match self.framing {
+            DecodeFraming::Fused { .. } => {
+                let len = DecodeFraming::len();
+                let take = self.take(TakeInto::Discard);
+                let step_over = quote! {
+                    if ::tinyklv::__export::winnow::stream::Offset::offset_from(&*input, &__after_key) == 0 {
+                        let ::tinyklv::Framing::Sliced(#len) = __framing else {
+                            break;
+                        };
+                        #take
+                    }
+                };
+                (quote! {{ #step_over }}, quote! {{ #step_over break; }})
+            }
+            DecodeFraming::Separate { .. } => {
+                let progress = self.progress_check();
+                (quote! {{ #progress continue; }}, quote! { break })
+            }
+        };
         // --------------------------------------------------
         // match the decision, from a checkpoint just after the key
         // --------------------------------------------------
-        Some(quote! {
-            let __after_key = input.checkpoint();
+        quote! {
+            let __after_key = ::tinyklv::__export::winnow::stream::Stream::checkpoint(input);
             match #decision {
-                ::tinyklv::BreakType::Skip => continue,
-                ::tinyklv::BreakType::Done => break,
+                ::tinyklv::BreakType::Skip => #skip,
+                ::tinyklv::BreakType::Done => #done,
                 ::tinyklv::BreakType::Abort(__msg) => {
                     #abort
                 }
                 // `Proceed`, and any later `BreakType` variant, decodes the frame from just after
                 // its key
-                _ => input.reset(&__after_key),
+                _ => {
+                    ::tinyklv::__export::winnow::stream::Stream::reset(input, &__after_key);
+                    #frame
+                }
             }
-        })
+        }
     }
 
     /// Emits the tail expression that finalizes `__acc` once the loop ends
@@ -699,14 +767,14 @@ impl LoopCtx<'_> {
         let partial_ty = self.partial_ty;
         let to_context = |kind: &TokenStream| {
             quote! {
-                |__err| ::tinyklv::__export::kinded_error(input, &checkpoint, __err.label(), #kind)
+                |__err| ::tinyklv::__export::kinded_error(input, &__checkpoint, __err.label(), #kind)
             }
         };
         match self.driver {
             LoopDriver::Streaming => quote! {
                 match <#partial_ty as ::tinyklv::traits::Partial>::finalize(__acc) {
-                    ::core::result::Result::Ok(v) => ::core::result::Result::Ok(
-                        ::tinyklv::decoder::Packet::Ready(v)
+                    ::core::result::Result::Ok(__val) => ::core::result::Result::Ok(
+                        ::tinyklv::decoder::Packet::Ready(__val)
                     ),
                     ::core::result::Result::Err(__err) => ::core::result::Result::Err(__err),
                 }
@@ -732,8 +800,8 @@ impl LoopCtx<'_> {
 
     /// Generates the label naming what the derive rejects, and why
     ///
-    /// A noun phrase, so that it reads after the `invalid ` that the streaming driver prefixes and
-    /// that winnow's `ContextError` display prints before a one-shot label
+    /// A noun phrase, so that it reads after the `invalid ` that winnow's `ContextError` display
+    /// prints before it
     ///
     /// # Arguments
     ///

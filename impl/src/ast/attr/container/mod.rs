@@ -53,13 +53,13 @@ use syn::{Token, punctuated::Punctuated};
 /// Produced by [`ContainerParsed::from_cont`] from the mutually-exclusive
 /// `key`+`len` and `keylen` attributes. Modelling the two as one enum makes the
 /// illegal "both present" and "neither present" states unrepresentable past
-/// validation, and only the separate mode holds a `sentinel`. The `expand` pass picks the decode
+/// validation, and only key + len holds a `sentinel`. The `expand` pass picks the decode
 /// loop's frame header and body, the frame header written around each encoded value, and the
 /// sentinel's packet framing, from it
 #[derive(Debug, Clone)]
 pub(crate) enum ContainerMode {
-    /// Classic mode: separate `key`/`len` xcoders; a value with a length prefix is sliced via
-    /// `take(len)`
+    /// Key + len: separate `key`/`len` xcoders; a known key's value with a length prefix is sliced
+    /// via `take(len)`, while an `unknown(..)` decoder reads the main stream after the key
     Separate {
         /// The key xcoder
         key: Box<HeaderXcoder>,
@@ -350,34 +350,55 @@ impl Container {
                     // handle all: `syn::Path` (basically idents/flags)
                     // e.g. `allow_unimplemented_decode,`
                     // --------------------------------------------------
-                    syn::Meta::Path(path) => match name {
-                        symbol::DEBUG => debug = Some(path),
-                        symbol::DENY_UNKNOWN_KEYS => deny_unknown_keys = Some(path),
-                        symbol::STRICT => strict = Some(path),
-                        symbol::ALLOW_UNIMPLEMENTED_DECODE => {
-                            allow_unimplemented_decode = Some(path);
-                        }
-                        symbol::ALLOW_UNIMPLEMENTED_ENCODE => {
-                            allow_unimplemented_encode = Some(path);
-                        }
-                        symbol::TRAIT_FALLBACK => trait_fallback = Some(path),
+                    syn::Meta::Path(path) => {
+                        let flag = match name {
+                            symbol::DEBUG => &mut debug,
+                            symbol::DENY_UNKNOWN_KEYS => &mut deny_unknown_keys,
+                            symbol::STRICT => &mut strict,
+                            symbol::ALLOW_UNIMPLEMENTED_DECODE => &mut allow_unimplemented_decode,
+                            symbol::ALLOW_UNIMPLEMENTED_ENCODE => &mut allow_unimplemented_encode,
+                            symbol::TRAIT_FALLBACK => &mut trait_fallback,
+                            // --------------------------------------------------
+                            // non paths
+                            // --------------------------------------------------
+                            symbol::DEFAULT => {
+                                cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::DEFAULT)));
+                                continue;
+                            }
+                            symbol::STREAM => {
+                                cx.error_spanned_by(
+                                    &path,
+                                    err!(ExpectedAsNameValue(symbol::STREAM)),
+                                );
+                                continue;
+                            }
+                            symbol::SENTINEL => {
+                                cx.error_spanned_by(
+                                    &path,
+                                    err!(ExpectedAsNameValue(symbol::SENTINEL)),
+                                );
+                                continue;
+                            }
+                            symbol::BREAK_ON => {
+                                cx.error_spanned_by(
+                                    &path,
+                                    err!(ExpectedAsNameValue(symbol::BREAK_ON)),
+                                );
+                                continue;
+                            }
+                            _ => {
+                                cx.error_spanned_by(&path, err!(UnknownContainerAttribute(path)));
+                                continue;
+                            }
+                        };
                         // --------------------------------------------------
-                        // non paths
+                        // a flag is set once
                         // --------------------------------------------------
-                        symbol::DEFAULT => {
-                            cx.error_spanned_by(&path, err!(ExpectedAsList(symbol::DEFAULT)));
+                        match flag {
+                            Some(_) => cx.error_spanned_by(&path, err!(DuplicateFlag(path))),
+                            None => *flag = Some(path),
                         }
-                        symbol::STREAM => {
-                            cx.error_spanned_by(&path, err!(ExpectedAsNameValue(symbol::STREAM)));
-                        }
-                        symbol::SENTINEL => {
-                            cx.error_spanned_by(&path, err!(ExpectedAsNameValue(symbol::SENTINEL)));
-                        }
-                        symbol::BREAK_ON => {
-                            cx.error_spanned_by(&path, err!(ExpectedAsNameValue(symbol::BREAK_ON)));
-                        }
-                        _ => cx.error_spanned_by(&path, err!(UnknownContainerAttribute(path))),
-                    },
+                    }
                 }
             }
         }
@@ -440,7 +461,7 @@ pub(crate) struct ContainerParsed {
     /// The stream type used for decoding; `None` means `&[u8]` will be used
     pub stream: Option<syn::Type>,
 
-    /// The validated key/length framing mode (classic separate or fused), with its `sentinel`
+    /// The validated key/length framing mode (key + len or keylen), with its `sentinel`
     pub mode: ContainerMode,
 
     /// The break condition, if any, checked right after each frame's key in either mode
@@ -464,7 +485,7 @@ impl ContainerParsed {
     /// present. Records errors in `cx` for the conflicting, half-specified, or
     /// absent cases and for `sentinel` on a fused container, and
     /// returns `None` for them. It also records an error for `deny_unknown_keys` beside
-    /// `unknown(..)`, a key + len `sentinel` on a `&str` stream and a `len(size(exact = 0))`, and
+    /// `unknown(..)` and a `len(size(exact = 0))`, and
     /// still returns the container. The `sentinel`/`unknown`/`len`
     /// checks run before any early return, so they surface in the same compile as a framing
     /// conflict. An attribute that is present but unusable (it failed to parse,
@@ -497,18 +518,6 @@ impl ContainerParsed {
             && let Some(sentinel) = &cont.sentinel
         {
             cx.error_spanned_by(sentinel, err!(KeylenWithSentinel));
-        }
-        // --------------------------------------------------
-        // a key + len `sentinel` is searched for in the input's bytes, which a `&str` stream does
-        // not give
-        // --------------------------------------------------
-        if !cont.headers.keylen.is_present()
-            && let Some(sentinel) = &cont.sentinel
-            && let Some(syn::Type::Reference(stream)) = &cont.stream
-            && let syn::Type::Path(referent) = &*stream.elem
-            && referent.path.is_ident("str")
-        {
-            cx.error_spanned_by(sentinel, err!(SentinelOnStrStream));
         }
         // --------------------------------------------------
         // a zero-byte length prefix has no room for a value's length
@@ -625,5 +634,24 @@ impl ContainerParsed {
             strict: cont.strict,
         };
         Some((parsed, cont.unknown))
+    }
+
+    /// Reports a key + len `sentinel` on a `&str` stream: the decode searches for it in the
+    /// input's bytes, which a `&str` stream does not give
+    ///
+    /// # Arguments
+    ///
+    /// * `cx` - Error accumulation context for recording the error
+    pub(super) fn report_sentinel_on_str_stream(&self, cx: &Ctxt) {
+        if let ContainerMode::Separate {
+            sentinel: Some(sentinel),
+            ..
+        } = &self.mode
+            && let Some(syn::Type::Reference(stream)) = &self.stream
+            && let syn::Type::Path(referent) = &*stream.elem
+            && referent.path.is_ident("str")
+        {
+            cx.error_spanned_by(sentinel, err!(SentinelOnStrStream));
+        }
     }
 }

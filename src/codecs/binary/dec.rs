@@ -8,7 +8,8 @@
 //! * Big-endian, little-endian, and native-endian numeric decoders for all
 //!   standard integer and float types
 //! * Variable-length ("lengthed") decoders that handle under/over-length
-//!   byte slices via truncation or zero-padding
+//!   byte slices via truncation or zero-padding, and leave the cursor at the
+//!   end of the input when it holds fewer than `len` bytes
 //! * `usize` wrapper variants for length-field parsing
 //!
 //! String decoders live in [`crate::codecs::string::dec`]
@@ -17,7 +18,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::prelude::*;
+use crate::{codecs::take_or_finish, prelude::*};
 
 // --------------------------------------------------
 // external
@@ -78,7 +79,7 @@ macro_rules! wrap {
             let bytes = take(N).parse_next(input).inspect_err(|_| {
                 let _ = input.finish();
             })?;
-            // SAFETY: as for `be_` above - `take(N)` guarantees exactly `N` bytes and `u8` is align-1.
+            // SAFETY: as for `be_` above - `take(N)` guarantees exactly `N` bytes and `u8` is align-1
             let array = unsafe { *bytes.as_ptr().cast::<[u8; N]>() };
             Ok($ty::from_le_bytes(array))
         }
@@ -292,7 +293,7 @@ macro_rules! lengthed_be {
         #[doc = $doc]
         pub fn [<be_ $type _lengthed>](len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<$type> {
             move |input| {
-                let value = take(len).parse_next(input)?;
+                let value = take_or_finish(len).parse_next(input)?;
                 if len > $len {
                     let mut value = &value[value.len() - $len..];
                     [<be_ $type>](&mut value)
@@ -320,7 +321,7 @@ macro_rules! lengthed_le {
         #[doc = $doc]
         pub fn [<le_ $type _lengthed>](len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<$type> {
             move |input| {
-                let value = take(len).parse_next(input)?;
+                let value = take_or_finish(len).parse_next(input)?;
                 if len > $precision_len {
                     let mut value = &value[..$precision_len];
                     [<le_ $type>](&mut value)

@@ -27,7 +27,7 @@ const DERIVE_NAME: &str = "Klv";
 
 /// Constructs a [`std::borrow::Cow<str>`] from an [`Error`] variant
 ///
-/// Accepts four calling conventions depending on the variant's argument shape:
+/// Accepts five calling conventions depending on the variant's argument shape:
 ///
 /// * `err!(Variant)` - zero-argument variant
 /// * `err!(Variant(expr, ..))` - one or more expressions (converted via
@@ -168,6 +168,12 @@ Options include {s}.",
 `{0} = \"my::path\"`."
     )]
     LiteralSetting(String),
+
+    #[error(
+        "\
+        Duplicate `{0}` attribute. A flag is set once; remove one."
+    )]
+    DuplicateFlag(String),
 
     // --------------------------------------------------
     // stream
@@ -362,11 +368,14 @@ Expected `{e} = <..>` or `{r} = <..>`; `{lt}` goes in a field's `{s}(..)`.",
 
     #[error("\
         `{s}(..)` is not supported in `{kl}(..)`: the `{kl}` codec decides each frame's framing; \
-put `{s}(..)` on a field, or on `{k}(..)`/`{l}(..)` in place of `{kl}(..)`.",
+put `{s}(..)` on a field, or a `{s}({e} = N)` / `{s}({r} = N)` on `{k}(..)`/`{l}(..)` in place \
+of `{kl}(..)`.",
         s = symbol::SIZE,
         kl = symbol::KEYLEN,
         k = symbol::KEY,
         l = symbol::LENGTH,
+        e = symbol::EXACT,
+        r = symbol::RESERVE,
     )]
     SizeInKeylen,
 
@@ -536,6 +545,14 @@ remove `{l}`.",
     )]
     DuplicateDefault(String, String),
 
+    #[error("\
+        A `{d}({t} = Option<..>)` fills no field: an `Option` field takes the `{d}` of the type \
+it holds. Use `{t} = {0}`.",
+        d = symbol::DEFAULT,
+        t = symbol::TYPE,
+    )]
+    DefaultTypeIsOption(String),
+
     // --------------------------------------------------
     // field
     // --------------------------------------------------
@@ -628,8 +645,7 @@ exact width or a soft capacity estimate, not both.",
 
     #[error(
         "\
-        `{0} = {1}` is more bytes than a `Vec<u8>` can hold (`isize::MAX`), and the encode \
-reserves them, which panics; use a smaller `{0}`."
+        `{0} = {1}` is more bytes than a `Vec<u8>` can hold (`isize::MAX`); use a smaller `{0}`."
     )]
     SizeTooLarge(String, String),
 

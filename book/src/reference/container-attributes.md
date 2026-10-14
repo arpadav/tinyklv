@@ -9,11 +9,13 @@ definition.
 #[klv(stream = &[u8])]
 ```
 
-Names the input type `S` the codecs read, any `winnow::Stream`. Defaults to
-`&[u8]` and is usually written only for clarity, or for `&str` text-based KLV
-dialects. Under `keylen(..)` a value decoder is handed `S` for an `Inline`
-frame and `S::Slice` for a `Sliced` one, so on a stream whose `Slice` is
-another type it must take both.
+Names the input type `S` the codecs read, a `winnow::Stream + StreamIsPartial`.
+Defaults to `&[u8]` and is usually written only for clarity, or for `&str`
+text-based KLV dialects. A type with a lifetime or generics is quoted:
+`stream = "&'a [u8]"`. A value decoder is handed `S::Slice` for a value whose
+bytes the derive takes first, and `S` for one it reads from the main stream (an
+`Inline` item, or `size(implicit)` without `exact`), so on a stream whose
+`Slice` is another type it must take both.
 
 ## `sentinel = <elements of stream>`
 
@@ -21,7 +23,7 @@ another type it must take both.
 #[klv(sentinel = b"\xBE\xEF")]
 ```
 
-Declares the magic bytes that mark the start of a frame. Adding a sentinel
+Declares the magic bytes that mark the start of a packet. Adding a sentinel
 causes the derive to implement `SeekSentinel` and, via a blanket impl,
 `DecodeFrame`. It is a byte string searched for in the input's bytes, so on a
 `&str` stream it is a compile error.
@@ -34,12 +36,14 @@ causes the derive to implement `SeekSentinel` and, via a blanket impl,
 ```
 
 Checked right after each key (under `keylen`, after the header). A key
-literal ends the decode there. A path is handed the key and the input after
-it, which it may read on: `Proceed` rewinds to just after the key and decodes
-the frame, `Skip` moves on and `Done` ends the decode from where the path left
-the input, and `Abort` is an error. On a short read, return `Proceed`: the
-frame then reads as cut, and streaming waits. To check a decoded value, use the
-field-level
+literal ends the decode there, leaving the terminator's length and value
+([Limits](./limits.md#a-literal-leaves-the-terminators-length)). A path gets the
+key and the input after it, to read on: `Proceed` decodes the item from just
+after the key, `Skip` moves on
+and `Done` stops where the path left the input, and `Abort` is an error. Under
+`keylen`, a `Skip` or `Done` that read nothing steps over a `Sliced` value, or
+stops after an `Inline` header. On a short read, return `Proceed`, so streaming
+waits. To check a decoded value, use the field-level
 [`break_on`](./field-attributes.md#break_on--path).
 
 ## `key(dec = ..., enc = ...)`
@@ -60,7 +64,9 @@ this container.
 The length is a `usize`, which `dec` outputs and `enc` accepts: use the
 `_as_usize` / `_from_usize` helpers from `decb` / `encb`. `len(size(exact = N))`
 declares an `N`-byte slot, back-filled after a value of unknown width, so `enc`
-must write `N` bytes; a release build does not check. A `len(..)` with no
+must write `N` bytes; a release build does not check. A value too long for the
+slot is left out of the encode
+([Limits](./limits.md#values-too-long-for-their-length)). A `len(..)` with no
 `exact` is variable-width, for BER-style codecs.
 
 ## `keylen(dec = ..., enc = ...)`
@@ -69,7 +75,7 @@ must write `N` bytes; a release build does not check. A `len(..)` with no
 #[klv(keylen(dec = dec_header, enc = enc_header))]
 ```
 
-One codec for the whole frame header, in place of `key(..)` + `len(..)`, so
+One codec for the whole item header, in place of `key(..)` + `len(..)`, so
 the key decides each value's framing at run time. `dec` matches
 `fn(&mut S) -> tinyklv::Result<(K, Framing)>`: `Framing::Sliced(n)` hands the
 field decoder the next `n` bytes as a sub-slice, `Framing::Inline` hands it the
@@ -79,7 +85,7 @@ length of its encoded value. A failed header read is truncation: streaming
 waits for more bytes, one-shot stops.
 
 Field decoders return `tinyklv::Result<T>`, and a `size(lengthed)` one is
-passed a `Sliced` frame's length; an `Inline` frame for it is an error.
+passed a `Sliced` item's length; an `Inline` item for it is an error.
 `keylen(..)` takes no `key(..)`, `len(..)` or `sentinel`, and no field takes
 `size(implicit)`: each is a compile error. Without
 [`unknown(..)`](#unknowndec---enc--), a key no field declares is skipped when
@@ -91,8 +97,7 @@ passed a `Sliced` frame's length; an `Inline` frame for it is an error.
 #[klv(
     default(typ = u8,  dec = decb::u8,     enc = *encb::u8),
     default(typ = u16, dec = decb::be_u16, enc = *encb::be_u16),
-    // `dec` and `enc` are independently optional: attach an encoder
-    // only, and decoders for `MyStruct` can still be used per-field
+    // an encoder only
     default(typ = MyStruct, enc = MyStruct::encode_value),
     // a size and a skip for every `u64` field
     default(
@@ -117,8 +122,7 @@ adds to the first; one setting given twice for `T` is a compile error.
 
 Enables generated runtime decode logging for matched fields and decoded key/value
 pairs. With the `tracing` feature this emits `tracing::debug!`; otherwise it falls
-back to `println!`. Encode overflow diagnostics are
-separate error-path logging and are not controlled by this flag.
+back to `println!`.
 
 ## `deny_unknown_keys`
 
@@ -126,9 +130,7 @@ separate error-path logging and are not controlled by this flag.
 #[klv(deny_unknown_keys)]
 ```
 
-A key no field declares is an error. Without it, an unknown key is decoded by
-`unknown(..)` if given, else skipped, but a `keylen` `Inline` one ends the
-decode.
+A key no field declares is an error.
 
 ## `unknown(dec = ..., enc = ...)`
 
@@ -136,20 +138,20 @@ decode.
 #[klv(unknown(dec = dec_frame, enc = &enc_frame))]
 ```
 
-The codec of every frame whose key no field declares. `dec` takes the key
+The codec of every item whose key no field declares. `dec` takes the key
 first, as a `lengthed` decoder takes the length:
 `fn(K) -> impl Fn(&mut S) -> tinyklv::Result<U>`. `enc` matches
-`fn(&U, &mut Vec<u8>)` and takes the field sigils. Beside `key(..)` +
-`len(..)`, `dec` reads everything after the key, its length included, and
-`enc` writes it back. Beside `keylen(..)`, `dec` reads the value as the header
-framed it, and `enc` writes the value alone.
+`fn(&U, &mut Vec<u8>)` and takes the field sigils. In key + len, `dec` reads
+everything after the key, its length included, and `enc` writes it back. Beside
+`keylen(..)`, `dec` reads the value as the header framed it, and `enc` writes
+the value alone.
 
 Decoded values are dropped unless a
 [`#[klv(unknown)]`](./field-attributes.md#unknown) field keeps them, and `enc`
 is required only beside that field. Without it, a `keylen` struct skips a
-`Sliced` unknown frame undecoded. It is a compile error beside
+`Sliced` unknown item undecoded. It is a compile error beside
 `deny_unknown_keys`. The decoder's contract:
-[19 - Unknown frames](../tutorial/advanced/19-unknown.md).
+[19 - Unknown items](../tutorial/advanced/19-unknown.md).
 
 ## `strict`
 
@@ -159,11 +161,11 @@ is required only beside that field. Without it, a `keylen` struct skips a
 
 A value sized by its header is an error when its decoder fails or leaves part
 unread, labelled `` `S::f` value (its decoder rejected the item's value) `` or
-`left bytes of the item's value unread`, the cursor past the frame.
+`left bytes of the item's value unread`, the cursor past the item.
 `08 05 1A 02 FF FE`, an `id` then a `name: Option<String>` its decoder
 rejects, is an error; without `strict` it decodes, `name` keeping what it had:
-`None`. Not rejected: a `size(implicit, exact = N)` value, a kept `Sliced`
-unknown frame's unread bytes, or a `Vec<T>`'s cut-short last element.
+`None`. What it misses:
+[Limits](./limits.md#what-strict-does-not-check).
 
 ## `allow_unimplemented_encode`
 
@@ -203,10 +205,6 @@ trait impls on the field type.
 | `keylen(dec, enc)` | [18 - Framing per key](../tutorial/advanced/18-keylen.md) |
 | `break_on` | [14 - Break conditions](../tutorial/advanced/14-break-condition.md) |
 | `default(typ, dec, enc, size)` | [04 - Default codecs](../tutorial/fundamentals/04-default-codec.md) |
-| `debug` | Reference only |
-| `deny_unknown_keys` | Reference only |
-| `unknown(dec, enc)` | [19 - Unknown frames](../tutorial/advanced/19-unknown.md) |
-| `strict` | Reference only |
+| `unknown(dec, enc)` | [19 - Unknown items](../tutorial/advanced/19-unknown.md) |
 | `allow_unimplemented_encode` | [01 - First packet](../tutorial/fundamentals/01-first-packet.md) |
-| `allow_unimplemented_decode` | Reference only |
 | `trait_fallback` | [11 - Optional fields & default](../tutorial/fundamentals/11-default-fallback.md) |

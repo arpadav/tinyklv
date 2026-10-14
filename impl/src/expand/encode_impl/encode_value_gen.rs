@@ -21,7 +21,9 @@ impl EncodeCtx<'_> {
     ///
     /// Builds the derived value encoder body, including the encode reserve unless it is too large
     /// ([`EncodeFraming::value_reserve_bytes`](super::framing::EncodeFraming::value_reserve_bytes)),
-    /// optional scratch buffer declaration, and one generated KLV item write for each
+    /// optional scratch buffer declaration, a length write that never runs when no frame writes a
+    /// length ([`LengthPrefix::unwritten`](super::length_prefix::LengthPrefix::unwritten)), and
+    /// one generated KLV item write for each
     /// attributed field and each retained unknown frame ([`Self::klv_items`]). The generated impl
     /// writes directly into the caller's output buffer and does not emit any frame sentinel bytes
     ///
@@ -53,6 +55,24 @@ impl EncodeCtx<'_> {
         let scratch_decl = staged.then(|| Staging::Scratch.declare());
         let klv_items = self.klv_items()?;
         // --------------------------------------------------
+        // a length encoder no frame calls, every one `size(implicit)` and no sentinel's, is
+        // still type-checked
+        // --------------------------------------------------
+        let unwritten_len = match self.framing {
+            EncodeFraming::Separate {
+                len,
+                sentinel: None,
+                ..
+            } if self
+                .input
+                .klv_keys()
+                .all(|key| key.codec.implicit().is_some()) =>
+            {
+                Some(len.unwritten())
+            }
+            _ => None,
+        };
+        // --------------------------------------------------
         // assemble the trait impl
         // --------------------------------------------------
         Some(quote! {
@@ -61,6 +81,7 @@ impl EncodeCtx<'_> {
                 fn encode_value(&self, out: &mut ::std::vec::Vec<u8>) {
                     #reserve
                     #scratch_decl
+                    #unwritten_len
                     #klv_items
                 }
             }

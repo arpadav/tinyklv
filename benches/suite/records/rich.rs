@@ -6,9 +6,7 @@
 // local
 // --------------------------------------------------
 use super::{GpsCoord, RngSample};
-use tinyklv::{
-    dec::binary as decb, dec::string as decs, enc::binary as encb, enc::string as encs, prelude::*,
-};
+use tinyklv::{dec::binary as decb, dec::string as decs, enc::binary as encb, enc::string as encs};
 
 // --------------------------------------------------
 // external

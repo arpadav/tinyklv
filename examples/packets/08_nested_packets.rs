@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Example 08 - KLV inside KLV
 //!
 //! Because `#[derive(Klv)]` generates `impl EncodeValue` and
@@ -16,9 +14,9 @@
 //! * Nesting a derived struct as a field on another derived struct
 //! * Using `Inner::decode_value` / `Inner::encode_value` directly
 //! * Round-tripping both the outer frame and the inner stand-alone form
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, PartialEq, Clone, Copy)]
 #[klv(
@@ -93,11 +91,11 @@ fn main() {
     // build - a status frame carrying a full engine-health sub-packet
     let original = VehicleStatus {
         vehicle_id: 0xDEAD_C0DE,
-        speed_kmh:  112.5,
+        speed_kmh: 112.5,
         engine: EngineHealth {
-            rpm:                  3_200,
-            coolant_temp_decideg:   900, // 90.0 C
-            oil_pressure_kpa:       185,
+            rpm: 3_200,
+            coolant_temp_decideg: 900, // 90.0 C
+            oil_pressure_kpa: 185,
         },
     };
 
@@ -107,9 +105,7 @@ fn main() {
     original.encode_frame(&mut frame);
 
     // decode - outer and inner are reconstructed in one call
-    let decoded = VehicleStatus::decode_frame(
-        &mut frame.as_slice(),
-    ).unwrap();
+    let decoded = VehicleStatus::decode_frame(&mut frame.as_slice()).unwrap();
 
     // assert - the full nested structure round-trips
     assert_eq!(decoded.vehicle_id, original.vehicle_id);
@@ -119,8 +115,6 @@ fn main() {
     // the inner type can be used on its own without the outer frame
     let mut inner_bytes = Vec::new();
     original.engine.encode_value(&mut inner_bytes);
-    let inner_decoded = EngineHealth::decode_value(
-        &mut inner_bytes.as_slice(),
-    ).unwrap();
+    let inner_decoded = EngineHealth::decode_value(&mut inner_bytes.as_slice()).unwrap();
     assert_eq!(inner_decoded, original.engine);
 }

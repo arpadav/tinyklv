@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 //! Example 12 - variant dispatch on a multiplexed stream
 //!
 //! Real telemetry buses carry several packet types mixed together. The
@@ -13,15 +11,15 @@
 //! * A hand-written dispatcher that peeks the next few bytes
 //! * Wrapping decoded frames in a plain Rust `enum`
 //!
-//! See also: book Tutorial 12
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+//! See also: `book/src/tutorial/fundamentals/03-frames-and-sentinels.md`
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 /// Sentinel for a navigation frame
 const NAV_SENTINEL: &[u8] = b"NAVFRAME";
 /// Sentinel for a weather frame
-const WX_SENTINEL:  &[u8] = b"WXFRAME";
+const WX_SENTINEL: &[u8] = b"WXFRAME";
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -98,28 +96,43 @@ fn dispatch_one(input: &mut &[u8]) -> Option<TelemetryPacket> {
         return NavFrame::decode_frame(input).ok().map(TelemetryPacket::Nav);
     }
     if input.starts_with(WX_SENTINEL) {
-        return WeatherFrame::decode_frame(input).ok().map(TelemetryPacket::Weather);
-    }
-    if input.is_empty() {
-        return None;
+        return WeatherFrame::decode_frame(input)
+            .ok()
+            .map(TelemetryPacket::Weather);
     }
     // unknown prefix - drop one byte and retry on the next call
-    *input = &input[1..];
+    let (_, rest) = input.split_first()?;
+    *input = rest;
     None
 }
 
 fn main() {
     // build - two Nav and two Weather records to multiplex onto the bus
-    let nav1 = NavFrame     { lat_deg: 51.5, lon_deg: -0.1, heading_centideg: 27_000 };
-    let wx1  = WeatherFrame { pressure_hpa: 1013, humidity_pct: 65 };
-    let nav2 = NavFrame     { lat_deg: 51.6, lon_deg: -0.2, heading_centideg:  9_000 };
-    let wx2  = WeatherFrame { pressure_hpa: 1011, humidity_pct: 72 };
+    let nav1 = NavFrame {
+        lat_deg: 51.5,
+        lon_deg: -0.1,
+        heading_centideg: 27_000,
+    };
+    let wx1 = WeatherFrame {
+        pressure_hpa: 1013,
+        humidity_pct: 65,
+    };
+    let nav2 = NavFrame {
+        lat_deg: 51.6,
+        lon_deg: -0.2,
+        heading_centideg: 9_000,
+    };
+    let wx2 = WeatherFrame {
+        pressure_hpa: 1011,
+        humidity_pct: 72,
+    };
 
     // encode - concatenate four frames with three bytes of garbage spliced
     // between the first Nav and the first Weather to exercise the dispatcher
     let mut stream: Vec<u8> = Vec::new();
     nav1.encode_frame(&mut stream);
     // inter-packet garbage (not a sentinel prefix):
+    #[rustfmt::skip]
     stream.extend_from_slice(&[
         // three noise bytes:
             0xDE, 0xAD, 0xFF,
@@ -138,9 +151,13 @@ fn main() {
     }
 
     // assert - exactly four packets recovered in the original order
-    assert_eq!(packets.len(), 4);
-    assert_eq!(packets[0], TelemetryPacket::Nav(nav1));
-    assert_eq!(packets[1], TelemetryPacket::Weather(wx1));
-    assert_eq!(packets[2], TelemetryPacket::Nav(nav2));
-    assert_eq!(packets[3], TelemetryPacket::Weather(wx2));
+    assert_eq!(
+        packets,
+        [
+            TelemetryPacket::Nav(nav1),
+            TelemetryPacket::Weather(wx1),
+            TelemetryPacket::Nav(nav2),
+            TelemetryPacket::Weather(wx2),
+        ]
+    );
 }

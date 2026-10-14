@@ -13,6 +13,7 @@
 use tinyklv::ErrorKind;
 use tinyklv::dec::ber as decber;
 use tinyklv::dec::binary as decb;
+use tinyklv::dec::string as decs;
 use tinyklv::decoder::DecodeIterError;
 use tinyklv::enc::ber as encber;
 use tinyklv::enc::binary as encb;
@@ -425,17 +426,59 @@ struct Heading {
     degrees: u16,
 }
 
-#[test]
-/// A sentinel whose BER length overflows `usize` begins no packet: the seek skips it, and
-/// every good packet fed after it decodes
-fn decoder_skips_sentinel_with_invalid_length() {
+/// [`Heading`] implementation
+impl Heading {
+    /// A packet whose BER length overflows `usize`
     #[rustfmt::skip]
-    let bad = [
+    const OVERFLOWING: [u8; 14] = [
         // sentinel
         0x06, 0x0E, 0x2B, 0x34,
         // long-form length of 9 bytes, 2^64
         0x89, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     ];
+}
+
+#[test]
+/// One-shot, a malformed packet length is returned with the cursor back at its sentinel, past the
+/// junk before it
+fn decode_frame_leaves_a_malformed_length_at_its_sentinel() {
+    let wire = [&[0x00, 0xFF][..], &Heading::OVERFLOWING].concat();
+    let mut cursor = &wire[..];
+    let result = Heading::decode_frame(&mut cursor);
+    assert_eq!(
+        result.as_ref().err().and_then(ErrorKind::of),
+        Some(ErrorKind::MalformedValue),
+        "{result:?}"
+    );
+    assert_eq!(cursor, Heading::OVERFLOWING);
+}
+
+#[test]
+/// One-shot, a packet length the input cuts or its decoder rejects is named as the struct's
+/// packet length first, then as the BER length decoder names it
+fn decode_frame_names_a_failed_length_as_its_packets() {
+    // the sentinel, then a long-form length of 2 bytes cut after 1
+    let cut = [&Heading::OVERFLOWING[..4], &[0x82, 0x01]].concat();
+    for wire in [&cut[..], &Heading::OVERFLOWING] {
+        let display = Heading::decode_frame(&mut &wire[..])
+            .expect_err("a failed length")
+            .to_string();
+        let mut lines = display.lines();
+        assert_eq!(
+            lines.next(),
+            Some("invalid `Heading` packet length"),
+            "{display}"
+        );
+        assert_eq!(lines.next(), Some("invalid BER length value"), "{display}");
+    }
+}
+
+#[test]
+/// A sentinel whose BER length overflows `usize` is a malformed packet: the decoder returns its
+/// error once, then searches on from one byte into its sentinel, so every good packet fed after
+/// it decodes
+fn decoder_reports_a_malformed_length_once() {
+    let bad = Heading::OVERFLOWING;
     #[rustfmt::skip]
     let good = [
         // sentinel, length 4, degrees = 7
@@ -445,11 +488,113 @@ fn decoder_skips_sentinel_with_invalid_length() {
     ];
     let mut dec = Heading::decoder();
     dec.feed(&bad);
-    assert!(dec.next().is_none(), "the bad packet must not decode");
+    let result = dec.next_fresh();
+    assert_eq!(
+        result.as_ref().err().and_then(DecodeIterError::kind),
+        Some(ErrorKind::MalformedValue),
+        "{result:?}"
+    );
     dec.feed(&good);
     let got: Vec<Heading> = dec.iter().collect();
     assert_eq!(got, [Heading { degrees: 7 }, Heading { degrees: 8 }]);
     assert!(dec.buffered().is_empty());
+}
+
+/// A packet behind the sentinel `AA` whose packet and item lengths are winnow's own `be_u16`,
+/// which leaves the cursor in place when it runs out of bytes
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    stream = &[u8],
+    sentinel = b"\xAA",
+    key(dec = decb::u8),
+    len(dec = Ping::be_u16_len),
+    allow_unimplemented_encode,
+)]
+struct Ping {
+    #[klv(key = 0x01, dec = decb::u8)]
+    id: u8,
+    #[klv(key = 0x02, dec = decs::to_string_utf8, size(lengthed))]
+    note: Option<String>,
+}
+
+/// [`Ping`] implementation
+impl Ping {
+    /// Decodes a big-endian `u16` length
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - the byte stream positioned at the length; left in place when it holds fewer
+    ///   than two bytes
+    ///
+    /// # Returns
+    ///
+    /// The length, or winnow's error on a short read
+    fn be_u16_len(input: &mut &[u8]) -> tinyklv::Result<usize> {
+        winnow::binary::be_u16.map(usize::from).parse_next(input)
+    }
+
+    /// Feeds `first` then `rest` to a fresh decoder, collecting the packets after each feed
+    ///
+    /// # Arguments
+    ///
+    /// * `first` - the first chunk
+    /// * `rest` - the second chunk
+    ///
+    /// # Returns
+    ///
+    /// Every packet decoded, and the bytes left buffered
+    fn fed_in_two(first: &[u8], rest: &[u8]) -> (Vec<Self>, Vec<u8>) {
+        let mut dec = Self::decoder();
+        dec.feed(first);
+        let mut got: Vec<Self> = dec.iter().collect();
+        dec.feed(rest);
+        got.extend(dec.iter());
+        (got, dec.buffered().to_vec())
+    }
+}
+
+#[test]
+/// A packet length cut by a chunk boundary waits for the rest, even when its decoder stops short
+/// of the end of the input: fed `AA 00` then the rest, the packet decodes
+fn decoder_waits_for_a_length_its_decoder_leaves_unread() {
+    #[rustfmt::skip]
+    let wire = [
+        // sentinel, packet length 4
+        0xAA, 0x00, 0x04,
+        // id = 7: key, item length 1, value
+        0x01, 0x00, 0x01, 0x07,
+    ];
+    let (got, left) = Ping::fed_in_two(&wire[..2], &wire[2..]);
+    assert_eq!(got, [Ping { id: 7, note: None }]);
+    assert!(left.is_empty());
+}
+
+#[test]
+/// A packet whose note carries the bytes of another packet, cut inside its packet length, decodes
+/// as the outer packet: the sentinel inside the note is never searched for
+fn decoder_never_yields_a_packet_forged_in_a_body() {
+    #[rustfmt::skip]
+    let forged = [
+        // sentinel, packet length 4, id = 9
+        0xAA, 0x00, 0x04, 0x01, 0x00, 0x01, 0x09,
+    ];
+    #[rustfmt::skip]
+    let wire = [
+        // sentinel, packet length 14
+        &[0xAA, 0x00, 0x0E][..],
+        // note: key, item length 7, the forged packet
+        &[0x02, 0x00, 0x07], &forged,
+        // id = 7: key, item length 1, value
+        &[0x01, 0x00, 0x01, 0x07],
+    ]
+    .concat();
+    let (got, left) = Ping::fed_in_two(&wire[..2], &wire[2..]);
+    let outer = Ping {
+        id: 7,
+        note: Some(String::from_utf8_lossy(&forged).into_owned()),
+    };
+    assert_eq!(got, [outer]);
+    assert!(left.is_empty());
 }
 
 /// A packet behind the 4-byte sentinel `06 0E 2B 34` with a two-byte big-endian packet length
@@ -499,6 +644,14 @@ fn decoder_finish_on_empty() {
         Some(ErrorKind::MissingRequired),
         "{result:?}"
     );
+    let Err(DecodeIterError::Malformed(error)) = result else {
+        panic!("expected Malformed, got {result:?}");
+    };
+    assert_eq!(
+        error.to_string(),
+        "invalid `Sample::a` value (required, and missing from the packet; to allow this, make \
+         the field an `Option` or give it a `default`)",
+    );
 }
 
 /// A sentinel packet of one field that rejects a key no field declares
@@ -516,7 +669,8 @@ struct StrictSample {
 }
 
 #[test]
-/// A body `next_resume` rejects is `Malformed`, with the kind of the derive's streaming error
+/// A body `next_resume` rejects is `Malformed`, with the kind and the label of the derive's
+/// streaming error, which its display prints once after `invalid `
 fn decoder_next_resume_error_carries_its_kind() {
     let mut dec = StrictSample::decoder();
     #[rustfmt::skip]
@@ -528,6 +682,14 @@ fn decoder_next_resume_error_carries_its_kind() {
     ]);
     let error = dec.next_resume().expect_err("an unknown key is rejected");
     assert_eq!(error.kind(), Some(ErrorKind::UnknownKey), "{error:?}");
+    let DecodeIterError::Malformed(error) = error else {
+        panic!("expected Malformed, got {error:?}");
+    };
+    assert_eq!(
+        error.to_string(),
+        "invalid key (expected one of the keys defined on `StrictSample`; to turn this off, \
+         remove `deny_unknown_keys`)",
+    );
 }
 
 #[test]

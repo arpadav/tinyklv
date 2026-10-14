@@ -1,7 +1,5 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Book tutorial 15 - streaming decode via `Decoder`
-//! See `book/tutorial/15-streaming-decode.md` for the full narrative
+//! See `book/src/tutorial/advanced/15-streaming-decode.md` for the full narrative
 //!
 //! Demonstrates three patterns for incrementally decoding a sentinel-framed
 //! KLV stream: (1) feeding the whole buffer then draining with `IntoIterator`,
@@ -9,10 +7,10 @@
 //! (3) low-level `decode_partial` / `resume_partial` for callers that manage
 //! their own in-flight partial state. All three patterns are asserted to yield
 //! the same result
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
 use tinyklv::ResumePartial;
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, Clone, PartialEq)]
 #[klv(
@@ -50,10 +48,23 @@ struct Heartbeat {
 
 fn main() {
     let want = vec![
-        Heartbeat { sequence: 1, temperature_centideg: 2300, uptime_s: 10 },
-        Heartbeat { sequence: 2, temperature_centideg: 2310, uptime_s: 20 },
-        Heartbeat { sequence: 3, temperature_centideg: 2340, uptime_s: 30 },
+        Heartbeat {
+            sequence: 1,
+            temperature_centideg: 2300,
+            uptime_s: 10,
+        },
+        Heartbeat {
+            sequence: 2,
+            temperature_centideg: 2310,
+            uptime_s: 20,
+        },
+        Heartbeat {
+            sequence: 3,
+            temperature_centideg: 2340,
+            uptime_s: 30,
+        },
     ];
+    #[rustfmt::skip]
     let mut buf: Vec<u8> = vec![
         // junk / zeros before the first sentinel
         0xDE, 0xAD, 0x00, 0x00, 0xFF, 0x00,
@@ -73,7 +84,8 @@ fn main() {
 
     // Pattern 2: drip-feed framed bytes and drain with iter() after each feed.
     // 3 bytes is well below one framed packet, so every frame is split across
-    // several feeds - the decoder keeps the partial packet internally.
+    // several feeds - the decoder keeps a cut packet's bytes buffered until a
+    // later feed completes it.
     {
         let mut dec = Heartbeat::decoder();
         let mut got: Vec<Heartbeat> = Vec::new();
@@ -115,8 +127,5 @@ fn main() {
         assert!(resumed_input.is_empty(), "resumed input fully consumed");
     }
 
-    println!(
-        "all 3 patterns decoded {} packets correctly",
-        want.len(),
-    );
+    println!("all 3 patterns decoded {} packets correctly", want.len());
 }

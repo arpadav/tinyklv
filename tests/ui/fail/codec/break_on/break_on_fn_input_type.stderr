@@ -1,0 +1,20 @@
+error[E0308]: mismatched types
+  --> tests/ui/fail/codec/break_on/break_on_fn_input_type.rs:15:16
+   |
+11 | #[derive(Klv)]
+   |          --- in this derive macro expansion
+...
+15 |     break_on = stop,
+   |                ^^^^
+   |                |
+   |                expected `&mut &[u16]`, found `&mut &[u8]`
+   |                arguments to this function are incorrect
+   |
+   = note: expected mutable reference `&mut &[u16]`
+              found mutable reference `&mut &[u8]`
+note: function defined here
+  --> tests/ui/fail/codec/break_on/break_on_fn_input_type.rs:3:4
+   |
+ 3 | fn stop(key: &u8, _input: &mut &[u16]) -> BreakType {
+   |    ^^^^           -------------------
+   = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)

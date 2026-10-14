@@ -28,7 +28,7 @@
     - [Async / Tokio streams](./tutorial/advanced/16-tokio-streams.md)
     - [Values with no length](./tutorial/advanced/17-implicit.md)
     - [Framing per key](./tutorial/advanced/18-keylen.md)
-    - [Unknown frames](./tutorial/advanced/19-unknown.md)
+    - [Unknown items](./tutorial/advanced/19-unknown.md)
 
 # Reference
 
@@ -37,6 +37,7 @@
 - [Sigil coercion & `EncodeAs`](./reference/sigil-coercion.md)
 - [Traits](./reference/traits.md)
 - [Codecs](./reference/codecs.md)
+- [Limits](./reference/limits.md)
 - [Benchmarks](./reference/benchmarks.md)
 
 # Appendix

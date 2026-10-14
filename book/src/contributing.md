@@ -9,30 +9,24 @@ Issues and pull requests are welcome at
 git clone https://github.com/arpadav/tinyklv
 cd tinyklv
 
-# unit + integration + proptests + doctests
-cargo test --all
+# unit + integration + ui + proptests + doctests (ui snapshots: rustc 1.95.0)
+cargo +1.95.0 test --workspace --all-features
 
 # lint: zero warnings gate
-cargo clippy --all-targets -- -D warnings
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 # examples build + run
-cargo build --examples
 bash examples/run-examples.sh
 
 # the book
-cd book
 mdbook build book
-mdbook test book
 ```
 
 ## Pull request checklist
 
-- [ ] `cargo fmt --all` has been run.
-- [ ] `cargo clippy --all-targets -- -D warnings` passes with zero
-      warnings.
-- [ ] `cargo test --all` passes.
-- [ ] New public items carry doc comments (the crate runs with
-      `#![deny(missing_docs)]`).
+- [ ] `cargo fmt --all` has been run, and the clippy and test commands above
+      pass.
+- [ ] New public items carry doc comments.
 - [ ] Any new container attribute is documented in [`reference/container-attributes.md`](./reference/container-attributes.md) and any new field attribute in [`reference/field-attributes.md`](./reference/field-attributes.md).
 - [ ] Any new trait method is documented in
       [`reference/traits.md`](./reference/traits.md).

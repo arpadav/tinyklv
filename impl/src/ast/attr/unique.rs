@@ -14,7 +14,7 @@ pub(super) enum Unique<T> {
     Unset,
     /// One value is written
     One(T),
-    /// More than one value is written, and the second is reported; the first of them
+    /// More than one value is written, the second reported; it holds the first
     Duplicate(T),
 }
 /// [`Unique`] implementation

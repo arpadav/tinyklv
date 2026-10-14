@@ -1,16 +1,14 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Book tutorial 16 - real-time `Decoder` feed/iter loop over a Tokio channel
-//! See `book/tutorial/16-tokio-streams.md` for the full narrative
+//! See `book/src/tutorial/advanced/16-tokio-streams.md` for the full narrative
 //!
 //! Shows how to drive the stateful `Decoder` from an async producer/consumer
 //! pair connected by a `tokio::sync::mpsc` channel. The producer splits each
 //! encoded frame in half before sending, so the consumer always receives
 //! partial frames that it must reassemble. After each `recv`, `dec.feed` adds
 //! the new bytes and `dec.iter()` drains any complete packets
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, Clone, PartialEq)]
 #[klv(
@@ -64,9 +62,21 @@ fn make_chunks(packets: &[Heartbeat]) -> Vec<Vec<u8>> {
 #[tokio::main]
 async fn main() {
     let originals = vec![
-        Heartbeat { sequence: 1, temperature_centideg: 2300, uptime_s: 10 },
-        Heartbeat { sequence: 2, temperature_centideg: 2310, uptime_s: 20 },
-        Heartbeat { sequence: 3, temperature_centideg: 2340, uptime_s: 30 },
+        Heartbeat {
+            sequence: 1,
+            temperature_centideg: 2300,
+            uptime_s: 10,
+        },
+        Heartbeat {
+            sequence: 2,
+            temperature_centideg: 2310,
+            uptime_s: 20,
+        },
+        Heartbeat {
+            sequence: 3,
+            temperature_centideg: 2340,
+            uptime_s: 30,
+        },
     ];
     let chunks = make_chunks(&originals);
 

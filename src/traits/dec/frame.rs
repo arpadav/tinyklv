@@ -111,7 +111,7 @@ where
             e.add_context(
                 input,
                 &checkpoint,
-                winnow::error::StrContext::Label("Unable to parse data embedded in packet"),
+                winnow::error::StrContext::Label("packet body"),
             )
         })
     }

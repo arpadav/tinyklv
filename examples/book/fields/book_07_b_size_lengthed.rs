@@ -1,16 +1,14 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Book tutorial 07b - `size(lengthed)` for length-parameterised value decoders
-//! See `book/tutorial/07-val-lengths.md` for the full narrative
+//! See `book/src/tutorial/fundamentals/07-val-lengths.md` for the full narrative
 //!
 //! Shows how to add a variable-length `String` field to an existing struct
 //! The `size(lengthed)` annotation tells the generated loop to pass the decoded
 //! length into `decs::to_string_utf8` so it reads exactly that many bytes -
 //! the standard fixed-width `fn(&mut Stream) -> Result<T>` signature cannot
 //! do this on its own
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::dec::string as decs;   // string decoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::dec::string as decs; // string decoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -25,12 +23,18 @@ use tinyklv::dec::string as decs;   // string decoders
 )]
 /// Heartbeat extended with a variable-length `station_id` UTF-8 string field
 struct Heartbeat {
-    #[klv(key = 0x01)]  sequence:             u8,     // monotonic frame counter
-    #[klv(key = 0x02)]  temperature_centideg: u16,    // temperature in 0.01 C units
-    #[klv(key = 0x03)]  battery_pct:          u8,     // battery charge 0..=100 %
-    #[klv(key = 0x04)]  rssi_dbm:             u8,     // receive signal strength
-    #[klv(key = 0x05)]  uptime_s:             u32,    // seconds since boot
-    #[klv(key = 0x06)]  mode_flags:           u8,     // bitmask of active flags
+    #[klv(key = 0x01)]
+    sequence: u8, // monotonic frame counter
+    #[klv(key = 0x02)]
+    temperature_centideg: u16, // temperature in 0.01 C units
+    #[klv(key = 0x03)]
+    battery_pct: u8, // battery charge 0..=100 %
+    #[klv(key = 0x04)]
+    rssi_dbm: u8, // receive signal strength
+    #[klv(key = 0x05)]
+    uptime_s: u32, // seconds since boot
+    #[klv(key = 0x06)]
+    mode_flags: u8, // bitmask of active flags
 
     #[klv(
         key = 0x07,
@@ -44,6 +48,7 @@ struct Heartbeat {
 
 fn main() {
     // manually construct the stream
+    #[rustfmt::skip]
     let stream = [
         0xDE, 0xAD, 0xBE, 0x00,                         // junk preamble, no sentinel here
         // "HEARTBEAT" sentinel
@@ -61,19 +66,17 @@ fn main() {
 
     // manually construct the expected value
     let expected = Heartbeat {
-        sequence:             42,
+        sequence: 42,
         temperature_centideg: 2350,
-        battery_pct:          87,
-        rssi_dbm:             0xB8,
-        uptime_s:             3600,
-        mode_flags:           0b0000_0011,
-        station_id:           String::from("SENSOR-7"),
+        battery_pct: 87,
+        rssi_dbm: 0xB8,
+        uptime_s: 3600,
+        mode_flags: 0b0000_0011,
+        station_id: String::from("SENSOR-7"),
     };
 
     // seek sentinel, decode the value
-    let decoded = Heartbeat::decode_frame(
-        &mut stream.as_slice(),
-    ).unwrap();
+    let decoded = Heartbeat::decode_frame(&mut stream.as_slice()).unwrap();
 
     // they equal!
     assert_eq!(decoded, expected);

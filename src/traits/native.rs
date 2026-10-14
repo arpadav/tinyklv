@@ -59,6 +59,11 @@ impl DecodeValue<&[u8]> for DateTime<Utc> {
 /// from epoch). Timestamps produced by normal system clocks or the benchmark
 /// fixtures are well within that range
 impl EncodeValue for DateTime<Utc> {
+    #[allow(
+        clippy::expect_used,
+        reason = "encode cannot fail, and a timestamp past the i64 nanosecond range has no wire \
+                  form: the panic is documented, and never reached by the bench fixtures"
+    )]
     fn encode_value(&self, out: &mut Vec<u8>) {
         // infallible for the bounded timestamps `RngSample` emits (well inside the i64-ns range)
         encb::be_i64(

@@ -11,4 +11,4 @@ Complex behaviour and real-world integration patterns.
 | 16 | [Async / Tokio streams](./16-tokio-streams.md) | Driving `::decoder()` from Tokio channels |
 | 17 | [Values with no length](./17-implicit.md) | `size(implicit)`: no length prefix |
 | 18 | [Framing per key](./18-keylen.md) | The fused `keylen(dec, enc)` codec |
-| 19 | [Unknown frames](./19-unknown.md) | `unknown(dec, enc)` and `#[klv(unknown)]` |
+| 19 | [Unknown items](./19-unknown.md) | `unknown(dec, enc)` and `#[klv(unknown)]` |

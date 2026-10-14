@@ -48,8 +48,9 @@ pub enum DecodeIterError {
     /// The bytes present in the buffer could not be parsed as the target type
     ///
     /// The [`Decoder`] has already advanced past the offending bytes
-    /// (drained the framed packet, or the consumed prefix in resume mode)
-    /// to guarantee forward progress on subsequent calls
+    /// (drained the framed packet, one byte of the sentinel of a packet whose length is
+    /// malformed, or the consumed prefix in resume mode) to guarantee forward progress on
+    /// subsequent calls
     Malformed(ContextError),
 }
 /// [`DecodeIterError`] implementation
@@ -71,13 +72,20 @@ impl DecodeIterError {
 }
 /// [`DecodeIterError`] implementation of [`std::error::Error`]
 ///
-/// No `source()` is provided: the `Malformed` cause is a [`winnow::error::ContextError`], which does
-/// not implement [`std::error::Error`] under this crate's winnow feature set, so it cannot be
-/// surfaced as `&dyn Error`. The context is still available through this error's [`Display`], which
-/// formats the inner `ContextError`
+/// The `source` of a [`DecodeIterError::Malformed`] is the cause its
+/// [`winnow::error::ContextError`] carries, such as the [`core::str::Utf8Error`] of a strict UTF-8
+/// value: a `ContextError` is not an [`std::error::Error`], and its labels are in this error's
+/// [`Display`]
 ///
 /// [`Display`]: core::fmt::Display
-impl std::error::Error for DecodeIterError {}
+impl std::error::Error for DecodeIterError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Malformed(error) => crate::__export::typed_cause(error),
+            Self::Eof | Self::NeedMore => None,
+        }
+    }
+}
 /// [`DecodeIterError`] implementation of [`core::fmt::Display`]
 impl core::fmt::Display for DecodeIterError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -242,7 +250,8 @@ where
 
     /// Seeks the next sentinel boundary and decodes the framed packet body
     ///
-    /// Runs [`crate::traits::SeekSentinel::seek_sentinel`] to locate and
+    /// Seeks as [`crate::traits::SeekSentinel::seek_sentinel`] does, without building the error of
+    /// a packet that is not all in the buffer yet, to locate and
     /// consume the packet framing (sentinel + length prefix), then calls
     /// [`crate::traits::DecodeValue::decode_value`] on the framed body
     /// slice. The consumed bytes (framing + body) are advanced past in the buffer
@@ -256,14 +265,17 @@ where
     /// * [`DecodeIterError::NeedMore`] - the packet has not all arrived in the buffer yet;
     ///   the cursor advances past the bytes the seek proved cannot begin a packet. A miss
     ///   keeps only the last `sentinel_len - 1` bytes, and a found sentinel whose length or
-    ///   body is cut keeps the bytes from that sentinel on
+    ///   body is cut keeps the bytes from that sentinel on. A length counts as cut unless its
+    ///   decoder tags it [`ErrorKind::MalformedValue`]
     /// * [`DecodeIterError::Malformed`] - the body decode failed, including a body
-    ///   missing a required field
+    ///   missing a required field, or the packet length is malformed: the cursor moves one byte
+    ///   into its sentinel, where the next call searches on
     ///
     /// Stray bytes are scanned once and dropped, but a packet whose declared length never
-    /// arrives keeps the buffer growing under repeated `feed` + `NeedMore`. Callers that must
-    /// bound memory on hostile input should cap the unproductive `NeedMore` window and
-    /// [`Decoder::clear`] to resync rather than feeding indefinitely
+    /// arrives, or whose length fails without that tag, keeps the buffer growing under repeated
+    /// `feed` + `NeedMore`. Callers that must bound memory on hostile input should cap the
+    /// unproductive `NeedMore` window and [`Decoder::clear`] to resync rather than feeding
+    /// indefinitely
     fn next_fresh(&mut self) -> Result<T, DecodeIterError> {
         // --------------------------------------------------
         // early exit
@@ -277,12 +289,25 @@ where
         let mut cursor: &[u8] = self.buf.pending();
         let before = cursor.len();
         // --------------------------------------------------
-        // seek sentinel; a failed seek means the packet is not all in the buffer yet - drop the
-        // bytes it proved cannot begin one, retain the rest for a later feed
+        // seek sentinel, building no error; a failed seek drops the bytes it proved cannot begin
+        // a packet. A packet length that can never be valid is returned once, its labelled error
+        // read again from the sentinel, the search moving one byte into it (never past the
+        // buffer); any other failure means the packet is not all in the buffer yet, so the rest is
+        // retained for a later feed
         // --------------------------------------------------
-        let Ok(body) = T::seek_sentinel(&mut cursor) else {
-            self.buf.advance(before - cursor.len());
-            return Err(DecodeIterError::NeedMore);
+        let body = match T::seek_unlabeled(&mut cursor) {
+            Ok(body) => body,
+            Err(kind) => {
+                let mut at_sentinel = cursor;
+                if kind == ErrorKind::MalformedValue
+                    && let Err(error) = T::seek_sentinel(&mut at_sentinel)
+                {
+                    self.buf.advance((before - cursor.len() + 1).min(before));
+                    return Err(DecodeIterError::Malformed(error));
+                }
+                self.buf.advance(before - cursor.len());
+                return Err(DecodeIterError::NeedMore);
+            }
         };
         // --------------------------------------------------
         // body is a complete length-delimited frame; decode it one-shot
@@ -298,5 +323,35 @@ where
         // surface decode error as malformed
         // --------------------------------------------------
         outcome.map_err(DecodeIterError::Malformed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DecodeIterError;
+    use crate::{__export::relabeled_error, ErrorKind, dec::string::to_string_utf8_strict};
+    use std::error::Error as _;
+    use winnow::stream::Stream as _;
+
+    #[test]
+    /// Tests that a malformed packet's `source` is its error's typed cause, past the label a
+    /// relabelled error carries it under
+    fn malformed_source_is_the_typed_cause() {
+        let mut input: &[u8] = &[0xFF];
+        let checkpoint = input.checkpoint();
+        let invalid = to_string_utf8_strict(1)(&mut input).unwrap_err();
+        let error = relabeled_error(
+            &input,
+            &checkpoint,
+            "`Note::text`",
+            invalid,
+            ErrorKind::MalformedValue,
+        );
+        let malformed = DecodeIterError::Malformed(error);
+        assert!(
+            malformed
+                .source()
+                .is_some_and(<dyn std::error::Error>::is::<core::str::Utf8Error>)
+        );
     }
 }

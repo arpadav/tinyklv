@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Example 07 - `SeekSentinel` scanning past leading junk
 //!
 //! Real network streams arrive wrapped in UDP/IP headers, partial payloads
@@ -13,9 +11,9 @@
 //! * `decode_frame` skipping arbitrary prefix bytes
 //! * Constructing a noisy buffer to exercise the seeker
 //! * Post-decode slice position (what the stream looks like after a frame)
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -46,8 +44,8 @@ struct VideoMeta {
 fn main() {
     // build - a known-good video-metadata record
     let original = VideoMeta {
-        frame_seq:    12_345,
-        bitrate_kbps:  4_096,
+        frame_seq: 12_345,
+        bitrate_kbps: 4_096,
     };
 
     // encode - the clean KLV frame, sentinel-prefixed
@@ -58,6 +56,7 @@ fn main() {
     let mut noisy_buffer: Vec<u8> = Vec::new();
 
     // UDP-like preamble junk (not the sentinel)
+    #[rustfmt::skip]
     noisy_buffer.extend_from_slice(&[
         // IP-version-ish junk:
             0x00, 0x45,
@@ -68,6 +67,7 @@ fn main() {
     ]);
 
     // zero padding to exercise the "skip leading zeros" path
+    #[rustfmt::skip]
     noisy_buffer.extend_from_slice(&[
         // padding zeros:
             0x00, 0x00, 0x00, 0x00,

@@ -26,7 +26,9 @@ pub(crate) use field::{FieldKeys, FieldParsed, KeySpec, ValueCodec, ValueXcoder}
 // local
 // --------------------------------------------------
 use crate::Ctxt;
-use container::{AllowUnimplemented, CodecAttr, ContainerMode, ContainerParsed, UnknownXcoder};
+use container::{
+    AllowUnimplemented, BreakOnSpec, CodecAttr, ContainerMode, ContainerParsed, UnknownXcoder,
+};
 use field::{CodecFill, OneofKey};
 
 // --------------------------------------------------
@@ -153,7 +155,9 @@ impl<'a> MainContainer<'a> {
     /// error under `keylen`, whose codec decides each frame's framing. The container's
     /// `unknown(..)` and the `#[klv(unknown)]` field that keeps its frames become one
     /// [`UnknownFrames`]: the field is an error without the codec, and the codec's `enc` is
-    /// required only beside the field. A key two fields or arms share is an error. Returns `None`
+    /// required only beside the field. A key two fields or arms share, and a key + len `sentinel`
+    /// on a `&str` stream, are an error when the decode impls are generated, and a variant two
+    /// `oneof(..)` arms share when the encode impls are. Returns `None`
     /// and records diagnostics in `cx` if any required
     /// attributes are absent or the struct variant is unsupported
     ///
@@ -237,7 +241,17 @@ impl<'a> MainContainer<'a> {
             generics: &item.generics,
             _original: item,
         };
-        container.report_shared_keys(cx);
+        // --------------------------------------------------
+        // what only one impl reads is checked when that impl is generated: a key two fields share
+        // and a sentinel on a `&str` stream break the decode, a variant two arms share the encode
+        // --------------------------------------------------
+        if container.decodes() {
+            container.report_shared_keys(cx);
+            container.attrs.report_sentinel_on_str_stream(cx);
+        }
+        if container.encodes() {
+            container.report_shared_variants(cx);
+        }
         // --------------------------------------------------
         // the `keylen` codec decides each frame's framing, so no field is `implicit`, after its
         // default fills it
@@ -272,6 +286,29 @@ impl<'a> MainContainer<'a> {
         }
     }
 
+    /// Reports each `oneof(..)` arm whose variant an earlier arm of its field already names, by the
+    /// last segment of its path, at the later arm's variant: encode writes a variant under one key
+    ///
+    /// # Arguments
+    ///
+    /// * `cx` - Error accumulation context for recording the errors
+    fn report_shared_variants(&self, cx: &Ctxt) {
+        for (_, attrs) in self.keyed_fields() {
+            let FieldKeys::Oneof(arms) = &attrs.keys else {
+                continue;
+            };
+            for (at, OneofKey { arm, .. }) in arms.iter().enumerate() {
+                if let Some(OneofKey { arm: first, .. }) = arms
+                    .iter()
+                    .take(at)
+                    .find(|first| first.arm.variant_name() == arm.variant_name())
+                {
+                    cx.error_spanned_by(&arm.variant, err!(OneofDuplicateVariant(first.key)));
+                }
+            }
+        }
+    }
+
     /// The struct's keyed fields, in declaration order
     ///
     /// # Returns
@@ -294,6 +331,22 @@ impl<'a> MainContainer<'a> {
             .flat_map(|(field, attrs)| FieldKey::of(field, attrs))
     }
 
+    /// Whether a frame of key `key` ends the decode: the struct's `break_on` is that key literal
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - A field's or `oneof(..)` arm's key
+    ///
+    /// # Returns
+    ///
+    /// `true` when `break_on = K` names `key`, written alike or apart (`0x10` and `16`)
+    pub(crate) fn breaks_on(&self, key: &syn::Lit) -> bool {
+        let Some(BreakOnSpec::Literal(end)) = &self.attrs.break_on else {
+            return false;
+        };
+        key_value(end) == key_value(key)
+    }
+
     /// The struct's fields without `#[klv(..)]`, in declaration order
     ///
     /// # Returns
@@ -312,7 +365,7 @@ impl<'a> MainContainer<'a> {
         self.unknown.as_ref()?.keep.as_ref()
     }
 
-    /// Whether the derive reads the length of every key + len frame, which decides where the
+    /// Whether the derive reads the length of every key + len item, which decides where the
     /// length is read
     ///
     /// # Returns
@@ -346,6 +399,40 @@ impl<'a> MainContainer<'a> {
             && fields
                 .flat_map(|(field, attrs)| FieldKey::of(field, attrs))
                 .all(|key| has(key.codec))
+    }
+
+    /// Whether the decode impls are generated
+    ///
+    /// # Returns
+    ///
+    /// `true` when [`Self::generates_with`] a decoder, and the frame header and, under
+    /// `unknown(..)`, the frames no field declares have one
+    fn decodes(&self) -> bool {
+        let header = match &self.attrs.mode {
+            ContainerMode::Separate { key, len, .. } => key.dec.is_some() && len.dec.is_some(),
+            ContainerMode::Fused { keylen } => keylen.dec.is_some(),
+        };
+        let unknown = self.unknown.as_ref();
+        header
+            && unknown.is_none_or(|frames| frames.codec.dec.is_some())
+            && self.generates_with(|codec| codec.dec.is_some())
+    }
+
+    /// Whether the encode impls are generated
+    ///
+    /// # Returns
+    ///
+    /// `true` when [`Self::generates_with`] an encoder, and the frame header and the frames the
+    /// `#[klv(unknown)]` field keeps, if any, have one
+    fn encodes(&self) -> bool {
+        let header = match &self.attrs.mode {
+            ContainerMode::Separate { key, len, .. } => key.enc.is_some() && len.enc.is_some(),
+            ContainerMode::Fused { keylen } => keylen.enc.is_some(),
+        };
+        let unknown = self.unknown.as_ref();
+        header
+            && unknown.is_none_or(|frames| frames.keep.is_none() || frames.codec.enc.is_some())
+            && self.generates_with(|codec| codec.enc.is_some())
     }
 }
 

@@ -11,10 +11,9 @@ datagram, file record, or log line. When each reading is sentinel-framed,
 let readings: Vec<SensorReading> = SensorReading::drain_frames(&mut input)?;
 ```
 
-Semantics: `drain_frames` calls `decode_frame` until the stream either
-cleanly ends (returns whatever was collected so far) or hits a real parse
-error (propagates the error with context). Callers are never left guessing
-whether an empty `Vec` means "no items" or "parse failed on item N".
+`drain_frames` calls `decode_frame` until one fails and returns the packets
+before it. It never returns `Err`: input left over is a packet that failed
+([Limits](../../reference/limits.md#drain_frames-never-fails)).
 
 For sentinel-less streams, use the `Vec<T>` blanket impl of `DecodeValue`
 instead:
@@ -35,6 +34,6 @@ Run this example: `cargo run --example book_13_repeated_extraction`
 
 - `DrainFrames::drain_frames` returns `Vec<Self>` from a sentinel-framed stream.
 - `Vec<T>::decode_value` returns `Vec<T>` from an unframed stream.
-- Clean EOF = success; parse error = propagated error, not silent truncation.
+- Both stop at the first element that fails and return the ones before it.
 
 **Next:** [14 - Break conditions](./14-break-condition.md)

@@ -192,3 +192,21 @@ fn roundtrip_all() {
         assert_eq!(val, decoded, "hex roundtrip failed for {val}");
     }
 }
+
+#[test]
+/// Tests that every family of ASCII value decoders, short of `len` bytes, leaves the cursor at
+/// the end of the input
+fn short_input_leaves_cursor_at_end() {
+    let ends_short = |decode: &dyn Fn(&mut &[u8]) -> bool| {
+        let mut input: &[u8] = b"12";
+        decode(&mut input) && input.is_empty()
+    };
+    assert!(ends_short(&|input| deca::u8(3)(input).is_err()), "u8");
+    assert!(ends_short(&|input| deca::i8(3)(input).is_err()), "i8");
+    assert!(ends_short(&|input| deca::f32(3)(input).is_err()), "f32");
+    assert!(
+        ends_short(&|input| deca::hex_u8(3)(input).is_err()),
+        "hex_u8"
+    );
+    assert!(ends_short(&|input| deca::digit(3)(input).is_err()), "digit");
+}

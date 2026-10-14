@@ -1,7 +1,5 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Book tutorial 11a - `Option<T>` fields and `default = expr` fallbacks
-//! See `book/tutorial/11-default-fallback.md` for the full narrative
+//! See `book/src/tutorial/fundamentals/11-default-fallback.md` for the full narrative
 //!
 //! Shows two complementary mechanisms for handling absent keys on decode:
 //!
@@ -9,9 +7,9 @@
 //!   a `None` emits no KLV triple, making the frame shorter
 //! * **`default = expr`**: the field takes a compile-time expression when the
 //!   key is absent; the field type is plain `T` (not `Option`)
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -49,12 +47,11 @@ struct Heartbeat {
 
 fn main() {
     // manually constructed stream: only key 0x01 present
+    #[rustfmt::skip]
     let thin_bytes: &[u8] = &[
         0x01, 0x01, 42,
     ];
-    let decoded = Heartbeat::decode_value(
-        &mut &thin_bytes[..],
-    ).unwrap();
+    let decoded = Heartbeat::decode_value(&mut &thin_bytes[..]).unwrap();
 
     assert_eq!(decoded.sequence, 42);
     // signal_dbm was never in stream -> Option stayed None
@@ -64,20 +61,21 @@ fn main() {
 
     // round-trip a full packet
     let full = Heartbeat {
-        sequence:    7,
-        signal_dbm:  Some(-54),
+        sequence: 7,
+        signal_dbm: Some(-54),
         battery_pct: 87,
     };
     let mut full_bytes = Vec::new();
     full.encode_value(&mut full_bytes);
-    let full_decoded = Heartbeat::decode_value(
-        &mut full_bytes.as_slice(),
-    ).unwrap();
+    let full_decoded = Heartbeat::decode_value(&mut full_bytes.as_slice()).unwrap();
     assert_eq!(full_decoded, full);
 
     // when signal_dbm is None the encoded bytes are strictly shorter -
     // a `None` field emits no KLV triple
-    let thin = Heartbeat { signal_dbm: None, ..full };
+    let thin = Heartbeat {
+        signal_dbm: None,
+        ..full
+    };
     let mut thin_bytes = Vec::new();
     thin.encode_value(&mut thin_bytes);
     assert!(thin_bytes.len() < full_bytes.len());

@@ -1,14 +1,12 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Book tutorial 03 - frames, sentinels, and `decode_frame`
-//! See `book/tutorial/03-frames-and-sentinels.md` for the full narrative
+//! See `book/src/tutorial/fundamentals/03-frames-and-sentinels.md` for the full narrative
 //!
 //! Extends the getting-started example with a sentinel (`b"HEARTBEAT"`) so the
 //! decode call becomes `decode_frame` instead of `decode_value`. The hand-built
 //! stream includes a four-byte junk preamble before the sentinel; `decode_frame`
 //! seeks past it automatically before reading the length and the field triples
-use tinyklv::prelude::*;            // Klv proc-macro, DecodeFrame, and more
-use tinyklv::dec::binary as decb;   // binary decoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::prelude::*; // Klv proc-macro, DecodeFrame, and more
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -37,6 +35,7 @@ struct Heartbeat {
 
 fn main() {
     // hand-built stream: garbage bytes, then a real frame
+    #[rustfmt::skip]
     let stream = [
         0xDE, 0xAD, 0xBE, 0x00, // junk preamble, no sentinel here
         // HEARTBEAT sentinel
@@ -58,9 +57,7 @@ fn main() {
 
     // decode_frame seeks past the junk, matches the sentinel, reads the
     // length, then decodes the body
-    let decoded = Heartbeat::decode_frame(
-        &mut stream.as_slice(),
-    ).unwrap();
+    let decoded = Heartbeat::decode_frame(&mut stream.as_slice()).unwrap();
 
     // they equal!
     assert_eq!(decoded, expected);

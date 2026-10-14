@@ -24,9 +24,8 @@ derive bridges the shapes with a leading sigil on `enc`:
 `tinyklv`'s provided encoders, by default, take the literal values themselves, so
 most need a sigil on a field, e.g. `enc = *encb::u8`. 
 
-For the full dispatch story - how `&` routes through `EncodeAs`, which
-types get zero-cost coercion, and when to implement `EncodeAs`
-yourself - see [Sigil coercion and `EncodeAs`](../../reference/sigil-coercion.md).
+The full dispatch story is in
+[Sigil coercion and `EncodeAs`](../../reference/sigil-coercion.md).
 
 ## Implementing `EncodeValue`
 

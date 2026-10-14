@@ -142,7 +142,7 @@ fn usize_asserts(input: &MainContainer) -> TokenStream {
 #[cfg(test)]
 mod tests {
     use super::usize_asserts;
-    use crate::{Ctxt, ast::attr::MainContainer};
+    use crate::ast::attr::MainContainer;
 
     #[test]
     /// Verifies a `size(exact = N)` gets its `usize` assert only when `N` is more than
@@ -157,10 +157,8 @@ mod tests {
                 too_wide: Vec<u8>,
             }
         };
-        let cx = Ctxt::new();
-        let container = MainContainer::from_ast(&cx, &input);
-        cx.check().expect("the input parses");
-        let asserts = usize_asserts(&container.expect("the input is a container")).to_string();
+        let container = MainContainer::parsed(&input).expect("the input parses");
+        let asserts = usize_asserts(&container).to_string();
         assert_eq!(asserts.matches("const _").count(), 1, "{asserts}");
         assert!(asserts.contains("4294967296u64"), "{asserts}");
     }

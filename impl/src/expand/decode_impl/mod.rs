@@ -6,15 +6,15 @@
 //! it, into a single token stream:
 //!
 //! * `sentinel_gen` - `SeekSentinel` impl (only when a sentinel is declared, which only a
-//!   separate `key`+`len` container can do)
+//!   key + len container can do)
 //! * `partial_gen` - partial-packet struct definition, `Partial` impl, and
 //!   `TryFrom<Partial>` impl
 //! * `decode_partial_gen` - `DecodePartial`, `ResumePartial`, and the one-shot direct `DecodeValue`
-//!   impls (`DecodeValue`/`DecodeFrame` decode directly; the streaming `decoder()` path uses the
-//!   resumable `Partial` machinery). Both loops are assembled from `framing` (the frame header
-//!   and body per framing mode), `loop_driver` (the exits per entry point) and `key_match_gen`
-//!   (the per-field arms, and the checks that reject a frame length other than a field's
-//!   `size(exact = N)`)
+//!   impls (`DecodeValue`, and so `DecodeFrame` and the `Decoder`'s fresh mode, decode directly;
+//!   `DecodePartial` and `ResumePartial` keep a resumable `Partial`). Both loops are assembled from
+//!   `framing` (the item header and body per framing mode), `loop_driver` (the exits per entry
+//!   point) and `key_match_gen` (the per-field arms, and the checks that reject an item length
+//!   other than a field's `size(exact = N)`)
 //! * this module - the `decoder()` constructor, with a sentinel ([`DecodeCtx::decoder_fn`])
 //!
 //! Author: aav
@@ -44,7 +44,7 @@ use quote::{ToTokens, quote};
 /// What a generated decode error is, emitted as the `tinyklv::ErrorKind` variant of the same name
 #[derive(Debug, Clone, Copy)]
 enum ErrorKind {
-    /// A sentinel's packet length or body that the input cuts short
+    /// A sentinel's packet body that the input cuts short, or its length unless malformed
     Truncated,
     /// A value or length its decoder rejects, or, under `strict`, leaves bytes of unread
     MalformedValue,
@@ -89,8 +89,9 @@ struct DecodeCtx<'a> {
     /// The stream type the impls are parameterised over: the container's `stream`, else `&[u8]`
     stream: syn::Type,
 
-    /// The lifetime `'z` that the `SeekSentinel` and `decoder()` signatures declare, fixed so the
-    /// generated impls agree on it
+    /// The lifetime `'__tinyklv` that the `SeekSentinel` and `decoder()` signatures declare, fixed
+    /// so the generated impls agree on it, and internal so a struct's own lifetime parameter of a
+    /// plainer name is not shadowed (E0496)
     lifetime: syn::Lifetime,
 
     /// [`Self::stream`] with [`Self::lifetime`] inserted, as the `SeekSentinel` and `decoder()`
@@ -165,7 +166,7 @@ impl<'a> DecodeCtx<'a> {
         // which cursor the one-shot loop advances
         // --------------------------------------------------
         let cursor = CursorSite::of(input, &stream);
-        let lifetime = syn::Lifetime::new("'z", proc_macro2::Span::call_site());
+        let lifetime = syn::Lifetime::new("'__tinyklv", proc_macro2::Span::call_site());
         let stream_lifetimed = insert_lifetime(&stream, lifetime.clone());
         // --------------------------------------------------
         // partial name and the accumulator type it names
@@ -187,8 +188,8 @@ impl<'a> DecodeCtx<'a> {
 
     /// Generates the `decoder()` inherent method for a container with a sentinel
     ///
-    /// Emits a `pub fn decoder<'z>() -> tinyklv::Decoder<XxxPartialPacket, &'z Stream>`
-    /// associated function on the container. This is the idiomatic entry point for
+    /// Emits a `pub fn decoder<'__tinyklv>() -> tinyklv::Decoder<XxxPartialPacket, &'__tinyklv
+    /// Stream>` associated function on the container. This is the idiomatic entry point for
     /// constructing a streaming `tinyklv::Decoder` without needing to name the
     /// partial-packet type directly
     ///
@@ -219,7 +220,6 @@ impl<'a> DecodeCtx<'a> {
         // emit decoder() inherent method
         // --------------------------------------------------
         Some(quote! {
-            #[automatically_derived]
             impl #impl_generics #name #ty_generics #where_clause {
                 #[inline(always)]
                 #[doc = ::core::concat!(" Construct a streaming [`tinyklv::Decoder`] for [`", ::core::stringify!(#name), "`].")]
@@ -242,7 +242,7 @@ impl<'a> DecodeCtx<'a> {
 /// added as well
 ///
 /// The container's framing mode selects the frame header and body of both decode loops:
-/// separate `key`+`len` decoders, or the fused `keylen` decoder
+/// the key + len decoders, or the fused `keylen` decoder
 ///
 /// # Arguments
 ///
@@ -303,7 +303,7 @@ pub(super) fn gen_decode_impl(input: &MainContainer) -> Option<TokenStream> {
 /// # Arguments
 ///
 /// * `ty` - The base type to attach the lifetime to
-/// * `lifetime` - The lifetime to attach, e.g. `'z`
+/// * `lifetime` - The lifetime to attach, e.g. `'__tinyklv`
 ///
 /// # Returns
 ///
@@ -327,23 +327,27 @@ fn insert_lifetime(ty: &syn::Type, lifetime: syn::Lifetime) -> syn::Type {
 
 /// Constructs the default stream type `&[u8]` as a [`syn::Type`]
 ///
-/// Used when the container's `stream = ..` attribute is absent. Builds the type programmatically
-/// to avoid a `syn::parse_str` call that would require an `unwrap`
+/// Used when the container's `stream = ..` attribute is absent. `u8` is spelled by its `core`
+/// path, so a user type of that name in scope does not stand in for it
 ///
 /// # Returns
 ///
-/// A [`syn::Type`] equivalent to `&[u8]`
+/// `&[::core::primitive::u8]`
 fn u8_slice() -> syn::Type {
-    syn::Type::Reference(syn::TypeReference {
-        and_token: Default::default(),
-        lifetime: None,
-        mutability: None,
-        elem: Box::new(syn::Type::Slice(syn::TypeSlice {
-            bracket_token: Default::default(),
-            elem: Box::new(syn::Type::Path(syn::TypePath {
-                qself: None,
-                path: syn::parse_quote! { u8 },
-            })),
-        })),
-    })
+    syn::parse_quote! { &[::core::primitive::u8] }
+}
+
+/// Whether a stream type is `&[u8]`: the default stream ([`u8_slice`]), or a `stream = &[u8]`
+/// written with a bare `u8`
+///
+/// # Arguments
+///
+/// * `stream` - The stream type
+///
+/// # Returns
+///
+/// `true` when `stream` is either spelling of `&[u8]`
+fn is_u8_slice(stream: &syn::Type) -> bool {
+    let written: syn::Type = syn::parse_quote! { &[u8] };
+    *stream == u8_slice() || *stream == written
 }

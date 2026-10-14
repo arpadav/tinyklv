@@ -24,7 +24,5 @@ Run this example: `cargo run --example book_03_frames_and_sentinels`
 ## Overview
 
 - `sentinel` adds a `SeekSentinel` implementation. `DecodeFrame` is blanket-impl'd on top.
-- `decode_frame` is simply a chain of seeking the sentinel, getting the value, and calling `decode_value`
-on the body.
 
 **Next:** [04 - Default codecs](./04-default-codec.md)

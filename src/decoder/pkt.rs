@@ -12,7 +12,8 @@
 // --------------------------------------------------
 use crate::traits::Partial;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[must_use = "a `Packet` holds the decoded value, or the partial to resume once more bytes arrive"]
 /// Result of a single [`crate::traits::DecodePartial::decode_partial`] attempt
 ///
 /// Two states only:

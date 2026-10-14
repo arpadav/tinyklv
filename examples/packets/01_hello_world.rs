@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Example 01 - Hello, KLV
 //!
 //! The smallest useful derive: a two-field heartbeat packet that round-trips
@@ -12,10 +10,10 @@
 //! * `EncodeFrame::encode_frame` emitting sentinel + length + KLV triples
 //! * `DecodeFrame::decode_frame` seeking the sentinel and rebuilding the struct
 //!
-//! See also: book Tutorial 01
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+//! See also: `book/src/tutorial/fundamentals/01-first-packet.md`
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -46,7 +44,7 @@ struct Heartbeat {
 fn main() {
     // build
     let original = Heartbeat {
-        sequence:             42,
+        sequence: 42,
         temperature_centideg: 2350, // 23.50 C
     };
 
@@ -55,9 +53,7 @@ fn main() {
     original.encode_frame(&mut frame);
 
     // decode - seeks the sentinel, reads the length, decodes the value region
-    let decoded = Heartbeat::decode_frame(
-        &mut frame.as_slice(),
-    ).unwrap();
+    let decoded = Heartbeat::decode_frame(&mut frame.as_slice()).unwrap();
 
     // assert - full round-trip identity
     assert_eq!(decoded, original);

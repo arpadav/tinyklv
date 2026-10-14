@@ -1,4 +1,4 @@
-error: `reserve = 9223372036854775808` is more bytes than a `Vec<u8>` can hold (`isize::MAX`), and the encode reserves them, which panics; use a smaller `reserve`.
+error: `reserve = 9223372036854775808` is more bytes than a `Vec<u8>` can hold (`isize::MAX`); use a smaller `reserve`.
   --> tests/ui/fail/size/reserve_too_large.rs:13:34
    |
 13 |         size(lengthed, reserve = 9223372036854775808),

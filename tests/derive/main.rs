@@ -52,6 +52,7 @@ mod roundtrip {
     mod advanced_roundtrip;
     mod advanced_scaling;
     mod encode_roundtrip;
+    mod encode_without_prelude;
     mod field_ordering;
 }
 mod sentinel {
@@ -62,6 +63,7 @@ mod sentinel {
     mod multi_packet;
     mod repeated_decode;
     mod sentinel_seek;
+    mod shadowed_encode_value;
 }
 mod streaming {
     mod decode_partial_error_kinds;

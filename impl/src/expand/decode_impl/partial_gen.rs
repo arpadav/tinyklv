@@ -58,7 +58,8 @@ impl DecodeCtx<'_> {
     /// The `Debug` impl prints each field's name with `..` for its value, so a logged partial
     /// shows no decoded data, and asks no field type to be `Debug`
     ///
-    /// The partial struct takes the visibility of the original struct
+    /// The partial struct takes the visibility of the original struct, and each of its fields the
+    /// visibility of the field it mirrors ([`Self::field_vis`])
     ///
     /// # Returns
     ///
@@ -79,12 +80,13 @@ impl DecodeCtx<'_> {
         // --------------------------------------------------
         let field_decls = self.input.keyed_fields().map(|(field, _)| {
             let field_name = &field.name;
+            let vis = self.field_vis(field_name);
             let ty = field.value_ty();
             // --------------------------------------------------
-            // `pub #field_name: Option<#ty>,` per field
+            // `#vis #field_name: Option<#ty>,` per field
             // --------------------------------------------------
             quote! {
-                pub #field_name: ::core::option::Option<#ty>,
+                #vis #field_name: ::core::option::Option<#ty>,
             }
         });
         // --------------------------------------------------
@@ -174,16 +176,17 @@ impl DecodeCtx<'_> {
         let unknown = self.input.kept();
         let (unknown_decl, unknown_init) = unknown
             .map(|UnknownField { name, ty, .. }| {
+                let vis = self.field_vis(name);
                 (
-                    quote! { pub #name: #ty, },
+                    quote! { #vis #name: #ty, },
                     quote! { #name: <#ty as ::core::default::Default>::default(), },
                 )
             })
             .unzip();
         let mirror = if unknown.is_some() {
-            quote! { "`]. Mirror of the struct with every keyed klv field as `Option<T>` and its `#[klv(unknown)]` field as its own type, so the decode loop can fill it incrementally and resume across `Packet::NeedMore` boundaries via [`tinyklv::Decoder`]" }
+            quote! { "`]. Mirror of the struct with every keyed klv field as `Option<T>` and its `#[klv(unknown)]` field as its own type, so the decode loop can fill it incrementally, and `resume_partial` continue it after a `Packet::NeedMore`" }
         } else {
-            quote! { "`]. Mirror of the struct with every klv field as `Option<T>` so the decode loop can fill it incrementally and resume across `Packet::NeedMore` boundaries via [`tinyklv::Decoder`]" }
+            quote! { "`]. Mirror of the struct with every klv field as `Option<T>` so the decode loop can fill it incrementally, and `resume_partial` continue it after a `Packet::NeedMore`" }
         };
         // --------------------------------------------------
         // the fields the `Debug` impl names, each with `..` for its value
@@ -198,7 +201,6 @@ impl DecodeCtx<'_> {
         // --------------------------------------------------
         quote! {
             #[doc(hidden)]
-            #[automatically_derived]
             #[doc = ::core::concat!(" In-flight partial packet for [`", ::core::stringify!(#name), #mirror)]
             #vis struct #partial_name #impl_generics #where_clause {
                 #(#field_decls)*
@@ -229,13 +231,35 @@ impl DecodeCtx<'_> {
         }
     }
 
+    /// The visibility a field of the original struct is declared with, which the partial field
+    /// mirroring it takes: code that cannot build the struct with a value in that field cannot
+    /// build a partial with it either, and finalize it into a struct its own constructor would
+    /// refuse
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The field
+    ///
+    /// # Returns
+    ///
+    /// The field's visibility, or `None`, a private field, for a name the struct does not have
+    fn field_vis(&self, name: &syn::Ident) -> Option<&syn::Visibility> {
+        let syn::Data::Struct(data) = &self.input._original.data else {
+            return None;
+        };
+        data.fields
+            .iter()
+            .find(|field| field.ident.as_ref() == Some(name))
+            .map(|field| &field.vis)
+    }
+
     /// Generates the [`tinyklv::traits::Partial`] impl for the partial-packet struct
     ///
     /// Emits `Partial::finalize(self) -> Result<Xxx, PartialError>`. For each
     /// KLV-annotated field one of two things happens:
     ///
     /// * `Option<T>` field - moved into the final struct literal unchanged
-    /// * required `T` field - a short-circuit guard unwraps `Some(v)` or returns
+    /// * required `T` field - a short-circuit guard unwraps `Some(__val)` or returns
     ///   `Err` with [`ErrorKind::MissingRequired`] and a message naming the missing field
     ///
     /// Fields without a `#[klv(..)]` attribute are filled via
@@ -251,7 +275,7 @@ impl DecodeCtx<'_> {
     ///     fn finalize(self) -> Result<Xxx, PartialError> {
     ///         // one of these per required (non-Option) klv field:
     ///         let #required_name = match self.#required_name {
-    ///             Some(v) => v,
+    ///             Some(__val) => __val,
     ///             None => return Err(/* `MissingRequired`, naming the missing field */),
     ///         };
     ///         // one per Option<T> klv field:
@@ -283,7 +307,7 @@ impl DecodeCtx<'_> {
         // that pulls from the partial:
         //
         //   let #name = match self.#name {
-        //       Some(v) => v,
+        //       Some(__val) => __val,
         //       None => return Err(/* rich error */),
         //   };
         //
@@ -296,16 +320,16 @@ impl DecodeCtx<'_> {
                 let MainField { name, .. } = field;
                 quote! {
                     let #name = match self.#name {
-                        Some(v) => v,
-                        None => return ::core::result::Result::Err(
+                        ::core::option::Option::Some(__val) => __val,
+                        ::core::option::Option::None => return ::core::result::Result::Err(
                             ::tinyklv::traits::PartialError::new(&(#missing, ::core::concat!(
                                 "`",
                                 ::core::stringify!(#struct_name),
                                 "::",
                                 ::core::stringify!(#name),
-                                "` is a required value missing from the packet; to allow this, make the field an `Option` or give it a `",
+                                "` value (required, and missing from the packet; to allow this, make the field an `Option` or give it a `",
                                 ::core::stringify!(#default_symbol),
-                                "`",
+                                "`)",
                             )))
                         ),
                     };

@@ -1,11 +1,11 @@
 error[E0308]: arguments to this function are incorrect
   --> tests/ui/fail/codec/break_on/break_on_fn_key_len.rs:15:16
    |
-11 | #[derive(Klv)]
-   |          --- expected `usize`, found `&mut &[u8]`
-...
 15 |     break_on = stop,
-   |                ^^^^ expected `u8`, found `&u8`
+   |                ^^^^
+   |                |
+   |                expected `u8`, found `&u8`
+   |                expected `usize`, found `&mut &[u8]`
    |
 note: function defined here
   --> tests/ui/fail/codec/break_on/break_on_fn_key_len.rs:3:4

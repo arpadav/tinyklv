@@ -7,5 +7,5 @@ error[E0308]: mismatched types
   |                    ^^^^^^ expected `Result<(_, Framing), _>`, found `Result<u8, ContextError>`
   |
   = note: expected enum `Result<(_, Framing), _>`
-             found enum `Result<u8, tinyklv::__export::winnow::error::ContextError>`
+             found enum `Result<u8, ContextError>`
   = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)

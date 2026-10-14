@@ -13,7 +13,7 @@
 //!
 //! The last two differ only in their impl header and prologue. Both get the loop itself from
 //! [`LoopCtx::frame_loop`], whose frame header and body come from
-//! [`DecodeFraming`](super::framing::DecodeFraming) and whose exits come from [`LoopDriver`],
+//! [`DecodeFraming`] and whose exits come from [`LoopDriver`],
 //! followed, when its body can `break` ([`breaks_out`]), by the [`LoopCtx::finish`] tail, which
 //! finalizes the accumulator once the loop `break`s
 //!
@@ -21,7 +21,10 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{DecodeCtx, ErrorKind, LoopCtx, key_match_gen::KeyPattern, loop_driver::LoopDriver};
+use super::{
+    DecodeCtx, ErrorKind, LoopCtx, framing::DecodeFraming, key_match_gen::KeyPattern,
+    loop_driver::LoopDriver,
+};
 
 // --------------------------------------------------
 // external
@@ -47,7 +50,8 @@ impl LoopCtx<'_> {
     ///    `deny_unknown_keys` is set; this runs before any value byte is consumed, in both framing
     ///    modes
     /// 7. Decodes the value into its field ([`LoopCtx::body`]), then rejects a fused frame that
-    ///    consumed no input
+    ///    consumed no input ([`LoopCtx::progress_check`]), a check a fused `break_on` fn's `Skip`
+    ///    reaches too
     ///
     /// A `break` leaves the loop for the [`LoopCtx::finish`] tail, which follows the loop only
     /// when its body `break`s ([`breaks_out`]); a loop that cannot diverges, and a tail after it
@@ -66,7 +70,6 @@ impl LoopCtx<'_> {
         // the stages of one frame, in the order the loop runs them
         // --------------------------------------------------
         let header = self.header();
-        let break_on = self.break_on();
         let debug_key_val = input
             .attrs
             .debug
@@ -79,24 +82,27 @@ impl LoopCtx<'_> {
             .then(|| self.unknown_key_gate());
         let body = self.body();
         // --------------------------------------------------
-        // the stages after `break_on`, once the frame's length is read
+        // the stages after `break_on`, once the frame's length is read, run when its check lets
+        // the frame proceed, then, after a fused frame, the rejection of one that moved nothing
         // --------------------------------------------------
-        let frame = self.after_key(quote! {
+        let frame = self.break_on(self.after_key(quote! {
             #debug_key_val
             #gate
             #body
-        });
+        }));
+        let progress =
+            matches!(self.framing, DecodeFraming::Fused { .. }).then(|| self.progress_check());
         // --------------------------------------------------
         // the loop body: the clean end of input, a checkpoint, then each stage
         // --------------------------------------------------
         let iteration = quote! {
-            if input.eof_offset() == 0 {
+            if ::tinyklv::__export::winnow::stream::Stream::eof_offset(input) == 0 {
                 #clean_eof
             }
-            let __checkpoint_inner = input.checkpoint();
+            let __checkpoint_inner = ::tinyklv::__export::winnow::stream::Stream::checkpoint(input);
             #header
-            #break_on
             #frame
+            #progress
         };
         // --------------------------------------------------
         // emit the loop, and the tail only when the body can `break`
@@ -111,10 +117,10 @@ impl LoopCtx<'_> {
     }
 
     /// Emits the `deny_unknown_keys` gate, `if !matches!(#key, #pattern) { #reject }`, where
-    /// `#key` is [`DecodeFraming::key`](super::framing::DecodeFraming::key)
+    /// `#key` is [`DecodeFraming::key`]
     ///
     /// The gate runs after the frame header and before any value byte is consumed, so an unknown
-    /// key is rejected with the `invalid key (expected one of the keys defined on ..)` message,
+    /// key is rejected with the `key (expected one of the keys defined on ..)` label,
     /// never the truncation a declared length overrunning the input would otherwise produce. The
     /// pattern is the `|`-joined alternation of every field's `#[klv(key = ..)]` literal, each
     /// `oneof(..)` arm's included. A struct with no field declares no key, so its gate rejects
@@ -128,7 +134,7 @@ impl LoopCtx<'_> {
     /// The gate statement
     fn unknown_key_gate(self) -> TokenStream {
         let name = &self.input.ident;
-        let key = self.framing.key();
+        let key = DecodeFraming::key();
         // --------------------------------------------------
         // each klv field's declared key expressions, spliced with `|` separators; with none,
         // every key is unknown
@@ -159,8 +165,9 @@ impl LoopCtx<'_> {
 /// any depth, outside a loop nested in the body and a macro call's arguments
 ///
 /// A nested `loop`, `while` or `for` is skipped through the first brace group after its keyword,
-/// its body, and the token after a `!`, a macro call's arguments, is not read. A labelled `break`
-/// leaves the block or loop of its label
+/// its body, and the token after a `!`, a macro call's arguments, is not read. A `for` followed
+/// by `<` opens a higher-ranked `for<'a>` binder, not a loop. A labelled `break` leaves the block
+/// or loop of its label
 ///
 /// # Arguments
 ///
@@ -181,9 +188,13 @@ fn breaks_out(body: &TokenStream) -> bool {
                 }
             }
             TokenTree::Ident(ident) if ident == "loop" || ident == "while" || ident == "for" => {
-                let _body = tokens.find(|token| {
-                    matches!(token, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace)
-                });
+                let higher_ranked = ident == "for"
+                    && matches!(tokens.peek(), Some(TokenTree::Punct(p)) if p.as_char() == '<');
+                if !higher_ranked {
+                    let _body = tokens.find(|token| {
+                        matches!(token, TokenTree::Group(group) if group.delimiter() == Delimiter::Brace)
+                    });
+                }
             }
             TokenTree::Punct(punct) if punct.as_char() == '!' => {
                 let _arguments = tokens.next();
@@ -266,8 +277,8 @@ impl DecodeCtx<'_> {
                     ::tinyklv::decoder::Packet<Self, #partial_ty>,
                     ::tinyklv::traits::PartialError,
                 > {
-                    let checkpoint = input.checkpoint();
-                    let _ = checkpoint;
+                    let __checkpoint = ::tinyklv::__export::winnow::stream::Stream::checkpoint(input);
+                    let _ = __checkpoint;
                     #frame_loop
                 }
             }
@@ -385,18 +396,17 @@ impl DecodeCtx<'_> {
 #[cfg(test)]
 mod tests {
     use super::{
-        DecodeCtx,
+        DecodeCtx, DecodeFraming,
         LoopDriver::{self, OneShot, Streaming},
         breaks_out,
     };
     use crate::{
-        Ctxt,
         ast::attr::MainContainer,
         expand::decode_impl::loop_driver::CursorSite::{Caller, Local},
     };
 
-    use proc_macro2::{TokenStream, TokenTree};
-    use quote::{format_ident, quote};
+    use proc_macro2::{Delimiter, TokenStream, TokenTree};
+    use quote::quote;
 
     /// A `#[derive(Klv)]` input under test
     struct Input(syn::DeriveInput);
@@ -405,10 +415,7 @@ mod tests {
     impl Input {
         /// Runs `emit` against the decode context the derive builds from the input
         fn with_ctx<R>(&self, emit: impl FnOnce(&DecodeCtx<'_>) -> R) -> R {
-            let cx = Ctxt::new();
-            let container = MainContainer::from_ast(&cx, &self.0);
-            cx.check().expect("the input parses");
-            let container = container.expect("the input is a container");
+            let container = MainContainer::parsed(&self.0).expect("the input parses");
             emit(&DecodeCtx::new(&container).expect("the input gets a decode impl"))
         }
 
@@ -465,7 +472,13 @@ mod tests {
             let mut found = Vec::new();
             for (at, tt) in tokens.iter().enumerate() {
                 match tt {
-                    TokenTree::Ident(ident) if ident == "take" => hoisted = true,
+                    // a `take` is called in the parentheses of its `Parser::parse_next(..)`
+                    TokenTree::Group(group)
+                        if group.delimiter() == Delimiter::Parenthesis
+                            && Emitted(group.stream()).count("take") > 0 =>
+                    {
+                        hoisted = true;
+                    }
                     TokenTree::Ident(ident) if ident == "match" => {
                         if let (Some(TokenTree::Ident(scrutinee)), Some(TokenTree::Group(arms))) =
                             (tokens.get(at + 1), tokens.get(at + 2))
@@ -490,7 +503,7 @@ mod tests {
         ///
         /// # Arguments
         ///
-        /// * `head` - The tokens the block follows, e.g. `if input.eof_offset() < len`
+        /// * `head` - The tokens the block follows, e.g. `if Stream::eof_offset(input) < len`
         ///
         /// # Returns
         ///
@@ -636,7 +649,8 @@ mod tests {
 
     #[test]
     /// Verifies a loop body leaves its loop only through an unlabelled `break` of its own: one in
-    /// a nested loop, in a macro call's arguments, or with a label leaves something else
+    /// a nested loop, in a macro call's arguments, or with a label leaves something else, and the
+    /// `for` of a `for<'a>` binder opens no loop
     fn only_an_unlabelled_break_of_its_own_leaves_the_loop() {
         let cases = [
             (quote! { if done { break; } }, true),
@@ -646,6 +660,7 @@ mod tests {
             (quote! { while more { break; } }, false),
             (quote! { for x in xs { break; } }, false),
             (quote! { for x in xs {} break; }, true),
+            (quote! { f::<for<'a> fn(&'a u8)>(x); break; }, true),
             (quote! { let _ = dec!(break); }, false),
         ];
         for (body, breaks) in cases {
@@ -706,27 +721,17 @@ mod tests {
                 id: u8,
             }
         });
-        let separate_check = quote! {
-            if key == 0xFF {
-                break;
-            }
-        };
-        let fused_check = quote! {
+        let check = quote! {
             if __key == 0xFF {
                 break;
             }
-        };
+        }
+        .to_string();
         for driver in [Streaming, OneShot(Caller)] {
             let separate = separate.frame_loop(driver).to_string();
-            assert!(
-                separate.contains(&separate_check.to_string()),
-                "{driver:?} separate: {separate}",
-            );
+            assert!(separate.contains(&check), "{driver:?} separate: {separate}");
             let fused = fused.frame_loop(driver).to_string();
-            assert!(
-                fused.contains(&fused_check.to_string()),
-                "{driver:?} fused: {fused}",
-            );
+            assert!(fused.contains(&check), "{driver:?} fused: {fused}");
         }
     }
 
@@ -746,7 +751,7 @@ mod tests {
             }
         });
         let exact = quote! { octets(6usize)(&mut __subinput) }.to_string();
-        let frame = quote! { octets(len)(&mut __subinput) }.to_string();
+        let frame = quote! { octets(__len)(&mut __subinput) }.to_string();
         for driver in input.drivers() {
             let emitted = input.frame_loop(driver).to_string();
             assert!(emitted.contains(&exact), "{driver:?} exact: {emitted}");
@@ -766,7 +771,7 @@ mod tests {
                 id: u128,
             }
         });
-        let check = quote! { if len != 16usize }.to_string();
+        let check = quote! { if __len != 16usize }.to_string();
         for driver in input.drivers() {
             let emitted = input.frame_loop(driver).to_string();
             assert!(emitted.contains(&check), "{driver:?} check: {emitted}");
@@ -880,35 +885,24 @@ mod tests {
             takes: 1,
         };
         // --------------------------------------------------
-        // (name, input, the frame's key binding, every `match` on it)
+        // (name, input, every `match` on the frame's key)
         // --------------------------------------------------
         let cases = [
-            ("separate", separate, "key", vec![hoisted]),
-            ("separate exact", separate_exact, "key", vec![hoisted]),
+            ("separate", separate, vec![hoisted]),
+            ("separate exact", separate_exact, vec![hoisted]),
             (
                 "separate implicit",
                 separate_implicit,
-                "key",
                 vec![implicit, hoisted],
             ),
-            (
-                "separate unknown",
-                separate_unknown,
-                "key",
-                vec![unknown, hoisted],
-            ),
-            ("fused", fused, "__key", vec![hoisted, inline]),
-            ("fused exact", fused_exact, "__key", vec![hoisted, inline]),
-            (
-                "fused unknown",
-                fused_unknown,
-                "__key",
-                vec![hoisted, inline],
-            ),
+            ("separate unknown", separate_unknown, vec![unknown, hoisted]),
+            ("fused", fused, vec![hoisted, inline]),
+            ("fused exact", fused_exact, vec![hoisted, inline]),
+            ("fused unknown", fused_unknown, vec![hoisted, inline]),
         ];
-        for (name, input, key, expected) in cases {
+        for (name, input, expected) in cases {
             for driver in input.drivers() {
-                let found = Emitted(input.frame_loop(driver)).key_matches(key);
+                let found = Emitted(input.frame_loop(driver)).key_matches("__key");
                 assert_eq!(found, expected, "{name}, {driver:?}");
             }
         }
@@ -918,9 +912,9 @@ mod tests {
     /// Verifies a `size(exact = N)` field's frame length is checked in its arm, and on a frame
     /// that runs past the end of the input before the truncation exit
     ///
-    /// The exact field's arm opens with `if len != N { .. }`, which returns the rejection
+    /// The exact field's arm opens with `if __len != N { .. }`, which returns the rejection
     /// (streaming) or holds it and `break`s (one-shot). A short frame's branch rewinds to the
-    /// frame start, then runs `if matches!(key, K) && len != N { .. }` with the same rejection,
+    /// frame start, then runs `if matches!(__key, K) && __len != N { .. }` with the same rejection,
     /// and ends with the exit of the truncation it is otherwise. These are the only two length
     /// checks; without an exact field there are none, and a short frame's branch is the
     /// truncation exit alone
@@ -962,18 +956,16 @@ mod tests {
             }
         });
         // --------------------------------------------------
-        // (name, input, the prefix of the frame's key and length bindings, whether `mode` is
-        // exact)
+        // (name, input, whether `mode` is exact)
         // --------------------------------------------------
         let cases = [
-            ("separate", separate, "", false),
-            ("separate exact", separate_exact, "", true),
-            ("fused", fused, "__", false),
-            ("fused exact", fused_exact, "__", true),
+            ("separate", separate, false),
+            ("separate exact", separate_exact, true),
+            ("fused", fused, false),
+            ("fused exact", fused_exact, true),
         ];
-        for (name, input, prefix, exact) in cases {
-            let key = format_ident!("{prefix}key");
-            let len = format_ident!("{prefix}len");
+        let (key, len) = (DecodeFraming::key(), DecodeFraming::len());
+        for (name, input, exact) in cases {
             for driver in input.drivers() {
                 let emitted = input.frame_loop(driver);
                 let checks = emitted.to_string().matches("!=").count();
@@ -981,7 +973,9 @@ mod tests {
                 // a short frame: the rewind, the guard, if any, then the truncation exit
                 // --------------------------------------------------
                 let short = Emitted(emitted.clone())
-                    .block_after(quote! { if input.eof_offset() < #len })
+                    .block_after(quote! {
+                        if ::tinyklv::__export::winnow::stream::Stream::eof_offset(input) < #len
+                    })
                     .expect("a short frame is checked");
                 if !exact {
                     assert_eq!(checks, 0, "{name}, {driver:?}: length checks");
@@ -994,7 +988,11 @@ mod tests {
                 }
                 assert_eq!(checks, 2, "{name}, {driver:?}: length checks");
                 let guard = quote! { if ::core::matches!(#key, 0x02) && #len != 2usize };
-                let opening = quote! { input.reset(&__checkpoint_inner); #guard }.to_string();
+                let opening = quote! {
+                    ::tinyklv::__export::winnow::stream::Stream::reset(input, &__checkpoint_inner);
+                    #guard
+                }
+                .to_string();
                 let exit = driver.clean_eof().to_string();
                 let text = short.to_string();
                 assert!(
@@ -1046,8 +1044,9 @@ mod tests {
     /// `break_on` `Abort`, a fused frame's malformed `Inline` value, its `Inline` frame for a
     /// `lengthed` field and its frame that consumed nothing. Over the caller's cursor each is a
     /// `return`; over a local one each is a `break '__tinyklv_decode` instead, and nothing
-    /// `return`s. An exact field over another stream, which a local copy would need to be
-    /// `Clone`, keeps the caller's cursor, and its rejection returns
+    /// `return`s. A `stream = &[u8]` written out is the default stream. An exact field over another
+    /// stream, which a local copy would need to be `Clone`, keeps the caller's cursor, and its
+    /// rejection returns
     fn the_one_shot_cursor_is_local_iff_an_exact_field_reads_a_byte_slice() {
         let separate = Input(syn::parse_quote! {
             #[klv(
@@ -1146,6 +1145,22 @@ mod tests {
                 "{name} exact: the block's label, then one per rejection: {text}",
             );
         }
+        // --------------------------------------------------
+        // an exact field over a `stream = &[u8]` written out: a local cursor, as by default
+        // --------------------------------------------------
+        let written = Input(syn::parse_quote! {
+            #[klv(
+                stream = &[u8],
+                key(dec = decb::u8),
+                len(dec = decb::u8_as_usize),
+                allow_unimplemented_encode,
+            )]
+            struct Reading {
+                #[klv(key = 0x02, dec = decb::be_u16, size(exact = 2))]
+                mode: Option<u16>,
+            }
+        });
+        assert_eq!(written.with_ctx(|ctx| ctx.cursor), Local, "written");
         // --------------------------------------------------
         // an exact field over another stream: the caller's cursor, nothing held
         // --------------------------------------------------

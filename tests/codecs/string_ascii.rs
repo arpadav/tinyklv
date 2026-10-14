@@ -79,3 +79,14 @@ fn ascii_roundtrip() {
     let decoded = decs::to_string_ascii(encoded.len())(&mut encoded.as_slice()).unwrap();
     assert_eq!(original, decoded);
 }
+
+#[test]
+/// Tests that `to_string_ascii` short of `len` bytes leaves the cursor at the end of the input
+fn ascii_short_input_leaves_cursor_at_end() {
+    let mut input: &[u8] = b"AB";
+    assert!(decs::to_string_ascii(5)(&mut input).is_err());
+    assert!(
+        input.is_empty(),
+        "cursor not at the end after a short to_string_ascii"
+    );
+}

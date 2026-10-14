@@ -208,10 +208,7 @@ fn try_from_partial_ok() {
 
 #[test]
 /// Missing required field at end-of-body: finalisation surfaces a
-/// `PartialError` whose label names the offending field. Same
-/// information the historical inline `gen_item_set_progress` produced,
-/// now stripped of its synthetic input/checkpoint context (which the
-/// previous design had to fabricate)
+/// `PartialError` whose label names the offending field
 fn missing_required_label_via_finalize() {
     // body contains only field `a` (optional). `b` and `c` required.
     let body: Vec<u8> = vec![0x01, 0x01, 0x07];

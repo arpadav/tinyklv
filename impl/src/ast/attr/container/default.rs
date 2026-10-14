@@ -12,7 +12,7 @@
 use crate::Ctxt;
 use crate::ast::attr::{size::SizeSpec, skip_if::SkipIf, unique::Unique};
 use crate::ast::symbol;
-use crate::ast::types::{SiguledXcoder, TypeType, XcoderType};
+use crate::ast::types::{SiguledXcoder, TypeType, XcoderType, unwrap_option_type};
 
 // --------------------------------------------------
 // external
@@ -94,9 +94,10 @@ impl DefaultXcoder {
         self.reported |= new.reported;
     }
 
-    /// Checks the merged entries of a type: one of them sets an `enc` or a `dec`, and a
-    /// `lengthed` size has the `dec` it describes. An entry that failed to parse holds only the
-    /// settings before its error, so a type with an error reported is not checked
+    /// Checks the merged entries of a type: the type is no `Option`, which no field is looked up
+    /// as, one of them sets an `enc` or a `dec`, and a `lengthed` size has the `dec` it describes.
+    /// An entry that failed to parse holds only the settings before its error, so a type with an
+    /// error reported is not checked
     ///
     /// # Arguments
     ///
@@ -104,6 +105,14 @@ impl DefaultXcoder {
     /// * `typ` - The type, as its first entry writes it, which an error points at
     pub(super) fn check(&mut self, cx: &Ctxt, typ: &syn::Type) {
         if self.reported {
+            return;
+        }
+        // --------------------------------------------------
+        // an `Option` field takes the default of the type it holds
+        // --------------------------------------------------
+        if let Some(inner) = unwrap_option_type(typ) {
+            cx.error_spanned_by(typ, err!(DefaultTypeIsOption(inner)));
+            self.reported = true;
             return;
         }
         if self.enc.is_none() && self.dec.is_none() {
@@ -217,7 +226,7 @@ impl TryFrom<&syn::MetaList> for DefaultXcoder {
 #[cfg(test)]
 mod tests {
     use crate::{
-        Ctxt, Error,
+        Error,
         ast::attr::{MainContainer, size::SizeSpec},
     };
 
@@ -240,10 +249,7 @@ mod tests {
                 level: u16,
             }
         };
-        let cx = Ctxt::new();
-        let container = MainContainer::from_ast(&cx, &item);
-        cx.check().expect("the entries merge");
-        let container = container.expect("the input is a container");
+        let container = MainContainer::parsed(&item).expect("the entries merge");
         let key = container.klv_keys().next().expect("one key");
         assert!(key.codec.enc.is_some() && key.codec.dec.is_some());
         assert_eq!(
@@ -270,12 +276,9 @@ mod tests {
                 level: u16,
             }
         };
-        let cx = Ctxt::new();
-        let _ = MainContainer::from_ast(&cx, &item);
-        let Err(errors) = cx.check() else {
+        let Err(messages) = MainContainer::parsed(&item) else {
             panic!("the unknown setting is an error");
         };
-        let messages: Vec<String> = errors.into_iter().map(|err| err.to_string()).collect();
         assert_eq!(
             messages,
             [Error::UnknownDefaultField("bogus".to_owned()).to_string()]

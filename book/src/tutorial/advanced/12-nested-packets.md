@@ -46,6 +46,5 @@ Run this example: `cargo run --example book_12_nested_packets`
 ```
 
 - Nested KLV is encoded explicitly; there is no implicit recursion.
-- Inner types derive `Klv` with no sentinel and get `DecodeValue`/`EncodeValue` for free.
 
 **Next:** [13 - Repeated extraction](./13-repeated-extraction.md)

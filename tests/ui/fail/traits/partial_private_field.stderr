@@ -1,0 +1,5 @@
+error[E0451]: field `level` of struct `LevelPartialPacket` is private
+  --> tests/ui/fail/traits/partial_private_field.rs:17:41
+   |
+17 |     let _ = level::LevelPartialPacket { level: Some(200) };
+   |                                         ^^^^^ private field

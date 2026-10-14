@@ -1,14 +1,12 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Book tutorial 19 - `unknown(dec, enc)` and the `#[klv(unknown)]` field
-//! See `book/tutorial/19-unknown.md` for the full narrative
+//! See `book/src/tutorial/advanced/19-unknown.md` for the full narrative
 //!
 //! A heartbeat that declares two of its keys. `dec_frame` reads the frames of
 //! every other key, the `extra` field keeps them as `(key, value)` pairs, and
 //! `enc_frame` writes them back after the declared fields
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 /// Reads the rest of a frame whose key no field declares: its length, then that
 /// many bytes. A frame cut short consumes the input to its end, which the
@@ -55,6 +53,7 @@ struct Heartbeat {
 
 fn main() {
     // manually construct the stream
+    #[rustfmt::skip]
     let stream = [
         // sequence = 42
         0x01, 0x01, 0x2A,
@@ -68,18 +67,17 @@ fn main() {
 
     // manually construct the expected value
     let expected = Heartbeat {
-        sequence:    42,
+        sequence: 42,
         battery_pct: 87,
-        extra:       vec![(0x02, vec![0x09, 0x2E]), (0x04, vec![0xB8])],
+        extra: vec![(0x02, vec![0x09, 0x2E]), (0x04, vec![0xB8])],
     };
 
     // decode: the unknown frames land in `extra`
-    let decoded = Heartbeat::decode_value(
-        &mut stream.as_slice(),
-    ).unwrap();
+    let decoded = Heartbeat::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(decoded, expected);
 
     // encode: the declared fields, then the kept frames in the order decoded
+    #[rustfmt::skip]
     let reencoded = [
         // sequence = 42
         0x01, 0x01, 0x2A,

@@ -104,7 +104,7 @@
 ///     example_one: InnerValue {},
 ///     example_two: InnerValue {},
 ///     example_three: InnerValue {},
-/// }.encode_frame(&mut my_struct_encoded); // See: `tinyklv::prelude::EncodeFrame` -> This prepends the sentinel and length
+/// }.encode_frame(&mut my_struct_encoded); // See: `tinyklv::traits::EncodeFrame` -> This prepends the sentinel and length
 ///
 /// assert_eq!(my_struct_encoded, vec![
 ///     0x00,               // sentinel
@@ -272,7 +272,7 @@ where
 ///     allow_unimplemented_decode,
 ///     key(enc = tinyklv::codecs::binary::enc::u8),
 ///     len(enc = tinyklv::codecs::binary::enc::u8_from_usize),
-/// )]  // this implements `tinyklv::prelude::EncodeValue`, and `tinyklv::prelude::EncodeFrame`
+/// )]  // this implements `tinyklv::prelude::EncodeValue`, and `tinyklv::traits::EncodeFrame`
 ///     // given the sentinel
 /// struct MyStruct {
 ///     #[klv(key = 0xFF, enc = string_encoder)]
@@ -283,7 +283,7 @@ where
 /// let mut mystruct_klv_1 = Vec::new();
 /// MyStruct {
 ///     value: "example".into()
-/// }.encode_frame(&mut mystruct_klv_1);                // `tinyklv::prelude::EncodeFrame` implementation
+/// }.encode_frame(&mut mystruct_klv_1);                // `tinyklv::traits::EncodeFrame` implementation
 ///
 /// // using manual implementation to encode as KLV
 /// let mut mystruct_klv_2 = Vec::new();

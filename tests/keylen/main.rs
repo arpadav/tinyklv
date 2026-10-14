@@ -5,7 +5,7 @@
 //! share; the remaining sub-modules each cover one slice of the fused codec, grouped by topic:
 //! `framing` the header's own framing of each frame and its errors, `size`, `field` and
 //! `container` the framing features `tests/framing` covers for a key + len struct, and `hygiene`
-//! the generated code under a user's constants and macros
+//! the generated code under a user's constants, macros and traits
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -34,6 +34,7 @@ mod framing {
 mod hygiene {
     mod const_locals;
     mod macro_hygiene;
+    mod prelude_free;
 }
 mod size {
     mod exact;

@@ -174,3 +174,20 @@ fn utf16_cross_decode_differs() {
         "mismatched endian decode should produce garbage"
     );
 }
+
+#[test]
+/// Tests that a UTF-16 decode short of `len` bytes leaves the cursor at the end of the input
+fn utf16_short_input_leaves_cursor_at_end() {
+    let mut input: &[u8] = &[0x41, 0x00];
+    assert!(to_string_utf16_le(4)(&mut input).is_err());
+    assert!(
+        input.is_empty(),
+        "cursor not at the end after a short to_string_utf16_le"
+    );
+    let mut input: &[u8] = &[0x00, 0x41];
+    assert!(to_string_utf16_be(4)(&mut input).is_err());
+    assert!(
+        input.is_empty(),
+        "cursor not at the end after a short to_string_utf16_be"
+    );
+}

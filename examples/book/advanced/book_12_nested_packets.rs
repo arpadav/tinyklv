@@ -1,7 +1,5 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Book tutorial 12 - nested KLV packets
-//! See `book/tutorial/12-nested-packets.md` for the full narrative
+//! See `book/src/tutorial/advanced/12-nested-packets.md` for the full narrative
 //!
 //! Demonstrates composing an inner `GpsFix` sub-packet inside an outer
 //! `Heartbeat` frame. The inner type derives `Klv` without a sentinel so it
@@ -9,9 +7,9 @@
 //! references `GpsFix::decode_value` / `encode_value` directly in its `#[klv]`
 //! attribute. Both directions are asserted to round-trip correctly, and the
 //! inner type is also verified in isolation
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, PartialEq, Clone, Copy)]
 #[klv(
@@ -91,12 +89,12 @@ struct Heartbeat {
 fn main() {
     // build a heartbeat carrying a GPS fix
     let original = Heartbeat {
-        sequence:             42,
+        sequence: 42,
         temperature_centideg: 2350,
-        uptime_s:             3600,
+        uptime_s: 3600,
         gps: GpsFix {
-            lat_udeg:   51_477_200,   // ~51.477 N (London)
-            lon_udeg:   -126_772,     // ~0.127 W
+            lat_udeg: 51_477_200, // ~51.477 N (London)
+            lon_udeg: -126_772,   // ~0.127 W
             satellites: 9,
         },
     };
@@ -107,17 +105,13 @@ fn main() {
     original.encode_frame(&mut frame);
 
     // decode - outer and inner are reconstructed in one call
-    let decoded = Heartbeat::decode_frame(
-        &mut frame.as_slice(),
-    ).unwrap();
+    let decoded = Heartbeat::decode_frame(&mut frame.as_slice()).unwrap();
     assert_eq!(decoded, original);
 
     // the inner type can also be used on its own, which is how we assert it
     // round-trips independently of the outer frame
     let mut inner_bytes = Vec::new();
     original.gps.encode_value(&mut inner_bytes);
-    let inner_decoded = GpsFix::decode_value(
-        &mut inner_bytes.as_slice(),
-    ).unwrap();
+    let inner_decoded = GpsFix::decode_value(&mut inner_bytes.as_slice()).unwrap();
     assert_eq!(inner_decoded, original.gps);
 }

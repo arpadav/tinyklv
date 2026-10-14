@@ -15,18 +15,14 @@ use tinyklv::enc::string as encs;
 
 ## Function signatures
 
-Every codec path satisfies one of the shapes below. These are the
-canonical contracts a `dec = ...` / `enc = ...` value must match.
-
-A decoder takes one of two shapes, selected by `size(lengthed)` on the field:
+Every codec path satisfies one of the shapes below. A decoder takes one of
+two, selected by `size(lengthed)` on the field:
 
 ```rust,ignore
-// standard: no size(lengthed). Reads from the stream cursor directly.
+// without size(lengthed)
 fn(input: &mut S) -> tinyklv::Result<T>
 
-// length-parameterized: with size(lengthed). The derive calls
-// dec_fn(len)(input), passing the runtime KLV length as an extra input,
-// which enables variable-length reads.
+// with size(lengthed): the derive calls dec_fn(len)(input)
 fn(len: usize) -> impl Fn(&mut S) -> tinyklv::Result<T>
 ```
 
@@ -44,10 +40,6 @@ The `&` and `*` sigils rewrite how the field is handed in (`*` for a
 value-taking `fn(T, &mut Vec<u8>)`); see
 [Sigil coercion & `EncodeAs`](./sigil-coercion.md).
 
-Length codecs work in `usize`: the container `len(...)` decoder produces
-`usize` and its encoder accepts `usize` (the `_as_usize` / `_from_usize`
-family below).
-
 ## Binary (`tinyklv::dec::binary` / `tinyklv::enc::binary`)
 
 Fixed-width integer and float codecs in three endianness families:
@@ -63,6 +55,7 @@ endianness is meaningless - use the plain name.
 | `u16` | `be_u16` | `le_u16` | `u16` |
 | `u32` | `be_u32` | `le_u32` | `u32` |
 | `u64` | `be_u64` | `le_u64` | `u64` |
+| `u128` | `be_u128` | `le_u128` | `u128` |
 
 ### Signed
 
@@ -72,6 +65,7 @@ endianness is meaningless - use the plain name.
 | `i16` | `be_i16` | `le_i16` | `i16` |
 | `i32` | `be_i32` | `le_i32` | `i32` |
 | `i64` | `be_i64` | `le_i64` | `i64` |
+| `i128` | `be_i128` | `le_i128` | `i128` |
 
 ### Floating-point
 
@@ -82,8 +76,7 @@ endianness is meaningless - use the plain name.
 
 ### Length helpers
 
-For the container `len(...)` attribute you need a decoder that
-produces `usize` and an encoder that accepts `usize`:
+The container `len(...)` decoder produces a `usize` and its encoder takes one:
 
 | Decoder | Encoder | Purpose |
 |---------|---------|---------|
@@ -94,11 +87,14 @@ produces `usize` and an encoder that accepts `usize`:
 | `le_u32_as_usize` | `le_u32_from_usize` | 4-byte LE length |
 | `be_u64_as_usize` | `be_u64_from_usize` | 8-byte BE length |
 | `le_u64_as_usize` | `le_u64_from_usize` | 8-byte LE length |
+| `be_u128_as_usize` | `be_u128_from_usize` | 16-byte BE length |
+| `le_u128_as_usize` | `le_u128_from_usize` | 16-byte LE length |
 
 ### Variable-length (lengthed) decoders
 
-Each numeric type also has a `_lengthed` variant that reads a
-variable number of bytes (up to the type width) and zero-extends:
+Each numeric type also has a `_lengthed` variant that reads the value's `len`
+bytes, zero-extending a shorter value and keeping a longer one's low-order
+bytes:
 
 ```rust,ignore
 #[klv(key = 0x01, size(lengthed), dec = decb::be_u32_lengthed)]
@@ -117,10 +113,8 @@ Variable-width encodings from ITU-T X.690.
 | `ber_length` | `ber_length` | BER length (container `len(...)`) |
 | `ber_oid` | `ber_oid` | BER-OID (container `key(...)`) |
 
-Edge cases:
-- Empty input -> decoder returns `Err`.
-- Single MSB-set byte with no terminator -> decoder returns `Err`.
-- `[0x00]` decodes as `0`; `[0x81, 0x00]` decodes as `128`.
+`ber_oid` reads `81 00` as 128; `ber_length` rejects `80`, the indefinite
+form. Non-canonical forms: [Limits](./limits.md#non-canonical-ber).
 
 ## Strings (`tinyklv::dec::string` / `tinyklv::enc::string`)
 
@@ -137,15 +131,13 @@ Variable-length string codecs. Use with `size(lengthed)` on the field.
 ⚑ = gated behind the `ascii` crate feature (`features = ["ascii"]` or `features = ["full"]`).
 
 The UTF-16 codecs assume the value body is a raw UTF-16 code-unit
-stream with no BOM. Choose `_be` or `_le` to match your data format.
+stream with no BOM.
 
 ## Utility macros
 
 `tinyklv` exports helper macros that expand to closures matching the
-decoder / encoder contract. They can be used **inline** in `dec = ...`,
-`enc = ...`, and `default(typ = T, dec = ..., enc = ...)` attributes -
-any macro that expands to a function or closure with the right
-signature works.
+decoder / encoder contract, usable **inline** in `dec = ...`, `enc = ...` and
+`default(..)`, as [10 - Macros](../tutorial/fundamentals/10-macros.md) shows.
 
 ### Decode macros
 
@@ -161,29 +153,6 @@ signature works.
 | `scale_enc!(encoder, precision, data, factor)` | `\|val: &precision, out: &mut Vec<u8>\|` | Divide by `factor`, cast to `data`, encode |
 | `scale_offset_enc!(encoder, precision, data, factor, offset)` | `\|val: &precision, out: &mut Vec<u8>\|` | Subtract `offset`, divide by `factor`, cast to `data`, encode |
 | `cast_enc!(encoder, precision, data)` | `\|val: &precision, out: &mut Vec<u8>\|` | Cast `precision` to `data` via `as`, encode |
-
-### Inline usage
-
-```rust,ignore
-const HEADING_SCALE: f64 = 360.0 / 65535.0;
-
-#[klv(
-    key = 0x02,
-    dec = tinyklv::scale!(decb::be_u16, f64, HEADING_SCALE),
-    enc = tinyklv::scale_enc!(
-        encb::be_u16, f64, u16, HEADING_SCALE,
-    ),
-)]
-heading_deg: f64,
-```
-
-The `dec = ...` attribute accepts any expression that resolves to
-`fn(&mut S) -> tinyklv::Result<T>`. Built-in codecs, named functions,
-and macro invocations all satisfy this. Closures do **not** work
-inline (proc-macro attribute parsing limitation) - use a named
-function instead.
-
-See the full example: `cargo run --example book_10_macro`
 
 ### Feature-gated (`chrono`)
 

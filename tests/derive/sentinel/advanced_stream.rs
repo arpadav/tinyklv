@@ -186,7 +186,7 @@ fn corrupt_value_recoverable() {
 
     let mut stream: Vec<u8> = Vec::new();
     stream.extend(encode_color_tlv(0x01, &color));
-    // key 0x02, len=5 (Velocity needs 6 bytes for 3×i16) - decode_velocity
+    // key 0x02, len=5 (Velocity needs 6 bytes for 3×i16) - `Velocity::decode_value`
     // fails on the short subslice, .ok()->None, loop continues
     stream.extend_from_slice(&[0x02, 0x05, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
     stream.extend(encode_timestamp_tlv(0x03, &ts));

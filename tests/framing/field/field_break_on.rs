@@ -1,8 +1,9 @@
 //! A field's `break_on`, a `fn(&value) -> BreakType` run right after that field's value decodes
 //!
 //! `Skip` discards the value, `Done` keeps it and ends the packet, and `Abort` rejects it with the
-//! fn's message. It runs on a value read straight from the input and on one sliced by its length.
-//! Encode writes a field with a `break_on` after every other frame
+//! fn's message. It runs on a value read straight from the input and on one sliced by its length,
+//! and after an earlier field whose decoder's path names a `for<'a>` type. Encode writes a field
+//! with a `break_on` after every other frame
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -144,6 +145,50 @@ impl Report {
             checksum: None,
         }
     }
+}
+
+/// A check a decoded byte must pass, implemented by the fn-pointer type that names it
+trait Check {
+    /// Whether `byte` passes
+    fn check(byte: &u8) -> bool;
+}
+
+/// [`Check`] implementation for a higher-ranked fn pointer: every byte but `0` passes
+impl Check for for<'a> fn(&'a u8) {
+    fn check(byte: &u8) -> bool {
+        *byte != 0
+    }
+}
+
+/// Decodes one byte that `F` passes
+///
+/// # Arguments
+///
+/// * `input` - the frame's value byte
+///
+/// # Returns
+///
+/// The byte
+fn checked<F: Check>(input: &mut &[u8]) -> tinyklv::Result<u8> {
+    decb::u8.verify(F::check).parse_next(input)
+}
+
+/// A reading whose level decoder's path names a higher-ranked `for<'a>` type, declared before a
+/// field with a `break_on`
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    key(dec = decb::u8),
+    len(dec = decb::u8_as_usize),
+    allow_unimplemented_encode,
+)]
+struct Ranked {
+    /// key `0x01`, one byte
+    #[klv(key = 0x01, dec = checked::<for<'a> fn(&'a u8)>)]
+    level: Option<u8>,
+
+    /// key `0x02`, the reading's last frame
+    #[klv(key = 0x02, dec = Checksum::decode, break_on = Checksum::ends_report)]
+    checksum: Option<Checksum>,
 }
 
 /// A log entry's status, a varint on the wire
@@ -291,4 +336,24 @@ fn a_fields_break_on_skips_ends_or_rejects_its_value() {
         );
     }
     Report::assert_oneshot_label_chain(&rejected, "Report::health", "sensor reported corrupt");
+}
+
+/// A `for<'a>` in a field decoder's path opens no loop of the derive's: the checksum's `Done`
+/// after it still ends the reading, in both drivers, with the frame after it unread
+#[test]
+fn a_higher_ranked_decoder_path_keeps_a_later_break_on() {
+    let ranked = Ranked {
+        level: Some(5),
+        checksum: Some(Checksum(0xBEEF)),
+    };
+    #[rustfmt::skip]
+    let wire = [
+        // level = 5
+        0x01, 0x01, 0x05,
+        // checksum = 0xBEEF, which ends the reading
+        0x02, 0x02, 0xBE, 0xEF,
+        // level = 6, never read
+        0x01, 0x01, 0x06,
+    ];
+    ranked.assert_stops_at(&wire, 7);
 }

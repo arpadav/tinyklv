@@ -253,7 +253,7 @@ fn vec_decode_partial_propagates_error_after_consuming() {
         0x09, 0x01, 0x00,
     ];
     match Vec::<StrictBeacon>::decode_partial(&mut &wire[..]).map_err(PartialError::label) {
-        Err(label) if label.contains("invalid key") && label.contains("StrictBeacon") => {}
+        Err(label) if label.starts_with("key (expected") && label.contains("StrictBeacon") => {}
         other => panic!("expected an unknown-key Err naming `StrictBeacon`, got {other:?}"),
     }
 }

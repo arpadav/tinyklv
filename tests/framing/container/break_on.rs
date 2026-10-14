@@ -112,6 +112,80 @@ impl Rewound {
     }
 }
 
+/// A reading padded with key `0x7E`, which its key decoder peeks and its fn skips
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    key(dec = Padding::peek_padding),
+    len(dec = decb::u8_as_usize),
+    allow_unimplemented_encode,
+    break_on = Padding::skip_padding,
+)]
+struct Padding {
+    /// key 0x01
+    #[klv(key = 0x01, dec = decb::u8)]
+    temp: Option<u8>,
+}
+
+/// [`Padding`] implementation
+impl Padding {
+    /// Decodes a key, peeking the padding key `0x7E` without consuming it
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - the input positioned at a key; left in place at the padding key
+    ///
+    /// # Returns
+    ///
+    /// The key, or the error of [`decb::u8`]
+    fn peek_padding(input: &mut &[u8]) -> tinyklv::Result<u8> {
+        match input.first() {
+            Some(&0x7E) => Ok(0x7E),
+            _ => decb::u8(input),
+        }
+    }
+
+    /// Skips the padding, reading nothing of it
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - the frame's key
+    /// * `_input` - the input right after the key, never read
+    ///
+    /// # Returns
+    ///
+    /// `Skip` for padding, else `Proceed`
+    fn skip_padding(key: &u8, _input: &mut &[u8]) -> BreakType {
+        if *key == 0x7E {
+            BreakType::Skip
+        } else {
+            BreakType::Proceed
+        }
+    }
+}
+
+/// A `Skip` of a frame that consumed nothing could only repeat it: both drivers reject it, rather
+/// than loop, which the check, run on its own thread, is given a second to show
+#[test]
+fn a_skip_that_consumed_nothing_is_rejected() {
+    #[rustfmt::skip]
+    const PADDED: &[u8] = &[
+        // temp = 7
+        0x01, 0x01, 0x07,
+        // padding, its key never consumed
+        0x7E,
+    ];
+    let (done, finished) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        Padding::assert_rejects_naming(PADDED, &["`Padding` item", "consumed no input"]);
+        let _ = done.send(());
+    });
+    assert_eq!(
+        finished.recv_timeout(std::time::Duration::from_secs(1)),
+        Ok(()),
+        "the check panicked or never returned"
+    );
+}
+
 /// A key literal ends the decode right after the marker's key, its length and value unread
 #[test]
 fn a_key_literal_stops_right_after_the_key() {

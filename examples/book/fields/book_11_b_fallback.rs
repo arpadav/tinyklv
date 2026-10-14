@@ -1,16 +1,14 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Book tutorial 11b - `trait_fallback`: auto-resolve codecs from type impls
-//! See `book/tutorial/11-default-fallback.md` for the full narrative
+//! See `book/src/tutorial/fundamentals/11-default-fallback.md` for the full narrative
 //!
 //! When a type already implements `DecodeValue` and `EncodeValue`, the
 //! `trait_fallback` container attribute lets `#[klv(key = ...)]` fields omit
 //! `dec` and `enc` entirely - the derive resolves them from the trait impls
 //! automatically. `Option<T>` wrapping is also supported: a missing key leaves
 //! the field as `None`
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Debug, PartialEq)]
 /// Two-byte device identifier whose codec comes from its own trait impls
@@ -46,23 +44,20 @@ struct Reading {
 fn main() {
     // full round-trip through the derived code paths
     let full = Reading {
-        id:     DeviceId(0xBEEF),
+        id: DeviceId(0xBEEF),
         opt_id: Some(DeviceId(42)),
     };
     let mut full_bytes = Vec::new();
     full.encode_value(&mut full_bytes);
-    let full_decoded = Reading::decode_value(
-        &mut full_bytes.as_slice(),
-    ).unwrap();
+    let full_decoded = Reading::decode_value(&mut full_bytes.as_slice()).unwrap();
     assert_eq!(full_decoded, full);
 
     // manually constructed stream: only key 0x01 present
+    #[rustfmt::skip]
     let partial_bytes: &[u8] = &[
         0x01, 0x02, 0xBE, 0xEF,
     ];
-    let decoded = Reading::decode_value(
-        &mut &partial_bytes[..],
-    ).unwrap();
+    let decoded = Reading::decode_value(&mut &partial_bytes[..]).unwrap();
     assert_eq!(decoded.id, DeviceId(0xBEEF));
     assert_eq!(decoded.opt_id, None);
 }

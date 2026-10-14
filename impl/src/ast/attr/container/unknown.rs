@@ -59,7 +59,7 @@ impl TryFrom<&syn::MetaList> for UnknownXcoder {
 #[cfg(test)]
 mod tests {
     use crate::{
-        Ctxt, Error,
+        Error,
         ast::{attr::MainContainer, symbol},
     };
 
@@ -120,12 +120,9 @@ mod tests {
                     id: u8,
                 }
             };
-            let cx = Ctxt::new();
-            let _ = MainContainer::from_ast(&cx, &item);
-            let Err(errors) = cx.check() else {
+            let Err(messages) = MainContainer::parsed(&item) else {
                 panic!("{name}: reports an error");
             };
-            let messages: Vec<String> = errors.into_iter().map(|err| err.to_string()).collect();
             assert_eq!(messages, [expected.to_string()], "{name}: the one error");
             assert!(
                 messages.iter().all(|message| message.contains(&named)),
@@ -152,9 +149,9 @@ mod tests {
                 id: u8,
             }
         };
-        let cx = Ctxt::new();
-        let container = MainContainer::from_ast(&cx, &item);
-        assert!(cx.check().is_ok(), "no error is reported");
-        assert!(container.is_some(), "the container parses");
+        assert!(
+            MainContainer::parsed(&item).is_ok(),
+            "the container parses, no error reported"
+        );
     }
 }

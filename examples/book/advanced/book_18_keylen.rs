@@ -1,18 +1,16 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Book tutorial 18 - the fused `keylen` codec, framing each value by its key
-//! See `book/tutorial/18-keylen.md` for the full narrative
+//! See `book/src/tutorial/advanced/18-keylen.md` for the full narrative
 //!
 //! The struct of tutorial 17 with one `keylen(dec, enc)` header codec in place
 //! of `key(..)` and `len(..)`, and no `size(implicit)` anywhere: the low 3 bits
 //! of each key say how its value is framed, so `dec_header` returns
 //! `Framing::Inline` for the varint and `Framing::Sliced(n)` for the rest. The
 //! wire is byte for byte the one of tutorial 17
-use tinyklv::prelude::*;            // Klv proc-macro + traits + Framing
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::dec::string as decs;   // string decoders
-use tinyklv::enc::binary as encb;   // binary encoders
-use tinyklv::enc::string as encs;   // string encoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::dec::string as decs; // string decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::enc::string as encs; // string encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits + Framing
 
 /// The bit of a varint byte that says another byte follows
 const MORE: u8 = 0x80;
@@ -34,8 +32,9 @@ const FIXED32: u32 = 5;
 
 /// Reads one LEB128 varint: seven value bits a byte, low bits first, `MORE`
 /// set on every byte but the last. Running out of bytes leaves the cursor at
-/// the end of the input
+/// the end of the input, and a varint too long for a `u64` rewinds it
 fn dec_varint(input: &mut &[u8]) -> tinyklv::Result<u64> {
+    let start = input.checkpoint();
     let mut value = 0;
     for shift in (0..u64::BITS).step_by(7) {
         let byte = decb::u8(input)?;
@@ -44,7 +43,9 @@ fn dec_varint(input: &mut &[u8]) -> tinyklv::Result<u64> {
             return Ok(value);
         }
     }
-    // an eleventh byte, or a tenth past the 64th bit: too long for a `u64`
+    // an eleventh byte, or a tenth past the 64th bit: too long for a `u64`,
+    // so the cursor goes back to the varint, which a stream can never finish
+    input.reset(&start);
     Err(winnow::error::ContextError::from_input(input))
 }
 
@@ -81,11 +82,11 @@ fn enc_len(len: usize, out: &mut Vec<u8>) {
 fn dec_header(input: &mut &[u8]) -> tinyklv::Result<(u32, Framing)> {
     let key = dec_tag(input)?;
     let framing = match key & WIRE_TYPE {
-        VARINT   => Framing::Inline,
-        FIXED64  => Framing::Sliced(8),
+        VARINT => Framing::Inline,
+        FIXED64 => Framing::Sliced(8),
         PREFIXED => Framing::Sliced(dec_len(input)?),
-        FIXED32  => Framing::Sliced(4),
-        _        => return Err(winnow::error::ContextError::from_input(input)),
+        FIXED32 => Framing::Sliced(4),
+        _ => return Err(winnow::error::ContextError::from_input(input)),
     };
     Ok((key, framing))
 }
@@ -116,7 +117,7 @@ struct Reading {
 
     #[klv(
         key = 0x1A,
-        dec = decs::to_string_utf8,
+        dec = decs::to_string_utf8_strict,
         enc = &encs::from_string_utf8,
         size(lengthed),
     )]
@@ -126,6 +127,7 @@ struct Reading {
 
 fn main() {
     // manually construct the stream
+    #[rustfmt::skip]
     let stream = [
         // count: key, varint 300, no length
         0x08, 0xAC, 0x02,
@@ -139,7 +141,7 @@ fn main() {
     let expected = Reading {
         count: 300,
         ratio: 1.5,
-        name:  String::from("hi"),
+        name: String::from("hi"),
     };
 
     // encode: `enc_header` writes a length for the name only
@@ -148,8 +150,6 @@ fn main() {
     assert_eq!(encoded, stream);
 
     // decode: `dec_header` frames each value by its key
-    let decoded = Reading::decode_value(
-        &mut stream.as_slice(),
-    ).unwrap();
+    let decoded = Reading::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(decoded, expected);
 }

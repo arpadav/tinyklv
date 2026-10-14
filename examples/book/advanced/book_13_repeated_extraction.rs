@@ -1,15 +1,13 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Book tutorial 13 - repeated extraction from a concatenated frame buffer
-//! See `book/tutorial/13-repeated-extraction.md` for the full narrative
+//! See `book/src/tutorial/advanced/13-repeated-extraction.md` for the full narrative
 //!
 //! Shows how to concatenate multiple `encode_frame` outputs into a single byte
 //! buffer and recover all records in one call using `DrainFrames::drain_frames`,
 //! the blanket convenience provided by the prelude for any type that implements
 //! `DecodeFrame`
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, PartialEq, Clone, Copy)]
 #[klv(
@@ -48,11 +46,31 @@ struct SensorReading {
 fn main() {
     // produce five readings from one sampling window
     let original = vec![
-        SensorReading { sensor_id: 1, value_centiunit:  2_350, age_ms:    0 },
-        SensorReading { sensor_id: 2, value_centiunit:  2_400, age_ms:  100 },
-        SensorReading { sensor_id: 1, value_centiunit:  2_355, age_ms:  200 },
-        SensorReading { sensor_id: 3, value_centiunit: -1_000, age_ms:  350 },
-        SensorReading { sensor_id: 2, value_centiunit:  2_398, age_ms:  500 },
+        SensorReading {
+            sensor_id: 1,
+            value_centiunit: 2_350,
+            age_ms: 0,
+        },
+        SensorReading {
+            sensor_id: 2,
+            value_centiunit: 2_400,
+            age_ms: 100,
+        },
+        SensorReading {
+            sensor_id: 1,
+            value_centiunit: 2_355,
+            age_ms: 200,
+        },
+        SensorReading {
+            sensor_id: 3,
+            value_centiunit: -1_000,
+            age_ms: 350,
+        },
+        SensorReading {
+            sensor_id: 2,
+            value_centiunit: 2_398,
+            age_ms: 500,
+        },
     ];
 
     // concatenate the encoded frames into one buffer
@@ -63,9 +81,7 @@ fn main() {
 
     // peel them all off in one call - DrainFrames::drain_frames comes
     // from the prelude via the blanket impl for any T: DecodeFrame<S>
-    let decoded = SensorReading::drain_frames(
-        &mut batch.as_slice(),
-    ).unwrap();
+    let decoded = SensorReading::drain_frames(&mut batch.as_slice()).unwrap();
 
     assert_eq!(decoded, original);
 }

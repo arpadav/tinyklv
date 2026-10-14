@@ -65,7 +65,7 @@ fn strict_accepts_known_keys_only() {
 
 #[test]
 /// `DecodePartial` companion: an unknown key mid-stream surfaces as
-/// the unrecoverable path - `Err(label)` carrying the "invalid key"
+/// the unrecoverable path - `Err(label)` carrying the unknown-key
 /// label, even if the trailing bytes would otherwise suggest
 /// truncation. Codegen emits the `deny_unknown_keys` gate as a
 /// `Result::Err` directly (no finalise attempt), so the label flows
@@ -78,8 +78,8 @@ fn unknown_key_under_decode_partial_is_err_label() {
     let mut cursor: &[u8] = stream.as_slice();
     match Strict::decode_partial(&mut cursor) {
         Err(label) => assert!(
-            label.label().contains("invalid key"),
-            "label must mention 'invalid key'; got: {label}"
+            label.label().starts_with("key (expected"),
+            "label must name the unknown key; got: {label}"
         ),
         other => panic!("expected Err(label), got {}", other_discriminant(&other)),
     }

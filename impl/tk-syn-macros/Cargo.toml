@@ -1,23 +1,24 @@
 [package]
 name = "tk-syn-macros"
-version = "0.2.0-rc.1"
-edition = "2024"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "Implementation detail of the `tinyklv` crate"
-documentation = "https://docs.rs/tinyklv"
-homepage = "https://arpadvoros.com/tinyklv"
-repository = "https://github.com/arpadav/tinyklv"
-license = "MIT"
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
 readme = "README.md"
-keywords = ["decode", "encode", "klv", "parsing", "tlv"]
-categories = ["development-tools", "encoding", "parsing"]
-rust-version = "1.95"
+keywords.workspace = true
+categories.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+include = ["/src", "/LICENSE", "/README.md"]
 publish = true
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-pastey = "0.2.3"
 quote = "^1.0"
 syn = "^2.0"
 

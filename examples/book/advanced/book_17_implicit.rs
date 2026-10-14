@@ -1,25 +1,24 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Book tutorial 17 - `size(implicit)` values with no length prefix
-//! See `book/tutorial/17-implicit.md` for the full narrative
+//! See `book/src/tutorial/advanced/17-implicit.md` for the full narrative
 //!
 //! A key + len struct whose `count` is a varint written with no length after
 //! its key, and whose `ratio` is four bytes with no length, beside a `name`
 //! that keeps its length prefix. The keys, lengths and the varint value are
 //! LEB128 varints, read and written by the codecs below
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::dec::string as decs;   // string decoders
-use tinyklv::enc::binary as encb;   // binary encoders
-use tinyklv::enc::string as encs;   // string encoders
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::dec::string as decs; // string decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::enc::string as encs; // string encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 /// The bit of a varint byte that says another byte follows
 const MORE: u8 = 0x80;
 
 /// Reads one LEB128 varint: seven value bits a byte, low bits first, `MORE`
 /// set on every byte but the last. Running out of bytes leaves the cursor at
-/// the end of the input
+/// the end of the input, and a varint too long for a `u64` rewinds it
 fn dec_varint(input: &mut &[u8]) -> tinyklv::Result<u64> {
+    let start = input.checkpoint();
     let mut value = 0;
     for shift in (0..u64::BITS).step_by(7) {
         let byte = decb::u8(input)?;
@@ -28,7 +27,9 @@ fn dec_varint(input: &mut &[u8]) -> tinyklv::Result<u64> {
             return Ok(value);
         }
     }
-    // an eleventh byte, or a tenth past the 64th bit: too long for a `u64`
+    // an eleventh byte, or a tenth past the 64th bit: too long for a `u64`,
+    // so the cursor goes back to the varint, which a stream can never finish
+    input.reset(&start);
     Err(winnow::error::ContextError::from_input(input))
 }
 
@@ -89,7 +90,7 @@ struct Reading {
 
     #[klv(
         key = 0x1A,
-        dec = decs::to_string_utf8,
+        dec = decs::to_string_utf8_strict,
         enc = &encs::from_string_utf8,
         size(lengthed),
     )]
@@ -99,6 +100,7 @@ struct Reading {
 
 fn main() {
     // manually construct the stream
+    #[rustfmt::skip]
     let stream = [
         // count: key, varint 300, no length
         0x08, 0xAC, 0x02,
@@ -112,7 +114,7 @@ fn main() {
     let expected = Reading {
         count: 300,
         ratio: 1.5,
-        name:  String::from("hi"),
+        name: String::from("hi"),
     };
 
     // encode: no length after the `implicit` keys
@@ -121,8 +123,6 @@ fn main() {
     assert_eq!(encoded, stream);
 
     // decode: the varint stops itself, the ratio takes 4 bytes
-    let decoded = Reading::decode_value(
-        &mut stream.as_slice(),
-    ).unwrap();
+    let decoded = Reading::decode_value(&mut stream.as_slice()).unwrap();
     assert_eq!(decoded, expected);
 }

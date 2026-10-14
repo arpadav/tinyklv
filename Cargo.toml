@@ -1,17 +1,17 @@
 [package]
 name = "tinyklv"
-version = "0.2.0-rc.1"
-authors = ["Arpad Voros <arpadav@gmail.com>"]
-license = "MIT"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "The fastest derive-macro Key-Length-Value (KLV) framework in Rust"
-repository = "https://github.com/arpadav/tinyklv"
-homepage = "https://arpadvoros.com/tinyklv"
-documentation = "https://docs.rs/tinyklv"
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
 readme = "README.md"
-keywords = ["decode", "encode", "klv", "parsing", "tlv"]
-categories = ["development-tools", "encoding", "parsing"]
-edition = "2024"
-rust-version = "1.95"
+keywords.workspace = true
+categories.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 include = ["/src", "/CHANGELOG.md", "/LICENSE", "/README.md"]
 publish = true
 
@@ -22,6 +22,23 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [workspace]
 members = ["impl"]
+
+[workspace.package]
+version = "0.2.0-rc.1"
+authors = ["Arpad Voros <arpadav@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/arpadav/tinyklv"
+homepage = "https://arpadvoros.com/tinyklv"
+documentation = "https://docs.rs/tinyklv"
+keywords = ["decode", "encode", "klv", "parsing", "tlv"]
+categories = ["development-tools", "encoding", "parsing"]
+edition = "2024"
+rust-version = "1.95"
+
+[workspace.dependencies]
+# the helper crates, each pinned to `[workspace.package]`'s version
+tinyklv-impl = { path = "impl", version = "=0.2.0-rc.1" }
+tk-syn-macros = { path = "impl/tk-syn-macros", version = "=0.2.0-rc.1" }
 
 [[test]]
 name = "codecs"
@@ -54,165 +71,239 @@ path = "tests/ui/main.rs"
 [[example]]
 name = "01_hello_world"
 path = "examples/packets/01_hello_world.rs"
+test = true
+harness = false
 
 [[example]]
 name = "02_custom_key_types"
 path = "examples/packets/02_custom_key_types.rs"
+test = true
+harness = false
 
 [[example]]
 name = "03_strings_and_types"
 path = "examples/packets/03_strings_and_types.rs"
+test = true
+harness = false
 
 [[example]]
 name = "04_optional_fields"
 path = "examples/packets/04_optional_fields.rs"
+test = true
+harness = false
 
 [[example]]
 name = "05_basic_roundtrip"
 path = "examples/packets/05_basic_roundtrip.rs"
+test = true
+harness = false
 
 [[example]]
 name = "06_custom_encoder_decoder"
 path = "examples/packets/06_custom_encoder_decoder.rs"
+test = true
+harness = false
 
 [[example]]
 name = "07_sentinel_seeking"
 path = "examples/streams/07_sentinel_seeking.rs"
+test = true
+harness = false
 
 [[example]]
 name = "08_nested_packets"
 path = "examples/packets/08_nested_packets.rs"
+test = true
+harness = false
 
 [[example]]
 name = "09_ber_keyed"
 path = "examples/packets/09_ber_keyed.rs"
+test = true
+harness = false
 
 [[example]]
 name = "10_defaults"
 path = "examples/packets/10_defaults.rs"
+test = true
+harness = false
 
 [[example]]
 name = "11_repeated_extraction"
 path = "examples/streams/11_repeated_extraction.rs"
+test = true
+harness = false
 
 [[example]]
 name = "12_enum_dispatch_stream"
 path = "examples/streams/12_enum_dispatch_stream.rs"
+test = true
+harness = false
 
 [[example]]
 name = "13_variable_length_fields"
 path = "examples/packets/13_variable_length_fields.rs"
+test = true
+harness = false
 
 [[example]]
 name = "14_break_condition_custom"
 path = "examples/packets/14_break_condition_custom.rs"
+test = true
+harness = false
 
 [[example]]
 name = "15_tokio_stream_e2e"
 path = "examples/streams/15_tokio_stream_e2e.rs"
+test = true
+harness = false
 
 [[example]]
 name = "16_latebind"
 path = "examples/packets/16_latebind.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_01_first_packet"
 path = "examples/book/basics/book_01_first_packet.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_02_out_of_order"
 path = "examples/book/basics/book_02_out_of_order.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_03_frames_and_sentinels"
 path = "examples/book/basics/book_03_frames_and_sentinels.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_04_default_codec"
 path = "examples/book/basics/book_04_default_codec.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_05_custom_decoder"
 path = "examples/book/basics/book_05_custom_decoder.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_06_decode_value_impl"
 path = "examples/book/basics/book_06_decode_value_impl.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_07_a_subslice"
 path = "examples/book/fields/book_07_a_subslice.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_07_b_size_lengthed"
 path = "examples/book/fields/book_07_b_size_lengthed.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_08_latebind"
 path = "examples/book/fields/book_08_latebind.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_09_encode_sigil"
 path = "examples/book/fields/book_09_encode_sigil.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_10_macro"
 path = "examples/book/fields/book_10_macro.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_11_a_default"
 path = "examples/book/fields/book_11_a_default.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_11_b_fallback"
 path = "examples/book/fields/book_11_b_fallback.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_12_nested_packets"
 path = "examples/book/advanced/book_12_nested_packets.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_13_repeated_extraction"
 path = "examples/book/advanced/book_13_repeated_extraction.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_14_break_condition"
 path = "examples/book/advanced/book_14_break_condition.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_15_streaming_decode"
 path = "examples/book/advanced/book_15_streaming_decode.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_16_tokio_streams"
 path = "examples/book/advanced/book_16_tokio_streams.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_17_implicit"
 path = "examples/book/advanced/book_17_implicit.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_18_keylen"
 path = "examples/book/advanced/book_18_keylen.rs"
+test = true
+harness = false
 
 [[example]]
 name = "book_19_unknown"
 path = "examples/book/advanced/book_19_unknown.rs"
+test = true
+harness = false
 
 [dependencies]
 # --------------------------------------------------
 # external
 # --------------------------------------------------
-chrono = { version = "0.4.45", optional = true }
+chrono = { version = "0.4.45", optional = true, default-features = false, features = ["std"] }
 memchr = "2.8.0"
 num-traits = "0.2.19"
 pastey = "0.2.3"
 tracing = { version = "0.1.44", optional = true }
-winnow = { version = "1.0.2", features = ["binary", "parser"] }
+winnow = { version = "1.0.2", default-features = false, features = ["binary", "parser", "std"] }
 # --------------------------------------------------
 # workspace
 # --------------------------------------------------
-tinyklv-impl = { path = "impl", version = "=0.2.0-rc.1" }
+tinyklv-impl.workspace = true
 
 [dev-dependencies]
 criterion = "^0.8"
@@ -276,19 +367,18 @@ cast_lossless = "allow"               # wire-format width casts
 inline_always = "allow"               # hot-path inlining convention
 float_cmp = "allow"                   # exact-roundtrip float eq in tests
 must_use_candidate = "allow"          # must_use applied deliberately
-too_many_lines = "allow"              # codegen/decode fns
-needless_for_each = "allow"           # for_each idiomatic in tests
-missing_panics_doc = "allow"          # decoders all return Result
-similar_names = "allow"               # short domain names (lat/lon)
+too_many_lines = "allow"              # the codec round-trip test
+needless_for_each = "allow"           # for_each chains in tests and the Vec encoder
+similar_names = "allow"               # per-width names in the codec tests (random_u16, random_u32)
 cast_precision_loss = "allow"         # scale/precision casts in codecs
 unreadable_literal = "allow"          # numeric test fixtures
 iter_not_returning_iterator = "allow" # bounded Decoder iterator surface
 into_iter_without_iter = "allow"      # bounded Decoder iterator surface
 manual_let_else = "allow"             # test/example exemption
 struct_field_names = "allow"          # test/example exemption
-many_single_char_names = "allow"      # single-char loop vars in tests
-trivially_copy_pass_by_ref = "allow"  # small-Copy-by-ref in tests
-doc_markdown = "allow"                # doc-backtick nits in tests
+many_single_char_names = "allow"      # one-letter field slots in the hand-written bench decoder
+trivially_copy_pass_by_ref = "allow"  # the `&K` / `&T` a break_on fn or an encoder is handed
+doc_markdown = "allow"                # crate names in the bench docs, terms in the README
 
 [profile.dev]
 opt-level = 0

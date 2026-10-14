@@ -21,7 +21,7 @@
 use super::{fixed_width, length_prefix::LengthPrefix, staging::Staging};
 use crate::{
     ast::{
-        attr::{MainContainer, container::ContainerMode, size::SizeSpec},
+        attr::{FieldKey, MainContainer, container::ContainerMode, size::SizeSpec},
         types,
     },
     expand::helpers,
@@ -154,12 +154,10 @@ impl<'a> EncodeFraming<'a> {
     /// Computes the `encode_value` encode reserve in bytes
     ///
     /// Estimates the number of bytes the generated `encode_value` method should reserve before
-    /// writing field items: per key of a `#[klv(..)]` field, each `oneof(..)` arm's included, the
-    /// frame header estimate ([`Self::header_reserve_bytes`]) plus any statically known value
-    /// width. A `size(implicit)` value adds no length, and its width is its `exact = N` or
-    /// `reserve = N`. Unknown widths contribute zero for the value portion, so the result is an
-    /// estimate rather than a wire-format contract. Retained unknown frames add nothing: their
-    /// count and widths are known only at run time. Every sum saturates at `usize::MAX`
+    /// writing field items: per `#[klv(..)]` field, its frame's estimate
+    /// ([`Self::frame_reserve_bytes`]), the largest of its arms' for a `oneof(..)`, which writes
+    /// one. Retained unknown frames add nothing: their count and widths are known only at run
+    /// time. Every sum saturates at `usize::MAX`
     ///
     /// # Arguments
     ///
@@ -171,30 +169,53 @@ impl<'a> EncodeFraming<'a> {
     /// when it is more than [`MAX_RESERVE_BYTES`]
     pub(super) fn value_reserve_bytes(self, input: &MainContainer) -> Option<usize> {
         // --------------------------------------------------
-        // estimate per-field key and length bytes
-        // --------------------------------------------------
-        let (key_bytes, len_bytes) = self.header_reserve_bytes();
-        // --------------------------------------------------
-        // sum known field widths into the encode reserve, kept only within the largest
+        // sum each field's largest frame into the encode reserve, kept only within the largest
         // --------------------------------------------------
         let bytes = input
-            .klv_keys()
-            .map(|key| {
-                let size = key.codec.size.as_ref();
-                let (len, value) = match size.filter(|size| size.implicit().is_some()) {
-                    Some(size) => (0, size.capacity_bytes()),
-                    None => (
-                        len_bytes,
-                        fixed_width::fixed_value_type_width(key.field.ty)
-                            .or_else(|| size.and_then(SizeSpec::capacity_bytes)),
-                    ),
-                };
-                key_bytes
-                    .saturating_add(len)
-                    .saturating_add(value.unwrap_or(0))
+            .keyed_fields()
+            .filter_map(|(field, attrs)| {
+                FieldKey::of(field, attrs)
+                    .map(|key| self.frame_reserve_bytes(key))
+                    .max()
             })
             .fold(0, usize::saturating_add);
         (bytes <= MAX_RESERVE_BYTES).then_some(bytes)
+    }
+
+    /// Estimates the bytes one key's frame occupies, for the encode reserve
+    ///
+    /// The frame header estimate ([`Self::header_reserve_bytes`]) plus any statically known value
+    /// width: an arm's from its own type, a field's own key's from the field's type, which has none
+    /// when it is an `Option`. A `size(implicit)` value adds no length, and its width is its
+    /// `exact = N` or `reserve = N`. An unknown width contributes zero, so the result is an
+    /// estimate rather than a wire-format contract
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key whose frame is estimated
+    ///
+    /// # Returns
+    ///
+    /// The frame's estimated bytes, saturating at `usize::MAX`
+    fn frame_reserve_bytes(self, key: FieldKey) -> usize {
+        let (key_bytes, len_bytes) = self.header_reserve_bytes();
+        let ty = if key.variant.is_some() {
+            key.ty
+        } else {
+            key.field.ty
+        };
+        let size = key.codec.size.as_ref();
+        let (len, value) = match size.filter(|size| size.implicit().is_some()) {
+            Some(size) => (0, size.capacity_bytes()),
+            None => (
+                len_bytes,
+                fixed_width::fixed_value_type_width(ty)
+                    .or_else(|| size.and_then(SizeSpec::capacity_bytes)),
+            ),
+        };
+        key_bytes
+            .saturating_add(len)
+            .saturating_add(value.unwrap_or(0))
     }
 }
 

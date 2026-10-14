@@ -129,15 +129,14 @@ fn inline_seek_skips_false_first_byte() {
 }
 
 #[test]
-/// Inline short-needle seek: the first sentinel byte appears repeatedly but the full sentinel
-/// never does, so the loop exhausts and `decode_frame` errors (no false positive)
+/// The first sentinel byte appears repeatedly but the full sentinel never does, so the seek finds
+/// none and `decode_frame` errors (no false positive)
 fn inline_seek_first_byte_without_full_sentinel_errors() {
     let data: &[u8] = &[0xAA, 0x00, 0xAA, 0x11, 0xAA, 0x22, 0xAA];
     assert!(SentinelPacket::decode_frame(&mut &data[..]).is_err());
 }
 
-/// A packet with a 5-byte sentinel (> `SHORT_SENTINEL_MAX`), so it exercises the retained
-/// cached-`Finder` seek path rather than the inline scan
+/// A packet with a 5-byte sentinel, which a seek past junk finds through its `memmem::Finder`
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -152,7 +151,7 @@ struct LongSentinelPacket {
 
 #[test]
 /// Finder-path (long sentinel) seek finds the sentinel after garbage and decodes the body,
-/// including skipping a false `0xAA` lead byte - parity with the inline path
+/// including skipping a false `0xAA` lead byte
 fn finder_path_seek_skips_false_first_byte() {
     let body: Vec<u8> = vec![0x01, 0x02, 0x12, 0x34]; // key=1 len=2 val=0x1234
     let mut stream: Vec<u8> = vec![
@@ -172,7 +171,7 @@ fn finder_path_seek_skips_false_first_byte() {
 }
 
 #[test]
-/// Finder-path roundtrip, confirming the long-sentinel branch encodes + decodes consistently
+/// Finder-path roundtrip, confirming the long-sentinel packet encodes + decodes consistently
 fn finder_path_roundtrip() {
     let original = LongSentinelPacket { id: 0xBEEF };
     let mut encoded = Vec::new();

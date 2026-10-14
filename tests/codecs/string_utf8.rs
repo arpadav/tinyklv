@@ -2,9 +2,9 @@
 //!
 //! Tests the lossy and strict UTF-8 decoders and the encoder. Covers
 //! ASCII decoding, multi-byte Unicode (Latin-1, CJK, emoji), lossy acceptance
-//! of invalid bytes with U+FFFD replacement, strict rejection of invalid bytes,
-//! cursor advancement (partial consumption), and the difference between lossy
-//! and strict behavior on invalid sequences
+//! of invalid bytes with U+FFFD replacement, strict acceptance of valid bytes,
+//! and cursor advancement (partial consumption). Strict rejection of invalid
+//! bytes is tested in `edge_cases::invalid_strings`
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -97,17 +97,6 @@ fn utf8_strict_valid_bytes_ok() {
 }
 
 #[test]
-/// Tests that `to_string_utf8_strict(2)` errors on invalid UTF-8 bytes `0xFF 0xFE`
-fn utf8_strict_invalid_bytes_err() {
-    let mut input: &[u8] = &[0xFF, 0xFE];
-    let result = to_string_utf8_strict(2)(&mut input);
-    assert!(
-        result.is_err(),
-        "strict decoder should fail on invalid UTF-8"
-    );
-}
-
-#[test]
 /// Tests that strict UTF-8 decoder accepts valid multi-byte Unicode sequences
 fn utf8_strict_unicode_ok() {
     let text = "Héllo";
@@ -125,4 +114,22 @@ fn utf8_partial_consumption() {
     assert_eq!(result, "AF-101");
     // Remaining bytes still in input
     assert_eq!(input, &[0xAA, 0xBB]);
+}
+
+#[test]
+/// Tests that a UTF-8 decode short of `len` bytes leaves the cursor at the end of the input, so a
+/// caller classes the short read as truncation
+fn utf8_short_input_leaves_cursor_at_end() {
+    let mut input: &[u8] = b"he";
+    assert!(to_string_utf8(5)(&mut input).is_err());
+    assert!(
+        input.is_empty(),
+        "cursor not at the end after a short to_string_utf8"
+    );
+    let mut input: &[u8] = b"he";
+    assert!(to_string_utf8_strict(5)(&mut input).is_err());
+    assert!(
+        input.is_empty(),
+        "cursor not at the end after a short to_string_utf8_strict"
+    );
 }

@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used, clippy::expect_used)]
 //! Example 15 - synchronous decode over a buffered Tokio channel
 //!
 //! Tinyklv itself is fully synchronous and operates on byte slices. That
@@ -19,10 +17,10 @@
 //! * Buffer management: keep the unconsumed tail between receives
 //! * The seeker skipping padding and decoys to find the real sentinel
 //!
-//! See also: book Tutorial 15
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+//! See also: `book/src/tutorial/advanced/16-tokio-streams.md`
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 // --------------------------------------------------
 // external
 // --------------------------------------------------
@@ -66,10 +64,7 @@ struct EnvReading {
 /// padding, an optional decoy block, the real frame, an optional trailing
 /// decoy, and trailing padding. Exercises `seek_sentinel` under realistic
 /// network conditions
-fn wrap_with_noise(
-    reading: &EnvReading,
-    rng:     &mut rand::rngs::SmallRng,
-) -> Vec<u8> {
+fn wrap_with_noise(reading: &EnvReading, rng: &mut rand::rngs::SmallRng) -> Vec<u8> {
     let mut chunk: Vec<u8> = Vec::new();
 
     // leading padding
@@ -113,9 +108,9 @@ async fn main() {
     let num_packets = rng.random_range(16..=32);
     let originals: Vec<EnvReading> = (0..num_packets)
         .map(|_| EnvReading {
-            node_id:       rng.random_range(1000..=9999),
+            node_id: rng.random_range(1000..=9999),
             temperature_c: rng.random_range(-20.0..=50.0),
-            humidity_pct:  rng.random_range(0..=100),
+            humidity_pct: rng.random_range(0..=100),
         })
         .collect();
 
@@ -135,8 +130,8 @@ async fn main() {
     // spawn the receiver: accumulate chunks, drain complete frames after
     // each receive, and keep any unconsumed tail for the next round
     let receiver = tokio::spawn(async move {
-        let mut buffer:  Vec<u8>          = Vec::new();
-        let mut decoded: Vec<EnvReading>  = Vec::new();
+        let mut buffer: Vec<u8> = Vec::new();
+        let mut decoded: Vec<EnvReading> = Vec::new();
 
         while let Some(chunk) = rx.recv().await {
             buffer.extend_from_slice(&chunk);

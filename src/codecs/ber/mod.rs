@@ -108,7 +108,7 @@ impl<T> OfBerCommon for T where
 {
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// Struct representing Basic-Encoding-Rules (BER) Length Encoding
 ///
 /// The form follows from the length: below 128 the short form, the length in one byte; else the
@@ -154,6 +154,7 @@ impl<T: OfBerCommon> BerLength<T> {
     /// let length = BerLength::new(200_u32);
     /// assert_eq!(length.value(), 200_u32);
     /// ```
+    #[must_use]
     pub fn new(len: T) -> Self {
         Self { value: len }
     }
@@ -194,6 +195,7 @@ impl<T: OfBerCommon> BerLength<T> {
     }
 
     /// Returns the wrapped length widened to a [`u128`], without loss
+    #[must_use]
     pub fn as_u128(&self) -> u128 {
         self.value.as_()
     }
@@ -346,7 +348,7 @@ impl<T: OfBerCommon> crate::DecodeValue<&[u8]> for BerLength<T> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 /// Struct representing Basic Encoding Rules (BER) Object Identifier (OID) encoding
 ///
 /// Maximum precision: [`u128`]
@@ -388,6 +390,7 @@ impl<T: OfBerCommon> BerOid<T> {
     /// let oid = BerOid::new(23298_u64);
     /// assert_eq!(oid.value(), 23298_u64);
     /// ```
+    #[must_use]
     pub fn new(value: T) -> Self {
         Self { value }
     }

@@ -1,8 +1,8 @@
 //! Code generation for the key-dispatch match arms
 //!
 //! [`LoopCtx::items_match`] emits one arm per key of the `match` on the frame's key
-//! ([`DecodeFraming::key`](super::framing::DecodeFraming::key)), routing the key to its value's
-//! decoder and writing the result into the partial-packet accumulator. Each key reads its value
+//! ([`DecodeFraming::key`]), routing the key to its value's decoder and writing the result into
+//! the partial-packet accumulator. Each key reads its value
 //! from the [`ValueSrc`] the caller picks for it. A sliced arm of a `size(exact = N)` field first
 //! rejects a frame length other than `N`; [`LoopCtx::exact_guards`] runs the same checks on a frame
 //! that runs past the end of the input, before it is classed as truncation. A
@@ -18,7 +18,7 @@
 // --------------------------------------------------
 use super::{
     ErrorKind, LoopCtx,
-    framing::UnknownDecoder,
+    framing::{DecodeFraming, UnknownDecoder},
     loop_driver::{CursorSite, ParseSite, TakeInto},
 };
 use crate::{
@@ -345,7 +345,7 @@ impl LoopCtx<'_> {
 impl LoopCtx<'_> {
     /// Emits the `match` of the `_` arm of a `match` on the frame's key, where the `unknown(..)`
     /// decoder reads the rest of a frame whose key no field declares from the main stream: every
-    /// byte after the header, a key + len frame's length included
+    /// byte after the header, a key + len item's length included
     ///
     /// ```text
     /// match #decoder(#key)(input) {
@@ -374,7 +374,7 @@ impl LoopCtx<'_> {
         let UnknownDecoder { decoder, keep } = unknown;
         let decoded = self
             .driver
-            .read_input(|cursor| self.unknown_call(decoder, cursor));
+            .read_input(|cursor| Self::unknown_call(decoder, cursor));
         self.unknown_match(decoder, &decoded, keep, DecodedFrom::Input)
     }
 
@@ -405,7 +405,7 @@ impl LoopCtx<'_> {
         decoder: &types::XcoderType,
         field: &UnknownField,
     ) -> TokenStream {
-        let decoded = self.unknown_call(decoder, &quote! { &mut __subinput });
+        let decoded = Self::unknown_call(decoder, &quote! { &mut __subinput });
         let decode = self.unknown_match(decoder, &decoded, Some(field), DecodedFrom::Subinput);
         quote! { _ => #decode, }
     }
@@ -441,7 +441,7 @@ impl LoopCtx<'_> {
         from: DecodedFrom,
     ) -> TokenStream {
         let on_ok = if let Some(field) = keep {
-            let push = self.unknown_push(field);
+            let push = Self::unknown_push(field);
             quote! { ::core::result::Result::Ok(__val) => #push, }
         } else {
             quote! { ::core::result::Result::Ok(_) => (), }
@@ -473,9 +473,9 @@ impl LoopCtx<'_> {
     /// # Returns
     ///
     /// `#decoder(#key)(#stream)`
-    fn unknown_call(self, decoder: &types::XcoderType, stream: &TokenStream) -> TokenStream {
+    fn unknown_call(decoder: &types::XcoderType, stream: &TokenStream) -> TokenStream {
         let at_dec = helpers::call_site_at(decoder);
-        let mut key = self.framing.key();
+        let mut key = DecodeFraming::key();
         key.set_span(at_dec);
         quote_spanned! {at_dec=> #decoder(#key)(#stream) }
     }
@@ -496,10 +496,10 @@ impl LoopCtx<'_> {
     /// # Returns
     ///
     /// `__acc.#name.push((#key, __val))`
-    fn unknown_push(self, field: &UnknownField) -> TokenStream {
+    fn unknown_push(field: &UnknownField) -> TokenStream {
         let UnknownField { name, .. } = field;
         let at_field = helpers::call_site_at(name);
-        let mut key = self.framing.key();
+        let mut key = DecodeFraming::key();
         key.set_span(at_field);
         quote_spanned! {at_field=> __acc.#name.push((#key, __val)) }
     }
@@ -531,7 +531,7 @@ impl LoopCtx<'_> {
     /// Emits the check of a field's `break_on` on the value it just decoded, bound as `__val`
     ///
     /// ```text
-    /// match #break_on(&__val) {
+    /// match { let __decision: BreakType = #break_on(&__val); __decision } {
     ///     Skip => (),
     ///     Done => {
     ///         #write
@@ -548,8 +548,8 @@ impl LoopCtx<'_> {
     ///
     /// `Skip` discards the value, `Done` keeps it and ends the loop, whose tail finalizes the
     /// accumulator, `Abort` rejects with its message ([`LoopDriver::reject_aborted_value`]), and
-    /// `Proceed`, like any later variant, keeps it. The call is located at the fn, so a fn of
-    /// another signature is reported there
+    /// `Proceed`, like any later variant, keeps it. The call and the `BreakType` it must return
+    /// are located at the fn, so a fn of another signature is reported there
     ///
     /// # Arguments
     ///
@@ -572,7 +572,9 @@ impl LoopCtx<'_> {
         let reject = self
             .driver
             .reject_aborted_value(&self.label(Some(name), &reason));
-        let decision = quote_spanned! {helpers::call_site_at(break_on)=> #break_on(&__val) };
+        let decision = quote_spanned! {helpers::call_site_at(break_on)=>
+            { let __decision: ::tinyklv::BreakType = #break_on(&__val); __decision }
+        };
         quote! {
             match #decision {
                 ::tinyklv::BreakType::Skip => (),
@@ -613,8 +615,8 @@ impl LoopCtx<'_> {
     ///
     /// The checks, empty without a `size(exact = N)` field
     pub(super) fn exact_guards(self) -> TokenStream {
-        let key = self.framing.key();
-        let len = self.framing.len();
+        let key = DecodeFraming::key();
+        let len = DecodeFraming::len();
         // --------------------------------------------------
         // the exact keys, (key, name, `N` as written), grouped by width in field order
         // --------------------------------------------------
@@ -715,7 +717,7 @@ impl ArmParts<'_> {
     ///     #exact_check
     ///     match #dec #len_arg (&mut __subinput) {
     ///         Ok(__val) => {
-    ///             if __subinput.eof_offset() != 0 { #reject_label }
+    ///             if Stream::eof_offset(&__subinput) != 0 { #reject_label }
     ///             __acc.#name = Some(__val) #latebind;
     ///         }
     ///         Err(__err) => { let __err: ContextError = __err; #reject_value }
@@ -792,7 +794,7 @@ impl ArmParts<'_> {
     fn exact_check(&self) -> Option<TokenStream> {
         let (width, lit) = self.size.and_then(SizeSpec::len_check)?;
         let ctx = self.ctx;
-        let len = ctx.framing.len();
+        let len = DecodeFraming::len();
         let reject = ctx.exact_reject(self.name, lit);
         Some(quote! {
             if #len != #width {
@@ -841,7 +843,7 @@ impl ArmParts<'_> {
         // --------------------------------------------------
         let len_arg = size.and_then(SizeSpec::len_source).map(|source| {
             let mut len = match source {
-                LenSource::Frame => TokenTree::from(ctx.framing.len()),
+                LenSource::Frame => TokenTree::from(DecodeFraming::len()),
                 LenSource::Exact(width) => TokenTree::from(Literal::usize_suffixed(width)),
             };
             len.set_span(at_dec);
@@ -882,7 +884,7 @@ impl ArmParts<'_> {
                     #bind
                     match #decoded #mapped {
                         ::core::result::Result::Ok(__val) => {
-                            if __subinput.eof_offset() != 0 {
+                            if ::tinyklv::__export::winnow::stream::Stream::eof_offset(&__subinput) != 0 {
                                 #unread
                             }
                             #on_ok

@@ -1,6 +1,7 @@
 //! The decode cost of three framing choices, each measured between structs that differ only in
 //! that choice: a varint value with a length prefix against one without, opting in to
-//! `unknown(..)`, and opting in to `strict`; and the encode cost of the `keylen` frame header
+//! `unknown(..)`, and opting in to `strict`; the decode cost of a `keylen` struct's `break_on`
+//! fn; and the encode cost of the `keylen` frame header
 //!
 //! Every decode benchmark is a one-shot `decode_value` over a wire encoded ahead of time, checked
 //! to decode to its expected value with every byte read before anything is timed:
@@ -19,6 +20,10 @@
 //!   message, [`Shape`]. [`StrictContact`] and [`StrictShape`], and the structs nested in them,
 //!   set `strict`. Each pair decodes the same valid wire, so the gap is what `strict` costs a
 //!   decode that passes it
+//! * `break_on_decode_value` - two keylen structs with a `break_on` fn, [`stop::at_tag`], that
+//!   lets every item of their wires proceed: [`BreakOnShape`], [`Shape`] under the fn, and
+//!   [`BreakOnGauges`], four `Sliced(4)` values. Its arms differ in shape, so it compares one tree
+//!   against another, not one arm against another
 //!
 //! Every encode benchmark is an `encode_value` into a cleared buffer, checked to write its expected
 //! wire before anything is timed:
@@ -400,6 +405,43 @@ mod tag {
             _ => return Err(ContextError::from_input(input)),
         };
         Ok((tag, framing))
+    }
+}
+
+/// The `break_on` fn of the keylen structs that set one: field 15 LEN ends the message, field 14
+/// LEN is skipped, and every other item proceeds. It returns each of the three, so a decode keeps
+/// the code of every decision, and reads nothing past the header
+mod stop {
+    // --------------------------------------------------
+    // local
+    // --------------------------------------------------
+    use tinyklv::prelude::*;
+
+    // --------------------------------------------------
+    // constants
+    // --------------------------------------------------
+    /// Field 15, wire 2 LEN: ends the message
+    const END: u32 = 0x7A;
+
+    /// Field 14, wire 2 LEN: skipped
+    const PAD: u32 = 0x72;
+
+    /// Decides what the decode does with the item after `tag`
+    ///
+    /// # Arguments
+    ///
+    /// * `tag` - the item's tag
+    /// * `_input` - the input right after the item's header, left unread
+    ///
+    /// # Returns
+    ///
+    /// `Done` on [`END`], `Skip` on [`PAD`], else `Proceed`
+    pub(super) fn at_tag(tag: &u32, _input: &mut &[u8]) -> BreakType {
+        match *tag {
+            END => BreakType::Done,
+            PAD => BreakType::Skip,
+            _ => BreakType::Proceed,
+        }
     }
 }
 
@@ -969,6 +1011,104 @@ impl StrictShape {
     }
 }
 
+/// [`Shape`] under the `break_on` fn [`stop::at_tag`], which lets every item of [`SHAPE_WIRE`]
+/// proceed
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    keylen(dec = tag::header),
+    break_on = stop::at_tag,
+    default(typ = i32, dec = varint::dec_i32),
+    default(typ = f32, dec = decb::le_f32),
+    default(typ = String, dec = decs::to_string_utf8_strict, size(lengthed)),
+    allow_unimplemented_encode,
+)]
+struct BreakOnShape {
+    /// field 1, wire 0 VARINT - `Inline`
+    #[klv(key = 0x08)]
+    id: i32,
+
+    /// field 2, wire 5 I32 - `Sliced(4)`
+    #[klv(key = 0x15)]
+    scale: f32,
+
+    /// field 3, wire 2 LEN - `Sliced(n)`
+    #[klv(key = 0x1A)]
+    name: String,
+
+    /// field 4, wire 2 LEN - `Sliced(n)`
+    #[klv(key = 0x22, dec = Point::decode_value)]
+    origin: Point,
+}
+
+/// [`BreakOnShape`] implementation
+impl BreakOnShape {
+    /// The message [`SHAPE_WIRE`] carries
+    fn decoded() -> Self {
+        Self {
+            id: 150,
+            scale: 0.75,
+            name: "Alice".to_owned(),
+            origin: Point {
+                x: 300,
+                label: "home".to_owned(),
+            },
+        }
+    }
+}
+
+/// A power meter's gauges in `keylen` mode under the `break_on` fn [`stop::at_tag`], which lets
+/// every item proceed: four fixed-width values, each `Sliced(4)` by its tag
+#[derive(Klv, Debug, PartialEq)]
+#[klv(
+    keylen(dec = tag::header),
+    break_on = stop::at_tag,
+    default(typ = u32, dec = decb::le_u32),
+    default(typ = i32, dec = decb::le_i32),
+    default(typ = f32, dec = decb::le_f32),
+    allow_unimplemented_encode,
+)]
+struct BreakOnGauges {
+    /// Seconds since boot, field 1, wire 5 I32
+    #[klv(key = 0x0D)]
+    uptime: u32,
+
+    /// Supply voltage, field 2, wire 5 I32
+    #[klv(key = 0x15)]
+    voltage: f32,
+
+    /// Hundredths of a degree Celsius, field 3, wire 5 I32
+    #[klv(key = 0x1D)]
+    temperature: i32,
+
+    /// Watts drawn, field 4, wire 5 I32
+    #[klv(key = 0x25)]
+    power: f32,
+}
+
+/// [`BreakOnGauges`] implementation
+impl BreakOnGauges {
+    /// The bytes of [`Self::DECODED`]: each value after its tag
+    #[rustfmt::skip]
+    const WIRE: &[u8] = &[
+        // uptime: field 1 I32, 86_400
+        0x0D, 0x80, 0x51, 0x01, 0x00,
+        // voltage: field 2 I32, 3.3
+        0x15, 0x33, 0x33, 0x53, 0x40,
+        // temperature: field 3 I32, -1_250
+        0x1D, 0x1E, 0xFB, 0xFF, 0xFF,
+        // power: field 4 I32, 152.5
+        0x25, 0x00, 0x80, 0x18, 0x43,
+    ];
+
+    /// The gauges [`Self::WIRE`] carries
+    const DECODED: Self = Self {
+        uptime: 86_400,
+        voltage: 3.3,
+        temperature: -1_250,
+        power: 152.5,
+    };
+}
+
 /// A sensor sample in `keylen` mode, three fixed-width values: each frame is the tag alone, then
 /// the value
 #[derive(Klv, Debug)]
@@ -1413,6 +1553,33 @@ fn strict_decode_value(c: &mut Criterion) {
     group.finish();
 }
 
+/// Times [`BreakOnShape`] decoding [`SHAPE_WIRE`] and [`BreakOnGauges`] decoding its wire, every
+/// item of each let proceed by the `break_on` fn
+///
+/// No throughput is set, as the figure to compare is the time per decode of the same wire on
+/// another tree
+///
+/// # Arguments
+///
+/// * `c` - the criterion driver to register the benchmark group under
+fn break_on_decode_value(c: &mut Criterion) {
+    let mut group = c.benchmark_group("break_on_decode_value");
+    group.sample_size(SAMPLE_SIZE);
+    bench_decode(
+        &mut group,
+        BenchmarkId::from_parameter("shape"),
+        SHAPE_WIRE,
+        &BreakOnShape::decoded(),
+    );
+    bench_decode(
+        &mut group,
+        BenchmarkId::from_parameter("gauges"),
+        BreakOnGauges::WIRE,
+        &BreakOnGauges::DECODED,
+    );
+    group.finish();
+}
+
 /// Times [`KeylenFixedWidths`], [`KeylenVarints`], [`KeylenNamed`] with a `name` of each benched
 /// length, and [`KeylenNested`] encoding their samples
 ///
@@ -1465,6 +1632,7 @@ criterion_group!(
     varint_decode_value,
     unknown_decode_value,
     strict_decode_value,
+    break_on_decode_value,
     keylen_encode_value
 );
 criterion_main!(benches);

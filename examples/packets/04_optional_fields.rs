@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt_skip)]
-#![allow(clippy::unwrap_used)]
 //! Example 04 - optional fields
 //!
 //! `Option<T>` on a struct field makes the corresponding KLV triple optional
@@ -13,10 +11,10 @@
 //! * Frame shrinkage when optional fields are absent
 //! * Decode tolerating missing keys
 //!
-//! See also: book Tutorial 04
-use tinyklv::prelude::*;            // Klv proc-macro + traits
-use tinyklv::dec::binary as decb;   // binary decoders
-use tinyklv::enc::binary as encb;   // binary encoders
+//! See also: `book/src/tutorial/fundamentals/11-default-fallback.md`
+use tinyklv::dec::binary as decb; // binary decoders
+use tinyklv::enc::binary as encb; // binary encoders
+use tinyklv::prelude::*; // Klv proc-macro + traits
 
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
@@ -72,28 +70,26 @@ struct DroneTelemetry {
 fn main() {
     // build - a fully-instrumented airframe with every optional present
     let full = DroneTelemetry {
-        lat_udeg:         51_477_200,     // ~51.477 N (London)
-        lon_udeg:         -126_772,       // ~0.127 W
-        altitude_cm:      Some(10_200),   // 102 m
-        battery_pct:      Some(87),
-        heading_centideg: Some(27_000),   // 270.00 deg
+        lat_udeg: 51_477_200,      // ~51.477 N (London)
+        lon_udeg: -126_772,        // ~0.127 W
+        altitude_cm: Some(10_200), // 102 m
+        battery_pct: Some(87),
+        heading_centideg: Some(27_000), // 270.00 deg
     };
 
     // encode + decode - every optional appears in the frame
     let mut enc_full = Vec::new();
     full.encode_frame(&mut enc_full);
-    let dec_full = DroneTelemetry::decode_frame(
-        &mut enc_full.as_slice(),
-    ).unwrap();
+    let dec_full = DroneTelemetry::decode_frame(&mut enc_full.as_slice()).unwrap();
     assert_eq!(dec_full, full);
 
     // build - a stripped-down airframe with some sensors absent
     let partial = DroneTelemetry {
-        lat_udeg:         37_774_900,     // ~37.775 N (San Francisco)
-        lon_udeg:         -122_419_400,
-        altitude_cm:      None,           // altimeter not fitted
-        battery_pct:      Some(42),
-        heading_centideg: None,           // compass not fitted
+        lat_udeg: 37_774_900, // ~37.775 N (San Francisco)
+        lon_udeg: -122_419_400,
+        altitude_cm: None, // altimeter not fitted
+        battery_pct: Some(42),
+        heading_centideg: None, // compass not fitted
     };
 
     // encode - absent fields emit zero bytes, so the partial frame is shorter
@@ -105,9 +101,7 @@ fn main() {
     );
 
     // decode - missing keys stay as None without error
-    let dec_partial = DroneTelemetry::decode_frame(
-        &mut enc_partial.as_slice(),
-    ).unwrap();
+    let dec_partial = DroneTelemetry::decode_frame(&mut enc_partial.as_slice()).unwrap();
 
     // assert - partial frame round-trips
     assert_eq!(dec_partial, partial);

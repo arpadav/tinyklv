@@ -53,6 +53,12 @@ impl EncodeCtx<'_> {
         };
         let call_site = proc_macro2::Span::call_site();
         // --------------------------------------------------
+        // the body is the derive's own `EncodeValue`, never another `encode_value` in scope
+        // --------------------------------------------------
+        let value_write = |out: &proc_macro2::TokenStream| {
+            quote! { <Self as ::tinyklv::traits::EncodeValue>::encode_value(self, #out); }
+        };
+        // --------------------------------------------------
         // select fixed-slot or staged variable-length frame writing
         // --------------------------------------------------
         let frame_write = match len {
@@ -74,11 +80,7 @@ impl EncodeCtx<'_> {
                 // --------------------------------------------------
                 // delegate fixed-slot back-fill bookkeeping
                 // --------------------------------------------------
-                len.write_backfilled(
-                    sentinel_write,
-                    |out| quote! { self.encode_value(#out); },
-                    call_site,
-                )
+                len.write_backfilled(sentinel_write, value_write, call_site)
             }
             LengthPrefix::Variable(len) => {
                 // --------------------------------------------------
@@ -90,12 +92,7 @@ impl EncodeCtx<'_> {
                     out.reserve(#buffer.len() + #sentinel.len() + #VAR_LEN_PREFIX_BYTES);
                     out.extend_from_slice(#sentinel);
                 };
-                len.write_staged(
-                    staging,
-                    sentinel_write,
-                    |body| quote! { self.encode_value(#body); },
-                    call_site,
-                )
+                len.write_staged(staging, sentinel_write, value_write, call_site)
             }
         };
         // --------------------------------------------------
