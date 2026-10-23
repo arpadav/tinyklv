@@ -11,7 +11,7 @@
 // --------------------------------------------------
 use tinyklv::dec::binary as decb;
 use tinyklv::prelude::*;
-use tinyklv::{ErrorKind, traits::PartialError};
+use tinyklv::traits::PartialError;
 
 /// Named like `core`'s, and matches everything
 #[expect(unused_macros, reason = "the derive below must not expand it")]

@@ -34,7 +34,8 @@ use crate::prelude::*;
 ///
 /// - Runs out of bytes: the cursor is left at the end of the input
 /// - The length does not fit a [`usize`]: the cursor is rewound to where it started
-/// - The first byte is `0x80`, BER's indefinite form: the cursor is rewound to where it started
+/// - The first byte is `0x80`, BER's indefinite form, or `0xFF`, which X.690 §8.1.3.5 c)
+///   reserves: the cursor is rewound to where it started
 ///
 /// Running out of bytes is [`crate::ErrorKind::Truncated`], the others
 /// [`crate::ErrorKind::MalformedValue`]
@@ -83,6 +84,8 @@ pub fn ber_length(input: &mut &[u8]) -> crate::Result<usize> {
 /// Running out of bytes is [`crate::ErrorKind::Truncated`], the other
 /// [`crate::ErrorKind::MalformedValue`]
 ///
+/// Padding within that limit is read, though X.690 §8.19.2 forbids a sender to write it
+///
 /// # Example
 ///
 /// ```rust
@@ -93,7 +96,5 @@ pub fn ber_length(input: &mut &[u8]) -> crate::Result<usize> {
 /// assert_eq!(value, 23298_u64);
 /// ```
 pub fn ber_oid<T: super::OfBerCommon>(input: &mut &[u8]) -> crate::Result<T> {
-    super::BerOid::<T>::decode_value
-        .map(|oid| oid.value())
-        .parse_next(input)
+    super::BerOid::<T>::decode_value(input).map(|oid| oid.value())
 }

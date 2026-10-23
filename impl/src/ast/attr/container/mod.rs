@@ -5,8 +5,8 @@
 //! resolves exactly one framing mode, [`ContainerMode`]). Sub-modules handle the
 //! individual attribute parsers: `break_on`, `codec` (the state of every codec attribute),
 //! `default`, `header` (the `key` and `len` lists, and the three frame header states), `keylen`
-//! (the fused `keylen` list), `sentinel`, `stream` and `unknown` (the codec of the frames whose
-//! key no field declares)
+//! (the fused `keylen` list), `sentinel` (the bytes each packet starts with, and its own packet
+//! length codec), `stream` and `unknown` (the codec of the frames whose key no field declares)
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -34,11 +34,11 @@ pub(super) use unknown::UnknownXcoder;
 // --------------------------------------------------
 use crate::{Ctxt, ast::types::ungrouped, symbol};
 use break_on::BreakOn;
-use codec::CodecSlot;
+use codec::{CodecFields, CodecSlot};
 use default::PartialDefault;
 use header::{HeaderAttrs, HeaderXcoder};
 use keylen::KeylenXcoder;
-use sentinel::Sentinel;
+use sentinel::{ParsedSentinel, Sentinel};
 use stream::Stream;
 
 // --------------------------------------------------
@@ -53,9 +53,9 @@ use syn::{Token, punctuated::Punctuated};
 /// Produced by [`ContainerParsed::from_cont`] from the mutually-exclusive
 /// `key`+`len` and `keylen` attributes. Modelling the two as one enum makes the
 /// illegal "both present" and "neither present" states unrepresentable past
-/// validation, and only key + len holds a `sentinel`. The `expand` pass picks the decode
-/// loop's frame header and body, the frame header written around each encoded value, and the
-/// sentinel's packet framing, from it
+/// validation, and so is a fused `sentinel` without a packet length xcoder. The `expand` pass
+/// picks the decode loop's frame header and body, the frame header written around each encoded
+/// value, and the packet framing ([`Self::packet`]), from it
 #[derive(Debug, Clone)]
 pub(crate) enum ContainerMode {
     /// Key + len: separate `key`/`len` xcoders; a known key's value with a length prefix is sliced
@@ -65,16 +65,73 @@ pub(crate) enum ContainerMode {
         key: Box<HeaderXcoder>,
         /// The length xcoder
         len: Box<HeaderXcoder>,
-        /// The recognition sentinel literal, if any, e.g. `b"HEARTBEAT"`
-        sentinel: Option<syn::Lit>,
+        /// The sentinel, if any, and its own packet length xcoder, which frames the packet in
+        /// place of `len`
+        sentinel: Option<Sentinel<Option<Box<HeaderXcoder>>>>,
     },
     /// Fused mode: one `keylen` codec, whose decoder returns `(key, Framing)` so framing can
-    /// depend on the key, and whose encoder writes the header from `(key, value_len)`. It has no
-    /// sentinel: there is no standalone length codec to frame the packet with
+    /// depend on the key, and whose encoder writes the header from `(key, value_len)`
     Fused {
         /// The fused key+length codec
         keylen: Box<KeylenXcoder>,
+        /// The sentinel, if any, and its packet length xcoder: the `keylen` codec has no
+        /// standalone length to frame the packet with
+        sentinel: Option<Sentinel<Box<HeaderXcoder>>>,
     },
+}
+/// [`ContainerMode`] implementation
+impl ContainerMode {
+    /// The framing of the container's packets
+    ///
+    /// # Returns
+    ///
+    /// The bytes each packet starts with, and the xcoder of each packet's length: the sentinel's
+    /// own or, beside `key(..)` and `len(..)`, the container's `len(..)`; or `None` without a
+    /// sentinel
+    pub(crate) fn packet(&self) -> Option<(&syn::Lit, &HeaderXcoder)> {
+        match self {
+            Self::Separate { len, sentinel, .. } => {
+                sentinel.as_ref().map(|Sentinel { value, len: own }| {
+                    // without its own, the container's `len(..)` frames the packet
+                    (value, own.as_deref().unwrap_or(len))
+                })
+            }
+            Self::Fused { sentinel, .. } => sentinel
+                .as_ref()
+                .map(|Sentinel { value, len }| (value, &**len)),
+        }
+    }
+
+    /// Whether the container's `len(..)` frames each packet
+    ///
+    /// # Returns
+    ///
+    /// `true` for a key + len sentinel without its own `len(..)`
+    pub(crate) fn len_frames_packet(&self) -> bool {
+        matches!(
+            self,
+            Self::Separate {
+                sentinel: Some(Sentinel { len: None, .. }),
+                ..
+            }
+        )
+    }
+
+    /// Every `len(..)` the container declares
+    ///
+    /// # Returns
+    ///
+    /// The key + len one, then the sentinel's own
+    pub(crate) fn lens(&self) -> impl Iterator<Item = &HeaderXcoder> {
+        let (len, own) = match self {
+            Self::Separate { len, sentinel, .. } => (
+                Some(len),
+                sentinel.as_ref().and_then(|sentinel| sentinel.len.as_ref()),
+            ),
+            Self::Fused { sentinel, .. } => (None, sentinel.as_ref().map(|sentinel| &sentinel.len)),
+        };
+        len.into_iter().chain(own).map(Box::as_ref)
+    }
 }
 
 /// The missing codecs a container allows: under `allow_unimplemented_encode` /
@@ -100,8 +157,9 @@ pub(crate) struct Container {
     /// The stream type used for decoding, e.g. `&[u8]` (defaults when absent)
     pub stream: Option<syn::Type>,
 
-    /// The recognition sentinel literal, e.g. `b"HEARTBEAT"`
-    pub sentinel: Option<syn::Lit>,
+    /// The sentinel each packet starts with, e.g. `b"HEARTBEAT"`, and its own packet length
+    /// xcoder, if any
+    pub sentinel: Option<ParsedSentinel>,
 
     /// The break condition: a key literal (stop on match) or a `fn(&key, &mut input) -> BreakType`
     /// path
@@ -213,6 +271,20 @@ impl Container {
                     }
                     continue;
                 }
+                // --------------------------------------------------
+                // `sentinel`, a name-value or a list
+                // --------------------------------------------------
+                if name == symbol::SENTINEL {
+                    match sentinel {
+                        Some(_) => cx.error_spanned_by(&meta, err!(DuplicateSentinel)),
+                        None => {
+                            sentinel = ParsedSentinel::try_from(&meta)
+                                .map_err(|err| cx.syn_error(err))
+                                .ok();
+                        }
+                    }
+                    continue;
+                }
                 match meta {
                     // --------------------------------------------------
                     // handle all: `syn::MetaList`
@@ -250,10 +322,6 @@ impl Container {
                         symbol::STREAM => cx.error_spanned_by(
                             &list.path,
                             err!(ExpectedAsNameValue(symbol::STREAM)),
-                        ),
-                        symbol::SENTINEL => cx.error_spanned_by(
-                            &list.path,
-                            err!(ExpectedAsNameValue(symbol::SENTINEL)),
                         ),
                         symbol::BREAK_ON => cx.error_spanned_by(
                             &list.path,
@@ -296,14 +364,6 @@ impl Container {
                             None => {
                                 stream =
                                     Stream::try_from(&nv).map_err(|err| cx.syn_error(err)).ok();
-                            }
-                        },
-                        symbol::SENTINEL => match sentinel {
-                            Some(_) => cx.error_spanned_by(&nv, err!(DuplicateSentinel)),
-                            None => {
-                                sentinel = Sentinel::try_from(&nv)
-                                    .map_err(|err| cx.syn_error(err))
-                                    .ok();
                             }
                         },
                         symbol::BREAK_ON => match break_on {
@@ -372,13 +432,6 @@ impl Container {
                                 );
                                 continue;
                             }
-                            symbol::SENTINEL => {
-                                cx.error_spanned_by(
-                                    &path,
-                                    err!(ExpectedAsNameValue(symbol::SENTINEL)),
-                                );
-                                continue;
-                            }
                             symbol::BREAK_ON => {
                                 cx.error_spanned_by(
                                     &path,
@@ -403,15 +456,23 @@ impl Container {
             }
         }
         // --------------------------------------------------
-        // unimplemented encode / decode errors, spanned on the `key`/`len`/`keylen` path whose
-        // `enc`/`dec` is missing; `unknown(..)`'s are reported once the fields are read, since
-        // its `enc` is needed only to re-emit the frames the `#[klv(unknown)]` field keeps
+        // unimplemented encode / decode errors, spanned on the `key`/`len`/`keylen` path, or the
+        // sentinel's own `len`, whose `enc`/`dec` is missing; `unknown(..)`'s are reported once
+        // the fields are read, since its `enc` is needed only to re-emit the frames the
+        // `#[klv(unknown)]` field keeps
         // --------------------------------------------------
         let allow = AllowUnimplemented {
             encode: allow_unimplemented_encode.is_some(),
             decode: allow_unimplemented_decode.is_some(),
         };
         headers.report_missing(cx, allow);
+        if let Some(Sentinel {
+            len: Some((path, len)),
+            ..
+        }) = &sentinel
+        {
+            len.report_missing(cx, path, allow);
+        }
         // --------------------------------------------------
         // each type's merged `default(..)` entries are checked together, in the order the types
         // first appear
@@ -424,7 +485,7 @@ impl Container {
         // --------------------------------------------------
         Container {
             stream: stream.and_then(|x| x.0),
-            sentinel: sentinel.and_then(|x| x.0),
+            sentinel,
             break_on: break_on.and_then(|x| x.0),
             headers,
             unknown,
@@ -483,9 +544,9 @@ impl ContainerParsed {
     /// Resolves the key/length framing into a [`ContainerMode`]: exactly one of
     /// the separate `key`+`len` pair or the fused `keylen` codec must be
     /// present. Records errors in `cx` for the conflicting, half-specified, or
-    /// absent cases and for `sentinel` on a fused container, and
+    /// absent cases and for a `sentinel` without its own `len(..)` on a fused container, and
     /// returns `None` for them. It also records an error for `deny_unknown_keys` beside
-    /// `unknown(..)` and a `len(size(exact = 0))`, and
+    /// `unknown(..)` and a `len(size(exact = 0))`, the sentinel's own included, and
     /// still returns the container. The `sentinel`/`unknown`/`len`
     /// checks run before any early return, so they surface in the same compile as a framing
     /// conflict. An attribute that is present but unusable (it failed to parse,
@@ -503,29 +564,38 @@ impl ContainerParsed {
     /// # Returns
     ///
     /// The [`ContainerParsed`] and the `unknown(..)` state when exactly one framing mode is fully
-    /// specified, and a fused one has no `sentinel`, or `None` otherwise (errors are recorded in
-    /// `cx`)
+    /// specified, and a fused one's `sentinel` has its own `len(..)`, or `None` otherwise (errors
+    /// are recorded in `cx`)
     pub(super) fn from_cont(
         cx: &Ctxt,
         name: &syn::Ident,
         cont: Container,
     ) -> Option<(Self, CodecAttr<UnknownXcoder>)> {
         // --------------------------------------------------
-        // `sentinel` beside any `keylen(..)`, reported before the framing resolution can return
-        // early
+        // a `sentinel` without its own packet length beside any `keylen(..)`, reported before the
+        // framing resolution can return early
         // --------------------------------------------------
         if cont.headers.keylen.is_present()
-            && let Some(sentinel) = &cont.sentinel
+            && let Some(Sentinel { value, len: None }) = &cont.sentinel
         {
-            cx.error_spanned_by(sentinel, err!(KeylenWithSentinel));
+            cx.error_spanned_by(value, err!(KeylenWithSentinel));
         }
         // --------------------------------------------------
-        // a zero-byte length prefix has no room for a value's length
+        // a zero-byte length prefix has no room for a length: the container's or the sentinel's
+        // own
         // --------------------------------------------------
-        if let CodecAttr::Parsed(_, len) = &cont.headers.len
-            && let Some((0, exact)) = len.size.exact()
-        {
-            cx.error_spanned_by(exact, err!(LenZeroWidth));
+        let len = match &cont.headers.len {
+            CodecAttr::Parsed(_, len) => Some(len),
+            CodecAttr::Absent | CodecAttr::Invalid(_) => None,
+        };
+        let own = cont
+            .sentinel
+            .as_ref()
+            .and_then(|sentinel| sentinel.len.as_ref());
+        for len in len.into_iter().chain(own.map(|(_, own)| own)) {
+            if let Some((0, exact)) = len.size.exact() {
+                cx.error_spanned_by(exact, err!(LenZeroWidth));
+            }
         }
         // --------------------------------------------------
         // `unknown(..)` decodes a frame whose key no field declares, which `deny_unknown_keys`
@@ -551,7 +621,10 @@ impl ContainerParsed {
             } => ContainerMode::Separate {
                 key,
                 len,
-                sentinel: cont.sentinel,
+                sentinel: cont.sentinel.map(|Sentinel { value, len }| Sentinel {
+                    value,
+                    len: len.map(|(_, len)| len),
+                }),
             },
             // --------------------------------------------------
             // classic mode, one half missing
@@ -599,17 +672,23 @@ impl ContainerParsed {
                 return None;
             }
             // --------------------------------------------------
-            // fused codec, no separate key/len; a `sentinel` beside it was reported above
+            // fused codec, no separate key/len; a `sentinel` without its own `len(..)` was
+            // reported above
             // --------------------------------------------------
             HeaderAttrs {
                 keylen: CodecAttr::Parsed(_, keylen),
                 key: CodecAttr::Absent,
                 len: CodecAttr::Absent,
             } => {
-                if cont.sentinel.is_some() {
-                    return None;
-                }
-                ContainerMode::Fused { keylen }
+                let sentinel = match cont.sentinel {
+                    Some(Sentinel {
+                        value,
+                        len: Some((_, len)),
+                    }) => Some(Sentinel { value, len }),
+                    Some(Sentinel { len: None, .. }) => return None,
+                    None => None,
+                };
+                ContainerMode::Fused { keylen, sentinel }
             }
             // --------------------------------------------------
             // fused codec alongside any separate key/len, usable or not: conflict
@@ -636,17 +715,14 @@ impl ContainerParsed {
         Some((parsed, cont.unknown))
     }
 
-    /// Reports a key + len `sentinel` on a `&str` stream: the decode searches for it in the
-    /// input's bytes, which a `&str` stream does not give
+    /// Reports a `sentinel` on a `&str` stream: the decode searches for it in the input's bytes,
+    /// which a `&str` stream does not give
     ///
     /// # Arguments
     ///
     /// * `cx` - Error accumulation context for recording the error
     pub(super) fn report_sentinel_on_str_stream(&self, cx: &Ctxt) {
-        if let ContainerMode::Separate {
-            sentinel: Some(sentinel),
-            ..
-        } = &self.mode
+        if let Some((sentinel, _)) = self.mode.packet()
             && let Some(syn::Type::Reference(stream)) = &self.stream
             && let syn::Type::Path(referent) = &*stream.elem
             && referent.path.is_ident("str")

@@ -20,7 +20,7 @@
 //! * Encoding a field whose in-memory type differs from what is provided
 //!   in the stream
 //!
-//! See also: `book/src/tutorial/fundamentals/08-latebind.md`
+//! See also: `book/src/tutorial/2-codecs/05-latebind.md`
 use tinyklv::dec::binary as decb; // binary decoders
 use tinyklv::enc::binary as encb; // binary encoders
 use tinyklv::prelude::*; // Klv proc-macro + traits

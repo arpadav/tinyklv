@@ -40,7 +40,7 @@ impl Staging {
     /// The `let mut` binding of an empty `Vec<u8>`
     pub(super) fn declare(self) -> proc_macro2::TokenStream {
         let buffer = self.buffer();
-        quote! { let mut #buffer: ::std::vec::Vec<u8> = ::std::vec::Vec::new(); }
+        quote! { let mut #buffer: ::std::vec::Vec<::core::primitive::u8> = ::std::vec::Vec::new(); }
     }
 
     /// Writes one staged frame: ready the buffer, stage the value, write the header, then append

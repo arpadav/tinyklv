@@ -30,8 +30,10 @@
 //! bytes to the encoder's up-front allocation, changing no byte on the wire. `exact` and `reserve`
 //! are mutually exclusive. Under a fixed-width `len(size(exact = W))` slot, an `exact = N`
 //! value's length is written before it and any other value's is back-filled after it; a
-//! variable-width `len(..)` stages every value it prefixes. See the book's "Field attributes"
-//! reference for the full table.
+//! variable-width `len(..)` stages every value it prefixes. A value or packet body longer than
+//! `W` bytes can count does not fit the length's byte budget set by `exact`: a debug build
+//! panics, and a release build leaves the item or packet out and logs the same message. See the
+//! book's "Field attributes" reference for the full table.
 // --------------------------------------------------
 // mods
 // --------------------------------------------------

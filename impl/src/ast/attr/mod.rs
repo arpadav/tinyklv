@@ -155,8 +155,8 @@ impl<'a> MainContainer<'a> {
     /// error under `keylen`, whose codec decides each frame's framing. The container's
     /// `unknown(..)` and the `#[klv(unknown)]` field that keeps its frames become one
     /// [`UnknownFrames`]: the field is an error without the codec, and the codec's `enc` is
-    /// required only beside the field. A key two fields or arms share, and a key + len `sentinel`
-    /// on a `&str` stream, are an error when the decode impls are generated, and a variant two
+    /// required only beside the field. A key two fields or arms share, and a `sentinel` on a
+    /// `&str` stream, are an error when the decode impls are generated, and a variant two
     /// `oneof(..)` arms share when the encode impls are. Returns `None`
     /// and records diagnostics in `cx` if any required
     /// attributes are absent or the struct variant is unsupported
@@ -410,7 +410,7 @@ impl<'a> MainContainer<'a> {
     fn decodes(&self) -> bool {
         let header = match &self.attrs.mode {
             ContainerMode::Separate { key, len, .. } => key.dec.is_some() && len.dec.is_some(),
-            ContainerMode::Fused { keylen } => keylen.dec.is_some(),
+            ContainerMode::Fused { keylen, .. } => keylen.dec.is_some(),
         };
         let unknown = self.unknown.as_ref();
         header
@@ -427,7 +427,7 @@ impl<'a> MainContainer<'a> {
     fn encodes(&self) -> bool {
         let header = match &self.attrs.mode {
             ContainerMode::Separate { key, len, .. } => key.enc.is_some() && len.enc.is_some(),
-            ContainerMode::Fused { keylen } => keylen.enc.is_some(),
+            ContainerMode::Fused { keylen, .. } => keylen.enc.is_some(),
         };
         let unknown = self.unknown.as_ref();
         header

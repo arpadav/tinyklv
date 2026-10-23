@@ -55,18 +55,16 @@ impl EncodeCtx<'_> {
         let scratch_decl = staged.then(|| Staging::Scratch.declare());
         let klv_items = self.klv_items()?;
         // --------------------------------------------------
-        // a length encoder no frame calls, every one `size(implicit)` and no sentinel's, is
-        // still type-checked
+        // a length encoder no frame calls, every one `size(implicit)` and no packet's, is still
+        // type-checked
         // --------------------------------------------------
         let unwritten_len = match self.framing {
-            EncodeFraming::Separate {
-                len,
-                sentinel: None,
-                ..
-            } if self
-                .input
-                .klv_keys()
-                .all(|key| key.codec.implicit().is_some()) =>
+            EncodeFraming::Separate { len, .. }
+                if !self.input.attrs.mode.len_frames_packet()
+                    && self
+                        .input
+                        .klv_keys()
+                        .all(|key| key.codec.implicit().is_some()) =>
             {
                 Some(len.unwritten())
             }
@@ -78,7 +76,7 @@ impl EncodeCtx<'_> {
         Some(quote! {
             #[automatically_derived]
             impl #impl_generics ::tinyklv::traits::EncodeValue for #name #ty_generics #where_clause {
-                fn encode_value(&self, out: &mut ::std::vec::Vec<u8>) {
+                fn encode_value(&self, out: &mut ::std::vec::Vec<::core::primitive::u8>) {
                     #reserve
                     #scratch_decl
                     #unwritten_len

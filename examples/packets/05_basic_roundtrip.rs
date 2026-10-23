@@ -15,7 +15,7 @@
 //! * `decode_value` vs `decode_frame`
 //! * Sentinel + outer-length accounting
 //!
-//! See also: `book/src/tutorial/fundamentals/09-encode-sigil.md`
+//! See also: `book/src/tutorial/2-codecs/03-sigils.md`
 use tinyklv::dec::binary as decb; // binary decoders
 use tinyklv::enc::binary as encb; // binary encoders
 use tinyklv::prelude::*; // Klv proc-macro + traits

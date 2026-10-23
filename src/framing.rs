@@ -13,6 +13,7 @@
 //! key `0x01` is length-prefixed and key `0x02` is an `Inline` BER-OID varint:
 //!
 //! ```rust
+//! # #[cfg(feature = "ber")] {
 //! use tinyklv::{
 //!     dec::ber as decber, dec::binary as decb, enc::ber as encber, enc::binary as encb,
 //!     prelude::*,
@@ -54,6 +55,7 @@
 //! reading.encode_value(&mut out);
 //! assert_eq!(out, bytes);
 //! assert_eq!(Reading::decode_value(&mut &bytes[..]), Ok(reading));
+//! # }
 //! ```
 //!
 //! Author: aav

@@ -14,6 +14,7 @@ use crate::common::drive::Drive;
 use crate::common::error::ContextErrorExt;
 use crate::common::varint;
 use crate::support::header;
+#[cfg(feature = "ber")]
 use tinyklv::dec::ber as decber;
 use tinyklv::prelude::*;
 
@@ -78,6 +79,7 @@ impl Probe {
 }
 
 /// A chain of messages, each nesting the next as an `Inline` value right after its key
+#[cfg(feature = "ber")]
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -95,6 +97,7 @@ struct Chain {
 }
 
 /// [`Chain`] implementation
+#[cfg(feature = "ber")]
 impl Chain {
     /// Display bytes each nesting level may add to the error
     const DISPLAY_PER_LEVEL: usize = 256;
@@ -194,6 +197,7 @@ fn oneshot_error_keeps_decoder_cause() {
 
 /// A decoder failing with its own label and a cause: the display names the field, then that
 /// label, and the cause itself stays in the error's cause chain
+#[cfg(feature = "ber")]
 #[test]
 fn oneshot_error_keeps_labelled_decoder_cause() {
     let error = Chain::oneshot_error(&Chain::overflowing_leaf_wire(0));
@@ -209,6 +213,7 @@ fn oneshot_error_keeps_labelled_decoder_cause() {
 
 /// A failure two `Inline` levels down names both fields, outermost first, then the decoder's
 /// own reason, and carries two labels: the outermost field's and the next one's
+#[cfg(feature = "ber")]
 #[test]
 fn nested_oneshot_error_names_every_field_outermost_first() {
     let error = Chain::oneshot_error(&Chain::overflowing_leaf_wire(2));
@@ -228,6 +233,7 @@ fn nested_oneshot_error_names_every_field_outermost_first() {
 
 /// A failure 1, 3 or 32 `Inline` levels down holds the same two links at each depth: no level in
 /// between adds a link, and none loses the leaf decoder's cause
+#[cfg(feature = "ber")]
 #[test]
 fn nested_oneshot_cause_chain_holds_two_links() {
     for depth in [1, 3, 32] {
@@ -247,6 +253,7 @@ fn nested_oneshot_cause_chain_holds_two_links() {
 
 /// A decoder failing with its own label and no cause, one `Inline` level down: the cause chain
 /// holds the outermost value decoder's error alone, since the leaf decoder's error carries none
+#[cfg(feature = "ber")]
 #[test]
 fn nested_oneshot_error_without_cause_holds_one_link() {
     #[rustfmt::skip]
@@ -268,6 +275,7 @@ fn nested_oneshot_error_without_cause_holds_one_link() {
 /// The nested error's display grows linearly with the depth: depth 8 first, which a display
 /// that doubles per level already overruns while it is still small, then depth 32, which one
 /// that grows with the square of the depth overruns
+#[cfg(feature = "ber")]
 #[test]
 fn nested_oneshot_display_grows_linearly() {
     for depth in [8, 32] {

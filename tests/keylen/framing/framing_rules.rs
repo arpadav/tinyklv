@@ -15,8 +15,12 @@ use crate::common::drive::Drive;
 use crate::common::scans::Scans;
 use crate::common::varint;
 use crate::support::example::{Example, Reading};
-use crate::support::{header, value};
+use crate::support::header;
+#[cfg(feature = "ber")]
+use crate::support::value;
+#[cfg(feature = "ber")]
 use tinyklv::codecs::ber::BerLength;
+#[cfg(feature = "ber")]
 use tinyklv::dec::ber as decber;
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
@@ -72,6 +76,7 @@ impl Greeting {
 
 /// Message whose keylen header is built from crate codecs: a `be_u16` key, which fails short
 /// of the end of input, and a BER length
+#[cfg(feature = "ber")]
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -89,6 +94,7 @@ struct Wide {
 }
 
 /// [`Wide`] implementation
+#[cfg(feature = "ber")]
 impl Wide {
     /// Byte length of `text`
     const TEXT_LEN: usize = 128;
@@ -164,6 +170,7 @@ fn split_at_every_offset() {
 /// A header built from crate codecs still pauses at every split and completes, whether the
 /// codec fails short of the end of input (`be_u16` on one byte) or consumes to it (a BER
 /// long-form length cut inside its length bytes)
+#[cfg(feature = "ber")]
 #[test]
 fn split_inside_crate_codec_header() {
     Wide::decoded().assert_decodes_from(&Wide::wire());
@@ -175,8 +182,8 @@ fn split_inside_crate_codec_header() {
 fn oneshot_cut_value_finalizes() {
     #[rustfmt::skip]
     let cuts: [&[u8]; 2] = [
-        // level, an `Inline` BER-OID cut after a continuation byte
-        &[0x20, 0x81],
+        // status, an `Inline` varint cut after a continuation byte
+        &[0x18, 0x81],
         // label = "hi", `Sliced(2)` cut after its first byte
         &[0x12, 0x02, 0x68],
     ];
@@ -241,6 +248,7 @@ fn a_malformed_inline_value_leaves_the_cursor_where_its_decoder_stopped() {
 
 /// A `ber_oid` value past its type's range, with more frames after it, is malformed in
 /// both drivers; the one-shot error names the field, then keeps the decoder's label
+#[cfg(feature = "ber")]
 #[test]
 fn overflowing_ber_oid_mid_buffer_is_labelled_error() {
     #[rustfmt::skip]
@@ -261,6 +269,7 @@ fn overflowing_ber_oid_mid_buffer_is_labelled_error() {
 
 /// A `BerLength<u8>` value past `u8::MAX` as the final frame rewinds before rejecting, so it
 /// is malformed in both drivers rather than dropped as truncation
+#[cfg(feature = "ber")]
 #[test]
 fn overflowing_ber_length_last_frame_is_labelled_error() {
     #[rustfmt::skip]
@@ -279,6 +288,7 @@ fn overflowing_ber_length_last_frame_is_labelled_error() {
 
 /// A long-form `BerLength` `Inline` value split anywhere, including between its two length
 /// bytes, pauses, then completes
+#[cfg(feature = "ber")]
 #[test]
 fn split_inside_long_form_ber_length_value() {
     #[rustfmt::skip]

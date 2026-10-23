@@ -10,8 +10,9 @@
 //! expected width, whose length is written directly and back-filled when the value takes another,
 //! and the complete write for a KLV unit whose body length is unknown until after the body is
 //! encoded: write the prefix, reserve the slot, write the value, then back-fill the slot, the
-//! length checked against `W` in debug builds, or roll back the whole unit if the value is too
-//! large
+//! length checked against `W` in debug builds. A body too long for the slot panics in a debug
+//! build, and in a release build rolls back the whole unit, an item or a packet
+//! ([`KlvUnit`](crate::expand::encode_impl::length_prefix::KlvUnit))
 //!
 //! [`VariableLength`](crate::expand::encode_impl::length_prefix::VariableLength) writes the
 //! length of a staged value
@@ -79,6 +80,54 @@ impl<'a> LengthPrefix<'a> {
             if false {
                 #len_encoder(0usize, out);
             }
+        }
+    }
+}
+
+/// What a back-filled length frames, named by the message of a body too long for its slot
+#[derive(Debug, Clone, Copy)]
+pub(super) enum KlvUnit {
+    /// A field's frame: its key, length and value
+    Item,
+    /// A sentinel's packet: the sentinel, the packet length and the body
+    Packet,
+}
+
+/// [`KlvUnit`] implementation
+impl KlvUnit {
+    /// The message of a body too long for a `width`-byte slot, its `{}` the body's length
+    ///
+    /// # Arguments
+    ///
+    /// * `width` - The `W` of the slot's `size(exact = W)`
+    ///
+    /// # Returns
+    ///
+    /// The message, e.g. an item's under `size(exact = 1)`:
+    ///
+    /// ```text
+    /// tinyklv: value of {} bytes does not fit the 1-byte length budget set by `size(exact = 1)`
+    /// ```
+    fn overflow(self, width: usize) -> String {
+        let body = match self {
+            Self::Item => "value",
+            Self::Packet => "packet body",
+        };
+        format!(
+            "tinyklv: {body} of {{}} bytes does not fit the {width}-byte length budget set by \
+             `size(exact = {width})`"
+        )
+    }
+
+    /// What a release build leaves out of the output in place of a body too long for its slot
+    ///
+    /// # Returns
+    ///
+    /// `the item` or `the packet`
+    fn omitted(self) -> &'static str {
+        match self {
+            Self::Item => "the item",
+            Self::Packet => "the packet",
         }
     }
 }
@@ -222,13 +271,21 @@ impl FixedLengthSlot<'_> {
         let bytes = value.bytes;
         let len_write = quote_spanned! { span => #len_encoder(#bytes, out); };
         let mismatch = quote! { #foreign && __body_len != #bytes };
-        self.write_filled(prefix_write, len_write, Some(mismatch), value_write, span)
+        self.write_filled(
+            KlvUnit::Item,
+            prefix_write,
+            len_write,
+            Some(mismatch),
+            value_write,
+            span,
+        )
     }
 
     /// Writes a prefix, reserves the slot, writes the body, then back-fills the slot
     ///
     /// # Arguments
     ///
+    /// * `unit` - What the slot's length frames
     /// * `prefix_write` - Generated statements that write the field key or sentinel
     /// * `value_write` - Builds the statements appending the body bytes to the buffer it is given
     /// * `span` - Span of the `out` handed to `value_write`
@@ -238,13 +295,14 @@ impl FixedLengthSlot<'_> {
     /// The [`Self::write_filled`] block
     pub(super) fn write_backfilled(
         self,
+        unit: KlvUnit,
         prefix_write: proc_macro2::TokenStream,
         value_write: impl FnOnce(&proc_macro2::TokenStream) -> proc_macro2::TokenStream,
         span: proc_macro2::Span,
     ) -> proc_macro2::TokenStream {
         let width = self.width;
         let reserve = quote! { out.resize(__len_pos + #width, 0u8); };
-        self.write_filled(prefix_write, reserve, None, value_write, span)
+        self.write_filled(unit, prefix_write, reserve, None, value_write, span)
     }
 
     /// The compile error for a value wider than the slot encodes, at [`ValueWidth::declared_at`]
@@ -280,10 +338,12 @@ impl FixedLengthSlot<'_> {
     /// The slot is filled when `mismatch` holds, on a cold path, or always without one. The length
     /// is written at the tail with [`Self::write_len`], copied from its `__tail` into the slot, and
     /// the tail is truncated. When the slot is too narrow to represent the body, the generated code
-    /// logs the error and rolls back the entire KLV unit
+    /// panics in a debug build ([`KlvUnit::overflow`]), and in a release build logs the same
+    /// message and rolls back the entire `unit`
     ///
     /// # Arguments
     ///
+    /// * `unit` - What the slot's length frames
     /// * `prefix_write` - Generated statements that write the field key or sentinel
     /// * `slot_write` - Generated statements writing the slot's bytes at `__len_pos`
     /// * `mismatch` - The `bool` expression, reading `__body_len`, under which the slot is filled,
@@ -296,6 +356,7 @@ impl FixedLengthSlot<'_> {
     /// A block containing the complete filled write
     fn write_filled(
         self,
+        unit: KlvUnit,
         prefix_write: proc_macro2::TokenStream,
         slot_write: proc_macro2::TokenStream,
         mismatch: Option<proc_macro2::TokenStream>,
@@ -311,8 +372,8 @@ impl FixedLengthSlot<'_> {
             out.truncate(__tail);
         };
         // --------------------------------------------------
-        // a slot narrower than usize rolls back an overflowing body, compared as `u64`: the bound
-        // can exceed a 32-bit target's usize
+        // a slot narrower than usize panics on an overflowing body in a debug build and rolls it
+        // back in a release one, compared as `u64`: the bound can exceed a 32-bit target's usize
         // --------------------------------------------------
         let max_body_len = self
             .max_len()
@@ -321,13 +382,14 @@ impl FixedLengthSlot<'_> {
         let (field_start, fill) = match max_body_len {
             Some(max_body_len) => {
                 let logger = crate::expand::logger::error_logger();
+                let overflow = unit.overflow(width);
+                let omitting = format!("{overflow}; omitting {}", unit.omitted());
                 let fill = quote! {
-                    if __body_len as u64 >= #max_body_len {
-                        #logger(
-                            "tinyklv: KLV item body of {} bytes exceeds its {}-byte length prefix; omitting the item",
-                            __body_len,
-                            #width,
-                        );
+                    if __body_len as ::core::primitive::u64 >= #max_body_len {
+                        if ::core::cfg!(debug_assertions) {
+                            ::core::panic!(#overflow, __body_len);
+                        }
+                        #logger(#omitting, __body_len);
                         out.truncate(__field_start);
                     } else {
                         #fill
@@ -403,8 +465,8 @@ impl VariableLength<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::FixedLengthSlot;
-    use crate::ast::types::XcoderType;
+    use super::{FixedLengthSlot, KlvUnit};
+    use crate::{ast::types::XcoderType, expand::U32_PLUS_ONE_U64};
 
     use quote::quote;
 
@@ -419,11 +481,13 @@ mod tests {
             width: 4,
         };
         let write = slot.write_backfilled(
+            KlvUnit::Item,
             quote! {},
             |out| quote! { body(#out); },
             proc_macro2::Span::call_site(),
         );
-        let bound = quote! { if __body_len as u64 >= 4294967296u64 }.to_string();
+        let bound = proc_macro2::Literal::u64_suffixed(U32_PLUS_ONE_U64);
+        let bound = quote! { if __body_len as ::core::primitive::u64 >= #bound }.to_string();
         assert!(write.to_string().contains(&bound), "{write}");
     }
 }

@@ -120,6 +120,7 @@ name = "09_ber_keyed"
 path = "examples/packets/09_ber_keyed.rs"
 test = true
 harness = false
+required-features = ["ber"]
 
 [[example]]
 name = "10_defaults"
@@ -144,6 +145,7 @@ name = "13_variable_length_fields"
 path = "examples/packets/13_variable_length_fields.rs"
 test = true
 harness = false
+required-features = ["ber"]
 
 [[example]]
 name = "14_break_condition_custom"
@@ -164,130 +166,309 @@ test = true
 harness = false
 
 [[example]]
-name = "book_01_first_packet"
-path = "examples/book/basics/book_01_first_packet.rs"
+name = "book_basics_first_packet"
+path = "examples/book/basics/book_basics_first_packet.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_02_out_of_order"
-path = "examples/book/basics/book_02_out_of_order.rs"
+name = "book_basics_keys_not_positions"
+path = "examples/book/basics/book_basics_keys_not_positions.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_03_frames_and_sentinels"
-path = "examples/book/basics/book_03_frames_and_sentinels.rs"
+name = "book_basics_sentinels"
+path = "examples/book/basics/book_basics_sentinels.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_04_default_codec"
-path = "examples/book/basics/book_04_default_codec.rs"
+name = "book_basics_default_codecs"
+path = "examples/book/basics/book_basics_default_codecs.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_05_custom_decoder"
-path = "examples/book/basics/book_05_custom_decoder.rs"
+name = "book_codecs_custom_decoder"
+path = "examples/book/codecs/book_codecs_custom_decoder.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_06_decode_value_impl"
-path = "examples/book/basics/book_06_decode_value_impl.rs"
+name = "book_codecs_value_traits"
+path = "examples/book/codecs/book_codecs_value_traits.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_07_a_subslice"
-path = "examples/book/fields/book_07_a_subslice.rs"
+name = "book_codecs_sigils"
+path = "examples/book/codecs/book_codecs_sigils.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_07_b_size_lengthed"
-path = "examples/book/fields/book_07_b_size_lengthed.rs"
+name = "book_codecs_macros"
+path = "examples/book/codecs/book_codecs_macros.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_08_latebind"
-path = "examples/book/fields/book_08_latebind.rs"
+name = "book_codecs_macros_chrono"
+path = "examples/book/codecs/book_codecs_macros_chrono.rs"
+test = true
+harness = false
+required-features = ["chrono"]
+
+[[example]]
+name = "book_codecs_latebind"
+path = "examples/book/codecs/book_codecs_latebind.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_09_encode_sigil"
-path = "examples/book/fields/book_09_encode_sigil.rs"
+name = "book_codecs_latebind_mut"
+path = "examples/book/codecs/book_codecs_latebind_mut.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_10_macro"
-path = "examples/book/fields/book_10_macro.rs"
+name = "book_codecs_trait_fallback"
+path = "examples/book/codecs/book_codecs_trait_fallback.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_11_a_default"
-path = "examples/book/fields/book_11_a_default.rs"
+name = "book_codecs_nested"
+path = "examples/book/codecs/book_codecs_nested.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_11_b_fallback"
-path = "examples/book/fields/book_11_b_fallback.rs"
+name = "book_sizes_subslice"
+path = "examples/book/sizes/book_sizes_subslice.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_12_nested_packets"
-path = "examples/book/advanced/book_12_nested_packets.rs"
+name = "book_sizes_lengthed"
+path = "examples/book/sizes/book_sizes_lengthed.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_13_repeated_extraction"
-path = "examples/book/advanced/book_13_repeated_extraction.rs"
+name = "book_sizes_exact"
+path = "examples/book/sizes/book_sizes_exact.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_14_break_condition"
-path = "examples/book/advanced/book_14_break_condition.rs"
+name = "book_sizes_reserve"
+path = "examples/book/sizes/book_sizes_reserve.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_15_streaming_decode"
-path = "examples/book/advanced/book_15_streaming_decode.rs"
+name = "book_sizes_implicit_exact"
+path = "examples/book/sizes/book_sizes_implicit_exact.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_16_tokio_streams"
-path = "examples/book/advanced/book_16_tokio_streams.rs"
+name = "book_sizes_implicit"
+path = "examples/book/sizes/book_sizes_implicit.rs"
+test = true
+harness = false
+required-features = ["ber"]
+
+[[example]]
+name = "book_sizes_implicit_varint"
+path = "examples/book/sizes/book_sizes_implicit_varint.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_17_implicit"
-path = "examples/book/advanced/book_17_implicit.rs"
+name = "book_sizes_len_slot"
+path = "examples/book/sizes/book_sizes_len_slot.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_18_keylen"
-path = "examples/book/advanced/book_18_keylen.rs"
+name = "book_sizes_keylen"
+path = "examples/book/sizes/book_sizes_keylen.rs"
 test = true
 harness = false
 
 [[example]]
-name = "book_19_unknown"
-path = "examples/book/advanced/book_19_unknown.rs"
+name = "book_sizes_keylen_wiretype"
+path = "examples/book/sizes/book_sizes_keylen_wiretype.rs"
 test = true
 harness = false
+
+[[example]]
+name = "book_presence_option"
+path = "examples/book/presence/book_presence_option.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_presence_default_value"
+path = "examples/book/presence/book_presence_default_value.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_presence_skip_if"
+path = "examples/book/presence/book_presence_skip_if.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_presence_skip_if_fn"
+path = "examples/book/presence/book_presence_skip_if_fn.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_presence_oneof"
+path = "examples/book/presence/book_presence_oneof.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_unknown_deny"
+path = "examples/book/unknown/book_unknown_deny.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_unknown_keep"
+path = "examples/book/unknown/book_unknown_keep.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_unknown_strict"
+path = "examples/book/unknown/book_unknown_strict.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_control_break_on_key"
+path = "examples/book/control/book_control_break_on_key.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_control_break_on_fn"
+path = "examples/book/control/book_control_break_on_fn.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_control_field_break_on"
+path = "examples/book/control/book_control_field_break_on.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_streams_drain_frames"
+path = "examples/book/streams/book_streams_drain_frames.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_streams_decoder"
+path = "examples/book/streams/book_streams_decoder.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_streams_decode_partial"
+path = "examples/book/streams/book_streams_decode_partial.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_streams_tokio"
+path = "examples/book/streams/book_streams_tokio.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_tooling_debug"
+path = "examples/book/tooling/book_tooling_debug.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_tooling_one_direction"
+path = "examples/book/tooling/book_tooling_one_direction.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_tooling_encode_only"
+path = "examples/book/tooling/book_tooling_encode_only.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_ref_size"
+path = "examples/book/ref/book_ref_size.rs"
+test = true
+harness = false
+required-features = ["ber"]
+
+[[example]]
+name = "book_ref_container"
+path = "examples/book/ref/book_ref_container.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_ref_keylen"
+path = "examples/book/ref/book_ref_keylen.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_ref_break_on"
+path = "examples/book/ref/book_ref_break_on.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_ref_unknown"
+path = "examples/book/ref/book_ref_unknown.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_ref_field"
+path = "examples/book/ref/book_ref_field.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_ref_sigils"
+path = "examples/book/ref/book_ref_sigils.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_ref_codecs"
+path = "examples/book/ref/book_ref_codecs.rs"
+test = true
+harness = false
+required-features = ["ber"]
+
+[[example]]
+name = "book_ref_limits"
+path = "examples/book/ref/book_ref_limits.rs"
+test = true
+harness = false
+required-features = ["ber"]
 
 [dependencies]
 # --------------------------------------------------
@@ -295,7 +476,7 @@ harness = false
 # --------------------------------------------------
 chrono = { version = "0.4.45", optional = true, default-features = false, features = ["std"] }
 memchr = "2.8.0"
-num-traits = "0.2.19"
+num-traits = { version = "0.2.19", optional = true }
 pastey = "0.2.3"
 tracing = { version = "0.1.44", optional = true }
 winnow = { version = "1.0.2", default-features = false, features = ["binary", "parser", "std"] }
@@ -335,10 +516,11 @@ name = "streaming_compaction"
 harness = false
 
 [[bench]]
-# the fixed-width int decoders (safe `try_from` vs unchecked `unsafe`), the BER decoders, and an
-# exact-sized slice decode
+# the fixed-width int decoders (safe `try_from` vs unchecked `unsafe`), the BER decoders and
+# encoders, and an exact-sized slice decode; without `ber` it is skipped
 name = "int_decode"
 harness = false
+required-features = ["ber"]
 
 [[bench]]
 # a varint with a length prefix vs `size(implicit)`, and what opting in to `unknown(..)` costs
@@ -346,10 +528,11 @@ name = "framing_modes"
 harness = false
 
 [features]
-default = []
+default = ["ber"]
 ascii = ["winnow/ascii"]
 bench = ["chrono"] # for benchmarking
-full = ["ascii", "chrono"]
+ber = ["dep:num-traits"]
+full = ["ascii", "ber", "chrono"]
 tracing = ["dep:tracing", "tinyklv-impl/tracing"]
 simd = ["winnow/simd"]
 

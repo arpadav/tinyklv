@@ -4,8 +4,9 @@
 //! Defines [`HeaderXcoder`], which holds the optional encoder and decoder of a `key(..)` or
 //! `len(..)`, and the byte count of its `size(..)`. Both xcoders are optional because
 //! `allow_unimplemented_encode` / `allow_unimplemented_decode` may suppress
-//! the missing-xcoder error. [`TryFrom<&syn::MetaList>`] drives the
-//! `parse_nested_meta` parse for `enc = ..`, `dec = ..` and `size(..)`
+//! the missing-xcoder error. One `parse_nested_meta` parse for `enc = ..`, `dec = ..` and
+//! `size(..)` reads a container's list ([`TryFrom<&syn::MetaList>`]) and the `len(..)` of a
+//! `sentinel(..)`
 //!
 //! Defines [`HeaderAttrs`], the [`CodecAttr`] state of each of the three frame header attributes
 //! on a container
@@ -50,16 +51,32 @@ pub(crate) struct HeaderXcoder {
     /// variable-width); see [`SizeBytes`]
     pub(crate) size: SizeBytes,
 }
-/// [`HeaderXcoder`] implementation of [`TryFrom`] for [`syn::MetaList`]
-///
-/// Parses the `enc = ..`, `dec = ..` and `size(..)` sub-fields from a `key(..)` or `len(..)`
-/// attribute list into a [`HeaderXcoder`]. Unknown fields and duplicate
-/// encoder/decoder entries are returned as [`syn::Error`] values rather than
-/// stored internally, so the caller can surface them via the [`crate::Ctxt`]
-/// accumulator immediately
-impl TryFrom<&syn::MetaList> for HeaderXcoder {
-    type Error = syn::Error;
-    fn try_from(input: &syn::MetaList) -> syn::Result<Self> {
+/// [`HeaderXcoder`] implementation
+impl HeaderXcoder {
+    /// Parses the `enc = ..`, `dec = ..` and `size(..)` sub-fields of a `key(..)` or `len(..)`
+    /// list, whether it sits on the container or in a `sentinel(..)`
+    ///
+    /// Unknown fields and duplicate encoder/decoder entries are returned as [`syn::Error`] values
+    /// rather than stored internally, so the caller can surface them via the [`crate::Ctxt`]
+    /// accumulator immediately
+    ///
+    /// # Arguments
+    ///
+    /// * `walk` - Runs the entry parse it is given over each entry of the list: the list's
+    ///   `parse_nested_meta`
+    ///
+    /// # Returns
+    ///
+    /// The parsed [`HeaderXcoder`]
+    ///
+    /// # Errors
+    ///
+    /// An unknown or duplicate entry, or an entry whose value does not parse
+    fn parse(
+        walk: impl FnOnce(
+            &mut dyn FnMut(syn::meta::ParseNestedMeta) -> syn::Result<()>,
+        ) -> syn::Result<()>,
+    ) -> syn::Result<Self> {
         // --------------------------------------------------
         // init
         // --------------------------------------------------
@@ -69,14 +86,13 @@ impl TryFrom<&syn::MetaList> for HeaderXcoder {
         // --------------------------------------------------
         // parse nested meta
         // --------------------------------------------------
-        input.parse_nested_meta(|meta| {
+        walk(&mut |meta| {
             tk_syn_macros::handle_unique_nested_meta_values! {
                 meta;
                 err!(UnknownHeaderField(meta.path));
-                3;
-                enc: symbol::pnm_parse_maybestr_header_encoder => err!(DuplicateEncoderInHeader),
-                dec: symbol::pnm_parse_maybestr_decoder => err!(DuplicateDecoderInHeader),
-                size: symbol::parse_pnm_header_size => err!(DuplicateSizeInHeader),
+                enc: symbol::pnm_parse_maybestr_header_encoder  => err!(DuplicateEncoderInHeader),
+                dec: symbol::pnm_parse_maybestr_decoder         => err!(DuplicateDecoderInHeader),
+                size: symbol::parse_pnm_header_size             => err!(DuplicateSizeInHeader),
             }
         })?;
         // --------------------------------------------------
@@ -88,6 +104,35 @@ impl TryFrom<&syn::MetaList> for HeaderXcoder {
             dec,
             size: size.unwrap_or_default(),
         })
+    }
+
+    /// Parses the `len(..)` of a `sentinel(..)` list, the codec of each packet's length
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - The nested meta entry, positioned at its keyword
+    ///
+    /// # Returns
+    ///
+    /// [`None`] if the keyword is not [`symbol::LENGTH`]; otherwise the `len` path, which spans
+    /// the codec's errors, and the parsed codec, or a parse error
+    pub(super) fn parse_pnm_len(
+        input: &syn::meta::ParseNestedMeta,
+    ) -> Option<syn::Result<(syn::Path, Box<Self>)>> {
+        if input.path != symbol::LENGTH {
+            return None;
+        }
+        let len = Self::parse(|entry| input.parse_nested_meta(entry));
+        Some(len.map(|len| (input.path.clone(), Box::new(len))))
+    }
+}
+/// [`HeaderXcoder`] implementation of [`TryFrom`] for [`syn::MetaList`]
+///
+/// Parses a container's `key(..)` or `len(..)` list ([`HeaderXcoder::parse`])
+impl TryFrom<&syn::MetaList> for HeaderXcoder {
+    type Error = syn::Error;
+    fn try_from(input: &syn::MetaList) -> syn::Result<Self> {
+        Self::parse(|entry| input.parse_nested_meta(entry))
     }
 }
 /// [`HeaderXcoder`] implementation of [`CodecFields`]

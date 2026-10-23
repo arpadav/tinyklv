@@ -4,8 +4,7 @@
 //! to any existing content without clobbering the prefix), and that
 //! `decode_value` correctly rewinds a truncated trailing triple so the cursor
 //! is left at the start of the undecodable data. Covers numeric types
-//! (`u8`/`u16`/`u32`/`u64`/`i16`/`i32`), optional fields, UTF-8 string fields,
-//! oversized-field detection (panics on length-prefix overflow), and the
+//! (`u8`/`u16`/`u32`/`u64`/`i16`/`i32`), optional fields, UTF-8 string fields, and the
 //! leaf/BER encoder append invariant
 //!
 //! Author: aav
@@ -355,6 +354,7 @@ fn framed_fixed_len_backpatch_roundtrip() {
     assert_eq!(decoded, rec);
 }
 
+#[cfg(feature = "ber")]
 #[test]
 /// Leaf and BER encoders append into an existing buffer rather than replacing its contents
 fn leaf_and_ber_encoders_append() {
@@ -365,26 +365,6 @@ fn leaf_and_ber_encoders_append() {
         buf,
         // existing prefix, then be_u32, then BER long-form length (200 >= 128)
         vec![0x01, 0x02, 0xCA, 0xFE, 0xBA, 0xBE, 0x80 | 1, 200],
-    );
-}
-
-#[test]
-/// A field whose encoded body is longer than its declared `len` fixed `size` can represent is a
-/// user error. The back-patch path never emits a mis-framed item: it logs the error and rolls the
-/// whole key-length-value triple back out of `out`, leaving the preceding `id` field untouched.
-/// Here `name` is 300 bytes against a 1-byte length prefix (max 255), so only the `id` triple
-/// survives: `key(0x01) + len(0x02) + be_u16(7)`
-fn oversized_field_with_fixed_size_omits_item() {
-    let original = WithStringRoundtrip {
-        id: 7,
-        name: "x".repeat(300),
-    };
-    let mut encoded = Vec::new();
-    original.encode_value(&mut encoded);
-    assert_eq!(encoded, vec![0x01, 0x02, 0x00, 0x07]);
-    assert!(
-        !encoded.contains(&b'x'),
-        "the oversized item's body must not reach the buffer",
     );
 }
 

@@ -1,0 +1,13 @@
+error: a `sentinel` beside `keylen(..)` needs its own packet length codec
+       write `sentinel(value = b"..", len(dec = .., enc = ..))`
+ --> tests/ui/fail/framing/keylen/keylen_sentinel_without_len.rs:8:40
+  |
+8 | #[klv(keylen(dec = header), sentinel = b"\x06", allow_unimplemented_encode)]
+  |                                        ^^^^^^^
+
+error: a `sentinel` beside `keylen(..)` needs its own packet length codec
+       write `sentinel(value = b"..", len(dec = .., enc = ..))`
+  --> tests/ui/fail/framing/keylen/keylen_sentinel_without_len.rs:15:46
+   |
+15 | #[klv(keylen(dec = header), sentinel(value = b"\x06"), allow_unimplemented_encode)]
+   |                                              ^^^^^^^

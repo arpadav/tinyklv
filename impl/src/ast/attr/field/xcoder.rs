@@ -131,17 +131,16 @@ impl TryFrom<&syn::MetaList> for FieldXcoder {
                 handle_unique_nested_meta_values! {
                     meta;
                     err!(UnknownFieldField(meta.path));
-                    10;
-                    key: symbol::parse_pnm_key                      => err!(DuplicateKeyInField),
-                    enc: symbol::pnm_parse_maybestr_encoder         => err!(DuplicateEncoderInField),
-                    dec: symbol::pnm_parse_maybestr_decoder         => err!(DuplicateDecoderInField),
-                    size: symbol::parse_pnm_size                    => err!(DuplicateSizeInField),
-                    latebind: symbol::pnm_parse_maybestr_latebind   => err!(DuplicateLatebindInField),
-                    default: symbol::parse_pnm_default_value        => err!(DuplicateDefaultInField),
-                    break_on: symbol::pnm_parse_maybestr_break_on   => err!(DuplicateBreakOnInField),
-                    skip_if_default: symbol::parse_pnm_skip_if_default => err!(SkipIfConflict),
-                    skip_if: symbol::pnm_parse_maybestr_skip_if     => err!(SkipIfConflict),
-                    unknown: symbol::parse_pnm_unknown              => err!(DuplicateUnknownInField),
+                    key: symbol::parse_pnm_key                          => err!(DuplicateKeyInField),
+                    enc: symbol::pnm_parse_maybestr_encoder             => err!(DuplicateEncoderInField),
+                    dec: symbol::pnm_parse_maybestr_decoder             => err!(DuplicateDecoderInField),
+                    size: symbol::parse_pnm_size                        => err!(DuplicateSizeInField),
+                    latebind: symbol::pnm_parse_maybestr_latebind       => err!(DuplicateLatebindInField),
+                    default: symbol::parse_pnm_default_value            => err!(DuplicateDefaultInField),
+                    break_on: symbol::pnm_parse_maybestr_break_on       => err!(DuplicateBreakOnInField),
+                    skip_if_default: symbol::parse_pnm_skip_if_default  => err!(SkipIfConflict),
+                    skip_if: symbol::pnm_parse_maybestr_skip_if         => err!(SkipIfConflict),
+                    unknown: symbol::parse_pnm_unknown                  => err!(DuplicateUnknownInField),
                 }
             })
             .err();

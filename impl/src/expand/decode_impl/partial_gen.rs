@@ -298,9 +298,10 @@ impl DecodeCtx<'_> {
         let partial_ty = &self.partial_ty;
         let (impl_generics, ty_generics, where_clause) = self.input.generics.split_for_impl();
         // --------------------------------------------------
-        // symbol for `default` keyword in error messages
+        // symbols for the `default` and `strict` keywords in error messages
         // --------------------------------------------------
         let default_symbol = symbol::DEFAULT_VALUE.to_token_stream();
+        let strict_symbol = symbol::STRICT.to_token_stream();
         let missing = ErrorKind::MissingRequired;
         // --------------------------------------------------
         // for every required (non-Option) klv field, emit a guard statement
@@ -327,7 +328,9 @@ impl DecodeCtx<'_> {
                                 ::core::stringify!(#struct_name),
                                 "::",
                                 ::core::stringify!(#name),
-                                "` value (required, and missing from the packet; to allow this, make the field an `Option` or give it a `",
+                                "` value (required: missing from the packet, or its decoder rejected it, which `",
+                                ::core::stringify!(#strict_symbol),
+                                "` reports; to allow this, make the field an `Option` or give it a `",
                                 ::core::stringify!(#default_symbol),
                                 "`)",
                             )))

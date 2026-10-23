@@ -10,8 +10,18 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use tinyklv::ErrorKind;
 use tinyklv::codecs::string::dec::{to_string_utf8, to_string_utf8_strict};
 use tinyklv::codecs::string::enc::from_string_utf8;
+
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+/// Two bytes of text, short of [`PAST_SHORT`]
+const SHORT: &[u8] = b"he";
+
+/// A length one byte past [`SHORT`]
+const PAST_SHORT: usize = SHORT.len() + 1;
 
 #[test]
 /// Tests that `to_string_utf8(6)` decodes ASCII bytes to `"AF-101"`
@@ -117,17 +127,27 @@ fn utf8_partial_consumption() {
 }
 
 #[test]
-/// Tests that a UTF-8 decode short of `len` bytes leaves the cursor at the end of the input, so a
-/// caller classes the short read as truncation
-fn utf8_short_input_leaves_cursor_at_end() {
-    let mut input: &[u8] = b"he";
-    assert!(to_string_utf8(5)(&mut input).is_err());
+/// Tests that a UTF-8 decode short of `len` bytes is truncation, leaving the cursor at the end of
+/// the input
+fn utf8_short_input_is_truncated() {
+    let mut input = SHORT;
+    let result = to_string_utf8(PAST_SHORT)(&mut input);
+    assert_eq!(
+        result.as_ref().err().and_then(ErrorKind::of),
+        Some(ErrorKind::Truncated),
+        "{result:?}"
+    );
     assert!(
         input.is_empty(),
         "cursor not at the end after a short to_string_utf8"
     );
-    let mut input: &[u8] = b"he";
-    assert!(to_string_utf8_strict(5)(&mut input).is_err());
+    let mut input = SHORT;
+    let result = to_string_utf8_strict(PAST_SHORT)(&mut input);
+    assert_eq!(
+        result.as_ref().err().and_then(ErrorKind::of),
+        Some(ErrorKind::Truncated),
+        "{result:?}"
+    );
     assert!(
         input.is_empty(),
         "cursor not at the end after a short to_string_utf8_strict"

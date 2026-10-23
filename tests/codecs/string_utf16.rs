@@ -15,6 +15,18 @@ use tinyklv::ErrorKind;
 use tinyklv::codecs::string::dec::{to_string_utf16_be, to_string_utf16_le};
 use tinyklv::codecs::string::enc::{from_string_utf16_be, from_string_utf16_le};
 
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+/// `A`, one UTF-16 code unit, little-endian
+const A_LE: &[u8] = &[0x41, 0x00];
+
+/// `A`, one UTF-16 code unit, big-endian
+const A_BE: &[u8] = &[0x00, 0x41];
+
+/// The length of two UTF-16 code units, one past `A`
+const TWO_UNITS: usize = 2 * A_LE.len();
+
 #[test]
 /// Tests `to_string_utf16_le(4)` decodes `[0x41, 0x00, 0x42, 0x00]` to `"AB"`
 fn utf16_le_known_ab() {
@@ -176,16 +188,27 @@ fn utf16_cross_decode_differs() {
 }
 
 #[test]
-/// Tests that a UTF-16 decode short of `len` bytes leaves the cursor at the end of the input
-fn utf16_short_input_leaves_cursor_at_end() {
-    let mut input: &[u8] = &[0x41, 0x00];
-    assert!(to_string_utf16_le(4)(&mut input).is_err());
+/// Tests that a UTF-16 decode short of `len` bytes is truncation, leaving the cursor at the end
+/// of the input
+fn utf16_short_input_is_truncated() {
+    let mut input = A_LE;
+    let result = to_string_utf16_le(TWO_UNITS)(&mut input);
+    assert_eq!(
+        result.as_ref().err().and_then(ErrorKind::of),
+        Some(ErrorKind::Truncated),
+        "{result:?}"
+    );
     assert!(
         input.is_empty(),
         "cursor not at the end after a short to_string_utf16_le"
     );
-    let mut input: &[u8] = &[0x00, 0x41];
-    assert!(to_string_utf16_be(4)(&mut input).is_err());
+    let mut input = A_BE;
+    let result = to_string_utf16_be(TWO_UNITS)(&mut input);
+    assert_eq!(
+        result.as_ref().err().and_then(ErrorKind::of),
+        Some(ErrorKind::Truncated),
+        "{result:?}"
+    );
     assert!(
         input.is_empty(),
         "cursor not at the end after a short to_string_utf16_be"

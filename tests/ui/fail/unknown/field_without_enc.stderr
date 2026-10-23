@@ -1,5 +1,6 @@
-error: Missing required `enc` field for `unknown`.
-       If no encoding is required, use `#[klv(allow_unimplemented_encode)]`.
+error: missing `enc` in `unknown(..)`, which encodes the items the `#[klv(unknown)]` field keeps
+       add `enc = ..`, or remove the `#[klv(unknown)]` field to drop the items
+       if no encoding is required, use `#[klv(allow_unimplemented_encode)]`
   --> tests/ui/fail/unknown/field_without_enc.rs:11:5
    |
 11 |     unknown(dec = unknown_frame)

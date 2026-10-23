@@ -13,10 +13,10 @@
 //! implement or a generated partial they may not build, and `codec/`
 //! the header, field and unknown-frame codecs a container names: a literal in place of a codec's
 //! path, a signature that does not fit the code the derive generates around it, a
-//! `#[klv(unknown)]` field type it cannot push a frame into, or a missing encoder that leaves
-//! `EncodeValue` unimplemented, its `header/` the frame header codecs, `field/` a field's,
-//! `unknown/` the unknown frames' and `break_on/` a struct or field `break_on` fn. Regenerate the
-//! snapshots with `TRYBUILD=overwrite cargo +1.95.0 test --test ui`
+//! `#[klv(unknown)]` field type it cannot push a frame into, a field with no decoder, or a missing
+//! encoder that leaves `EncodeValue` unimplemented, its `header/` the frame header codecs, `field/`
+//! a field's, `unknown/` the unknown frames' and `break_on/` a struct or field `break_on` fn.
+//! Regenerate the snapshots with `TRYBUILD=overwrite cargo +1.95.0 test --test ui`
 //!
 //! Author: aav
 

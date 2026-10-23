@@ -1,4 +1,5 @@
-error: `sentinel` is not supported with `keylen`. Remove `sentinel`, or use `key(..)` + `len(..)`.
+error: a `sentinel` beside `keylen(..)` needs its own packet length codec
+       write `sentinel(value = b"..", len(dec = .., enc = ..))`
   --> tests/ui/fail/framing/keylen/keylen_with_key_and_sentinel.rs:11:16
    |
 11 |     sentinel = b"\x06",

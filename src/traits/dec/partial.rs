@@ -321,17 +321,17 @@ where
 /// This holds the streaming decode loop, which the derive's
 /// [`DecodeValue::decode_value`] also runs, one-shot
 ///
-/// [`crate::Decoder::next`] and [`crate::Decoder::finish`] resume through it, so code generic over
-/// the type a [`crate::Decoder`] decodes bounds it too. A [`crate::Decoder`] enters resume mode
-/// through [`PartialIterator::next_resume`]
+/// [`crate::Decoder::next`] resumes through it and [`crate::Decoder::finish`] requires it, so code
+/// generic over the type a [`crate::Decoder`] decodes bounds it too. A [`crate::Decoder`] enters
+/// resume mode through [`PartialIterator::next_resume`]
 ///
 /// # Example
 ///
 /// ```rust
-/// use tinyklv::{ResumePartial, SeekSentinel, decoder::DecodeIterError, prelude::*};
+/// use tinyklv::{SeekSentinel, decoder::DecodeIterError, prelude::*};
 ///
 /// /// Ends the stream of any sentinel-framed type
-/// fn end_of_stream<P, T>(decoder: Decoder<P, &[u8]>) -> Result<T, DecodeIterError>
+/// fn end_of_stream<P, T>(decoder: Decoder<P, &[u8]>) -> Result<Option<T>, DecodeIterError>
 /// where
 ///     P: Partial<Final = T> + Default,
 ///     for<'a> T: DecodePartial<&'a [u8], Partial = P>

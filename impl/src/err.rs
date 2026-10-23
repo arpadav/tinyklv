@@ -201,6 +201,48 @@ Options include {s}.",
     )]
     SentinelOnStrStream,
 
+    #[error("\
+        `{s}` has no value
+write `{s} = b\"..\"`, or `{s}({v} = b\"..\", {l}(..))` to give the packet length its own codec",
+        s = symbol::SENTINEL,
+        v = symbol::SENTINEL_VALUE,
+        l = symbol::LENGTH,
+    )]
+    SentinelWithoutValue,
+
+    #[error("\
+        `{s}(..)` has no `{v}`
+add `{v} = b\"..\"`, the bytes each packet starts with",
+        s = symbol::SENTINEL,
+        v = symbol::SENTINEL_VALUE,
+    )]
+    MissingSentinelValue,
+
+    #[error("\
+        unknown `{0}` in `{s}(..)`
+expected `{v} = ..` or `{l}(..)`",
+        s = symbol::SENTINEL,
+        v = symbol::SENTINEL_VALUE,
+        l = symbol::LENGTH,
+    )]
+    UnknownSentinelField(String),
+
+    #[error("\
+        duplicate `{v}` in `{s}(..)`
+a packet starts with one sentinel; remove one `{v}`",
+        s = symbol::SENTINEL,
+        v = symbol::SENTINEL_VALUE,
+    )]
+    DuplicateSentinelValue,
+
+    #[error("\
+        duplicate `{l}` in `{s}(..)`
+a packet has one length; remove one `{l}(..)`",
+        s = symbol::SENTINEL,
+        l = symbol::LENGTH,
+    )]
+    DuplicateSentinelLen,
+
     // --------------------------------------------------
     // break_on
     // --------------------------------------------------
@@ -252,11 +294,14 @@ Use either `{kl}` OR `{k}`+`{l}`, not both.",
     KeylenWithKeyOrLen,
 
     #[error("\
-        `{s}` is not supported with `{kl}`. Remove `{s}`, or use `{k}(..)` + `{l}(..)`.",
+        a `{s}` beside `{kl}(..)` needs its own packet length codec
+write `{s}({v} = b\"..\", {l}({d} = .., {e} = ..))`",
         s = symbol::SENTINEL,
         kl = symbol::KEYLEN,
-        k = symbol::KEY,
+        v = symbol::SENTINEL_VALUE,
         l = symbol::LENGTH,
+        d = symbol::DECODER,
+        e = symbol::ENCODER,
     )]
     KeylenWithSentinel,
 
@@ -346,8 +391,8 @@ The derive passes the key and length by value; sigils apply to field encoders on
     DuplicateSizeInHeader,
 
     #[error("\
-        A `{l}(..)` with `{s}({e} = 0)` has no bytes to write a value's length in, so every \
-value with a length prefix is lost; use `{e} = 1` or more, or remove `{e}`.",
+        a `{l}(..)` with `{s}({e} = 0)` has no bytes to write a length in
+every value or packet it frames is lost; use `{e} = 1` or more, or remove `{e}`",
         l = symbol::LENGTH,
         s = symbol::SIZE,
         e = symbol::EXACT,
@@ -473,6 +518,17 @@ field.",
     )]
     UnknownFieldWithoutCodec,
 
+    #[error("\
+        missing `{e}` in `{u}(..)`, which encodes the items the `#[{k}({u})]` field keeps
+add `{e} = ..`, or remove the `#[{k}({u})]` field to drop the items
+if no encoding is required, use `#[{k}({aue})]`",
+        e = symbol::ENCODER,
+        u = symbol::UNKNOWN_FRAMES,
+        k = symbol::KLV_ATTR,
+        aue = symbol::ALLOW_UNIMPLEMENTED_ENCODE,
+    )]
+    MissingEncInUnknown,
+
     // --------------------------------------------------
     // default
     // --------------------------------------------------
@@ -573,8 +629,9 @@ Expected {s}.",
 
     #[error("\
         Duplicate `{s}` field.
-Currently only one key per field is supported.",
+Only one `{s} = ..` per field is supported; a `{s} = {o}(..)` lists every key of its field.",
         s = symbol::KEY,
+        o = symbol::ONEOF,
     )]
     DuplicateKeyInField,
 
@@ -635,8 +692,8 @@ Expected {sf}.",
     UnknownSizeField(String),
 
     #[error("\
-        Conflicting `{s}` byte count. `{e}` and `{r}` are mutually exclusive - a `{s}` is either an \
-exact width or a soft capacity estimate, not both.",
+        conflicting `{e}` and `{r}` in `{s}(..)`
+`{e} = N` already reserves its N bytes; remove `{r}`, or remove `{e}` if the size is not fixed",
         s = symbol::SIZE,
         e = symbol::EXACT,
         r = symbol::RESERVE,
@@ -688,7 +745,7 @@ this one never decodes; give one of them another key."
     SharedKey(String, String),
 
     #[error("\
-No encoder is found for field `{0}: {1}`.
+No encoder is found for the `{1}` value of field `{0}`.
 
 If encoding is not required, use `#[{k}({aue})]` on the struct.
 
@@ -706,7 +763,7 @@ Otherwise, you can:
     UnimplementedEncode(String, String),
 
     #[error("\
-No decoder is found for field `{0}: {1}`.
+No decoder is found for the `{1}` value of field `{0}`.
 
 If decoding is not required, use `#[{k}({aud})]` on the struct.
 
@@ -758,7 +815,7 @@ Otherwise, you can:
     UnimplementedArmDecode(String, String, String),
 
     #[error("\
-Field `{0}: {1}` has `{s}({l})` but no `{d} = ..` was set.
+The `{1}` value of field `{0}` has `{s}({l})` but no `{d} = ..` was set.
 The trait fallback (`<{1} as ::tinyklv::DecodeValue<..>>::decode_value`) has no length argument - \
 supply an explicit `{d}` or change the `{s}`.",
         s = symbol::SIZE,

@@ -16,6 +16,7 @@ mod boundary_values;
 mod duplicate_keys;
 mod empty_input;
 mod invalid_strings;
+#[cfg(feature = "ber")]
 mod malformed_ber;
 mod oversized_length;
 mod truncated;

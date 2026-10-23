@@ -11,7 +11,7 @@
 //! * Frame shrinkage when optional fields are absent
 //! * Decode tolerating missing keys
 //!
-//! See also: `book/src/tutorial/fundamentals/11-default-fallback.md`
+//! See also: `book/src/tutorial/4-presence/02-fallback-values.md`
 use tinyklv::dec::binary as decb; // binary decoders
 use tinyklv::enc::binary as encb; // binary encoders
 use tinyklv::prelude::*; // Klv proc-macro + traits

@@ -44,7 +44,6 @@ impl TryFrom<&syn::MetaList> for UnknownXcoder {
             tk_syn_macros::handle_unique_nested_meta_values! {
                 meta;
                 err!(UnknownFieldInUnknown(meta.path));
-                2;
                 enc: symbol::pnm_parse_maybestr_encoder => err!(DuplicateEncoderInUnknown),
                 dec: symbol::pnm_parse_maybestr_decoder => err!(DuplicateDecoderInUnknown),
             }

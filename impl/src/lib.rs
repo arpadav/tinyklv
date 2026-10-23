@@ -54,6 +54,10 @@ use syn::{DeriveInput, parse_macro_input};
 /// `allow_unimplemented_encode`, in which case no encode impl is generated.
 /// Missing decoders, `unknown(..)`'s included, behave the same under
 /// `allow_unimplemented_decode`, suppressing the decode impls
+///
+/// The `unknown(dec = ..)` decoder is keyed: it is passed each unknown item's
+/// key and returns the reader of the rest of the item,
+/// `fn(key) -> impl Fn(&mut input) -> tinyklv::Result<T>`
 #[proc_macro_derive(Klv, attributes(klv))]
 pub fn klv_impl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

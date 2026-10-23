@@ -48,8 +48,8 @@ use quote::{quote, quote_spanned};
 /// The container's frame header codec(s) and `unknown(..)` decoder, carrying the borrowed
 /// decoder tokens
 ///
-/// Each variant borrows the decoders and `sentinel` of its [`ContainerMode`], and the
-/// [`UnknownFrames`] decoder where that mode's loop reads unknown frames
+/// Each variant borrows the decoders of its [`ContainerMode`], and the [`UnknownFrames`] decoder
+/// where that mode's loop reads unknown frames
 #[derive(Debug, Clone, Copy)]
 pub(super) enum DecodeFraming<'a> {
     /// Separate key and length decoders; a known key's value with a length prefix is sliced via
@@ -59,8 +59,6 @@ pub(super) enum DecodeFraming<'a> {
         key_decoder: &'a types::XcoderType,
         /// Token expression decoding each frame's length
         len_decoder: &'a types::XcoderType,
-        /// The sentinel the `SeekSentinel` impl scans for ahead of the frame length, if any
-        sentinel: Option<&'a syn::Lit>,
         /// Where the frame's length is read
         len_read: LenRead<'a>,
     },
@@ -119,7 +117,7 @@ impl<'a> DecodeFraming<'a> {
             None => None,
         };
         match &input.attrs.mode {
-            ContainerMode::Separate { key, len, sentinel } => {
+            ContainerMode::Separate { key, len, .. } => {
                 let len_read = match unknown {
                     Some(unknown) => LenRead::IfPrefixed(unknown),
                     None if input.reads_every_len() => LenRead::Hoisted,
@@ -128,11 +126,10 @@ impl<'a> DecodeFraming<'a> {
                 Some(Self::Separate {
                     key_decoder: key.dec.as_ref()?,
                     len_decoder: len.dec.as_ref()?,
-                    sentinel: sentinel.as_ref(),
                     len_read,
                 })
             }
-            ContainerMode::Fused { keylen } => Some(Self::Fused {
+            ContainerMode::Fused { keylen, .. } => Some(Self::Fused {
                 keylen_decoder: keylen.dec.as_ref()?,
                 unknown,
             }),
@@ -345,8 +342,8 @@ impl LoopCtx<'_> {
     /// ([`KeyPattern::allowed`]). Every other key is an unknown one, whose frame the `unknown`
     /// decoder reads from the main stream, its length included ([`Self::unknown_from_input`]),
     /// and which is rejected when it consumed no input ([`Self::progress_check`]). With no
-    /// prefixed arm and no sentinel, nothing reads the length, so the unknown arm type-checks
-    /// its decoder in a read that never runs ([`Self::unread_len`]):
+    /// prefixed arm, and no packet the length frames, nothing reads the length, so the unknown arm
+    /// type-checks its decoder in a read that never runs ([`Self::unread_len`]):
     ///
     /// ```text
     /// match key {
@@ -356,7 +353,7 @@ impl LoopCtx<'_> {
     ///         #frame
     ///     }
     ///     _ => {
-    ///         #unread_len         // no prefixed arm, no sentinel
+    ///         #unread_len         // no prefixed arm, no packet the length frames
     ///         #unknown_from_input
     ///         #progress_check
     ///     }
@@ -375,7 +372,6 @@ impl LoopCtx<'_> {
         let DecodeFraming::Separate {
             len_decoder,
             len_read,
-            sentinel,
             ..
         } = self.framing
         else {
@@ -423,10 +419,10 @@ impl LoopCtx<'_> {
                 });
                 // --------------------------------------------------
                 // every other key's frame, read whole by the `unknown` decoder, then rejected when
-                // it moved the cursor nowhere; a length no key and no sentinel reads is still
+                // it moved the cursor nowhere; a length no key and no packet reads is still
                 // type-checked
                 // --------------------------------------------------
-                let unread = (prefixed.is_none() && sentinel.is_none())
+                let unread = (prefixed.is_none() && !self.input.attrs.mode.len_frames_packet())
                     .then(|| Self::unread_len(len_decoder));
                 let unknown = self.unknown_from_input(unknown);
                 let progress = self.progress_check();
@@ -451,7 +447,7 @@ impl LoopCtx<'_> {
     }
 
     /// Emits a length read that never runs, for a separate frame header whose length neither a
-    /// key nor a sentinel's seek reads: the length decoder is type-checked, a `usize` as every
+    /// key nor a packet's seek reads: the length decoder is type-checked, a `usize` as every
     /// frame length is, located at the decoder so that one of another type is reported there, and
     /// is not left unused
     ///

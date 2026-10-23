@@ -56,15 +56,13 @@ pub(super) enum EncodeFraming<'a> {
     Separate {
         /// Encoder writing each frame's key
         key_encoder: KeyEncoder<'a>,
-        /// The length prefix written after each prefixed field's key and, under a sentinel, the
-        /// frame length; a kept unknown frame's `unknown(..)` encoder writes its own
+        /// The length prefix written after each prefixed field's key; a kept unknown frame's
+        /// `unknown(..)` encoder writes its own
         len: LengthPrefix<'a>,
         /// The estimated bytes of one field's key, for the encode reserve
         key_bytes: usize,
         /// The estimated bytes of one field's length, for the encode reserve
         len_bytes: usize,
-        /// The sentinel the `EncodeFrame` impl writes ahead of the frame length, if any
-        sentinel: Option<&'a syn::Lit>,
     },
     /// One encoder writing each frame header from `(key, value_len)`
     Fused {
@@ -94,9 +92,7 @@ impl<'a> EncodeFraming<'a> {
             // --------------------------------------------------
             // separate key and length: each has its own encoder and width
             // --------------------------------------------------
-            ContainerMode::Separate {
-                key, len, sentinel, ..
-            } => {
+            ContainerMode::Separate { key, len, .. } => {
                 let key_encoder = key.enc.as_ref()?;
                 // --------------------------------------------------
                 // the key width: its `size(..)`, else a built-in fixed-width encoder, else the
@@ -119,7 +115,6 @@ impl<'a> EncodeFraming<'a> {
                     len: LengthPrefix::new(len.enc.as_ref()?, &len.size),
                     key_bytes,
                     len_bytes,
-                    sentinel: sentinel.as_ref(),
                 })
             }
             // --------------------------------------------------

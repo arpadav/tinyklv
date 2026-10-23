@@ -65,6 +65,8 @@ pub(crate) const STREAM: Symbol = Symbol("stream");
 pub(crate) const DEFAULT: Symbol = Symbol("default");
 /// The `sentinel` sub-attribute identifier
 pub(crate) const SENTINEL: Symbol = Symbol("sentinel");
+/// The `value = b".."` of a `sentinel(..)` list: the bytes each packet starts with
+pub(crate) const SENTINEL_VALUE: Symbol = Symbol("value");
 /// The `break_on` sub-attribute identifier
 ///
 /// On the container, either a key literal (a decoded key equal to it stops the loop -
@@ -134,7 +136,7 @@ pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
 
 /// Container-level symbols that accept list syntax (e.g. `key(..)`)
 pub(crate) static CONT_LIST_SYMBOLS: Symbols =
-    Symbols(&[KEY, LENGTH, KEYLEN, DEFAULT, UNKNOWN_FRAMES]);
+    Symbols(&[KEY, LENGTH, KEYLEN, DEFAULT, SENTINEL, UNKNOWN_FRAMES]);
 
 /// Container-level default list symbols (type, encoder, decoder, value size)
 pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols =
@@ -200,6 +202,7 @@ const KNOWN: &[Symbol] = &[
     STREAM,
     DEFAULT,
     SENTINEL,
+    SENTINEL_VALUE,
     BREAK_ON,
     DEFAULT_VALUE,
     LATEBIND,

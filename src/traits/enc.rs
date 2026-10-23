@@ -137,6 +137,12 @@ pub trait EncodeValue {
     /// # Arguments
     ///
     /// * `out` - The output buffer the value bytes are appended to
+    ///
+    /// # Panics
+    ///
+    /// The derived impl, in a debug build, on a field value that does not fit the length's byte
+    /// budget set by `len(.., size(exact = W))`. A release build leaves that item out of `out`
+    /// and logs the same message
     fn encode_value(&self, out: &mut Vec<u8>);
 }
 
@@ -304,10 +310,16 @@ pub trait EncodeFrame {
     ///
     /// Writes the packet to the end of the caller-owned buffer. The derive macro generates this
     /// implementation when the `#[klv(...)]` attribute declares a `sentinel`, whose packet length
-    /// the `len` encoder writes
+    /// the sentinel's own `len` encoder writes, else the container's
     ///
     /// # Arguments
     ///
     /// * `out` - The output buffer the framed bytes are appended to
+    ///
+    /// # Panics
+    ///
+    /// The derived impl, in a debug build, on a field value or a packet body that does not fit
+    /// the length's byte budget set by `len(.., size(exact = W))`. A release build leaves that
+    /// item, or the whole packet, out of `out` and logs the same message
     fn encode_frame(&self, out: &mut Vec<u8>);
 }

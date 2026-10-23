@@ -48,7 +48,10 @@ pub use pkt::Packet;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::traits::{DecodePartial, Partial, PartialIterator, ResumePartial, SeekSentinel};
+use crate::{
+    ErrorKind,
+    traits::{DecodePartial, Partial, PartialError, PartialIterator, ResumePartial, SeekSentinel},
+};
 use buf::BufCursor;
 
 // --------------------------------------------------
@@ -59,8 +62,11 @@ use core::marker::PhantomData;
 // --------------------------------------------------
 // constants
 // --------------------------------------------------
-/// Empty byte slice used as a positional anchor when constructing errors at [`Decoder::finish`] time, where no live input exists
-const EMPTY: &[u8] = &[];
+/// The error of a [`Decoder::finish`] that finds bytes left in the buffer
+const BYTES_LEFT: PartialError = PartialError::new(&(
+    ErrorKind::Truncated,
+    "end of stream (bytes are left in the decoder)",
+));
 
 /// Owned-buffer streaming decoder, parameterised on the [`Partial`] type
 ///
@@ -294,34 +300,33 @@ where
     for<'a> T:
         DecodePartial<&'a [u8], Partial = P> + ResumePartial<&'a [u8]> + SeekSentinel<&'a [u8]>,
 {
-    /// Force-finalises the in-flight partial, consuming the decoder
+    /// Ends the stream, consuming the decoder: whether it ended cleanly, and the value of the
+    /// in-flight partial, if any
     ///
-    /// Call this when the upstream transport signals end-of-stream and you
-    /// want either the accumulated partial surfaced as `T` (if all required
-    /// fields are present) or a definitive error. The decoder is consumed
-    /// and the buffered bytes are discarded - no further decoding is possible
-    /// after this call
-    ///
-    /// If no partial is in-flight, as in fresh mode, which never stores one, a default partial is
-    /// finalised; depending on the `T` type this may succeed (all fields optional) or fail
-    /// (required fields missing)
+    /// Call this when the upstream transport signals end-of-stream, once [`Self::next`] returns
+    /// `None`. Only [`PartialIterator::next_resume`] stores a partial, so a stream that
+    /// [`Self::next`] decoded whole ends in `Ok(None)`
     ///
     /// # Returns
     ///
-    /// `Ok(T)` when the partial can be finalised with all required fields satisfied
+    /// `Ok(None)` when no partial is in flight and no byte is buffered, `Ok(Some(T))` when the
+    /// in-flight partial finalizes and no byte is buffered
     ///
     /// # Errors
     ///
-    /// - A required field is absent: [`DecodeIterError::Malformed`] of kind
-    ///   [`ErrorKind::MissingRequired`](crate::ErrorKind::MissingRequired)
-    pub fn finish(self) -> Result<T, DecodeIterError> {
-        let partial = self.partial.unwrap_or_default();
-        partial.finalize().map_err(|err| {
-            // --------------------------------------------------
-            // no live input at finish time, so the error is
-            // anchored at EMPTY
-            // --------------------------------------------------
-            DecodeIterError::Malformed(err.to_context_error(EMPTY))
-        })
+    /// - Bytes are left in the buffer, a packet [`Self::next`] did not decode or one cut short:
+    ///   [`DecodeIterError::Malformed`] of kind [`ErrorKind::Truncated`]
+    /// - The in-flight partial lacks a required field: [`DecodeIterError::Malformed`] of kind
+    ///   [`ErrorKind::MissingRequired`]
+    /// - A stream that ends in bytes beginning no packet, such as trailing zeros, is `Truncated`
+    ///   too: the decoder keeps up to a sentinel's length less one of them, in case they begin one
+    pub fn finish(self) -> Result<Option<T>, DecodeIterError> {
+        let rest = self.buf.pending();
+        let finished = if rest.is_empty() {
+            self.partial.map(P::finalize).transpose()
+        } else {
+            Err(BYTES_LEFT)
+        };
+        finished.map_err(|error| DecodeIterError::Malformed(error.to_context_error(rest)))
     }
 }

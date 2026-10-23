@@ -10,8 +10,21 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use tinyklv::ErrorKind;
 use tinyklv::dec::string as decs;
 use tinyklv::enc::string as encs;
+
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+/// The first byte past 7-bit ASCII, alone
+const FIRST_NON_ASCII: &[u8] = &[0x80];
+
+/// Two bytes of text, short of [`PAST_SHORT`]
+const SHORT: &[u8] = b"AB";
+
+/// A length one byte past [`SHORT`]
+const PAST_SHORT: usize = SHORT.len() + 1;
 
 #[test]
 /// Tests `to_string_ascii` decodes a printable ASCII payload
@@ -34,10 +47,17 @@ fn ascii_accepts_0x7f() {
 }
 
 #[test]
-/// Tests `to_string_ascii` rejects the boundary byte `0x80` (first non-ASCII byte)
+/// Tests `to_string_ascii` rejects the boundary byte `0x80` (first non-ASCII byte) as a malformed
+/// value, rewinding the cursor to where the value started
 fn ascii_rejects_0x80() {
-    let mut input: &[u8] = &[0x80];
-    assert!(decs::to_string_ascii(1)(&mut input).is_err());
+    let mut input = FIRST_NON_ASCII;
+    let result = decs::to_string_ascii(FIRST_NON_ASCII.len())(&mut input);
+    assert_eq!(
+        result.as_ref().err().and_then(ErrorKind::of),
+        Some(ErrorKind::MalformedValue),
+        "{result:?}"
+    );
+    assert_eq!(input, FIRST_NON_ASCII, "cursor not rewound");
 }
 
 #[test]
@@ -81,10 +101,16 @@ fn ascii_roundtrip() {
 }
 
 #[test]
-/// Tests that `to_string_ascii` short of `len` bytes leaves the cursor at the end of the input
-fn ascii_short_input_leaves_cursor_at_end() {
-    let mut input: &[u8] = b"AB";
-    assert!(decs::to_string_ascii(5)(&mut input).is_err());
+/// Tests that `to_string_ascii` short of `len` bytes is truncation, leaving the cursor at the end
+/// of the input
+fn ascii_short_input_is_truncated() {
+    let mut input = SHORT;
+    let result = decs::to_string_ascii(PAST_SHORT)(&mut input);
+    assert_eq!(
+        result.as_ref().err().and_then(ErrorKind::of),
+        Some(ErrorKind::Truncated),
+        "{result:?}"
+    );
     assert!(
         input.is_empty(),
         "cursor not at the end after a short to_string_ascii"

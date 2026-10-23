@@ -628,7 +628,7 @@ impl LoopCtx<'_> {
     /// #frame
     /// // the user's `fn(&key, &mut input) -> BreakType`
     /// let __after_key = Stream::checkpoint(input);
-    /// match { let __decision: BreakType = #path(&#key, input); __decision } {
+    /// match __export::break_on::<_, #stream, _>(&#path, &#key, input) {
     ///     Skip => {
     ///         #progress_check
     ///         continue;
@@ -663,8 +663,9 @@ impl LoopCtx<'_> {
     /// to step over it by. A fused `Skip` then leaves the `match` for the progress check that
     /// follows every fused frame ([`Self::frame_loop`]), since a check of its own in the arm
     /// costs instructions on every frame that proceeds. The fn is handed the cursor
-    /// [`LoopDriver::read_input`] gives, and its call, that cursor and the `BreakType` it must
-    /// return are located at the fn, so a fn of another signature is reported there
+    /// [`LoopDriver::read_input`] gives, and its call and that cursor are located at the fn, which
+    /// `__export::break_on` bounds by the signature it must have, the stream type named, so a fn
+    /// of another signature is reported there, against that bound
     ///
     /// # Arguments
     ///
@@ -696,13 +697,14 @@ impl LoopCtx<'_> {
         // --------------------------------------------------
         let at_fn = helpers::call_site_at(path);
         key.set_span(at_fn);
+        let stream = self.stream;
         let decision = self.driver.read_input(|cursor| {
             let cursor = cursor.clone().into_iter().map(|mut token| {
                 token.set_span(at_fn);
                 token
             });
             quote_spanned! {at_fn=>
-                { let __decision: ::tinyklv::BreakType = #path(&#key, #(#cursor)*); __decision }
+                ::tinyklv::__export::break_on::<_, #stream, _>(&#path, &#key, #(#cursor)*)
             }
         });
         let abort = self.driver.abort();

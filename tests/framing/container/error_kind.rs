@@ -9,11 +9,11 @@
 // local
 // --------------------------------------------------
 use crate::common::drive::Drive;
+use tinyklv::Result;
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
 use tinyklv::prelude::*;
 use tinyklv::traits::{PartialError, SeekSentinel};
-use tinyklv::{ErrorKind, Result};
 
 // --------------------------------------------------
 // external

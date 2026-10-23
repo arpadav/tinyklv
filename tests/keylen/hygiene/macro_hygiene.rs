@@ -11,9 +11,8 @@
 // local
 // --------------------------------------------------
 use crate::common::drive::Drive;
+use crate::common::varint;
 use crate::support::header;
-use tinyklv::dec::ber as decber;
-use tinyklv::enc::ber as encber;
 use tinyklv::prelude::*;
 
 /// Declares a one-field `keylen` message named `$name`, its field named `$field`
@@ -24,7 +23,7 @@ macro_rules! reading {
         #[klv(keylen(dec = $header, enc = $header_enc))]
         struct $name {
             #[klv(key = 0x02, dec = $value, enc = *$value_enc)]
-            /// key 0x02 - `Inline` BER-OID
+            /// key 0x02 - `Inline` varint
             $field: u64,
         }
     };
@@ -34,8 +33,8 @@ reading!(
     count,
     header::dec_u8,
     header::enc_u8,
-    decber::ber_oid,
-    encber::ber_oid
+    varint::dec_u64,
+    varint::enc_u64
 );
 
 /// Declares a one-field `keylen` message named `$name`, its field a `$ty` coded by the struct's
@@ -46,11 +45,11 @@ macro_rules! typed_reading {
         #[derive(Klv, Debug, PartialEq)]
         #[klv(
                             keylen(dec = header::dec_u8, enc = header::enc_u8),
-                            default(typ = u64, dec = decber::ber_oid, enc = *encber::ber_oid),
+                            default(typ = u64, dec = varint::dec_u64, enc = *varint::enc_u64),
                         )]
         struct $name {
             #[klv(key = 0x02)]
-            /// key 0x02 - `Inline` BER-OID
+            /// key 0x02 - `Inline` varint
             count: $ty,
         }
     };
@@ -62,8 +61,8 @@ typed_reading!(TypedCounter, u64);
 fn macro_emitted_keylen_derive_roundtrips() {
     #[rustfmt::skip]
     let wire = vec![
-        // count = 128 (key 0x02, a two-byte BER-OID)
-        0x02, 0x81, 0x00,
+        // count = 128 (key 0x02, a two-byte varint)
+        0x02, 0x80, 0x01,
     ];
     let counter = Counter { count: 128 };
     assert_eq!(counter.encoded(), wire);
@@ -75,8 +74,8 @@ fn macro_emitted_keylen_derive_roundtrips() {
 fn macro_type_fragment_takes_its_default() {
     #[rustfmt::skip]
     let wire = vec![
-        // count = 128 (key 0x02, a two-byte BER-OID)
-        0x02, 0x81, 0x00,
+        // count = 128 (key 0x02, a two-byte varint)
+        0x02, 0x80, 0x01,
     ];
     let counter = TypedCounter { count: 128 };
     assert_eq!(counter.encoded(), wire);

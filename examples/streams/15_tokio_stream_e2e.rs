@@ -17,7 +17,7 @@
 //! * Buffer management: keep the unconsumed tail between receives
 //! * The seeker skipping padding and decoys to find the real sentinel
 //!
-//! See also: `book/src/tutorial/advanced/16-tokio-streams.md`
+//! See also: `book/src/tutorial/7-streams/04-tokio.md`
 use tinyklv::dec::binary as decb; // binary decoders
 use tinyklv::enc::binary as encb; // binary encoders
 use tinyklv::prelude::*; // Klv proc-macro + traits

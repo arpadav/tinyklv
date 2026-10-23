@@ -11,7 +11,7 @@
 //! * A hand-written dispatcher that peeks the next few bytes
 //! * Wrapping decoded frames in a plain Rust `enum`
 //!
-//! See also: `book/src/tutorial/fundamentals/03-frames-and-sentinels.md`
+//! See also: `book/src/tutorial/1-basics/03-frames-and-sentinels.md`
 use tinyklv::dec::binary as decb; // binary decoders
 use tinyklv::enc::binary as encb; // binary encoders
 use tinyklv::prelude::*; // Klv proc-macro + traits

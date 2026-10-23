@@ -11,7 +11,7 @@
 //! * Mixing fixed-width `be_u32` and variable-length UTF-8 on one struct
 //! * The split between `dec::binary` / `enc::binary` and `enc::string`
 //!
-//! See also: `book/src/tutorial/fundamentals/07-val-lengths.md`
+//! See also: `book/src/tutorial/3-sizes/02-lengthed-decoders.md`
 use tinyklv::dec::binary as decb; // binary decoders
 use tinyklv::dec::string as decs; // string decoders
 use tinyklv::enc::binary as encb; // binary encoders

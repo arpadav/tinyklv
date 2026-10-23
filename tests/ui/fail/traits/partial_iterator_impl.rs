@@ -1,8 +1,4 @@
-use tinyklv::{
-    decoder::DecodeIterError,
-    prelude::*,
-    traits::{PartialError, PartialIterator},
-};
+use tinyklv::{decoder::DecodeIterError, prelude::*, traits::PartialError};
 
 struct Reading;
 

@@ -152,9 +152,10 @@ fn ber_oid_cut_run_runs_out() {
 }
 
 #[test]
-/// Pins today's leading-padding rule, an open question until X.690 is checked: a `0x80` pad byte
-/// counts against the cap, so `[0x80, 0x05]` reads as the `u8` 5, while `[0x80, 0x80, 0x05]`,
-/// the same value behind two pad bytes, is rejected as overflow with the cursor rewound
+/// Pins the leading-padding rule: X.690 §8.19.2 forbids a leading `0x80` byte and says nothing of
+/// a reader that meets one. A pad byte counts against the cap, so `[0x80, 0x05]` reads as the
+/// `u8` 5, while `[0x80, 0x80, 0x05]`, the same value behind two pad bytes, is rejected as
+/// overflow with the cursor rewound
 fn ber_oid_padding_counts_against_cap() {
     decber::ber_oid::<u8>.assert_reads(&[0x80, 0x05], 5);
     decber::ber_oid::<u8>.assert_rewinds(&[0x80, 0x80, 0x05]);

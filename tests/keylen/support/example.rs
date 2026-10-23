@@ -14,9 +14,12 @@
 // --------------------------------------------------
 use super::{header, value};
 use crate::common::varint;
+#[cfg(feature = "ber")]
 use tinyklv::codecs::ber::BerLength;
+#[cfg(feature = "ber")]
 use tinyklv::dec::ber as decber;
 use tinyklv::dec::binary as decb;
+#[cfg(feature = "ber")]
 use tinyklv::enc::ber as encber;
 use tinyklv::enc::binary as encb;
 use tinyklv::enc::string as encs;
@@ -248,10 +251,12 @@ pub(crate) struct Reading {
     pub(crate) status: Option<Status>,
 
     /// field 4, wire 0 - `Inline` BER-OID, malformed past `u8::MAX`
+    #[cfg(feature = "ber")]
     #[klv(key = 0x20, dec = decber::ber_oid::<u8>, enc = *encber::ber_oid)]
     pub(crate) level: Option<u8>,
 
     /// field 5, wire 0 - `Inline` BER length, malformed past `u8::MAX`
+    #[cfg(feature = "ber")]
     #[klv(key = 0x28, dec = BerLength::<u8>::decode_value, enc = EncodeValue::encode_value)]
     pub(crate) size: Option<BerLength<u8>>,
 }
@@ -264,7 +269,9 @@ impl Reading {
             count: 3,
             label: None,
             status: None,
+            #[cfg(feature = "ber")]
             level: None,
+            #[cfg(feature = "ber")]
             size: None,
         }
     }

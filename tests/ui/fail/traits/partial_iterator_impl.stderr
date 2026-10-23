@@ -1,13 +1,13 @@
 error[E0277]: the trait bound `Feed: traits::dec::partial::private::Sealed` is not satisfied
-  --> tests/ui/fail/traits/partial_iterator_impl.rs:21:42
+  --> tests/ui/fail/traits/partial_iterator_impl.rs:17:42
    |
-21 | impl PartialIterator<ReadingPartial> for Feed {
+17 | impl PartialIterator<ReadingPartial> for Feed {
    |                                          ^^^^ unsatisfied trait bound
    |
 help: the trait `traits::dec::partial::private::Sealed` is not implemented for `Feed`
-  --> tests/ui/fail/traits/partial_iterator_impl.rs:19:1
+  --> tests/ui/fail/traits/partial_iterator_impl.rs:15:1
    |
-19 | struct Feed;
+15 | struct Feed;
    | ^^^^^^^^^^^
 help: the following other types implement trait `traits::dec::partial::private::Sealed`
   --> src/traits/dec/partial.rs
@@ -16,7 +16,7 @@ help: the following other types implement trait `traits::dec::partial::private::
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Decoder<P, S>`
    |     impl<P, S> Sealed for &mut Decoder<P, S> {}
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&mut Decoder<P, S>`
-note: required by a bound in `PartialIterator`
+note: required by a bound in `tinyklv::PartialIterator`
   --> src/traits/dec/partial.rs
    |
    | pub trait PartialIterator<P: Partial>: private::Sealed {

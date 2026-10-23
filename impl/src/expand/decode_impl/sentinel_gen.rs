@@ -9,7 +9,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{DecodeCtx, ErrorKind, framing::DecodeFraming};
+use super::{DecodeCtx, ErrorKind};
 use crate::expand::helpers;
 
 // --------------------------------------------------
@@ -21,7 +21,7 @@ use quote::{quote, quote_spanned};
 impl DecodeCtx<'_> {
     /// Generates the `SeekSentinel` trait implementation
     ///
-    /// For a container that declares `#[klv(sentinel = <bytes>)]`, this method emits an
+    /// For a container that declares a `sentinel` ([`Self::packet`]), this method emits an
     /// `impl SeekSentinel<Stream> for Name` block whose `seek_unlabeled` seeks, declaring,
     /// private to it:
     ///
@@ -31,7 +31,7 @@ impl DecodeCtx<'_> {
     ///
     /// It locates the sentinel in the input, compared at its start before the finder searches
     /// the rest (the start is where back-to-back frames put every sentinel), advances past it,
-    /// decodes the following length field, a `usize`, with the container's `len` decoder, and
+    /// decodes the following length field, a `usize`, with the packet's length decoder, and
     /// returns the value slice. On an error `input` is left at the found sentinel, where the
     /// packet starts, or on a miss at the last `len - 1` bytes, the only ones that may still begin
     /// a sentinel. The error is a kind alone, which builds nothing: a miss is
@@ -46,20 +46,13 @@ impl DecodeCtx<'_> {
     ///
     /// # Returns
     ///
-    /// A [`proc_macro2::TokenStream`] containing the `SeekSentinel` impl block, or `None` when
-    /// the container declares no sentinel
+    /// A [`proc_macro2::TokenStream`] containing the `SeekSentinel` impl block, or `None` without
+    /// [`Self::packet`]
     pub(super) fn sentinel_impl(&self) -> Option<proc_macro2::TokenStream> {
         // --------------------------------------------------
-        // the sentinel, and the separate length decoder that reads the frame length after it
+        // the sentinel, and the length decoder that reads the frame length after it
         // --------------------------------------------------
-        let DecodeFraming::Separate {
-            len_decoder,
-            sentinel: Some(sentinel),
-            ..
-        } = self.framing
-        else {
-            return None;
-        };
+        let (sentinel, len_decoder) = self.packet()?;
         let name = &self.input.ident;
         let stream = &self.stream;
         let (missing, truncated, malformed) = (

@@ -123,9 +123,9 @@ create_parser!(
     nv_parse_maybestr => syn::MetaNameValue
 );
 
-// key (a literal or a `oneof(..)`) / sentinel
+// key (a literal or a `oneof(..)`) / the `value` of a `sentinel(..)` list
 create_parser!(KEY: KeySpec; pnm);
-create_parser!(SENTINEL: syn::Lit; nv);
+create_parser!(SENTINEL_VALUE: syn::Lit; pnm);
 
 // size (field size shape: `size(implicit, lengthed, exact = N | reserve = N)`; key/len byte
 // count: `size(exact = N | reserve = N)`) and its inner keywords

@@ -37,6 +37,28 @@ pub(in crate::ast::attr) trait CodecFields:
 
     /// Whether the list set a `dec`
     fn has_dec(&self) -> bool;
+
+    /// Reports the list's missing `enc` and `dec`, spanned on its path, unless the container
+    /// allows them
+    ///
+    /// # Arguments
+    ///
+    /// * `cx` - Error accumulation context the errors are reported to
+    /// * `path` - The list's path, e.g. `len`
+    /// * `allow` - Whether a missing `enc` and a missing `dec` are allowed
+    fn report_missing(&self, cx: &Ctxt, path: &syn::Path, allow: AllowUnimplemented) {
+        if !allow.encode && !self.has_enc() {
+            let error = if path == symbol::UNKNOWN_FRAMES {
+                err!(MissingEncInUnknown)
+            } else {
+                err!(MissingEncInCodec(path))
+            };
+            cx.error_spanned_by(path, error);
+        }
+        if !allow.decode && !self.has_dec() {
+            cx.error_spanned_by(path, err!(MissingDecInCodec(path)));
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -216,22 +238,15 @@ impl<T: CodecFields> CodecAttr<T> {
         !matches!(self, Self::Absent)
     }
 
-    /// Reports the missing `enc` and `dec` of a parsed attribute, spanned on its path, unless the
-    /// container allows them
+    /// Reports the missing `enc` and `dec` of a parsed attribute ([`CodecFields::report_missing`])
     ///
     /// # Arguments
     ///
     /// * `cx` - Error accumulation context the errors are reported to
     /// * `allow` - Whether a missing `enc` and a missing `dec` are allowed
     pub(in crate::ast::attr) fn report_missing(&self, cx: &Ctxt, allow: AllowUnimplemented) {
-        let Self::Parsed(path, fields) = self else {
-            return;
-        };
-        if !allow.encode && !fields.has_enc() {
-            cx.error_spanned_by(path, err!(MissingEncInCodec(path)));
-        }
-        if !allow.decode && !fields.has_dec() {
-            cx.error_spanned_by(path, err!(MissingDecInCodec(path)));
+        if let Self::Parsed(path, fields) = self {
+            fields.report_missing(cx, path, allow);
         }
     }
 }

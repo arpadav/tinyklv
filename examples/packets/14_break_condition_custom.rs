@@ -3,7 +3,7 @@
 //! Most decoders that need non-standard loop behaviour - silently skip a
 //! reserved/deprecated tag, stop on a terminator key, or abort on tamper
 //! detection - should reach for the `#[klv(break_on = ..)]` container
-//! attribute (see `book_14_break_condition.rs`). This example shows the
+//! attribute (see `examples/book/control/book_control_break_on_key.rs`). This example shows the
 //! lower-level escape hatch for cases the attribute does not cover: drop the
 //! derive on the decode side and write a manual `DecodeValue` impl that embeds
 //! the loop-control match directly. The encode side can still use
@@ -18,7 +18,7 @@
 //! * `Skip` semantics: consume `len` bytes and continue the loop
 //! * Junk prefix bytes before the fields to stress the skip path
 //!
-//! See also: `book/src/tutorial/advanced/14-break-condition.md`
+//! See also: `book/src/tutorial/6-control/01-stop-on-a-key.md`
 use tinyklv::dec::binary as decb; // binary decoders
 use tinyklv::enc::binary as encb; // binary encoders
 use tinyklv::prelude::*; // Klv proc-macro + traits

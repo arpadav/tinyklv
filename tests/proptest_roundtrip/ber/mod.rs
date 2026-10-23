@@ -5,7 +5,15 @@
 //! satisfy roundtrip, structural (short-form / long-form MSB), non-empty
 //! output, and full-consume invariants across the entire `u32` value range
 //!
+//! `conformance` checks every BER codec against `model`, the X.690 rules written out
+//!
 //! Author: aav
+// --------------------------------------------------
+// mods
+// --------------------------------------------------
+mod conformance;
+mod model;
+
 // --------------------------------------------------
 // local
 // --------------------------------------------------

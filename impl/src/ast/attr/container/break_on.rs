@@ -43,8 +43,8 @@ impl std::fmt::Debug for BreakOnSpec {
     }
 }
 
-/// Newtype wrapper paralleling [`super::sentinel::Sentinel`]: `Some` once a `break_on = ..` has been
-/// parsed, `None` when the name-value was for some other keyword
+/// Newtype wrapper: `Some` once a `break_on = ..` has been parsed, `None` when the name-value was
+/// for some other keyword
 pub(crate) struct BreakOn(pub Option<BreakOnSpec>);
 
 /// [`BreakOn`] implementation of [`std::fmt::Debug`]

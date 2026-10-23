@@ -41,7 +41,6 @@ use syn::parse::Parser;
 ///     handle_unique_nested_meta_values! {
 ///         meta;               // <-- syn::meta::ParseNestedMeta
 ///         "unknown field";    // <-- unknown field error message: &str
-///         5;                  // <-- number of names to try to parse
 ///
 ///         foo: foo_parser,    // <-- parser fn: `fn(&syn::meta::ParseNestedMeta) -> Option<syn::Result<T>>`
 ///         bar: bar_parser,    //     with default error message if duplicate: "duplicate `bar` field"
@@ -114,7 +113,7 @@ use syn::parse::Parser;
 ///
 /// input.parse_nested_meta(|meta| {
 ///     tk_syn_macros::handle_unique_nested_meta_values! {
-///         meta; "unknown field"; 1;
+///         meta; "unknown field";
 ///         var: tk_syn_macros::quick_parse_pnm("var-iable") => "duplicate `var-iable` field",
 ///     }
 /// });
@@ -155,7 +154,6 @@ use syn::parse::Parser;
 ///             tk_syn_macros::handle_unique_nested_meta_values! {
 ///                 meta;                                           // <-- syn::meta::ParseNestedMeta
 ///                 concatcp!("unknown field, ", EXPECTED);         // <-- unknown field error message: &str
-///                 4;                                              // <-- number of names to try to parse
 ///                 // vvv built-in parser function with keyword `type`, using custom error message vvv
 ///                 typ: tk_syn_macros::parse_pnm("type") => "duplicate `type` field! you can only have one!",
 ///                 encoder: parse_encoder_meta,                    // <-- custom parser function to handle both `encoder = <path>` and `encoder = "<path>"`
@@ -330,20 +328,18 @@ macro_rules! handle_unique_nested_meta_values {
     (
         $meta:ident;
         $expected_msg:expr;
-        $count:expr;
         $( $key:ident : $parse_fn:expr $(=> $error_msg:expr)? ),* $(,)?
     ) => {
-        let mut __undetected = 0;
+        let mut __matched = false;
 
         $(
-            $crate::handle_unique_nested_meta_values!(@parse_field $meta, $key, $parse_fn $(, $error_msg)?, __undetected);
+            $crate::handle_unique_nested_meta_values!(@parse_field $meta, $key, $parse_fn $(, $error_msg)?, __matched);
         )*
 
         // --------------------------------------------------
-        // if all keywords were undetected, then an unknown
-        // keyword was found
+        // no parser matched, so the keyword is unknown
         // --------------------------------------------------
-        if __undetected == $count {
+        if !__matched {
             return Err($meta.error($expected_msg));
         }
 
@@ -353,28 +349,34 @@ macro_rules! handle_unique_nested_meta_values {
     // --------------------------------------------------
     // fields with custom error message
     // --------------------------------------------------
-    (@parse_field $meta:ident, $key:ident, $parse_fn:expr, $error_msg:expr, $__undetected:expr) => {
+    (@parse_field $meta:ident, $key:ident, $parse_fn:expr, $error_msg:expr, $__matched:ident) => {
         match $parse_fn(&$meta) {
-            Some(Ok(x)) => match $key {
-                Some(_) => return Err($meta.error($error_msg)),
-                None => $key = Some(x),
-            },
+            Some(Ok(x)) => {
+                $__matched = true;
+                match $key {
+                    Some(_) => return Err($meta.error($error_msg)),
+                    None => $key = Some(x),
+                }
+            }
             Some(Err(err)) => return Err(err),
-            None => $__undetected += 1,
+            None => {}
         }
     };
 
     // --------------------------------------------------
     // fields with default error message
     // --------------------------------------------------
-    (@parse_field $meta:ident, $key:ident, $parse_fn:expr, $__undetected:expr) => {
+    (@parse_field $meta:ident, $key:ident, $parse_fn:expr, $__matched:ident) => {
         match $parse_fn(&$meta) {
-            Some(Ok(x)) => match $key {
-                Some(_) => return Err($meta.error(concat!("duplicate `", stringify!($key), "` field"))),
-                None => $key = Some(x),
-            },
+            Some(Ok(x)) => {
+                $__matched = true;
+                match $key {
+                    Some(_) => return Err($meta.error(concat!("duplicate `", stringify!($key), "` field"))),
+                    None => $key = Some(x),
+                }
+            }
             Some(Err(err)) => return Err(err),
-            None => $__undetected += 1,
+            None => {}
         }
     };
 }

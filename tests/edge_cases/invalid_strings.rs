@@ -9,19 +9,36 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use tinyklv::ErrorKind;
 use tinyklv::codecs::string::dec::{
     to_string_utf8, to_string_utf8_strict, to_string_utf16_be, to_string_utf16_le,
 };
 
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+/// Two bytes that are never UTF-8
+const NOT_UTF8: &[u8] = &[0xFF, 0xFE];
+
 #[test]
-/// Tests that `to_string_utf8_strict` rejects the invalid byte pair `0xFF 0xFE`
+/// Tests that `to_string_utf8_strict` rejects the invalid byte pair `0xFF 0xFE` as a malformed
+/// value caused by the UTF-8 error, rewinding the cursor to where the value started
 fn strict_utf8_0xff_0xfe_fails() {
-    let mut input: &[u8] = &[0xFF, 0xFE];
-    let result = to_string_utf8_strict(2)(&mut input);
-    assert!(
-        result.is_err(),
-        "0xFF 0xFE is not valid UTF-8 - strict decoder should fail"
+    let mut input = NOT_UTF8;
+    let error = to_string_utf8_strict(NOT_UTF8.len())(&mut input)
+        .expect_err("0xFF 0xFE is not valid UTF-8 - strict decoder should fail");
+    assert_eq!(
+        ErrorKind::of(&error),
+        Some(ErrorKind::MalformedValue),
+        "{error:?}"
     );
+    assert!(
+        error
+            .cause()
+            .is_some_and(<dyn std::error::Error + Send + Sync>::is::<core::str::Utf8Error>),
+        "{error:?}"
+    );
+    assert_eq!(input, NOT_UTF8, "cursor not rewound");
 }
 
 #[test]

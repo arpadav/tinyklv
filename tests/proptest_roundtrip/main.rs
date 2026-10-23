@@ -13,6 +13,7 @@
 // --------------------------------------------------
 #[cfg(feature = "ascii")]
 mod ascii;
+#[cfg(feature = "ber")]
 mod ber;
 mod binary_be;
 mod binary_le;

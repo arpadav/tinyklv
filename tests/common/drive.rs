@@ -10,9 +10,8 @@
 // local
 // --------------------------------------------------
 use super::error::ContextErrorExt;
-use tinyklv::ErrorKind;
 use tinyklv::prelude::*;
-use tinyklv::traits::{PartialError, ResumePartial};
+use tinyklv::traits::PartialError;
 
 // --------------------------------------------------
 // external

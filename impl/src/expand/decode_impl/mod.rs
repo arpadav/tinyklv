@@ -5,8 +5,7 @@
 //! container once, then assembles the impls its methods emit, each from the sub-module that owns
 //! it, into a single token stream:
 //!
-//! * `sentinel_gen` - `SeekSentinel` impl (only when a sentinel is declared, which only a
-//!   key + len container can do)
+//! * `sentinel_gen` - `SeekSentinel` impl (only when a sentinel is declared)
 //! * `partial_gen` - partial-packet struct definition, `Partial` impl, and
 //!   `TryFrom<Partial>` impl
 //! * `decode_partial_gen` - `DecodePartial`, `ResumePartial`, and the one-shot direct `DecodeValue`
@@ -31,7 +30,7 @@ mod sentinel_gen;
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::ast::attr::MainContainer;
+use crate::ast::{attr::MainContainer, types::XcoderType};
 use framing::DecodeFraming;
 use loop_driver::{CursorSite, LoopDriver};
 
@@ -186,6 +185,19 @@ impl<'a> DecodeCtx<'a> {
         })
     }
 
+    /// The sentinel each packet starts with, and the decoder of each packet's length: the
+    /// sentinel's own `len`, else the container's
+    ///
+    /// # Returns
+    ///
+    /// The sentinel and the decoder, or `None` without a sentinel, or when the decoder is missing
+    /// (`allow_unimplemented_decode`), in which case neither the `SeekSentinel` impl nor
+    /// `decoder()` is generated
+    fn packet(&self) -> Option<(&'a syn::Lit, &'a XcoderType)> {
+        let (sentinel, len) = self.input.attrs.mode.packet()?;
+        Some((sentinel, len.dec.as_ref()?))
+    }
+
     /// Generates the `decoder()` inherent method for a container with a sentinel
     ///
     /// Emits a `pub fn decoder<'__tinyklv>() -> tinyklv::Decoder<XxxPartialPacket, &'__tinyklv
@@ -196,14 +208,9 @@ impl<'a> DecodeCtx<'a> {
     /// # Returns
     ///
     /// A [`proc_macro2::TokenStream`] containing the `impl` block with the `decoder()` method, or
-    /// `None` without a sentinel, which a `tinyklv::Decoder` seeks to find each packet
+    /// `None` without [`Self::packet`], which a `tinyklv::Decoder` seeks to find each packet
     fn decoder_fn(&self) -> Option<TokenStream> {
-        let DecodeFraming::Separate {
-            sentinel: Some(_), ..
-        } = self.framing
-        else {
-            return None;
-        };
+        self.packet()?;
         let Self {
             input,
             ref lifetime,

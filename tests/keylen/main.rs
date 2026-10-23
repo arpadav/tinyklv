@@ -17,6 +17,7 @@ mod common;
 mod container {
     mod break_on;
     mod fieldless;
+    mod sentinel;
     mod strict;
 }
 mod field {

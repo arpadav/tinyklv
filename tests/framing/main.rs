@@ -19,6 +19,7 @@ mod container {
     mod error_kind;
     mod fieldless;
     mod one_sided;
+    mod sentinel;
     mod strict;
     mod terminator;
     mod unknown;

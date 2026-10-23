@@ -15,19 +15,19 @@ use winnow::error::{ContextError, StrContext};
 /// [`ErrorKind::of`] reads the kind of a [`crate::Result`] error, and
 /// [`DecodeIterError::kind`](crate::decoder::DecodeIterError::kind) that of a [`crate::Decoder`]
 /// error, and [`PartialError::kind`](crate::traits::PartialError::kind) that of a streaming
-/// decode's. Every error of the BER decoders carries one, as do the UTF-16 decoders' odd-length
-/// rejection and every error the derive's decodes and sentinel seek return. An error built
-/// elsewhere, by a bare `winnow` parser such as a fixed-width integer's at the end of the input,
-/// or by a custom decoder, has none, unless [`ErrorKind::tag`] tags it
+/// decode's. Every error of the BER and string decoders carries one, as do the `as_date!`
+/// family's over a string decoder and every error the derive's decodes and sentinel seek return.
+/// An error built elsewhere, by a bare `winnow` parser such as a fixed-width integer's at the end
+/// of the input, or by a custom decoder, has none, unless [`ErrorKind::tag`] tags it
 ///
 /// # Example
 ///
 /// ```rust
-/// use tinyklv::{ErrorKind, dec::ber::ber_length};
+/// use tinyklv::{ErrorKind, dec::string::to_string_utf16_le};
 ///
-/// // a long-form BER length claiming two length bytes, with one present
-/// let error = ber_length(&mut &[0x82, 0x01][..]).unwrap_err();
-/// assert_eq!(ErrorKind::of(&error), Some(ErrorKind::Truncated));
+/// // three bytes of UTF-16, whose code units are two bytes each
+/// let error = to_string_utf16_le(3)(&mut &[0x41, 0x00, 0x42][..]).unwrap_err();
+/// assert_eq!(ErrorKind::of(&error), Some(ErrorKind::WrongLength));
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -118,7 +118,7 @@ impl ErrorKind {
     /// # Example
     ///
     /// ```rust
-    /// use tinyklv::{ErrorKind, decoder::DecodeIterError, prelude::*, traits::PartialIterator};
+    /// use tinyklv::{decoder::DecodeIterError, prelude::*};
     /// use tinyklv::{dec::binary as decb, enc::binary as encb};
     /// use tinyklv::winnow::error::{ContextError, StrContext};
     ///

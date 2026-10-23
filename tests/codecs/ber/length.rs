@@ -4,18 +4,17 @@
 //! level and the [`BerLength`] typed-struct wrapper: short-form boundary
 //! values (`0`, `1`, `64`, `127`), the long-form boundary (`128`), long-form
 //! values through `u32::MAX`, explicit byte-layout assertions for known
-//! encodings, a long form of a short length, error cases on empty, truncated
-//! long-form or indefinite-form input, and the value boundary at every target
-//! width
+//! encodings, a long form of a short length, every long-form byte count, error
+//! cases on empty, truncated long-form, indefinite-form or reserved input, and
+//! the value boundary at every target width
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
 use super::helpers::DecoderExt;
-use super::width::BerWidth;
+use super::width::{BerWidth, MSB};
 use crate::common::error::ContextErrorExt;
-use tinyklv::ErrorKind;
 use tinyklv::codecs::ber::BerLength;
 use tinyklv::dec::ber as decber;
 use tinyklv::prelude::*;
@@ -24,6 +23,19 @@ use tinyklv::prelude::*;
 // external
 // --------------------------------------------------
 use std::iter;
+
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+/// The long-form first byte X.690 §8.1.3.5 c) reserves: every bit set
+const RESERVED_FIRST_BYTE: u8 = u8::MAX;
+
+/// The length bytes a long form's first byte counts: bits 7 to 1 (X.690 §8.1.3.5 b)). The count
+/// of [`RESERVED_FIRST_BYTE`] is one past the largest a long form may use
+const RESERVED_COUNT: u8 = RESERVED_FIRST_BYTE & !MSB;
+
+/// A length the short form holds, sent in long forms of every byte count
+const SHORT_LENGTH: u8 = 5;
 
 #[test]
 /// Tests BER length encoding of `0` as short form (`[0x00]`) and its roundtrip
@@ -205,6 +217,40 @@ fn ber_length_indefinite_form_rewinds() {
         other => panic!("expected an indefinite-form Err, got {other:?}"),
     }
     assert_eq!(input, &wire[..]);
+}
+
+#[test]
+/// Tests that `ber_length` rejects `0xFF`, the first byte X.690 §8.1.3.5 c) reserves, as a
+/// malformed value with the cursor rewound, though the 127 length bytes it would count follow
+fn ber_length_reserved_first_byte_rewinds() {
+    let wire: Vec<u8> = iter::once(RESERVED_FIRST_BYTE)
+        .chain(iter::repeat_n(0x00, usize::from(RESERVED_COUNT)))
+        .collect();
+    let mut input = &wire[..];
+    match tinyklv::dec::ber::ber_length(&mut input) {
+        Err(error)
+            if error.expects("a definite-form length")
+                && ErrorKind::of(&error) == Some(ErrorKind::MalformedValue) => {}
+        other => panic!("expected a reserved-form Err, got {other:?}"),
+    }
+    assert_eq!(input, &wire[..]);
+}
+
+#[test]
+/// Tests every long-form byte count X.690 §8.1.3.5 b) allows, 1 to 126: [`SHORT_LENGTH`] in that
+/// many bytes, all but the last zero, reads at `usize` and at `u8`, and runs out with the cursor
+/// at the end when its last byte is cut
+fn every_long_form_byte_count() {
+    let decode_u8 = |input: &mut &[u8]| BerLength::<u8>::decode_value(input);
+    for count in 1..RESERVED_COUNT {
+        let wire: Vec<u8> = iter::once(MSB | count)
+            .chain(iter::repeat_n(0x00, usize::from(count) - 1))
+            .chain(iter::once(SHORT_LENGTH))
+            .collect();
+        decber::ber_length.assert_reads(&wire, usize::from(SHORT_LENGTH));
+        decode_u8.assert_reads(&wire, BerLength::new(SHORT_LENGTH));
+        decber::ber_length.assert_runs_out(&wire[..wire.len() - 1]);
+    }
 }
 
 #[test]

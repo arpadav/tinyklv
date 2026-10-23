@@ -4,21 +4,21 @@
 //! granularities (one packet at a time, one byte at a time, random chunks)
 //! and asserts every packet emerges with no lost progress. Includes regression
 //! coverage for the malformed-at-tail panic (out-of-bounds error slice on the
-//! final packet in the buffer) and correctness checks for the `finish` path
+//! final packet in the buffer)
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use tinyklv::ErrorKind;
+#[cfg(feature = "ber")]
 use tinyklv::dec::ber as decber;
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
 use tinyklv::decoder::DecodeIterError;
+#[cfg(feature = "ber")]
 use tinyklv::enc::ber as encber;
 use tinyklv::enc::binary as encb;
 use tinyklv::prelude::*;
-use tinyklv::traits::PartialIterator;
 
 #[derive(Klv, Debug, Clone, PartialEq)]
 #[klv(
@@ -374,7 +374,6 @@ fn decoder_malformed_at_tail_does_not_panic() {
 /// corrupt-sentinel case: absent framing simply means more bytes are needed
 fn decoder_fresh_seek_miss_is_needmore() {
     use tinyklv::decoder::DecodeIterError;
-    use tinyklv::traits::PartialIterator;
     // --------------------------------------------------
     // junk with no "SMPL" sentinel anywhere
     // --------------------------------------------------
@@ -414,6 +413,7 @@ fn decoder_fresh_seek_miss_is_needmore() {
 }
 
 /// A packet behind the 4-byte sentinel `06 0E 2B 34` with a BER packet length
+#[cfg(feature = "ber")]
 #[derive(Klv, Debug, PartialEq)]
 #[klv(
     stream = &[u8],
@@ -427,6 +427,7 @@ struct Heading {
 }
 
 /// [`Heading`] implementation
+#[cfg(feature = "ber")]
 impl Heading {
     /// A packet whose BER length overflows `usize`
     #[rustfmt::skip]
@@ -438,6 +439,7 @@ impl Heading {
     ];
 }
 
+#[cfg(feature = "ber")]
 #[test]
 /// One-shot, a malformed packet length is returned with the cursor back at its sentinel, past the
 /// junk before it
@@ -453,6 +455,7 @@ fn decode_frame_leaves_a_malformed_length_at_its_sentinel() {
     assert_eq!(cursor, Heading::OVERFLOWING);
 }
 
+#[cfg(feature = "ber")]
 #[test]
 /// One-shot, a packet length the input cuts or its decoder rejects is named as the struct's
 /// packet length first, then as the BER length decoder names it
@@ -473,6 +476,7 @@ fn decode_frame_names_a_failed_length_as_its_packets() {
     }
 }
 
+#[cfg(feature = "ber")]
 #[test]
 /// A sentinel whose BER length overflows `usize` is a malformed packet: the decoder returns its
 /// error once, then searches on from one byte into its sentinel, so every good packet fed after
@@ -631,27 +635,6 @@ fn decoder_waits_for_a_cut_fixed_width_length() {
     }
     assert_eq!(got, [Bearing { degrees: 7 }]);
     assert_eq!(dec.buffered(), b"");
-}
-
-#[test]
-/// `finish()` on a fresh decoder with no bytes and no partial yields an
-/// error of kind `MissingRequired`, naming the first missing required field
-fn decoder_finish_on_empty() {
-    let dec = Sample::decoder();
-    let result = dec.finish();
-    assert_eq!(
-        result.as_ref().err().and_then(DecodeIterError::kind),
-        Some(ErrorKind::MissingRequired),
-        "{result:?}"
-    );
-    let Err(DecodeIterError::Malformed(error)) = result else {
-        panic!("expected Malformed, got {result:?}");
-    };
-    assert_eq!(
-        error.to_string(),
-        "invalid `Sample::a` value (required, and missing from the packet; to allow this, make \
-         the field an `Option` or give it a `default`)",
-    );
 }
 
 /// A sentinel packet of one field that rejects a key no field declares

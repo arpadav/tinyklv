@@ -23,9 +23,9 @@ use std::{fmt::Debug, iter};
 // --------------------------------------------------
 // constants
 // --------------------------------------------------
-/// The marker bit of a byte that continues a BER-OID run, and of a long-form BER length's first
-/// byte
-const MSB: u8 = 0x80;
+/// The marker bit of a byte that continues a BER-OID run (X.690 §8.19.2), and of a long-form BER
+/// length's first byte (X.690 §8.1.3.5 a))
+pub(super) const MSB: u8 = 0x80;
 
 /// An integer type the BER codecs decode into
 pub(super) trait BerWidth: OfBerCommon + Debug {

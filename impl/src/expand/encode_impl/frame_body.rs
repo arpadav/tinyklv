@@ -13,7 +13,7 @@
 use super::{
     fixed_width,
     framing::{EncodeFraming, KeyEncoder, KeylenEncoder},
-    length_prefix::{FixedLengthSlot, LengthPrefix, VariableLength},
+    length_prefix::{FixedLengthSlot, KlvUnit, LengthPrefix, VariableLength},
     staging::Staging,
 };
 use crate::ast::{
@@ -194,7 +194,8 @@ impl<'a> FrameBody<'a> {
                 )
             }
             Self::Backfilled(key_encoder, slot) => {
-                slot.write_backfilled(key_encoder.write(key, span), value_write, span)
+                let key_write = key_encoder.write(key, span);
+                slot.write_backfilled(KlvUnit::Item, key_write, value_write, span)
             }
             Self::Staged(key_encoder, len, width) => {
                 let prefix_write = key_encoder.write(key, span);

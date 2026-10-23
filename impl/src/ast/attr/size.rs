@@ -147,7 +147,6 @@ impl TryFrom<&syn::meta::ParseNestedMeta<'_>> for SizeBytes {
             handle_unique_nested_meta_values! {
                 meta;
                 err!(UnknownSizeFieldInHeader(meta.path));
-                2;
                 exact: symbol::parse_pnm_exact,
                 reserve: symbol::parse_pnm_reserve,
             }
@@ -347,7 +346,6 @@ impl TryFrom<&syn::meta::ParseNestedMeta<'_>> for SizeSpec {
             handle_unique_nested_meta_values! {
                 meta;
                 err!(UnknownSizeField(meta.path));
-                4;
                 implicit: symbol::parse_pnm_implicit,
                 lengthed: symbol::parse_pnm_lengthed,
                 exact: symbol::parse_pnm_exact,

@@ -1,4 +1,5 @@
-error: Conflicting `size` byte count. `exact` and `reserve` are mutually exclusive - a `size` is either an exact width or a soft capacity estimate, not both.
+error: conflicting `exact` and `reserve` in `size(..)`
+       `exact = N` already reserves its N bytes; remove `reserve`, or remove `exact` if the size is not fixed
   --> tests/ui/fail/size/field_size_exact_reserve.rs:10:85
    |
 10 |     #[klv(key = 0x01, dec = tinyklv::dec::binary::be_u32, size(exact = 4, reserve = 8))]

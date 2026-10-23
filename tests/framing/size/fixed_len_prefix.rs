@@ -3,7 +3,8 @@
 //! A one-byte `len(size(exact = 1))` prefix encodes lengths up to 255: a field declared
 //! `size(exact = 255)` compiles and round-trips, while `size(exact = 256)` is a compile error
 //! (pinned in `tests/ui`). A field with no `size(exact)` reserves the slot and back-fills it:
-//! a 255-byte value is written, a 256-byte one rolls its item back. A two-byte and an eight-byte
+//! a 255-byte value is written, a 256-byte one panics in a debug build and rolls its item back in
+//! a release one. A two-byte and an eight-byte
 //! slot back-fill their lengths byte for byte. A length encoder that writes more bytes than its
 //! declared `size` writes a known-width field's length as it is, while a value encoder that
 //! writes another width than its field's `size(exact)` fails the debug check
@@ -219,10 +220,17 @@ fn widest_backfilled_value_is_written() {
     );
 }
 
+/// A 256-byte value of unknown width does not fit the length's byte budget set by `exact`: a
+/// debug build panics naming it, and a release build rolls the whole item back and leaves the
+/// serial before it untouched
 #[test]
-/// A 256-byte value of unknown width overflows its one-byte length slot: the encoder rolls the
-/// whole item back and leaves the serial before it untouched
-fn backfilled_value_past_the_slot_is_omitted() {
+#[cfg_attr(
+    debug_assertions,
+    should_panic(
+        expected = "tinyklv: value of 256 bytes does not fit the 1-byte length budget set by `size(exact = 1)`"
+    )
+)]
+fn backfilled_value_past_the_slot_panics_in_debug_and_is_omitted_in_release() {
     let endorsement = Endorsement {
         serial: 7,
         certificate: Some(Certificate::of_len(MAX_ONE_BYTE_LEN + 1)),

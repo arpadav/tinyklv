@@ -12,6 +12,7 @@ use crate::common::drive::Drive;
 use crate::common::varint;
 use crate::support::example::{Example, Reading, Status};
 use crate::support::{header, value};
+#[cfg(feature = "ber")]
 use tinyklv::codecs::ber::BerLength;
 use tinyklv::dec::binary as decb;
 use tinyklv::enc::binary as encb;
@@ -144,6 +145,7 @@ fn encode_example_matches_wire() {
 }
 
 /// Every optional field set, with `level` and `size` each taking two bytes, survives encode then decode
+#[cfg(feature = "ber")]
 #[test]
 #[rustfmt::skip]
 fn encode_reading_roundtrips() {

@@ -1,0 +1,6 @@
+error: duplicate `len` in `sentinel(..)`
+       a packet has one length; remove one `len(..)`
+ --> tests/ui/fail/framing/key_len/sentinel_duplicate_len.rs:8:9
+  |
+8 |         len(dec = tinyklv::dec::binary::u8_as_usize),
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

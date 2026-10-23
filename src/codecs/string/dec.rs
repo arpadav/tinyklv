@@ -13,7 +13,9 @@
 //!   `alphanumeric` run validators
 //!
 //! Every decoder here that finds fewer than `len` bytes leaves the cursor at
-//! the end of the input
+//! the end of the input, a [`crate::ErrorKind::Truncated`] error. One that
+//! rejects the bytes it read rewinds the cursor to where the value started, a
+//! [`crate::ErrorKind::MalformedValue`] error
 //!
 //! ASCII-encoded values are length-bounded: they consume exactly `len` bytes
 //! and parse the whole field. The decimal integer decoders inherit winnow's
@@ -24,7 +26,11 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::{ErrorKind, codecs::take_or_finish, prelude::*};
+use crate::{
+    __export::{kinded_error, relabeled_error},
+    codecs::take_or_finish,
+    prelude::*,
+};
 
 // --------------------------------------------------
 // external
@@ -33,6 +39,16 @@ use crate::{ErrorKind, codecs::take_or_finish, prelude::*};
 use winnow::ascii::{alpha1, alphanumeric1, dec_int, dec_uint, digit1, float, hex_uint};
 #[cfg(feature = "ascii")]
 use winnow::combinator::{eof, terminated};
+use winnow::error::{ContextError, FromExternalError};
+
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+/// The label of a UTF-8 decoder's error
+const UTF8_STRING: &str = "UTF-8 string";
+
+/// The label of a UTF-16 decoder's short read
+const UTF16_STRING: &str = "UTF-16 string";
 
 #[inline(always)]
 /// Decodes a byte slice into a [`String`], using [`String::from_utf8_lossy`]
@@ -55,9 +71,9 @@ use winnow::combinator::{eof, terminated};
 /// ```
 pub fn to_string_utf8(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String> {
     move |input| {
-        take_or_finish(len)
-            .map(|slice| String::from_utf8_lossy(slice).to_string())
-            .parse_next(input)
+        take_decoded(input, len, UTF8_STRING, |bytes| {
+            Ok(String::from_utf8_lossy(bytes).to_string())
+        })
     }
 }
 
@@ -82,10 +98,11 @@ pub fn to_string_utf8(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String
 /// ```
 pub fn to_string_utf8_strict(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String> {
     move |input| {
-        take_or_finish(len)
-            .try_map(|slice: &[u8]| core::str::from_utf8(slice).map(str::to_owned))
-            .context(winnow::error::StrContext::Label("UTF-8 string"))
-            .parse_next(input)
+        take_decoded(input, len, UTF8_STRING, |bytes| {
+            core::str::from_utf8(bytes)
+                .map(str::to_owned)
+                .map_err(|cause| ContextError::from_external_error(&bytes, cause))
+        })
     }
 }
 
@@ -114,17 +131,15 @@ pub fn to_string_utf16_le(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<St
             );
             return Err(crate::__export::with_kind(err, ErrorKind::WrongLength));
         }
-        take_or_finish(len)
-            .map(|slice: &[u8]| {
-                let utf16: Vec<u16> = slice
-                    .as_chunks::<2>()
-                    .0
-                    .iter()
-                    .map(|pair| u16::from_le_bytes(*pair))
-                    .collect();
-                String::from_utf16_lossy(&utf16)
-            })
-            .parse_next(input)
+        take_decoded(input, len, UTF16_STRING, |bytes| {
+            let utf16: Vec<u16> = bytes
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| u16::from_le_bytes(*pair))
+                .collect();
+            Ok(String::from_utf16_lossy(&utf16))
+        })
     }
 }
 
@@ -153,17 +168,15 @@ pub fn to_string_utf16_be(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<St
             );
             return Err(crate::__export::with_kind(err, ErrorKind::WrongLength));
         }
-        take_or_finish(len)
-            .map(|slice: &[u8]| {
-                let utf16: Vec<u16> = slice
-                    .as_chunks::<2>()
-                    .0
-                    .iter()
-                    .map(|pair| u16::from_be_bytes(*pair))
-                    .collect();
-                String::from_utf16_lossy(&utf16)
-            })
-            .parse_next(input)
+        take_decoded(input, len, UTF16_STRING, |bytes| {
+            let utf16: Vec<u16> = bytes
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| u16::from_be_bytes(*pair))
+                .collect();
+            Ok(String::from_utf16_lossy(&utf16))
+        })
     }
 }
 
@@ -191,12 +204,13 @@ pub fn to_string_utf16_be(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<St
 /// ```
 pub fn to_string_ascii(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String> {
     move |input| {
-        take_or_finish(len)
-            .verify(<[u8]>::is_ascii)
-            // bytes are verified ASCII above, so `from_utf8_lossy` never substitutes
-            .map(|slice: &[u8]| String::from_utf8_lossy(slice).into_owned())
-            .context(winnow::error::StrContext::Label("ASCII string"))
-            .parse_next(input)
+        take_decoded(input, len, "ASCII string", |bytes| {
+            bytes
+                .is_ascii()
+                // bytes are verified ASCII above, so `from_utf8_lossy` never substitutes
+                .then(|| String::from_utf8_lossy(bytes).into_owned())
+                .ok_or_else(ContextError::new)
+        })
     }
 }
 
@@ -212,9 +226,12 @@ macro_rules! ascii_uint {
             #[doc = "trailing or non-digit byte is rejected."]
             pub fn [<$ty>](len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<$ty> {
                 move |input| {
-                    take_or_finish(len)
-                        .and_then(terminated(dec_uint::<_, $ty, _>, eof))
-                        .parse_next(input)
+                    take_decoded(
+                        input,
+                        len,
+                        concat!("ASCII base-10 `", stringify!($ty), "`"),
+                        |mut text| terminated(dec_uint::<_, $ty, _>, eof).parse_next(&mut text),
+                    )
                 }
             }
         }
@@ -233,9 +250,12 @@ macro_rules! ascii_int {
             #[doc = "field must be the numeral; any trailing byte is rejected."]
             pub fn [<$ty>](len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<$ty> {
                 move |input| {
-                    take_or_finish(len)
-                        .and_then(terminated(dec_int::<_, $ty, _>, eof))
-                        .parse_next(input)
+                    take_decoded(
+                        input,
+                        len,
+                        concat!("ASCII base-10 `", stringify!($ty), "`"),
+                        |mut text| terminated(dec_int::<_, $ty, _>, eof).parse_next(&mut text),
+                    )
                 }
             }
         }
@@ -254,9 +274,12 @@ macro_rules! ascii_float {
             #[doc = "`nan`). The entire `len`-byte field must be the number."]
             pub fn [<$ty>](len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<$ty> {
                 move |input| {
-                    take_or_finish(len)
-                        .and_then(terminated(float::<_, $ty, _>, eof))
-                        .parse_next(input)
+                    take_decoded(
+                        input,
+                        len,
+                        concat!("ASCII `", stringify!($ty), "`"),
+                        |mut text| terminated(float::<_, $ty, _>, eof).parse_next(&mut text),
+                    )
                 }
             }
         }
@@ -275,9 +298,12 @@ macro_rules! ascii_hex {
             #[doc = "field must be hexadecimal; any trailing byte is rejected."]
             pub fn [<hex_ $ty>](len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<$ty> {
                 move |input| {
-                    take_or_finish(len)
-                        .and_then(terminated(hex_uint::<_, $ty, _>, eof))
-                        .parse_next(input)
+                    take_decoded(
+                        input,
+                        len,
+                        concat!("ASCII base-16 `", stringify!($ty), "`"),
+                        |mut text| terminated(hex_uint::<_, $ty, _>, eof).parse_next(&mut text),
+                    )
                 }
             }
         }
@@ -294,11 +320,16 @@ macro_rules! ascii_run {
         #[doc = concat!("Rejects the field unless every one of the `len` bytes is ", $class, ".")]
         pub fn $name(len: usize) -> impl Fn(&mut &[u8]) -> crate::Result<String> {
             move |input| {
-                take_or_finish(len)
-                    .and_then(terminated($parser, eof))
-                    // the run parser only matches ASCII, so `from_utf8_lossy` never substitutes
-                    .map(|run: &[u8]| String::from_utf8_lossy(run).into_owned())
-                    .parse_next(input)
+                take_decoded(
+                    input,
+                    len,
+                    concat!("ASCII ", $class, " string"),
+                    |mut text| {
+                        let run = terminated($parser, eof).parse_next(&mut text)?;
+                        // the run parser only matches ASCII, so `from_utf8_lossy` never substitutes
+                        Ok(String::from_utf8_lossy(run).into_owned())
+                    },
+                )
             }
         }
     };
@@ -328,3 +359,40 @@ ascii_hex!(u128);
 ascii_run!(alpha, alpha1, "alphabetic");
 ascii_run!(digit, digit1, "decimal-digit");
 ascii_run!(alphanumeric, alphanumeric1, "alphanumeric");
+
+/// Reads the `len` bytes of a value, then decodes them with `content`
+///
+/// # Arguments
+///
+/// * `input` - the stream the value is read from
+/// * `len` - the value's length in bytes
+/// * `label` - what the value is, the label of either error
+/// * `content` - the decode of the value's bytes
+///
+/// # Returns
+///
+/// What `content` decoded
+///
+/// # Errors
+///
+/// - fewer than `len` bytes: [`crate::ErrorKind::Truncated`], the cursor left at the end of the
+///   input
+/// - `content` fails: [`crate::ErrorKind::MalformedValue`], `content`'s error relabelled `label`
+///   ([`relabeled_error`]), the cursor rewound to where the value started
+// `inline(always)`: an outlined copy per decoder measured slower in derived decodes
+#[inline(always)]
+fn take_decoded<'i, O>(
+    input: &mut &'i [u8],
+    len: usize,
+    label: &'static str,
+    content: impl FnOnce(&'i [u8]) -> Result<O, ContextError>,
+) -> crate::Result<O> {
+    let start = input.checkpoint();
+    let Ok(value) = take_or_finish(len).parse_next(input) else {
+        return Err(kinded_error(input, &start, label, ErrorKind::Truncated));
+    };
+    content(value).map_err(|err| {
+        input.reset(&start);
+        relabeled_error(input, &start, label, err, ErrorKind::MalformedValue)
+    })
+}

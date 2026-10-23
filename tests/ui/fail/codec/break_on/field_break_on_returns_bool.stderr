@@ -1,4 +1,4 @@
-error[E0308]: mismatched types
+error[E0271]: expected `is_last` to return `BreakType`, but it returns `bool`
   --> tests/ui/fail/codec/break_on/field_break_on_returns_bool.rs:14:66
    |
  7 | #[derive(Klv)]
@@ -7,4 +7,12 @@ error[E0308]: mismatched types
 14 |     #[klv(key = 0x01, dec = tinyklv::dec::binary::u8, break_on = is_last)]
    |                                                                  ^^^^^^^ expected `BreakType`, found `bool`
    |
+note: required by a bound in `tinyklv::__export::field_break_on`
+  --> src/lib.rs
+   |
+   |     pub fn field_break_on<T, F>(f: &F, value: &T) -> crate::BreakType
+   |            -------------- required by a bound in this function
+...
+   |         F: Fn(&T) -> crate::BreakType,
+   |                      ^^^^^^^^^^^^^^^^ required by this bound in `field_break_on`
    = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)

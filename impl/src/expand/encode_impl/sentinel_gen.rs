@@ -2,7 +2,8 @@
 //!
 //! Generates the sentinel-framed encoder for containers that declare a
 //! sentinel. Fixed-width frame lengths back-fill the shared fixed-width length slot;
-//! variable-width frame lengths stage the whole body first
+//! variable-width frame lengths stage the whole body first. The frame length is written with the
+//! sentinel's own `len(..)`, else the container's
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -10,8 +11,8 @@
 // --------------------------------------------------
 use super::{
     EncodeCtx,
-    framing::{EncodeFraming, MAX_RESERVE_BYTES},
-    length_prefix::LengthPrefix,
+    framing::MAX_RESERVE_BYTES,
+    length_prefix::{KlvUnit, LengthPrefix},
     staging::Staging,
 };
 
@@ -30,27 +31,23 @@ const VAR_LEN_PREFIX_BYTES: usize = 8;
 impl EncodeCtx<'_> {
     /// Generates the `EncodeFrame` impl of a container that declares a sentinel
     ///
-    /// The generated `encode_frame` writes the sentinel, the frame length with the separate length
-    /// encoder, and the encoded value body. A fixed-width frame length reserves a length slot and
+    /// The generated `encode_frame` writes the sentinel, the frame length with the packet's length
+    /// encoder ([`ContainerMode::packet`](crate::ast::attr::container::ContainerMode::packet)),
+    /// and the encoded value body. A fixed-width frame length reserves a length slot and
     /// back-fills it after writing the value, while a variable-width one encodes the body into a
     /// fresh buffer so the final length is known before emission
     ///
     /// # Returns
     ///
     /// A token stream containing the generated `EncodeFrame` implementation, or `None` when the
-    /// container declares no sentinel
+    /// container declares no sentinel, or the packet's length encoder is missing
+    /// (`allow_unimplemented_encode`)
     pub(super) fn encode_frame_impl(&self) -> Option<proc_macro2::TokenStream> {
         // --------------------------------------------------
-        // the sentinel, and the separate length encoder that writes the frame length
+        // the sentinel, and the length encoder that writes the frame length
         // --------------------------------------------------
-        let EncodeFraming::Separate {
-            len,
-            sentinel: Some(sentinel),
-            ..
-        } = self.framing
-        else {
-            return None;
-        };
+        let (sentinel, len) = self.input.attrs.mode.packet()?;
+        let len = LengthPrefix::new(len.enc.as_ref()?, &len.size);
         let call_site = proc_macro2::Span::call_site();
         // --------------------------------------------------
         // the body is the derive's own `EncodeValue`, never another `encode_value` in scope
@@ -80,7 +77,7 @@ impl EncodeCtx<'_> {
                 // --------------------------------------------------
                 // delegate fixed-slot back-fill bookkeeping
                 // --------------------------------------------------
-                len.write_backfilled(sentinel_write, value_write, call_site)
+                len.write_backfilled(KlvUnit::Packet, sentinel_write, value_write, call_site)
             }
             LengthPrefix::Variable(len) => {
                 // --------------------------------------------------
@@ -103,7 +100,7 @@ impl EncodeCtx<'_> {
         Some(quote! {
             #[automatically_derived]
             impl #impl_generics ::tinyklv::traits::EncodeFrame for #name #ty_generics #where_clause {
-                fn encode_frame(&self, out: &mut ::std::vec::Vec<u8>) {
+                fn encode_frame(&self, out: &mut ::std::vec::Vec<::core::primitive::u8>) {
                     #frame_write
                 }
             }

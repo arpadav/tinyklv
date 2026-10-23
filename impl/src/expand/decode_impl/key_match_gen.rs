@@ -531,7 +531,7 @@ impl LoopCtx<'_> {
     /// Emits the check of a field's `break_on` on the value it just decoded, bound as `__val`
     ///
     /// ```text
-    /// match { let __decision: BreakType = #break_on(&__val); __decision } {
+    /// match __export::field_break_on(&#break_on, &__val) {
     ///     Skip => (),
     ///     Done => {
     ///         #write
@@ -548,8 +548,9 @@ impl LoopCtx<'_> {
     ///
     /// `Skip` discards the value, `Done` keeps it and ends the loop, whose tail finalizes the
     /// accumulator, `Abort` rejects with its message ([`LoopDriver::reject_aborted_value`]), and
-    /// `Proceed`, like any later variant, keeps it. The call and the `BreakType` it must return
-    /// are located at the fn, so a fn of another signature is reported there
+    /// `Proceed`, like any later variant, keeps it. The call is located at the fn, which
+    /// `__export::field_break_on` bounds by the signature it must have, so a fn of another
+    /// signature is reported there, against that bound
     ///
     /// # Arguments
     ///
@@ -573,7 +574,7 @@ impl LoopCtx<'_> {
             .driver
             .reject_aborted_value(&self.label(Some(name), &reason));
         let decision = quote_spanned! {helpers::call_site_at(break_on)=>
-            { let __decision: ::tinyklv::BreakType = #break_on(&__val); __decision }
+            ::tinyklv::__export::field_break_on(&#break_on, &__val)
         };
         quote! {
             match #decision {

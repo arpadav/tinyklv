@@ -19,6 +19,7 @@ mod attempt_budget;
 mod beacon;
 mod codec {
     mod advanced_defaults;
+    #[cfg(feature = "ber")]
     mod ber_keyed;
     mod custom_decoders;
     mod default_values;
@@ -68,6 +69,7 @@ mod sentinel {
 mod streaming {
     mod decode_partial_error_kinds;
     mod decode_partial_resume;
+    mod decoder_finish;
     mod streaming_decoder;
     mod streaming_mixed_fields;
     mod streaming_vec;

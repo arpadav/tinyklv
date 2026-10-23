@@ -48,9 +48,8 @@ impl TryFrom<&syn::MetaList> for KeylenXcoder {
                 } else {
                     err!(UnknownKeylenField(meta.path))
                 };
-                2;
-                enc: symbol::pnm_parse_maybestr_header_encoder => err!(DuplicateEncoderInHeader),
-                dec: symbol::pnm_parse_maybestr_decoder => err!(DuplicateDecoderInHeader),
+                enc: symbol::pnm_parse_maybestr_header_encoder  => err!(DuplicateEncoderInHeader),
+                dec: symbol::pnm_parse_maybestr_decoder         => err!(DuplicateDecoderInHeader),
             }
         })?;
         // --------------------------------------------------

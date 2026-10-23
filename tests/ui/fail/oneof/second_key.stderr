@@ -1,5 +1,5 @@
 error: Duplicate `key` field.
-       Currently only one key per field is supported.
+       Only one `key = ..` per field is supported; a `key = oneof(..)` lists every key of its field.
   --> tests/ui/fail/oneof/second_key.rs:15:5
    |
 15 | /     #[klv(key = oneof(0x01 => Payload::Count(u8)))]

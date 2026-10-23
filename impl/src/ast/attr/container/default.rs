@@ -173,13 +173,12 @@ impl TryFrom<&syn::MetaList> for DefaultXcoder {
             handle_unique_nested_meta_values! {
                 meta;
                 err!(UnknownDefaultField(meta.path));
-                6;
-                enc: symbol::pnm_parse_maybestr_encoder => err!(DuplicateEncoderInDefault(maybe_typ)),
-                dec: symbol::pnm_parse_maybestr_decoder => err!(DuplicateDecoderInDefault(maybe_typ)),
-                typ: symbol::pnm_parse_maybestr_type    => err!(DuplicateTypeInDefault),
-                size: symbol::parse_pnm_size            => err!(DuplicateSizeInDefault),
-                skip_if_default: symbol::parse_pnm_skip_if_default => err!(SkipIfConflict),
-                skip_if: symbol::pnm_parse_maybestr_skip_if => err!(SkipIfConflict),
+                enc: symbol::pnm_parse_maybestr_encoder             => err!(DuplicateEncoderInDefault(maybe_typ)),
+                dec: symbol::pnm_parse_maybestr_decoder             => err!(DuplicateDecoderInDefault(maybe_typ)),
+                typ: symbol::pnm_parse_maybestr_type                => err!(DuplicateTypeInDefault),
+                size: symbol::parse_pnm_size                        => err!(DuplicateSizeInDefault),
+                skip_if_default: symbol::parse_pnm_skip_if_default  => err!(SkipIfConflict),
+                skip_if: symbol::pnm_parse_maybestr_skip_if         => err!(SkipIfConflict),
             }
         }).err();
         // --------------------------------------------------
