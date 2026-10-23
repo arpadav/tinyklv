@@ -1,6 +1,6 @@
 //! Sentinel-seeking trait for locating KLV packet boundaries in a byte stream
 //!
-//! [`SeekSentinel`] is the stream-scanning half of the full decode pipeline
+//! [`SeekSentinel`] is the stream-scanning half of the full decode pipeline.
 //! It scans forward through `input` until the type's recognition sentinel bytes
 //! are found, then consumes the sentinel, reads the declared body length, takes
 //! that many bytes, and returns them as a sub-slice for [`super::DecodeValue`] to
@@ -23,7 +23,9 @@
 ///
 /// This trait is automatically implemented when `sentinel` is set in the
 /// [`crate::Klv`] attribute. The sentinel bytes and the length decoder are
-/// both specified in the `#[klv(...)]` attribute block
+/// both specified in the `#[klv(...)]` attribute block. The derived impl never
+/// skips a found sentinel: when its length or body fails, `input` is left at
+/// that sentinel, where the packet starts
 ///
 /// # Example
 ///
@@ -59,10 +61,8 @@ where
 {
     /// Scans `input` for the recognition sentinel, then returns the framed body bytes
     ///
-    /// Advances `input` past the sentinel, length prefix, and all body bytes
-    /// Pre-sentinel bytes are consumed and discarded. Returns an error only when
-    /// the stream ends before a sentinel is found or the declared body length
-    /// cannot be satisfied
+    /// Advances `input` past the sentinel, length prefix, and all body bytes.
+    /// Pre-sentinel bytes are consumed and discarded
     ///
     /// # Arguments
     ///
@@ -70,8 +70,41 @@ where
     ///
     /// # Returns
     ///
-    /// `Ok(S)` - a sub-slice containing exactly the body bytes of the located packet -
-    /// or a [`winnow::error::ContextError`] if no sentinel is found or the stream
-    /// ends mid-frame
+    /// `Ok(S)` - a sub-slice containing exactly the body bytes of the located packet
+    ///
+    /// # Errors
+    ///
+    /// - The stream ends before a sentinel is found, or before the declared body length is
+    ///   satisfied: `input` is left past only the bytes that cannot begin a packet, which
+    ///   [`crate::Decoder`] drops
+    /// - The packet length is malformed, an error of kind
+    ///   [`ErrorKind::MalformedValue`](crate::ErrorKind::MalformedValue): `input` is left at the
+    ///   sentinel, which [`crate::Decoder`] then steps one byte into
     fn seek_sentinel(input: &mut S) -> crate::Result<S>;
+
+    /// [`Self::seek_sentinel`] without building its error, for [`crate::Decoder`], which waits on
+    /// every failed seek but one whose packet length is malformed
+    ///
+    /// The derived impl builds no error of its own here, so a buffer that holds part of a packet
+    /// costs a [`crate::Decoder`] no allocation; its [`Self::seek_sentinel`] labels the failure
+    /// this returns. Not part of the public API - may change without notice
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - The stream to scan, left where [`Self::seek_sentinel`] leaves it
+    ///
+    /// # Returns
+    ///
+    /// `Ok(S)` - the body bytes [`Self::seek_sentinel`] returns
+    ///
+    /// # Errors
+    ///
+    /// - The kind of the error [`Self::seek_sentinel`] fails with, or
+    ///   [`ErrorKind::Truncated`](crate::ErrorKind::Truncated) for an error it does not tag, which
+    ///   is waited on as a cut read is
+    #[doc(hidden)]
+    fn seek_unlabeled(input: &mut S) -> Result<S, crate::ErrorKind> {
+        Self::seek_sentinel(input)
+            .map_err(|error| crate::ErrorKind::of(&error).unwrap_or(crate::ErrorKind::Truncated))
+    }
 }

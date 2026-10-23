@@ -4,16 +4,21 @@
 //! parsed from `#[klv(..)]` attributes: the [`XcoderLike`] enum covering paths,
 //! expressions, and macro invocations; the [`XcoderSigil`] enum that controls
 //! how the argument is passed to the xcoder function; [`SiguledXcoder`] which
-//! pairs a sigil with an inner xcoder; and supporting types [`LatebindXcoder`]
-//! and [`DefaultValue`]
+//! pairs a sigil with an inner xcoder; [`HeaderEncoder`], the sigil-free frame
+//! header encoder; and supporting types [`LatebindXcoder`] and [`DefaultValue`]. Also detects an
+//! `Option` field type and extracts its inner type ([`is_option`], [`unwrap_option_type`]), and
+//! takes a `macro_rules!` type fragment's invisible groups away to compare it ([`ungrouped`])
 //!
 //! Author: aav
 // --------------------------------------------------
 // external
 // --------------------------------------------------
+use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 use quote::ToTokens;
 
+/// A Rust type named by an attribute value: the `typ` of `default(..)` or the container's `stream`
 pub(crate) type TypeType = syn::Type;
+/// An xcoder carrying no dispatch sigil: a decoder, or a frame header encoder
 pub(crate) type XcoderType = XcoderLike;
 
 #[derive(Debug, Clone)]
@@ -94,10 +99,10 @@ impl ToTokens for XcoderLike {
 ///   (deref coercion handles `&String -> &str`, `&Vec<u8> -> &[u8]`, etc.)
 /// * `Ref`   (`enc = &func`) -> emit `func(EncodeAs::encode_as(&self.field))` -
 ///   dispatches via the [`EncodeAs`](`tinyklv::traits::EncodeAs`) trait:
-///   primitives pass by value (Copy), `String -> &str`, `Vec<T> -> &[T]`,
+///   primitives pass as `&T`, `String -> &str`, `Vec<T> -> &[T]`,
 ///   `Box<T>/Rc<T>/Arc<T> -> &T`. No clone, no heap allocation
 /// * `Deref` (`enc = *func`) -> emit `func(self.field)` - fn takes `T` by value
-///   (for `Copy` types and small primitives)
+///   (for `Copy` types and small primitives); the only sigil that passes a primitive by value
 pub(crate) enum XcoderSigil {
     None,
     Ref,
@@ -140,6 +145,24 @@ impl ToTokens for SiguledXcoder {
             XcoderLike::Macro(mcro) => mcro.to_tokens(tokens),
             XcoderLike::Expr(expr) => expr.to_tokens(tokens),
         }
+    }
+}
+
+#[derive(Debug)]
+/// A frame header encoder, the `enc = ..` of `key(..)`, `len(..)` or `keylen(..)`
+///
+/// The derive calls it with the key and length by value, so the field-only `&` / `*` sigils of
+/// [`SiguledXcoder`] are rejected at parse time
+pub(crate) struct HeaderEncoder(pub(super) XcoderLike);
+/// [`HeaderEncoder`] implementation of [`syn::parse::Parse`]
+///
+/// Rejects a leading `&` or `*` at the sigil, then parses the [`XcoderLike`]
+impl syn::parse::Parse for HeaderEncoder {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        if input.peek(syn::Token![&]) || input.peek(syn::Token![*]) {
+            return Err(input.error(err!(SigilOnHeaderEncoder)));
+        }
+        input.parse().map(Self)
     }
 }
 
@@ -197,4 +220,128 @@ impl syn::parse::Parse for LatebindXcoder {
         let inner: XcoderLike = input.parse()?;
         Ok(LatebindXcoder { is_mut, inner })
     }
+}
+
+/// The type `ty` with its invisible groups taken away, to compare it with the same type written
+/// out
+///
+/// A `macro_rules!` passes a `$t:ty` fragment on wrapped in an invisible group, which parses as
+/// a [`syn::Type::Group`] that is unequal to the type it holds
+///
+/// # Arguments
+///
+/// * `ty` - The [`syn::Type`] to compare
+///
+/// # Returns
+///
+/// `ty` parsed again from its tokens with each invisible group's tokens in place of the group,
+/// or `ty` itself when those tokens do not parse as a type (a group can hold a type that only
+/// parses on its own, e.g. `dyn A + B` behind a `&`)
+pub(crate) fn ungrouped(ty: &syn::Type) -> syn::Type {
+    syn::parse2(flatten_invisible_groups(ty.to_token_stream())).unwrap_or_else(|_| ty.clone())
+}
+
+/// `stream` with each invisible group's tokens in place of the group, at every depth
+///
+/// # Arguments
+///
+/// * `stream` - The tokens to flatten
+///
+/// # Returns
+///
+/// The flattened tokens, every delimited group kept with its span
+fn flatten_invisible_groups(stream: TokenStream) -> TokenStream {
+    stream
+        .into_iter()
+        .flat_map(|tree| match tree {
+            TokenTree::Group(group) if group.delimiter() == Delimiter::None => {
+                flatten_invisible_groups(group.stream())
+            }
+            TokenTree::Group(group) => {
+                let mut flat =
+                    Group::new(group.delimiter(), flatten_invisible_groups(group.stream()));
+                flat.set_span(group.span());
+                TokenTree::Group(flat).into()
+            }
+            other => other.into(),
+        })
+        .collect()
+}
+
+/// Returns the inner type `T` of an `Option<T>`, if the type is an `Option`
+///
+/// Delegates to [`is_option_helper`]. Returns `None` if `ty` is not an
+/// `Option` or if the generic argument is not a plain type
+///
+/// # Arguments
+///
+/// * `ty` - The [`syn::Type`] to inspect
+///
+/// # Returns
+///
+/// `Some(&inner_ty)` when `ty` is `Option<inner_ty>`, or `None` otherwise
+pub(crate) fn unwrap_option_type(ty: &syn::Type) -> Option<&syn::Type> {
+    is_option_helper(ty).1
+}
+
+/// Returns `true` if a [`syn::Type`] is an `Option<T>`
+///
+/// Delegates to [`is_option_helper`], discarding the inner-type result
+///
+/// # Arguments
+///
+/// * `ty` - The [`syn::Type`] to inspect
+///
+/// # Returns
+///
+/// `true` when `ty` is `Option<..>`, `false` otherwise
+pub(crate) fn is_option(ty: &syn::Type) -> bool {
+    is_option_helper(ty).0
+}
+
+/// Determines whether a [`syn::Type`] is an `Option` and extracts its inner type
+///
+/// Checks whether `ty`, inside any invisible groups a `macro_rules!` `$t:ty` fragment comes in,
+/// is `Option`, `std::option::Option` or `core::option::Option` whose first generic argument is a
+/// type. Returns both the boolean flag and the optional inner type so callers can use either piece
+/// without a second pass
+///
+/// # Arguments
+///
+/// * `ty` - The [`syn::Type`] to inspect
+///
+/// # Returns
+///
+/// A tuple `(is_option, inner)` where `is_option` is `true` when `ty` is
+/// `Option<..>`, and `inner` is `Some(&T)` for `Option<T>` or `None` otherwise
+fn is_option_helper(ty: &syn::Type) -> (bool, Option<&syn::Type>) {
+    let path = match ty {
+        syn::Type::Group(group) => return is_option_helper(&group.elem),
+        syn::Type::Path(syn::TypePath { qself: None, path }) => path,
+        _ => return (false, None),
+    };
+    let mut segments = path.segments.iter().rev();
+    if let Some(syn::PathSegment {
+        ident: id,
+        arguments:
+            syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments { args, .. }),
+    }) = segments.next()
+        && id == "Option"
+        && match (segments.next(), segments.next(), segments.next()) {
+            (None, ..) => path.leading_colon.is_none(),
+            (Some(module), Some(krate), None) => {
+                module.ident == "option" && (krate.ident == "std" || krate.ident == "core")
+            }
+            _ => false,
+        }
+    {
+        return (
+            true,
+            args.first().and_then(|arg| match arg {
+                syn::GenericArgument::Type(inner_ty) => Some(inner_ty),
+                _ => None,
+            }),
+        );
+    }
+    (false, None)
 }

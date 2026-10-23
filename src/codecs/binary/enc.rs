@@ -30,8 +30,13 @@ macro_rules! encode_native {
             }
 
             #[doc = $doc_from_usize]
+            #[doc = ""]
+            #[doc = "# Panics"]
+            #[doc = ""]
+            #[doc = concat!("In a debug build, if `input as ", stringify!($ty), "` changes the length; a release build writes the cast value")]
             #[inline(always)]
             pub fn[<$ty _from_usize>](input: usize, out: &mut Vec<u8>) {
+                debug_assert!(input as $ty as usize == input, concat!("length {} changes under `as ", stringify!($ty), "`"), input);
                 #[cfg(target_endian = "big")]
                 { out.extend_from_slice(&(input as $ty).to_be_bytes()); }
                 #[cfg(target_endian = "little")]
@@ -55,8 +60,13 @@ macro_rules! encode_endian {
             }
 
             #[doc = $doc_be_usize]
+            #[doc = ""]
+            #[doc = "# Panics"]
+            #[doc = ""]
+            #[doc = concat!("In a debug build, if `input as ", stringify!($ty), "` changes the length; a release build writes the cast value")]
             #[inline(always)]
             pub fn[<be_ $ty _from_usize>](input: usize, out: &mut Vec<u8>) {
+                debug_assert!(input as $ty as usize == input, concat!("length {} changes under `as ", stringify!($ty), "`"), input);
                 out.extend_from_slice(&(input as $ty).to_be_bytes());
             }
 
@@ -67,8 +77,13 @@ macro_rules! encode_endian {
             }
 
             #[doc = $doc_le_usize]
+            #[doc = ""]
+            #[doc = "# Panics"]
+            #[doc = ""]
+            #[doc = concat!("In a debug build, if `input as ", stringify!($ty), "` changes the length; a release build writes the cast value")]
             #[inline(always)]
             pub fn[<le_ $ty _from_usize>](input: usize, out: &mut Vec<u8>) {
+                debug_assert!(input as $ty as usize == input, concat!("length {} changes under `as ", stringify!($ty), "`"), input);
                 out.extend_from_slice(&(input as $ty).to_le_bytes());
             }
         }
@@ -1004,7 +1019,7 @@ let padded = tinyklv::codecs::binary::enc::le_f64_lengthed(10);
 mod tests {
 
     // Adapters wrapping the `super` writers (`fn(input, &mut Vec<u8>)`) as
-    // `Vec`-returning fns, so the assertions below can compare by value.
+    // `Vec`-returning fns, so the assertions below can compare by value
     macro_rules! vec_adapter {
         ($name:ident, $ty:ty) => {
             fn $name(input: $ty) -> Vec<u8> {

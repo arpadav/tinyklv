@@ -4,9 +4,14 @@ authors = ["Arpad Voros <arpadav@gmail.com>"]
 language = "en"
 src = "src"
 
+[build]
+create-missing = false
+
 [output.html]
 git-repository-url = "https://github.com/arpadav/tinyklv"
 edit-url-template = "https://github.com/arpadav/tinyklv/edit/main/book/{path}"
+additional-css = ["theme/klv.css"]
+additional-js = ["theme/klv.js"]
 
 [output.html.playground]
 runnable = false

@@ -1,7 +1,7 @@
 //! Code generation for the `SeekSentinel` trait implementation
 //!
-//! Emits the `SeekSentinel` impl, associated statics, and the per-container
-//! `memmem` seeker for containers that declare a `sentinel = ..` attribute
+//! Emits the `SeekSentinel` impl, with its per-container `memmem` seeker private to it, for
+//! containers that declare a `sentinel = ..` attribute
 //! The sentinel mechanism allows a streaming decoder to scan a raw byte buffer
 //! for a known marker byte sequence before attempting to decode a packet
 //!
@@ -9,162 +9,159 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::ast::types;
+use super::{DecodeCtx, ErrorKind};
+use crate::expand::helpers;
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
-use quote::quote;
+use quote::{quote, quote_spanned};
 
-/// Byte-string sentinels of `1..=SHORT_SENTINEL_MAX` bytes use the inline `memchr`-first-byte
-/// seek; longer sentinels (and non-byte-string literals) keep the cached `memmem::Finder`.
-const SHORT_SENTINEL_MAX: usize = 4;
-
-/// Generates the `SeekSentinel` trait implementation and its supporting statics
-///
-/// For a container that declares `#[klv(sentinel = <bytes>)]`, this function emits:
-///
-/// * A `const __TINYKLV_SENTINEL_LEN_<NAME>: usize` holding the sentinel byte count
-/// * For sentinels longer than `SHORT_SENTINEL_MAX` bytes (and any non-byte-string
-///   literal): a `static __TINYKLV_SEEKER_<NAME>: LazyLock<memmem::Finder>` for
-///   zero-cost repeated searches. Short byte-string sentinels skip this static
-///   entirely and use an inline `memchr`-first-byte + compare scan instead (no
-///   `LazyLock` deref / searcher dispatch - far cheaper on the small one-shot
-///   buffers a framed decode sees, while staying SIMD-fast on large streams).
-/// * An `impl SeekSentinel<Stream> for Name` block that locates the sentinel in the
-///   input (via whichever strategy above), advances past it, decodes the following
-///   length field, and returns the value slice
-///
-/// # Arguments
-///
-/// * `name` - The container ident the impl is generated for
-/// * `sentinel` - The sentinel literal (e.g. `b"HEARTBEAT"`) from the container attribute
-/// * `stream` - The stream type parameterising the impl (e.g. `&[u8]`)
-/// * `stream_lifetimed` - The stream type with the generated lifetime inserted
-/// * `lifetime` - The lifetime token used in the impl signature (e.g. `'z`)
-/// * `len_decoder` - Token expression used to decode the packet length that follows
-///   the sentinel in the stream
-/// * `generics` - Generic parameters from the original struct definition
-///
-/// # Returns
-///
-/// A [`proc_macro2::TokenStream`] containing the sentinel constant, static, and
-/// `SeekSentinel` impl block
-pub(super) fn gen_sentinel_impl(
-    name: &syn::Ident,
-    sentinel: &syn::Lit,
-    stream: &syn::Type,
-    stream_lifetimed: &syn::Type,
-    lifetime: &proc_macro2::TokenStream,
-    len_decoder: &types::XcoderType,
-    generics: &syn::Generics,
-) -> proc_macro2::TokenStream {
-    // --------------------------------------------------
-    // generics
-    // --------------------------------------------------
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    // --------------------------------------------------
-    // seeker statics
-    // --------------------------------------------------
-    let sentinel_len_static_name =
-        quote::format_ident!("__TINYKLV_SENTINEL_LEN_{}", name.to_string().to_uppercase());
-    let sentinel_seeker_static_name =
-        quote::format_ident!("__TINYKLV_SEEKER_{}", name.to_string().to_uppercase());
-    // --------------------------------------------------
-    // short sentinels (1..=SHORT_SENTINEL_MAX bytes) use inline memchr scan;
-    // longer sentinels use the cached memmem::Finder
-    // --------------------------------------------------
-    let use_inline = matches!(
-        sentinel,
-        syn::Lit::ByteStr(b) if (1..=SHORT_SENTINEL_MAX).contains(&b.value().len())
-    );
-    // --------------------------------------------------
-    // the seek body: locate the sentinel, advancing `input` past it, or error.
-    // both branches share the `position + len` advance and the same error.
-    // --------------------------------------------------
-    let seek_body = if use_inline {
-        quote! {
-            const __SENTINEL: &[u8] = #sentinel;
-            // `*input` is a `&[u8]` copy; advancing `input` later does not invalidate it
-            let __hay: &[u8] = *input;
-            let __found = {
-                let mut __base = 0usize;
-                loop {
-                    match ::tinyklv::__export::memchr::memchr(__SENTINEL[0], &__hay[__base..]) {
-                        ::core::option::Option::Some(__off) => {
-                            let __at = __base + __off;
-                            if __hay[__at..].starts_with(__SENTINEL) {
-                                break ::core::option::Option::Some(__at);
-                            }
-                            __base = __at + 1;
-                        }
-                        ::core::option::Option::None => break ::core::option::Option::None,
-                    }
-                }
-            };
-            match __found {
-                ::core::option::Option::Some(position) => *input = &input[position + #sentinel_len_static_name..],
-                ::core::option::Option::None => return ::core::result::Result::Err(::tinyklv::__export::labeled_error(
-                    input,
-                    &checkpoint,
-                    concat!("Unable to find recognition sentinel for `", stringify!(#name), "` packet"),
-                )),
-            };
-        }
-    } else {
-        quote! {
-            match #sentinel_seeker_static_name.find(&input) {
-                ::core::option::Option::Some(position) => *input = &input[position + #sentinel_len_static_name..],
-                ::core::option::Option::None => return ::core::result::Result::Err(::tinyklv::__export::labeled_error(
-                    input,
-                    &checkpoint,
-                    concat!("Unable to find recognition sentinel for `", stringify!(#name), "` packet"),
-                )),
-            };
-        }
-    };
-    // --------------------------------------------------
-    // the cached finder static is only needed for the long-sentinel path
-    // --------------------------------------------------
-    let seeker_static = if use_inline {
-        quote! {}
-    } else {
-        quote! {
+/// [`DecodeCtx`] implementation of the `SeekSentinel` impl
+impl DecodeCtx<'_> {
+    /// Generates the `SeekSentinel` trait implementation
+    ///
+    /// For a container that declares a `sentinel` ([`Self::packet`]), this method emits an
+    /// `impl SeekSentinel<Stream> for Name` block whose `seek_unlabeled` seeks, declaring,
+    /// private to it:
+    ///
+    /// * A `const __TINYKLV_SENTINEL_LEN: usize` holding the sentinel byte count
+    /// * A `static __TINYKLV_SEEKER: LazyLock<memmem::Finder>`, built on the first search that
+    ///   does not find the sentinel at the start of the input
+    ///
+    /// It locates the sentinel in the input, compared at its start before the finder searches
+    /// the rest (the start is where back-to-back frames put every sentinel), advances past it,
+    /// decodes the following length field, a `usize`, with the packet's length decoder, and
+    /// returns the value slice. On an error `input` is left at the found sentinel, where the
+    /// packet starts, or on a miss at the last `len - 1` bytes, the only ones that may still begin
+    /// a sentinel. The error is a kind alone, which builds nothing: a miss is
+    /// [`ErrorKind::MissingSentinel`]; a length its decoder tags [`ErrorKind::MalformedValue`]
+    /// keeps that kind; any other length failure, and a body that the end of the input cuts, is
+    /// [`ErrorKind::Truncated`], so a length decoder that stops short of the end of the input on
+    /// a cut read is waited on too (DES-46)
+    ///
+    /// Its `seek_sentinel` runs that seek and labels a failure: a miss, a cut body, or, read
+    /// again from the sentinel, the length decoder's own error, relabelled to name the struct's
+    /// packet length first, each tagged as the seek tagged it
+    ///
+    /// # Returns
+    ///
+    /// A [`proc_macro2::TokenStream`] containing the `SeekSentinel` impl block, or `None` without
+    /// [`Self::packet`]
+    pub(super) fn sentinel_impl(&self) -> Option<proc_macro2::TokenStream> {
+        // --------------------------------------------------
+        // the sentinel, and the length decoder that reads the frame length after it
+        // --------------------------------------------------
+        let (sentinel, len_decoder) = self.packet()?;
+        let name = &self.input.ident;
+        let stream = &self.stream;
+        let (missing, truncated, malformed) = (
+            ErrorKind::MissingSentinel,
+            ErrorKind::Truncated,
+            ErrorKind::MalformedValue,
+        );
+        let stream_lifetimed = &self.stream_lifetimed;
+        let lifetime = &self.lifetime;
+        // --------------------------------------------------
+        // the packet length's read, a `usize` as every frame length is, located at its decoder
+        // so that a decoder of another length type is reported there
+        // --------------------------------------------------
+        let parse_len = quote_spanned! {helpers::call_site_at(len_decoder)=>
+            let __parsed: ::core::result::Result<::core::primitive::usize, _> =
+                ::tinyklv::__export::winnow::Parser::parse_next(&mut #len_decoder, &mut __rest);
+        };
+        // --------------------------------------------------
+        // generics
+        // --------------------------------------------------
+        let (impl_generics, ty_generics, where_clause) = self.input.generics.split_for_impl();
+        // --------------------------------------------------
+        // return seek sentinel impl
+        // --------------------------------------------------
+        Some(quote! {
             #[automatically_derived]
             #[doc(hidden)]
-            #[doc = concat!(" Static seeker for [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::SeekSentinel`]")]
-            pub(crate) static #sentinel_seeker_static_name: ::std::sync::LazyLock<::tinyklv::__export::memchr::memmem::Finder> =
-                ::std::sync::LazyLock::new(|| ::tinyklv::__export::memchr::memmem::Finder::new(#sentinel));
-        }
-    };
-    // --------------------------------------------------
-    // return seek sentinel impl
-    // --------------------------------------------------
-    quote! {
-        #[automatically_derived]
-        #[doc(hidden)]
-        #[doc = concat!(" Static sentinel length for [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::SeekSentinel`]")]
-        pub(crate) const #sentinel_len_static_name: usize = #sentinel.len();
+            #[doc = ::core::concat!(" [`", ::core::stringify!(#name), "`] implementation of [`tinyklv::traits::SeekSentinel`] for [`", ::core::stringify!(#stream), "`]")]
+            impl #impl_generics ::tinyklv::traits::SeekSentinel<#stream> for #name #ty_generics #where_clause {
+                fn seek_sentinel<#lifetime>(input: &mut #stream_lifetimed) -> ::tinyklv::__export::winnow::Result<#stream_lifetimed> {
+                    let __checkpoint = ::tinyklv::__export::winnow::stream::Stream::checkpoint(input);
+                    let __kind = match <Self as ::tinyklv::traits::SeekSentinel<#stream>>::seek_unlabeled(input) {
+                        ::core::result::Result::Ok(__body) => return ::core::result::Result::Ok(__body),
+                        ::core::result::Result::Err(__kind) => __kind,
+                    };
+                    if __kind == #missing {
+                        return ::core::result::Result::Err(::tinyklv::__export::kinded_error(
+                            input,
+                            &__checkpoint,
+                            ::core::concat!("`", ::core::stringify!(#name), "` packet (no recognition sentinel in the input)"),
+                            #missing,
+                        ));
+                    }
+                    // the seek stopped at the sentinel; its length, read again, says what failed
+                    let mut __rest: &[::core::primitive::u8] = &input[#sentinel.len()..];
+                    match ::tinyklv::__export::winnow::Parser::parse_next(&mut #len_decoder, &mut __rest) {
+                        ::core::result::Result::Ok(_) => ::core::result::Result::Err(::tinyklv::__export::kinded_error(
+                            input,
+                            &__checkpoint,
+                            ::core::concat!("`", ::core::stringify!(#name), "` packet (its body runs past the end of the input)"),
+                            #truncated,
+                        )),
+                        // named as the struct's packet length first, then as the decoder names it
+                        ::core::result::Result::Err(__e) => ::core::result::Result::Err(::tinyklv::__export::relabeled_error(
+                            input,
+                            &__checkpoint,
+                            ::core::concat!("`", ::core::stringify!(#name), "` packet length"),
+                            __e,
+                            __kind,
+                        )),
+                    }
+                }
 
-        #seeker_static
-
-        #[automatically_derived]
-        #[doc(hidden)]
-        #[doc = concat!(" [`", stringify!(#name), "`] implementation of [`tinyklv::prelude::SeekSentinel`] for [`", stringify!(#stream), "`]")]
-        impl #impl_generics ::tinyklv::traits::SeekSentinel<#stream> for #name #ty_generics #where_clause {
-            fn seek_sentinel<#lifetime>(input: &mut #stream_lifetimed) -> ::tinyklv::__export::winnow::Result<#stream_lifetimed> {
-                let checkpoint = input.checkpoint();
-                #seek_body
-                // `as usize` truncates a decoded length only if it exceeds
-                // `usize::MAX`, which cannot occur on 64-bit targets for any
-                // supported length codec
-                let packet_len = #len_decoder
-                    .context(::tinyklv::__export::winnow::error::StrContext::Label(
-                        concat!("Unable to parse packet length for `", stringify!(#name), "` packet")
-                    ))
-                    .parse_next(input)? as usize;
-                ::tinyklv::__export::winnow::token::take(packet_len).parse_next(input)
+                // inlined into `seek_sentinel`, whose success path is this seek's: out of line it
+                // costs a one-shot `decode_frame` 16 more instructions a packet (measured)
+                #[inline(always)]
+                fn seek_unlabeled<#lifetime>(input: &mut #stream_lifetimed) -> ::core::result::Result<#stream_lifetimed, ::tinyklv::ErrorKind> {
+                    const __TINYKLV_SENTINEL_LEN: ::core::primitive::usize = #sentinel.len();
+                    static __TINYKLV_SEEKER: ::std::sync::LazyLock<::tinyklv::__export::memchr::memmem::Finder> =
+                        ::std::sync::LazyLock::new(|| ::tinyklv::__export::memchr::memmem::Finder::new(#sentinel));
+                    // `*input` is a `&[u8]` copy; advancing `input` later does not invalidate it
+                    let __hay: &[::core::primitive::u8] = *input;
+                    // the sentinel's offset in `__hay`; `AsRef` takes a byte string or a string
+                    let __found = if __hay.starts_with(::core::convert::AsRef::<[::core::primitive::u8]>::as_ref(#sentinel)) {
+                        ::core::option::Option::Some(0)
+                    } else {
+                        __TINYKLV_SEEKER.find(__hay)
+                    };
+                    let ::core::option::Option::Some(__position) = __found else {
+                        // only the last `len - 1` bytes may still begin a sentinel
+                        *input = &__hay[__hay.len().saturating_sub(__TINYKLV_SENTINEL_LEN.saturating_sub(1))..];
+                        return ::core::result::Result::Err(#missing);
+                    };
+                    let mut __rest: &[::core::primitive::u8] = &__hay[__position + __TINYKLV_SENTINEL_LEN..];
+                    #parse_len
+                    match __parsed {
+                        ::core::result::Result::Ok(__len) => match __rest.split_at_checked(__len) {
+                            ::core::option::Option::Some((__body, __tail)) => {
+                                *input = __tail;
+                                ::core::result::Result::Ok(__body)
+                            }
+                            // the body is cut: the packet is not all here yet
+                            ::core::option::Option::None => {
+                                *input = &__hay[__position..];
+                                ::core::result::Result::Err(#truncated)
+                            }
+                        },
+                        // the length is cut, or malformed when its decoder says so: either way
+                        // the packet starts at the sentinel
+                        ::core::result::Result::Err(__e) => {
+                            *input = &__hay[__position..];
+                            match ::tinyklv::ErrorKind::of(&__e) {
+                                ::core::option::Option::Some(#malformed) => ::core::result::Result::Err(#malformed),
+                                _ => ::core::result::Result::Err(#truncated),
+                            }
+                        }
+                    }
+                }
             }
-        }
+        })
     }
 }

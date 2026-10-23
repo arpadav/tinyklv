@@ -11,28 +11,38 @@
 //! * `Some(Err(e))` - keyword matched but value was malformed
 //!
 //! The `parse_pnm_default_value` function is hand-written because the bare
-//! `default` form (no `=` token) cannot be expressed via the macro
+//! `default` form (no `=` token) cannot be expressed via the macro. `parse_pnm_size` (a field's
+//! `size(..)` group, delegated to [`SizeSpec`]) and `parse_pnm_header_size` (a `key(..)`/`len(..)`
+//! `size(..)` group, delegated to [`SizeBytes`]) are hand-written too; the bare `implicit`,
+//! `lengthed`, `skip_if_default` and `unknown` flags share `pnm_parse_flag`
 //!
 //! Author: aav
 // --------------------------------------------------
-// external
+// local
 // --------------------------------------------------
+use crate::{
+    ast::{
+        attr::{
+            KeySpec,
+            size::{SizeBytes, SizeSpec},
+        },
+        types::*,
+    },
+    symbol::*,
+};
 use tk_syn_macros::create_parser;
 
 // --------------------------------------------------
-// local
+// external
 // --------------------------------------------------
-use crate::ast::attr::size::SizeSpec;
-use crate::ast::types::*;
-use crate::symbol::*;
+use syn::spanned::Spanned;
 
 /// Parses a value of type `T` from a [`syn::meta::ParseNestedMeta`], accepting
 /// the value either as raw tokens or wrapped in a [`syn::LitStr`]
 ///
-/// First attempts to parse the value stream as a [`syn::LitStr`]; if that
-/// succeeds, re-parses the string contents as `T` (allowing `enc = "my::path"`
-/// in addition to `enc = my::path`). If the value is not a string literal,
-/// falls back to parsing the raw token stream directly as `T`
+/// A [`syn::LitStr`] value has its string contents parsed as `T` (allowing
+/// `enc = "my::path"` in addition to `enc = my::path`); any other literal is rejected, naming
+/// both forms. Otherwise the raw token stream is parsed directly as `T`
 ///
 /// # Arguments
 ///
@@ -43,13 +53,14 @@ use crate::symbol::*;
 /// `Ok(T)` on a successful parse, or a [`syn::Error`] if the value is present
 /// but cannot be parsed as `T` in either form
 fn pnm_parse_maybestr<T: syn::parse::Parse>(input: &syn::meta::ParseNestedMeta) -> syn::Result<T> {
-    match input.value() {
-        Ok(value) => match value.parse::<syn::LitStr>() {
-            Ok(litstr) => litstr.parse(),
-            Err(_) => value.parse(),
-        },
-        Err(err) => Err(err),
+    let value = input.value()?;
+    if value.peek(syn::LitStr) {
+        return value.parse::<syn::LitStr>()?.parse();
     }
+    if value.peek(syn::Lit) {
+        return Err(value.error(err!(LiteralSetting(input.path))));
+    }
+    value.parse()
 }
 
 /// Parses a value of type `T` from a [`syn::MetaNameValue`], accepting
@@ -75,9 +86,7 @@ fn nv_parse_maybestr<T: syn::parse::Parse>(input: &syn::MetaNameValue) -> syn::R
     }
 }
 
-// --------------------------------------------------
 // encoder / decoder
-// --------------------------------------------------
 // A siguled xcoder, for different encoding fn signatures
 // using &
 create_parser!(
@@ -88,10 +97,10 @@ create_parser!(
     ENCODER: SiguledXcoder;
     nv_parse_maybestr => syn::MetaNameValue
 );
-// A non siguled xcoder, for different encoding fn signatures
+// A frame header encoder, which takes no sigil
 create_parser!(
-    ENCODER: XcoderType;
-    pnm_parse_maybestr_encoder_no_sigil, pnm_parse_maybestr => syn::meta::ParseNestedMeta
+    ENCODER: HeaderEncoder;
+    pnm_parse_maybestr_header_encoder, pnm_parse_maybestr => syn::meta::ParseNestedMeta
 );
 
 // A non siguled xcoder, for different decoding fn signatures
@@ -104,9 +113,7 @@ create_parser!(
     nv_parse_maybestr => syn::MetaNameValue
 );
 
-// --------------------------------------------------
 // type / stream
-// --------------------------------------------------
 create_parser!(
     TYPE: TypeType;
     pnm_parse_maybestr => syn::meta::ParseNestedMeta
@@ -116,47 +123,60 @@ create_parser!(
     nv_parse_maybestr => syn::MetaNameValue
 );
 
-// --------------------------------------------------
-// key / sentinel
-// --------------------------------------------------
-create_parser!(KEY: syn::Lit; pnm);
-create_parser!(SENTINEL: syn::Lit; nv);
+// key (a literal or a `oneof(..)`) / the `value` of a `sentinel(..)` list
+create_parser!(KEY: KeySpec; pnm);
+create_parser!(SENTINEL_VALUE: syn::Lit; pnm);
 
-// --------------------------------------------------
-// size (key/len/field size shape: `size(var, exact = N | hint = N)`) and its inner keywords
-// --------------------------------------------------
-// the `exact = N` / `hint = N` byte counts (kept as `LitInt` so a conflict can be spanned)
+// size (field size shape: `size(implicit, lengthed, exact = N | reserve = N)`; key/len byte
+// count: `size(exact = N | reserve = N)`) and its inner keywords
+// the `exact = N` / `reserve = N` byte counts (kept as `LitInt` so a conflict can be spanned)
 create_parser!(EXACT: syn::LitInt; pnm);
-create_parser!(HINT: syn::LitInt; pnm);
+create_parser!(RESERVE: syn::LitInt; pnm);
 
-/// Parses the bare `var` flag inside a `size(..)` list (a path, no `= value`)
+/// Parses a bare flag (a path, no `= value`) inside a list
 ///
 /// Modelled on [`parse_pnm_default_value`]'s bare form: an `Err` from `value()` means the flag was
-/// present with no value (the valid form); an `Ok` means the user wrote `var = ..`, which is rejected
+/// present with no value (the valid form); an `Ok` means the user wrote `<flag> = ..`, which is
+/// rejected, as is a `<flag>(..)` list
 ///
 /// # Arguments
 ///
-/// * `input` - the nested meta entry, positioned at the `var` keyword
+/// * `input` - the nested meta entry, positioned at the flag
 ///
 /// # Returns
 ///
-/// [`None`] if the keyword is not [`VAR`]; `Some(Ok(()))` for a bare `var`; `Some(Err(..))` otherwise
-pub(crate) fn parse_pnm_var(input: &syn::meta::ParseNestedMeta) -> Option<syn::Result<()>> {
-    if input.path != VAR {
-        return None;
+/// The span of the flag
+///
+/// # Errors
+///
+/// The flag written with a value or a list
+fn pnm_parse_flag(input: &syn::meta::ParseNestedMeta) -> syn::Result<proc_macro2::Span> {
+    let flag = input.path.to_token_stream();
+    match input.value() {
+        Ok(_) => Err(input.error(format!("`{flag}` is a flag and takes no value"))),
+        Err(_) if input.input.peek(syn::token::Paren) => Err(input.error(format!(
+            "`{flag}` is a flag and takes no list: write `{flag}`"
+        ))),
+        Err(_) => Ok(input.path.span()),
     }
-    Some(match input.value() {
-        Ok(_) => Err(input.error("`var` is a flag and takes no value")),
-        Err(_) => Ok(()),
-    })
 }
 
-/// Parses a [`SizeSpec`] from the `size(..)` group on a [`syn::meta::ParseNestedMeta`]
+// the bare `implicit` / `lengthed` flags
+create_parser!(
+    IMPLICIT: proc_macro2::Span;
+    parse_pnm_implicit, pnm_parse_flag => syn::meta::ParseNestedMeta
+);
+create_parser!(
+    LENGTHED: proc_macro2::Span;
+    parse_pnm_lengthed, pnm_parse_flag => syn::meta::ParseNestedMeta
+);
+
+/// Parses a field's [`SizeSpec`] from the `size(..)` group on a [`syn::meta::ParseNestedMeta`]
 ///
 /// Defers straight to [`SizeSpec::try_from`], which recurses into the parenthesised group with
-/// [`ParseNestedMeta::parse_nested_meta`] - so the inner `var`/`exact`/`hint` parse goes through
-/// [`handle_unique_nested_meta_values!`](tk_syn_macros::handle_unique_nested_meta_values) like every
-/// other list attribute, with no `syn::MetaList` re-materialisation
+/// [`ParseNestedMeta::parse_nested_meta`] - so the inner `lengthed`/`exact`/`reserve` parse goes
+/// through [`handle_unique_nested_meta_values!`](tk_syn_macros::handle_unique_nested_meta_values)
+/// like every other list attribute, with no `syn::MetaList` re-materialisation
 ///
 /// # Arguments
 ///
@@ -174,9 +194,29 @@ pub(crate) fn parse_pnm_size(input: &syn::meta::ParseNestedMeta) -> Option<syn::
     Some(SizeSpec::try_from(input))
 }
 
-// --------------------------------------------------
+/// Parses a `key(..)` or `len(..)` byte count, [`SizeBytes`], from the `size(..)` group on a
+/// [`syn::meta::ParseNestedMeta`]
+///
+/// The `key(..)`/`len(..)` counterpart of [`parse_pnm_size`]: defers to [`SizeBytes::try_from`],
+/// which parses the inner `exact`/`reserve` the same way and has no `lengthed`
+///
+/// # Arguments
+///
+/// * `input` - the nested meta entry, positioned at the `size` keyword (before its `(..)`)
+///
+/// # Returns
+///
+/// [`None`] if the keyword is not [`SIZE`]; otherwise the parsed [`SizeBytes`] or a parse error
+pub(crate) fn parse_pnm_header_size(
+    input: &syn::meta::ParseNestedMeta,
+) -> Option<syn::Result<SizeBytes>> {
+    if input.path != SIZE {
+        return None;
+    }
+    Some(SizeBytes::try_from(input))
+}
+
 // default
-// --------------------------------------------------
 /// Parses a [`DefaultValue`] from a [`syn::meta::ParseNestedMeta`]
 ///
 /// Accepts two forms on field attributes:
@@ -185,15 +225,19 @@ pub(crate) fn parse_pnm_size(input: &syn::meta::ParseNestedMeta) -> Option<syn::
 ///   lowers to `<T as ::core::default::Default>::default()`
 /// * `default = <expr>` -> [`DefaultValue::Expr`], which codegen splices as-is
 ///
-/// Returns:
-///
-/// * [`None`] if the keyword is not [`DEFAULT_VALUE`]
-/// * [`Some(Ok(..))`] on a successful parse (both bare and name-value forms)
-/// * [`Some(Err(..))`] if `default = <expr>` was written but `<expr>` failed
-///   to parse as a [`syn::Expr`]
-///
 /// Not emitted via `create_parser!` because the bare form must yield
 /// `Some(Ok(Call))` on a missing `=`, which the macro's helper can't express
+///
+/// # Arguments
+///
+/// * `input` - the nested meta entry, positioned at the `default` keyword
+///
+/// # Returns
+///
+/// * [`None`] if the keyword is not [`DEFAULT_VALUE`]
+/// * `Some(Ok(..))` on a successful parse (both bare and name-value forms)
+/// * `Some(Err(..))` if `default = <expr>` was written but `<expr>` failed
+///   to parse as a [`syn::Expr`]
 pub(crate) fn parse_pnm_default_value(
     input: &syn::meta::ParseNestedMeta,
 ) -> Option<syn::Result<DefaultValue>> {
@@ -206,12 +250,33 @@ pub(crate) fn parse_pnm_default_value(
     })
 }
 
-// --------------------------------------------------
 // latebind
-// --------------------------------------------------
 create_parser!(
     LATEBIND: LatebindXcoder;
     pnm_parse_maybestr => syn::meta::ParseNestedMeta
+);
+
+// a field's `break_on`, the path of its `fn(&value) -> BreakType`
+create_parser!(
+    BREAK_ON: syn::Path;
+    pnm_parse_maybestr => syn::meta::ParseNestedMeta
+);
+
+// a field's or a `default(..)`'s skip: the bare `skip_if_default` flag, or the path of its
+// `skip_if` fn
+create_parser!(
+    SKIP_IF_DEFAULT: proc_macro2::Span;
+    parse_pnm_skip_if_default, pnm_parse_flag => syn::meta::ParseNestedMeta
+);
+create_parser!(
+    SKIP_IF: syn::Path;
+    pnm_parse_maybestr => syn::meta::ParseNestedMeta
+);
+
+// the bare `unknown` flag of the field that keeps the frames whose key no field declares
+create_parser!(
+    UNKNOWN_FRAMES: proc_macro2::Span;
+    parse_pnm_unknown, pnm_parse_flag => syn::meta::ParseNestedMeta
 );
 create_parser!(
     LATEBIND: LatebindXcoder;

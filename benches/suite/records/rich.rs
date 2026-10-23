@@ -6,9 +6,7 @@
 // local
 // --------------------------------------------------
 use super::{GpsCoord, RngSample};
-use tinyklv::{
-    dec::binary as decb, dec::string as decs, enc::binary as encb, enc::string as encs, prelude::*,
-};
+use tinyklv::{dec::binary as decb, dec::string as decs, enc::binary as encb, enc::string as encs};
 
 // --------------------------------------------------
 // external
@@ -74,7 +72,7 @@ pub(crate) struct Rich {
         key = 0x0C,
         dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8,
-        size(var, hint = 16),
+        size(lengthed, reserve = 16),
     )]
     pub(crate) label: String,
 }

@@ -1,0 +1,5 @@
+error: A `key = oneof(..)` names at least one arm, `K => Enum::Variant(Type)`; add one, or give the field one key with `key = K`.
+  --> tests/ui/fail/oneof/without_arms.rs:15:17
+   |
+15 |     #[klv(key = oneof())]
+   |                 ^^^^^^^

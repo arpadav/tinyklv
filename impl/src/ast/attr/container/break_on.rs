@@ -1,11 +1,15 @@
 //! Parsed model for the container-level `#[klv(break_on = ..)]` attribute
 //!
-//! `break_on` accepts two forms, distinguished by the right-hand side of the name-value:
+//! `break_on` accepts two forms, distinguished by the right-hand side of the name-value. Both run
+//! right after each frame's key, in either framing mode (a `keylen` header's key and length are
+//! read together):
 //!
-//! * a **literal** (e.g. `break_on = 0xFF`) - codegen lowers it to "stop the loop when the decoded
-//!   key equals this literal" ([`crate::BreakType::Done`] on match, else `Proceed`)
-//! * a **function path** (e.g. `break_on = classify`) - codegen calls `path(key, len)`, which the
-//!   user writes as `fn(key, len) -> tinyklv::BreakType`
+//! * a **literal** (e.g. `break_on = 0xFF`) - the loop stops on a key equal to it, the input
+//!   right after the key
+//! * a **function path** (e.g. `break_on = classify`) - the user's
+//!   `fn(&key, &mut input) -> tinyklv::BreakType`, which may read what follows the key: on
+//!   `Proceed` the input is rewound to just after the key and the frame decodes, on any other
+//!   outcome it stays where the fn left it
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -19,15 +23,13 @@ use crate::ast::symbol;
 use quote::ToTokens;
 
 /// The two forms a `break_on = ..` right-hand side may take
-///
-/// Consumed by the decode codegen to build the per-iteration break decision: a literal lowers to a
-/// key-equality check yielding [`crate::BreakType::Done`]; a function path is called directly with
-/// the concrete `(key, len)`
+#[derive(Clone)]
 pub(crate) enum BreakOnSpec {
     /// `break_on = <literal>` - a decoded key equal to this literal stops the loop
     Literal(syn::Lit),
 
-    /// `break_on = <path>` - a user function `fn(key, len) -> BreakType` consulted per triple
+    /// `break_on = <path>` - a user function `fn(&key, &mut input) -> BreakType` consulted per
+    /// frame
     Func(syn::Path),
 }
 
@@ -41,8 +43,8 @@ impl std::fmt::Debug for BreakOnSpec {
     }
 }
 
-/// Newtype wrapper paralleling [`super::sentinel::Sentinel`]: `Some` once a `break_on = ..` has been
-/// parsed, `None` when the name-value was for some other keyword
+/// Newtype wrapper: `Some` once a `break_on = ..` has been parsed, `None` when the name-value was
+/// for some other keyword
 pub(crate) struct BreakOn(pub Option<BreakOnSpec>);
 
 /// [`BreakOn`] implementation of [`std::fmt::Debug`]
@@ -56,7 +58,7 @@ impl std::fmt::Debug for BreakOn {
 ///
 /// Returns `Ok(BreakOn(None))` when the name-value is not the `break_on` keyword (so the caller can
 /// fall through), `Ok(BreakOn(Some(..)))` for a literal or path value, and `Err` when the value is
-/// neither (e.g. `break_on = "oops"` written as a non-literal expression like an array)
+/// neither (e.g. an array or call expression such as `break_on = [0xFF]`)
 impl TryFrom<&syn::MetaNameValue> for BreakOn {
     type Error = syn::Error;
     fn try_from(input: &syn::MetaNameValue) -> syn::Result<Self> {

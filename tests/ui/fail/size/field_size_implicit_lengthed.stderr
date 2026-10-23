@@ -1,0 +1,5 @@
+error: A `lengthed` decoder is passed the value's length, and an `implicit` value has none; add `exact = N` to pass it `N`, or remove `lengthed`.
+  --> tests/ui/fail/size/field_size_implicit_lengthed.rs:10:82
+   |
+10 |     #[klv(key = 0x01, dec = tinyklv::dec::string::to_string_utf8, size(implicit, lengthed))]
+   |                                                                                  ^^^^^^^^

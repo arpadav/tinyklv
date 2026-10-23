@@ -1,0 +1,5 @@
+error: The arm of key `0x02` already wraps its value in this variant, and encode writes a variant under one key; give each arm its own variant, or remove one.
+  --> tests/ui/fail/oneof/duplicate_variant.rs:15:59
+   |
+15 |     #[klv(key = oneof(0x02 => Payload::Count(u8), 0x03 => self::Payload::Count(u8)))]
+   |                                                           ^^^^^^^^^^^^^^^^^^^^

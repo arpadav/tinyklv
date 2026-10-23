@@ -1,20 +1,22 @@
 //! Field KLV item emission
 //!
 //! Turns each `#[klv(..)]` field into a complete key-length-value write. The
-//! module resolves the encoder call shape, applies optional-field guards, and
-//! delegates length-slot bookkeeping to focused helpers
+//! module resolves the encoder call shape, writes each key's frame through the
+//! [`FrameBody`](crate::expand::encode_impl::frame_body::FrameBody) the container's framing and
+//! the key's value pick, and applies optional-field and skip guards. A
+//! `key = oneof(..)` field writes the frame of the arm its variant
+//! names. The frames a `#[klv(unknown)]` field retains are written after the known
+//! fields, through the same framing, and a field that may end the decode, with a `break_on` or
+//! keyed by the struct's `break_on` literal, after them all
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use super::{
-    field_length_plan::{self, ContainerLengthPrefix, FieldLengthPlan},
-    length_slot_gen,
-};
+use super::{EncodeCtx, UnknownEncoder, frame_body::FrameBody};
 use crate::{
     ast::{
-        attr::{MainContainer, MainField},
+        attr::{FieldKey, FieldKeys, FieldParsed, MainField, ValueXcoder, skip_if::SkipIf},
         types::{self, XcoderSigil},
     },
     expand::helpers,
@@ -25,402 +27,449 @@ use crate::{
 // --------------------------------------------------
 use quote::{format_ident, quote, quote_spanned};
 
-/// Generates all field KLV item writes for an `EncodeValue` body
-///
-/// Walks the parsed container fields and emits one planned KLV item write for
-/// each field that carries KLV metadata. Fields without KLV attributes are
-/// ignored so ordinary Rust fields remain outside the generated wire output
-///
-/// # Arguments
-///
-/// * `input` - Parsed container metadata containing the fields to encode
-/// * `key_encoder` - Encoder expression used for each generated field key
-/// * `len_encoder` - Encoder expression used for each generated field length
-/// * `len_prefix` - Container length-prefix strategy shared by field items
-/// * `scratch` - Scratch buffer identifier used by staged value writes
-///
-/// # Returns
-///
-/// A token stream containing all generated field item writes in source order
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let items = gen_klv_items(&container, &key_encoder, &len_encoder, len_prefix, &scratch);
-/// assert!(items.is_empty() || !items.to_string().is_empty());
-/// ```
-pub(super) fn gen_klv_items(
-    input: &MainContainer,
-    key_encoder: &types::SiguledXcoder,
-    len_encoder: &types::SiguledXcoder,
-    len_prefix: ContainerLengthPrefix,
-    scratch: &syn::Ident,
-) -> proc_macro2::TokenStream {
-    // --------------------------------------------------
-    // emit one planned item for each attributed field
-    // --------------------------------------------------
-    let items = input
-        .data
-        .iter()
-        .filter_map(|field| gen_klv_item(field, key_encoder, len_encoder, len_prefix, scratch));
-    // --------------------------------------------------
-    // concatenate generated item writes
-    // --------------------------------------------------
-    quote! { #(#items)* }
-}
-
-/// Generates one field's complete KLV item write when KLV metadata exists
-///
-/// Resolves the field's key, value encoder call, optional-value binding shape,
-/// and length plan before delegating to the lower-level planned write helper
-/// Fields without KLV metadata return `None`, leaving them out of the generated
-/// value body entirely
-///
-/// # Arguments
-///
-/// * `field` - Parsed field descriptor to convert into a KLV item write
-/// * `key_encoder` - Encoder expression used for the field key
-/// * `len_encoder` - Encoder expression used for the field length
-/// * `len_prefix` - Container length-prefix strategy used for this field
-/// * `scratch` - Scratch buffer identifier used by staged value writes
-///
-/// # Returns
-///
-/// `Some(tokens)` with a complete generated KLV item write for attributed
-/// fields, or `None` for fields that do not participate in encoding
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let item = gen_klv_item(&field, &key_encoder, &len_encoder, len_prefix, &scratch);
-/// assert!(item.is_none() || !item.unwrap().is_empty());
-/// ```
-///
-/// # Safety
-///
-/// This helper unwraps `attrs.enc` after the derive pipeline has validated that
-/// every field entering encode generation has a value encoder. If that invariant
-/// is broken by a future caller, generation will panic instead of producing an
-/// invalid encoder
-fn gen_klv_item(
-    field: &MainField,
-    key_encoder: &types::SiguledXcoder,
-    len_encoder: &types::SiguledXcoder,
-    len_prefix: ContainerLengthPrefix,
-    scratch: &syn::Ident,
-) -> Option<proc_macro2::TokenStream> {
-    // --------------------------------------------------
-    // skip fields without KLV metadata
-    // --------------------------------------------------
-    let attrs = field.attrs.as_ref()?;
-    #[allow(
-        clippy::unwrap_used,
-        reason = "`gen_encode_impl` only calls encode generation when every field encoder exists"
-    )]
-    let value_encoder = attrs.enc.as_ref().unwrap();
-    // --------------------------------------------------
-    // prepare field-local token inputs
-    // --------------------------------------------------
-    let span = field.name.span();
-    let value_binding = format_ident!("__val");
-    let value_encoder_call = value_encoder_tokens(attrs.fallback_enc, field.ty, value_encoder);
-    let value_argument =
-        value_argument_tokens(&field.name, field.ty, value_encoder, &value_binding);
-    // --------------------------------------------------
-    // select required or optional encoder argument shape
-    // --------------------------------------------------
-    let value_argument = if value_argument.is_optional {
-        value_argument.optional
-    } else {
-        value_argument.required
-    };
-    // --------------------------------------------------
-    // choose the field length write strategy
-    // --------------------------------------------------
-    let length_plan = field_length_plan::field_length_plan(
-        attrs.fallback_enc,
-        value_encoder,
-        field.ty,
-        len_prefix,
-        attrs.size,
-    );
-    // --------------------------------------------------
-    // emit the concrete planned KLV item write
-    // --------------------------------------------------
-    let item_write = gen_planned_item_write(PlannedItemWrite {
-        key: &attrs.key,
-        key_encoder,
-        len_encoder,
-        value_encoder_call,
-        value_argument,
-        length_plan,
-        scratch,
-        span,
-    });
-    // --------------------------------------------------
-    // wrap optional fields with their `Some` guard
-    // --------------------------------------------------
-    Some(wrap_optional_field(
-        &field.name,
-        helpers::is_option(field.ty),
-        &value_binding,
-        item_write,
-        span,
-    ))
-}
-
-/// Value arguments for required and optional field forms
-struct ValueArgumentTokens {
-    /// Token expression passed to the value encoder for required fields
-    required: proc_macro2::TokenStream,
-
-    /// Token expression passed to the value encoder inside an optional guard
-    optional: proc_macro2::TokenStream,
-
-    /// Whether the source field type is `Option<T>` and needs optional handling
-    is_optional: bool,
-}
-
-/// Builds the encoder path used for a field value
-///
-/// Chooses between the fallback `EncodeValue::encode_value` method for the
-/// field type and the explicit encoder expression declared in the field
-/// attributes. Optional field types are unwrapped for fallback encoding so the
-/// generated call targets the contained value type
-///
-/// # Arguments
-///
-/// * `fallback_enc` - Whether to use the field type's fallback trait encoder
-/// * `ty` - Parsed field type used when fallback encoding is selected
-/// * `value_encoder` - Explicit parsed encoder expression from field metadata
-///
-/// # Returns
-///
-/// A token stream containing the encoder callable used for the field value
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let encoder = value_encoder_tokens(false, &ty, &value_encoder);
-/// assert!(!encoder.is_empty());
-/// ```
-fn value_encoder_tokens(
-    fallback_enc: bool,
-    ty: &syn::Type,
-    value_encoder: &types::SiguledXcoder,
-) -> proc_macro2::TokenStream {
-    // --------------------------------------------------
-    // resolve fallback trait encoder or explicit encoder path
-    // --------------------------------------------------
-    if fallback_enc {
-        let ty = helpers::unwrap_option_type(ty).unwrap_or(ty);
-        quote! { <#ty as ::tinyklv::traits::EncodeValue>::encode_value }
-    } else {
-        let inner = &value_encoder.inner;
-        quote! { #inner }
+/// [`EncodeCtx`] implementation of the field item writes
+impl EncodeCtx<'_> {
+    /// Generates every frame write of an `EncodeValue` body
+    ///
+    /// Walks the parsed container fields and emits one planned KLV item write for
+    /// each keyed field, in source order, then the frames the `#[klv(unknown)]` field retains
+    /// ([`Self::unknown_items`]). A field that may end the decode is written last, after them all,
+    /// since the decode then never reads a frame written after it: one with a `break_on`, and one
+    /// whose key is the struct's `break_on` literal
+    /// ([`MainContainer::breaks_on`](crate::ast::attr::MainContainer::breaks_on)). Fields
+    /// without KLV attributes are ignored so ordinary Rust fields remain outside the generated
+    /// wire output
+    ///
+    /// # Returns
+    ///
+    /// A token stream containing every generated frame write, or `None` when a key has no value
+    /// encoder (`allow_unimplemented_encode`)
+    pub(super) fn klv_items(&self) -> Option<proc_macro2::TokenStream> {
+        // --------------------------------------------------
+        // one planned item for each attributed field, the ones that may end the decode or the
+        // rest
+        // --------------------------------------------------
+        let items = |breaks: bool| {
+            self.input
+                .keyed_fields()
+                .filter(move |&(field, attrs)| {
+                    let ends = attrs.break_on.is_some()
+                        || FieldKey::of(field, attrs).any(|key| self.input.breaks_on(key.key));
+                    ends == breaks
+                })
+                .map(|(field, attrs)| self.klv_item(&FieldWrite { field, attrs }))
+                .collect::<Option<proc_macro2::TokenStream>>()
+        };
+        // --------------------------------------------------
+        // the fields, the retained unknown frames, then the fields that may end the decode
+        // --------------------------------------------------
+        let fields = items(false)?;
+        let unknown = self.unknown_items();
+        let breaking = items(true)?;
+        Some(quote! {
+            #fields
+            #unknown
+            #breaking
+        })
     }
-}
 
-/// Shapes the field value argument according to the encoder sigil
-///
-/// Builds both the required-field argument expression and the optional-field
-/// argument expression because the optional guard introduces a local binding for
-/// the inner value. The selected sigil controls whether the encoder receives a
-/// reference, an `EncodeAs` projection, or a dereferenced value
-///
-/// # Arguments
-///
-/// * `name` - Field identifier used to access `self.field` in generated code
-/// * `ty` - Parsed field type used to detect optional fields
-/// * `value_encoder` - Parsed value encoder whose sigil controls call shape
-/// * `value_binding` - Local binding name introduced for optional inner values
-///
-/// # Returns
-///
-/// Required and optional token expressions plus a flag indicating which one
-/// should be selected for the current field type
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let args = value_argument_tokens(&name, &ty, &value_encoder, &value_binding);
-/// assert!(args.is_optional || !args.required.is_empty());
-/// ```
-fn value_argument_tokens(
-    name: &syn::Ident,
-    ty: &syn::Type,
-    value_encoder: &types::SiguledXcoder,
-    value_binding: &syn::Ident,
-) -> ValueArgumentTokens {
-    // --------------------------------------------------
-    // build required and optional argument forms for the sigil
-    // --------------------------------------------------
-    let span = name.span();
-    let (required, optional) = match value_encoder.sigil {
-        XcoderSigil::None => (
-            quote_spanned! { span => &self.#name },
-            quote_spanned! { span => #value_binding },
-        ),
-        XcoderSigil::Ref => (
-            quote_spanned! { span => ::tinyklv::traits::EncodeAs::encode_as(&self.#name) },
-            quote_spanned! { span => ::tinyklv::traits::EncodeAs::encode_as(#value_binding) },
-        ),
-        XcoderSigil::Deref => (
-            quote_spanned! { span => self.#name },
-            quote_spanned! { span => *#value_binding },
-        ),
-    };
-    ValueArgumentTokens {
-        required,
-        optional,
-        is_optional: helpers::is_option(ty),
-    }
-}
-
-/// All semantic inputs required to emit a complete field item write
-struct PlannedItemWrite<'a> {
-    /// Field key literal emitted before the item length and value bytes
-    key: &'a syn::Lit,
-
-    /// Encoder expression used to write the field key
-    key_encoder: &'a types::SiguledXcoder,
-
-    /// Encoder expression used to write the field length
-    len_encoder: &'a types::SiguledXcoder,
-
-    /// Callable token expression used to encode the field value bytes
-    value_encoder_call: proc_macro2::TokenStream,
-
-    /// Argument token expression passed to the value encoder callable
-    value_argument: proc_macro2::TokenStream,
-
-    /// Selected strategy for writing or back-filling the field length
-    length_plan: FieldLengthPlan,
-
-    /// Scratch buffer identifier used by staged value writes
-    scratch: &'a syn::Ident,
-
-    /// Source span used to attach diagnostics to generated field code
-    span: proc_macro2::Span,
-}
-
-/// Emits the complete field write selected by [`FieldLengthPlan`]
-///
-/// Converts a fully planned field item into concrete generated statements
-/// Known-width values write their key, length, and value directly; reserved
-/// slots delegate fixed-width back-fill handling; staged values encode into the
-/// shared scratch buffer before writing the final KLV item
-///
-/// # Arguments
-///
-/// * `parts` - Planned semantic inputs for one field item write
-///
-/// # Returns
-///
-/// A token stream containing the generated statements for one complete field
-/// item write
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let tokens = gen_planned_item_write(parts);
-/// assert!(!tokens.is_empty());
-/// ```
-fn gen_planned_item_write(parts: PlannedItemWrite<'_>) -> proc_macro2::TokenStream {
-    // --------------------------------------------------
-    // unpack the planned write inputs
-    // --------------------------------------------------
-    let PlannedItemWrite {
-        key,
-        key_encoder,
-        len_encoder,
-        value_encoder_call,
-        value_argument,
-        length_plan,
-        scratch,
-        span,
-    } = parts;
-    // --------------------------------------------------
-    // emit the write shape selected by the length plan
-    // --------------------------------------------------
-    match length_plan {
-        FieldLengthPlan::KnownValueWidth { value_width } => quote_spanned! { span =>
-            {
-                #key_encoder(#key, out);
-                #len_encoder(#value_width, out);
-                let __value_start = out.len();
-                #value_encoder_call(#value_argument, out);
-                debug_assert_eq!(
-                    out.len() - __value_start,
-                    #value_width,
-                    "tinyklv: fixed-width value encoder wrote a different byte count than its detected width",
-                );
+    /// Generates one `#[klv(..)]` field's complete KLV item write
+    ///
+    /// The write is its key's frame ([`Self::frame_write`]), or a `key = oneof(..)` field's
+    /// `match` on its variant, whose arm per variant writes that arm's frame:
+    ///
+    /// ```text
+    /// match #value {
+    ///     #variant(__val) => { #frame_write }
+    /// }
+    /// ```
+    ///
+    /// `#value` is a reference to the field's value. The `match` is located at the field, so a
+    /// variant no arm names is reported there. An optional field's write sits under its `Some`
+    /// guard, and a skipped field's whole write under its skip guard
+    /// ([`FieldWrite::skip_guard`])
+    ///
+    /// # Arguments
+    ///
+    /// * `item` - The field to write
+    ///
+    /// # Returns
+    ///
+    /// A token stream containing the field's complete generated KLV item write, or `None` when a
+    /// key has no value encoder
+    fn klv_item(&self, item: &FieldWrite<'_>) -> Option<proc_macro2::TokenStream> {
+        let FieldWrite { field, attrs } = *item;
+        let access = ValueAccess::new(field);
+        let write = match &attrs.keys {
+            FieldKeys::One { .. } => FieldKey::of(field, attrs)
+                .map(|key| self.frame_write(key, &access))
+                .collect::<Option<proc_macro2::TokenStream>>()?,
+            FieldKeys::Oneof(oneof) => {
+                // --------------------------------------------------
+                // the reference the `match` reads, located at the field, where a variant no arm
+                // names is reported
+                // --------------------------------------------------
+                let at = helpers::call_site_at(&field.name);
+                let value: proc_macro2::TokenStream = access
+                    .argument(XcoderSigil::None)
+                    .into_iter()
+                    .map(|mut token| {
+                        token.set_span(at);
+                        token
+                    })
+                    .collect();
+                // --------------------------------------------------
+                // each arm's variant and the frame of its key, which writes the value the
+                // variant's pattern binds, located at the arm's type
+                // --------------------------------------------------
+                let arms = oneof
+                    .iter()
+                    .map(|oneof_key| {
+                        let key = FieldKey::arm(field, attrs, oneof_key);
+                        let bound_at = helpers::call_site_at(key.ty);
+                        let bound = ValueAccess::Bound {
+                            at: bound_at,
+                            binding: format_ident!("__val", span = bound_at),
+                        };
+                        let frame_write = self.frame_write(key, &bound)?;
+                        let variant = &oneof_key.arm.variant;
+                        Some(quote_spanned! { at => #variant(__val) => { #frame_write } })
+                    })
+                    .collect::<Option<proc_macro2::TokenStream>>()?;
+                quote_spanned! { at =>
+                    match #value {
+                        #arms
+                    }
+                }
             }
-        },
-        FieldLengthPlan::ReservedLengthSlot { len_width } => {
-            let prefix_write = quote_spanned! { span => #key_encoder(#key, out); };
-            let value_write = quote_spanned! { span => #value_encoder_call(#value_argument, out); };
-            length_slot_gen::gen_fixed_length_slot_write(
-                prefix_write,
-                len_encoder,
-                len_width,
-                value_write,
-            )
+        };
+        // --------------------------------------------------
+        // wrap optional fields with their `Some` guard, then skipped fields with their skip
+        // guard
+        // --------------------------------------------------
+        Some(item.skip_guard(access.guard(write)))
+    }
+
+    /// Generates one key's frame write, through the [`FrameBody`] the container's framing and the
+    /// key's value pick ([`FrameBody::of`])
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The key to write
+    /// * `access` - How the write reaches the key's value
+    ///
+    /// # Returns
+    ///
+    /// A token stream containing the key's generated frame write, or `None` when the key has no
+    /// value encoder
+    fn frame_write(
+        &self,
+        key: FieldKey<'_>,
+        access: &ValueAccess<'_>,
+    ) -> Option<proc_macro2::TokenStream> {
+        let item = PlannedItemWrite {
+            encoder: key.codec.enc.as_ref()?,
+            key,
+            access,
+        };
+        let body = FrameBody::of(self.framing, &item.key);
+        let binding = body.encoder_binding();
+        Some(body.write(
+            item.key.key,
+            |dst| item.value_write(binding.as_ref(), dst),
+            item.span(),
+        ))
+    }
+
+    /// Generates the writes of the retained unknown frames, in the order the field holds them
+    ///
+    /// One loop over the `#[klv(unknown)]` field writes each `(key, value)` frame. Under a separate
+    /// header the key encoder writes the key and the `unknown(enc = ..)` encoder writes the rest of
+    /// the frame, its length included when the frame has one, straight into `out`. Under a fused
+    /// header the value is staged and the `keylen` encoder writes the header from `(key,
+    /// staged_len)` ([`FrameBody::unknown`]). The key is passed by value, as a field's literal key
+    /// is, so the key type is `Copy`. The loop is located at the field and the encoder call at the
+    /// encoder, so a wrong element type or encoder signature is reported where it is written
+    ///
+    /// # Returns
+    ///
+    /// The loop, or `None` when the struct keeps no unknown frames
+    fn unknown_items(&self) -> Option<proc_macro2::TokenStream> {
+        let UnknownEncoder { encoder, keep } = self.unknown?;
+        let name = &keep.name;
+        let span = helpers::call_site_at(name);
+        let at = helpers::call_site_at(&encoder.inner);
+        let key = quote_spanned! { span => *__key };
+        let value = ValueAccess::Bound {
+            at,
+            binding: format_ident!("__val", span = at),
         }
-        FieldLengthPlan::StagedValue => quote_spanned! { span =>
-            {
-                #scratch.clear();
-                #value_encoder_call(#value_argument, &mut #scratch);
-                #key_encoder(#key, out);
-                #len_encoder(#scratch.len(), out);
-                out.extend_from_slice(&#scratch);
+        .argument(encoder.sigil);
+        let inner = &encoder.inner;
+        let value_write =
+            |dst: &proc_macro2::TokenStream| quote_spanned! { at => #inner(#value, #dst); };
+        // --------------------------------------------------
+        // the frame write the container framing selects
+        // --------------------------------------------------
+        let frame_write = FrameBody::unknown(self.framing).write(&key, value_write, span);
+        // --------------------------------------------------
+        // one frame per retained `(key, value)`
+        // --------------------------------------------------
+        Some(quote_spanned! { span =>
+            for (__key, __val) in &self.#name {
+                #frame_write
             }
-        },
+        })
     }
 }
 
-/// Wraps optional fields in a `Some` guard and writes required fields directly
-///
-/// Optional fields emit no KLV item when their value is `None`. Required fields
-/// use the planned item write unchanged, preserving the same generated span so
-/// downstream compiler diagnostics point back to the source field
-///
-/// # Arguments
-///
-/// * `name` - Field identifier used to access the optional field on `self`
-/// * `is_optional` - Whether the source field type is `Option<T>`
-/// * `value_binding` - Local binding name for the optional inner value
-/// * `item_write` - Generated item write to execute when the field is present
-/// * `span` - Source span attached to the generated guard or write expression
-///
-/// # Returns
-///
-/// A token stream containing either the guarded optional write or the original
-/// required-field write
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let wrapped = wrap_optional_field(&name, true, &value_binding, item_write, span);
-/// assert!(!wrapped.is_empty());
-/// ```
-fn wrap_optional_field(
-    name: &syn::Ident,
-    is_optional: bool,
-    value_binding: &syn::Ident,
-    item_write: proc_macro2::TokenStream,
-    span: proc_macro2::Span,
-) -> proc_macro2::TokenStream {
-    // --------------------------------------------------
-    // guard optional fields and write required fields directly
-    // --------------------------------------------------
-    if is_optional {
-        quote_spanned! { span =>
-            if let ::core::option::Option::Some(ref #value_binding) = self.#name {
+/// How the generated write reaches the value it encodes
+enum ValueAccess<'a> {
+    /// A required field, read through `self`
+    Required {
+        /// The field's identifier
+        name: &'a syn::Ident,
+    },
+    /// An `Option<T>` field, whose `Some` guard binds the inner value to a local
+    Optional {
+        /// The field's identifier
+        name: &'a syn::Ident,
+        /// The local the guard binds the inner value to
+        binding: syn::Ident,
+    },
+    /// A value bound to a local: a retained unknown frame's by its re-emit loop, a `oneof(..)`
+    /// arm's by its variant's pattern
+    Bound {
+        /// Where the argument is located: the `unknown(enc = ..)` encoder, or the arm's type
+        at: proc_macro2::Span,
+        /// The local the value is bound to
+        binding: syn::Ident,
+    },
+}
+
+/// [`ValueAccess`] implementation
+impl<'a> ValueAccess<'a> {
+    /// Classifies a field by whether its type is `Option<T>`
+    ///
+    /// # Arguments
+    ///
+    /// * `field` - The field whose value is written
+    ///
+    /// # Returns
+    ///
+    /// [`Self::Optional`], binding `__val`, for an `Option<T>` field, else [`Self::Required`]
+    fn new(field: &'a MainField) -> Self {
+        let name = &field.name;
+        if types::is_option(field.ty) {
+            Self::Optional {
+                name,
+                binding: format_ident!("__val"),
+            }
+        } else {
+            Self::Required { name }
+        }
+    }
+
+    /// Shapes the field value argument according to the encoder sigil
+    ///
+    /// The sigil controls whether the encoder receives a reference, an `EncodeAs` projection, or a
+    /// dereferenced value: of `self.field` for a required field, of the guard's local for an
+    /// optional one, of the bound local for a retained unknown frame or a `oneof(..)` arm
+    ///
+    /// # Arguments
+    ///
+    /// * `sigil` - The value encoder's sigil
+    ///
+    /// # Returns
+    ///
+    /// The token expression passed to the value encoder
+    fn argument(&self, sigil: XcoderSigil) -> proc_macro2::TokenStream {
+        // --------------------------------------------------
+        // build the argument form for the sigil
+        // --------------------------------------------------
+        let (span, binding) = match self {
+            Self::Required { name } => {
+                let span = helpers::call_site_at(name);
+                return match sigil {
+                    XcoderSigil::None => quote_spanned! { span => &self.#name },
+                    XcoderSigil::Ref => quote_spanned! { span =>
+                        ::tinyklv::traits::EncodeAs::encode_as(&self.#name)
+                    },
+                    XcoderSigil::Deref => quote_spanned! { span => self.#name },
+                };
+            }
+            Self::Optional { name, binding } => (helpers::call_site_at(name), binding),
+            Self::Bound { at, binding } => (*at, binding),
+        };
+        // --------------------------------------------------
+        // a bound local is already a reference
+        // --------------------------------------------------
+        match sigil {
+            XcoderSigil::None => quote_spanned! { span => #binding },
+            XcoderSigil::Ref => quote_spanned! { span =>
+                ::tinyklv::traits::EncodeAs::encode_as(#binding)
+            },
+            XcoderSigil::Deref => quote_spanned! { span => *#binding },
+        }
+    }
+
+    /// Wraps an optional field's write in its `Some` guard; a required field's or a bound value's
+    /// is unchanged
+    ///
+    /// Optional fields emit no KLV item when their value is `None`. The guard is spanned at the
+    /// field, so diagnostics on it point back to the source field
+    ///
+    /// # Arguments
+    ///
+    /// * `item_write` - Generated item write to execute when the field is present
+    ///
+    /// # Returns
+    ///
+    /// A token stream containing either the guarded optional write or the original write
+    fn guard(&self, item_write: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+        // --------------------------------------------------
+        // guard optional fields and write required fields directly
+        // --------------------------------------------------
+        match self {
+            Self::Required { .. } | Self::Bound { .. } => item_write,
+            Self::Optional { name, binding } => quote_spanned! { helpers::call_site_at(name) =>
+                if let ::core::option::Option::Some(ref #binding) = self.#name {
+                    #item_write
+                }
+            },
+        }
+    }
+}
+
+/// One `#[klv(..)]` field, whose frame writes sit under its guards
+#[derive(Clone, Copy)]
+struct FieldWrite<'a> {
+    /// The field
+    field: &'a MainField<'a>,
+
+    /// The field's `#[klv(..)]` attributes: its keys and its skip
+    attrs: &'a FieldParsed,
+}
+
+/// [`FieldWrite`] implementation
+impl FieldWrite<'_> {
+    /// Wraps the field's whole item write in its skip guard, when it has a [`SkipIf`]
+    ///
+    /// ```text
+    /// // skip_if_default
+    /// if self.#name != <#ty as Default>::default() { #item_write }
+    /// // skip_if = #path
+    /// if !#path(&self.#name) { #item_write }
+    /// ```
+    ///
+    /// `#ty` is the field's declared type, so an `Option` field's `None` is its default. The
+    /// guard is located at the field, so a type without `Default` or `PartialEq`, or a fn of
+    /// another signature, is reported there
+    ///
+    /// # Arguments
+    ///
+    /// * `item_write` - The field's item write: key, length and value, under its `Some` guard
+    ///
+    /// # Returns
+    ///
+    /// The guarded write, or `item_write` unchanged without a skip
+    fn skip_guard(&self, item_write: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+        let Some(skip_if) = &self.attrs.skip_if else {
+            return item_write;
+        };
+        let name = &self.field.name;
+        let at = helpers::call_site_at(name);
+        let written = match skip_if {
+            SkipIf::Default(_) => {
+                let ty = self.field.ty;
+                quote_spanned! {at=> self.#name != <#ty as ::core::default::Default>::default() }
+            }
+            SkipIf::Path(path) => quote_spanned! {at=> !#path(&self.#name) },
+        };
+        quote_spanned! {at=>
+            if #written {
                 #item_write
             }
         }
-    } else {
-        quote_spanned! { span => #item_write }
+    }
+}
+
+/// One key of a `#[klv(..)]` field, from which every input of its frame write is derived
+struct PlannedItemWrite<'a> {
+    /// The key, its field, and the type, size and encoder that may fix the value length
+    key: FieldKey<'a>,
+
+    /// The key's value encoder
+    encoder: &'a ValueXcoder<types::SiguledXcoder>,
+
+    /// How the write reaches the key's value: the field's, or a `oneof(..)` arm's bound local
+    access: &'a ValueAccess<'a>,
+}
+
+/// [`PlannedItemWrite`] implementation
+impl PlannedItemWrite<'_> {
+    /// Source span used to attach diagnostics to generated field code
+    ///
+    /// # Returns
+    ///
+    /// The derive's call-site span located at the field's name
+    /// ([`helpers::call_site_at`]), so the write's `self` and `out` resolve even when the name
+    /// came in through a `macro_rules!` fragment
+    fn span(&self) -> proc_macro2::Span {
+        helpers::call_site_at(&self.key.field.name)
+    }
+
+    /// Builds the encoder path used for the key's value
+    ///
+    /// Chooses between the fallback `EncodeValue::encode_value` method for the
+    /// value type and the explicit encoder expression declared in the field
+    /// attributes
+    ///
+    /// # Returns
+    ///
+    /// A token stream containing the encoder callable used for the value
+    fn value_encoder_call(&self) -> proc_macro2::TokenStream {
+        // --------------------------------------------------
+        // resolve fallback trait encoder or explicit encoder path
+        // --------------------------------------------------
+        match self.encoder {
+            ValueXcoder::Explicit(encoder) => {
+                let inner = &encoder.inner;
+                quote! { #inner }
+            }
+            ValueXcoder::TraitFallback => {
+                let ty = self.key.ty;
+                quote! { <#ty as ::tinyklv::traits::EncodeValue>::encode_value }
+            }
+        }
+    }
+
+    /// The value encoder call writing the field value into `dst`
+    ///
+    /// # Arguments
+    ///
+    /// * `binding` - The local the frame bound the encoder to, called in its place
+    ///   ([`FrameBody::encoder_binding`])
+    /// * `dst` - The `&mut Vec<u8>` expression the value is written into
+    ///
+    /// # Returns
+    ///
+    /// The value encoder call statement
+    fn value_write(
+        &self,
+        binding: Option<&syn::Ident>,
+        dst: &proc_macro2::TokenStream,
+    ) -> proc_macro2::TokenStream {
+        let value_encoder_call =
+            binding.map_or_else(|| self.value_encoder_call(), |binding| quote! { #binding });
+        // --------------------------------------------------
+        // `EncodeValue::encode_value` takes the value by reference
+        // --------------------------------------------------
+        let sigil = match self.encoder {
+            ValueXcoder::Explicit(encoder) => encoder.sigil,
+            ValueXcoder::TraitFallback => XcoderSigil::None,
+        };
+        let value_argument = self.access.argument(sigil);
+        quote_spanned! { self.span() => #value_encoder_call(#value_argument, #dst); }
     }
 }

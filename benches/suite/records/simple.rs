@@ -5,7 +5,7 @@
 // local
 // --------------------------------------------------
 use super::RngSample;
-use tinyklv::{dec::binary as decb, enc::binary as encb, prelude::*};
+use tinyklv::{dec::binary as decb, enc::binary as encb};
 
 // --------------------------------------------------
 // external

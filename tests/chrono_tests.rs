@@ -8,7 +8,25 @@
 //!
 //! Author: aav
 #![cfg(feature = "chrono")]
-use tinyklv::prelude::*;
+// --------------------------------------------------
+// local
+// --------------------------------------------------
+use tinyklv::ErrorKind;
+
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+/// A date's format, year first
+const YMD: &str = "%Y-%m-%d";
+
+/// The length of a [`YMD`] date
+const DATE_LEN: usize = "YYYY-MM-DD".len();
+
+/// Text of [`DATE_LEN`] bytes that is no date
+const NOT_A_DATE: &[u8] = b"not-a-date";
+
+/// A [`YMD`] date cut short of its day
+const SHORT_DATE: &[u8] = b"2020-12";
 
 #[test]
 /// Tests that `as_date!` with `%Y-%m-%d` parses `"2020-12-31"` into the expected `NaiveDate`
@@ -22,11 +40,59 @@ fn parse_date_ymd() {
 }
 
 #[test]
-/// Tests that `as_date!` errors on non-date input
+/// Tests that `as_date!` rejects non-date input as a malformed value caused by chrono's error,
+/// rewinding the cursor to where the date started
 fn parse_date_invalid() {
-    let mut input: &[u8] = b"not-a-date";
-    let date = tinyklv::as_date!(tinyklv::dec::string::to_string_utf8, "%Y-%m-%d", 10)(&mut input);
-    assert!(date.is_err());
+    let mut input = NOT_A_DATE;
+    let error = tinyklv::as_date!(tinyklv::dec::string::to_string_utf8, YMD, DATE_LEN)(&mut input)
+        .expect_err("not a date");
+    assert_eq!(
+        ErrorKind::of(&error),
+        Some(ErrorKind::MalformedValue),
+        "{error:?}"
+    );
+    assert!(
+        error
+            .cause()
+            .is_some_and(<dyn std::error::Error + Send + Sync>::is::<chrono::ParseError>),
+        "{error:?}"
+    );
+    assert_eq!(input, NOT_A_DATE, "cursor not rewound");
+}
+
+#[test]
+/// Tests that `as_date!` short of its text is truncation, named as the date, then as the text
+/// decoder's error, leaving the cursor at the end of the input
+fn a_short_date_is_truncated() {
+    let mut input = SHORT_DATE;
+    let error = tinyklv::as_date!(tinyklv::dec::string::to_string_utf8, YMD, DATE_LEN)(&mut input)
+        .expect_err("short date");
+    assert_eq!(
+        ErrorKind::of(&error),
+        Some(ErrorKind::Truncated),
+        "{error:?}"
+    );
+    assert_eq!(error.to_string(), "invalid date\ninvalid UTF-8 string");
+    assert!(input.is_empty(), "cursor not at the end");
+}
+
+/// A text decoder whose error carries no kind: it reads nothing and rejects
+///
+/// # Arguments
+///
+/// * `_len` - the text's length, unread
+fn untagged_text(_len: usize) -> impl Fn(&mut &[u8]) -> tinyklv::Result<String> {
+    |_| Err(tinyklv::winnow::error::ContextError::new())
+}
+
+#[test]
+/// Tests that a text decoder's error without a kind leaves the date's error without one, named
+/// as the date
+fn an_untagged_text_error_stays_untagged() {
+    let mut input = SHORT_DATE;
+    let error = tinyklv::as_date!(untagged_text, YMD, DATE_LEN)(&mut input).expect_err("rejected");
+    assert_eq!(ErrorKind::of(&error), None, "{error:?}");
+    assert_eq!(error.to_string(), "invalid date");
 }
 
 #[test]

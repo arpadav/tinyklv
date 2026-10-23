@@ -1,194 +1,166 @@
 # Codecs
 
-Built-in codec paths shipped with `tinyklv`. Every path listed is a
-drop-in value for `dec = ...`, `enc = ...`, `key(dec = ..., enc = ...)`,
-or `len(dec = ..., enc = ...)`.
-
-Tutorials import these modules as:
+The codecs tinyklv ships, for any decoder or encoder an attribute names. The book imports them as:
 
 ```rust,ignore
-use tinyklv::dec::binary as decb;
+use tinyklv::dec::binary as decb;    // integers, floats, lengths
 use tinyklv::enc::binary as encb;
-use tinyklv::dec::string as decs;
+use tinyklv::dec::ber as decber;     // BER lengths and BER-OIDs
+use tinyklv::enc::ber as encber;
+use tinyklv::dec::string as decs;    // text
 use tinyklv::enc::string as encs;
 ```
 
-## Function signatures
-
-Every codec path satisfies one of the shapes below. These are the
-canonical contracts a `dec = ...` / `enc = ...` value must match.
-
-A decoder takes one of two shapes, selected by `size(var)` on the field:
+## Signatures
 
 ```rust,ignore
-// standard: no size(var). Reads from the stream cursor directly.
-fn(input: &mut S) -> tinyklv::Result<T>
+// a decoder
+fn(input: &mut &[u8]) -> tinyklv::Result<T>
 
-// length-parameterized: with size(var). The derive calls
-// dec_fn(len)(input), passing the runtime KLV length as an extra input,
-// which enables variable-length reads.
-fn(len: usize) -> impl Fn(&mut S) -> tinyklv::Result<T>
+// a lengthed decoder, for size(lengthed): the derive calls dec(len)(input)
+fn(len: usize) -> impl Fn(&mut &[u8]) -> tinyklv::Result<T>
+
+// an encoder: it takes the value, so a field uses the * sigil
+fn(input: T, out: &mut Vec<u8>)
 ```
 
-`tinyklv::Result` is an alias for `winnow::Result`. The `_lengthed`
-binary variants and the string codecs satisfy the length-parameterized
-shape.
+`tinyklv::Result` is winnow's `Result`. The string encoders take a `&str` instead, for the `&` sigil.
 
-An encoder appends bytes to a caller-owned buffer and returns nothing:
+## Integers and floats
 
-```rust,ignore
-fn(val: &T, out: &mut Vec<u8>)
-```
+Each name is both a decoder, in `decb`, and an encoder, in `encb`:
 
-The `&` and `*` sigils rewrite how the field is handed in (a value-taking
-`fn(T, &mut Vec<u8>)` is reached via the `&`/`EncodeAs` path); see
-[Sigil coercion & `EncodeAs`](./sigil-coercion.md).
+| type | big-endian | little-endian |
+|---|---|---|
+| `u16` | `be_u16` | `le_u16` |
+| `u32` | `be_u32` | `le_u32` |
+| `u64` | `be_u64` | `le_u64` |
+| `u128` | `be_u128` | `le_u128` |
+| `i16` | `be_i16` | `le_i16` |
+| `i32` | `be_i32` | `le_i32` |
+| `i64` | `be_i64` | `le_i64` |
+| `i128` | `be_i128` | `le_i128` |
+| `f32` | `be_f32` | `le_f32` |
+| `f64` | `be_f64` | `le_f64` |
 
-Length codecs work in `usize`: the container `len(...)` decoder produces
-`usize` and its encoder accepts `usize` (the `_as_usize` / `_from_usize`
-family below).
+A single byte has no order: its codecs are `u8` and `i8`. Every other type also has a native codec of its own name, such as `u16`. It uses the machine's byte order, so its bytes differ between machines: name the order for anything you send.
 
-## Binary (`tinyklv::dec::binary` / `tinyklv::enc::binary`)
+## Lengths
 
-Fixed-width integer and float codecs in three endianness families:
-native (`u8`, `u16`, ...), big-endian (`be_u16`, ...), and
-little-endian (`le_u16`, ...). For single-byte types (`u8`, `i8`)
-endianness is meaningless - use the plain name.
+A length is a `usize`, which these decoders return and these encoders take:
 
-### Unsigned
+| decoder | encoder | a length of |
+|---|---|---|
+| `u8_as_usize` | `u8_from_usize` | 1 byte |
+| `be_u16_as_usize` | `be_u16_from_usize` | 2 bytes, big-endian |
+| `le_u16_as_usize` | `le_u16_from_usize` | 2 bytes, little-endian |
+| `be_u32_as_usize` | `be_u32_from_usize` | 4 bytes, big-endian |
+| `le_u32_as_usize` | `le_u32_from_usize` | 4 bytes, little-endian |
+| `be_u64_as_usize` | `be_u64_from_usize` | 8 bytes, big-endian |
+| `le_u64_as_usize` | `le_u64_from_usize` | 8 bytes, little-endian |
+| `be_u128_as_usize` | `be_u128_from_usize` | 16 bytes, big-endian |
+| `le_u128_as_usize` | `le_u128_from_usize` | 16 bytes, little-endian |
+| `decber::ber_length` | `encber::ber_length` | 1 byte below 128, more above: [BER](#ber) |
 
-| Native | Big-endian | Little-endian | Rust type |
-|--------|------------|---------------|-----------|
-| `u8` | - | - | `u8` |
-| `u16` | `be_u16` | `le_u16` | `u16` |
-| `u32` | `be_u32` | `le_u32` | `u32` |
-| `u64` | `be_u64` | `le_u64` | `u64` |
+Each width also has a native one, such as `u16_as_usize`.
 
-### Signed
+## Lengthed integers
 
-| Native | Big-endian | Little-endian | Rust type |
-|--------|------------|---------------|-----------|
-| `i8` | - | - | `i8` |
-| `i16` | `be_i16` | `le_i16` | `i16` |
-| `i32` | `be_i32` | `le_i32` | `i32` |
-| `i64` | `be_i64` | `le_i64` | `i64` |
+Each integer and float decoder of a fixed byte order has a `lengthed` twin, such as `be_u16_lengthed`. It reads the whole value, whatever its length:
 
-### Floating-point
+| value bytes | `be_u16_lengthed` reads |
+|---|---|
+| <span class="klv">v 2A</span> | 42: a shorter value is zero-extended |
+| <span class="klv">v 09 2E</span> | 2350 |
+| <span class="klv">v 00 09 2E</span> | 2350: a longer value keeps its low-order 2 bytes |
 
-| Native | Big-endian | Little-endian | Rust type |
-|--------|------------|---------------|-----------|
-| `f32` | `be_f32` | `le_f32` | `f32` |
-| `f64` | `be_f64` | `le_f64` | `f64` |
-
-### Length helpers
-
-For the container `len(...)` attribute you need a decoder that
-produces `usize` and an encoder that accepts `usize`:
-
-| Decoder | Encoder | Purpose |
-|---------|---------|---------|
-| `u8_as_usize` | `u8_from_usize` | 1-byte length |
-| `be_u16_as_usize` | `be_u16_from_usize` | 2-byte BE length |
-| `le_u16_as_usize` | `le_u16_from_usize` | 2-byte LE length |
-| `be_u32_as_usize` | `be_u32_from_usize` | 4-byte BE length |
-| `le_u32_as_usize` | `le_u32_from_usize` | 4-byte LE length |
-| `be_u64_as_usize` | `be_u64_from_usize` | 8-byte BE length |
-| `le_u64_as_usize` | `le_u64_from_usize` | 8-byte LE length |
-
-### Variable-length (lengthed) decoders
-
-Each numeric type also has a `_lengthed` variant that reads a
-variable number of bytes (up to the type width) and zero-extends:
+The encoder twin is called with a width, and writes exactly that many bytes, so a value can take a width no Rust type has:
 
 ```rust,ignore
-#[klv(key = 0x01, size(var), dec = decb::be_u32_lengthed)]
-value: u32,
-```
-
-Available for all types and endiannesses, e.g. `be_u16_lengthed`,
-`le_u32_lengthed`, `be_u64_lengthed`, etc.
-
-## BER (`tinyklv::dec::ber` / `tinyklv::enc::ber`)
-
-Variable-width encodings from ITU-T X.690.
-
-| Decoder | Encoder | Purpose |
-|---------|---------|---------|
-| `ber_length` | `ber_length` | BER length (container `len(...)`) |
-| `ber_oid` | `ber_oid` | BER-OID (container `key(...)`) |
-
-Edge cases:
-- Empty input -> decoder returns `Err`.
-- Single MSB-set byte with no terminator -> decoder returns `Err`.
-- `[0x00]` decodes as `0`; `[0x81, 0x00]` decodes as `128`.
-
-## Strings (`tinyklv::dec::string` / `tinyklv::enc::string`)
-
-Variable-length string codecs. Use with `size(var)` on the field.
-
-| Decoder | Encoder | Produces |
-|---------|---------|----------|
-| `to_string_utf8` | `from_string_utf8` | `String` (lossy) |
-| `to_string_utf8_strict` | - | `String` (returns `Err` on invalid UTF-8) |
-| `to_string_utf16_be` | `from_string_utf16_be` | `String` |
-| `to_string_utf16_le` | `from_string_utf16_le` | `String` |
-| `to_string_ascii` ⚑ | `from_string_ascii` ⚑ | `String` |
-
-⚑ = gated behind the `ascii` crate feature (`features = ["ascii"]` or `features = ["full"]`).
-
-The UTF-16 codecs assume the value body is a raw UTF-16 code-unit
-stream with no BOM. Choose `_be` or `_le` to match your data format.
-
-## Utility macros
-
-`tinyklv` exports helper macros that expand to closures matching the
-decoder / encoder contract. They can be used **inline** in `dec = ...`,
-`enc = ...`, and `default(typ = T, dec = ..., enc = ...)` attributes -
-any macro that expands to a function or closure with the right
-signature works.
-
-### Decode macros
-
-| Macro | Expands to | Purpose |
-|-------|-----------|---------|
-| `scale!(parser, precision, factor)` | `\|input\| -> Result<precision>` | Parse via `parser`, cast to `precision`, multiply by `factor` |
-| `cast!(parser, precision)` | `\|input\| -> Result<precision>` | Parse via `parser`, cast to `precision` via `as` |
-
-### Encode macros
-
-| Macro | Expands to | Purpose |
-|-------|-----------|---------|
-| `scale_enc!(encoder, precision, data, factor)` | `\|val: &precision, out: &mut Vec<u8>\|` | Divide by `factor`, cast to `data`, encode |
-| `scale_offset_enc!(encoder, precision, data, factor, offset)` | `\|val: &precision, out: &mut Vec<u8>\|` | Subtract `offset`, divide by `factor`, cast to `data`, encode |
-| `cast_enc!(encoder, precision, data)` | `\|val: &precision, out: &mut Vec<u8>\|` | Cast `precision` to `data` via `as`, encode |
-
-### Inline usage
-
-```rust,ignore
-const HEADING_SCALE: f64 = 360.0 / 65535.0;
-
 #[klv(
-    key = 0x02,
-    dec = tinyklv::scale!(decb::be_u16, f64, HEADING_SCALE),
-    enc = tinyklv::scale_enc!(
-        encb::be_u16, f64, u16, HEADING_SCALE,
-    ),
+    key = 0x04,
+    dec = decb::be_u32_lengthed,           // passed the length: 3
+    enc = *(encb::be_u32_lengthed(3)),     // writes 3 bytes
+    size(exact = 3, lengthed),
 )]
-heading_deg: f64,
+count: u32,
 ```
 
-The `dec = ...` attribute accepts any expression that resolves to
-`fn(&mut S) -> tinyklv::Result<T>`. Built-in codecs, named functions,
-and macro invocations all satisfy this. Closures do **not** work
-inline (proc-macro attribute parsing limitation) - use a named
-function instead.
+Byte representation of 70000: <span class="klv">k 04 l 03 v 01 11 70</span>
 
-See the full example: `cargo run --example book_10_macro`
+## BER
 
-### Feature-gated (`chrono`)
+[ITU-T X.690](https://www.itu.int/rec/T-REC-X.690) codecs, in `decber` and `encber`. They need the `ber` feature, on by default:
 
-| Macro | Expands to | Purpose |
-|-------|-----------|---------|
-| `as_date!(str_parser, format, len)` | `\|input\| -> Result<NaiveDate>` | Parse `len` bytes as string, then as date |
-| `as_time!(str_parser, format, len)` | `\|input\| -> Result<NaiveTime>` | Parse `len` bytes as string, then as time |
-| `as_datetime!(str_parser, format, len)` | `\|input\| -> Result<NaiveDateTime>` | Parse `len` bytes as string, then as datetime |
+| codec | for | 47 | 128 | 201 |
+|---|---|---|---|---|
+| `ber_length` | a length | <span class="klv">l 2F</span> | <span class="klv">l 81 80</span> | <span class="klv">l 81 C9</span> |
+| `ber_oid` | a key or a value | <span class="klv">v 2F</span> | <span class="klv">v 81 00</span> | <span class="klv">v 81 49</span> |
+
+- `ber_length` decodes a `usize`; its encoder takes any unsigned integer
+- `ber_oid` reads and writes any unsigned integer type; it ends itself, so it suits `size(implicit)`
+- `ber_length` rejects <span class="klv">l 80</span>, BER's indefinite length, as `ErrorKind::MalformedValue`
+
+## Text
+
+Every text decoder is lengthed: the field needs `size(lengthed)`. Every text encoder takes a `&str`.
+
+| decoder | encoder | the bytes are |
+|---|---|---|
+| `to_string_utf8` | `from_string_utf8` | UTF-8; an invalid byte reads as U+FFFD |
+| `to_string_utf8_strict` | | UTF-8; an invalid byte is an error |
+| `to_string_utf16_be` | `from_string_utf16_be` | UTF-16, big-endian, with no byte order mark |
+| `to_string_utf16_le` | `from_string_utf16_le` | UTF-16, little-endian, with no byte order mark |
+| `to_string_ascii` | `from_string_ascii` | ASCII; on decode, any other byte is an error |
+
+A UTF-16 value of an odd number of bytes is an error, `ErrorKind::WrongLength`. The ASCII pair needs the `ascii` feature, and its encoder writes the text's bytes as they are, with no check.
+
+### Numbers as text
+
+With the `ascii` feature, the text modules also read and write numbers as ASCII text. Each decoder reads exactly the value's bytes, which must all be the number:
+
+| decoder | encoder | the bytes are |
+|---|---|---|
+| `u8` to `u128` | the same names | base 10; a 0 before other digits is an error |
+| `i8` to `i128` | the same names | base 10, with an optional sign |
+| `f32`, `f64` | the same names | a float, such as 2.5 |
+| `hex_u8` to `hex_u128` | the same names | base 16; written lower-case |
+| `alpha` | | letters, read as a `String` |
+| `digit` | | digits, read as a `String` |
+| `alphanumeric` | | letters and digits, read as a `String` |
+
+## Macros
+
+Each macro expands to a decoder or an encoder, written in place in `dec` or `enc`:
+
+```rust,ignore
+scale!(dec, T, factor)                         // dec's value as T, times factor
+cast!(dec, T)                                  // dec's value as T
+scale_enc!(enc, T, W, factor)                  // T / factor, as W, by enc
+scale_offset_enc!(enc, T, W, factor, offset)   // (T - offset) / factor, as W
+cast_enc!(enc, T, W)                           // T as W, by enc
+as_date!(dec, format, len)                     // len bytes of text, as a NaiveDate
+as_time!(dec, format, len)                     // the same, as a NaiveTime
+as_datetime!(dec, format, len)                 // the same, as a NaiveDateTime
+```
+
+- each cast is Rust's `as`: a float cast to an integer drops its fraction
+- the encode macros take the field by reference, so they need no sigil
+- the last three need the `chrono` feature; their dec is a text decoder, such as `decs::to_string_utf8`, and format is a chrono format string
+
+[2.4 Macros](../tutorial/2-codecs/04-macros.md) uses them.
+
+## Run this example
+
+```sh
+cargo run --example book_ref_codecs
+```
+
+<details>
+<summary>Full example: lengthed integers and BER</summary>
+
+```rust
+{{#include ../../../examples/book/ref/book_ref_codecs.rs}}
+```
+
+</details>

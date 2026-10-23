@@ -44,6 +44,8 @@ book/book/
 # --------------------------------------------------
 # allow:
 # * src/_tutorial
+# * the workspace Cargo.lock, so `--locked` builds from a clean checkout
 # --------------------------------------------------
 !src/_tutorial
 !src/_doc.rs
+!/Cargo.lock

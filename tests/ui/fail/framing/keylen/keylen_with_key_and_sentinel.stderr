@@ -1,0 +1,13 @@
+error: a `sentinel` beside `keylen(..)` needs its own packet length codec
+       write `sentinel(value = b"..", len(dec = .., enc = ..))`
+  --> tests/ui/fail/framing/keylen/keylen_with_key_and_sentinel.rs:11:16
+   |
+11 |     sentinel = b"\x06",
+   |                ^^^^^^^
+
+error: Conflicting framing attributes. The fused `keylen(..)` codec is mutually exclusive with separate `key(..)`/`len(..)`.
+       Use either `keylen` OR `key`+`len`, not both.
+ --> tests/ui/fail/framing/keylen/keylen_with_key_and_sentinel.rs:9:5
+  |
+9 |     keylen(dec = header),
+  |     ^^^^^^

@@ -1,17 +1,22 @@
 [package]
 name = "tinyklv-impl"
-version = "0.2.0-rc.1"
-authors = ["Arpad Voros <arpadav@gmail.com>"]
-license = "MIT"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "Implementation detail of the `tinyklv` crate"
-repository = "https://github.com/arpadav/tinyklv"
-homepage = "https://arpadvoros.com/tinyklv"
-documentation = "https://docs.rs/tinyklv"
-keywords = ["decode", "encode", "klv", "parsing", "tlv"]
-categories = ["development-tools", "encoding", "parsing"]
-edition = "2024"
-rust-version = "1.95"
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+include = ["/src", "/LICENSE", "/README.md"]
 publish = true
+
+[package.metadata.docs.rs]
+all-features = true
+targets = ["x86_64-unknown-linux-gnu"]
 
 [lib]
 proc-macro = true
@@ -20,7 +25,7 @@ proc-macro = true
 # --------------------------------------------------
 # external
 # --------------------------------------------------
-pastey = "0.2.3"
+pastey = "0.2.3" # the `paste!` that tk-syn-macros' `create_parser!` expands to here
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0", features = ["extra-traits", "full"] }
@@ -28,25 +33,16 @@ thiserror = "2.0"
 # --------------------------------------------------
 # workspace
 # --------------------------------------------------
-tk-syn-macros = { path = "tk-syn-macros", version = "0.2.0-rc.1" }
+tk-syn-macros.workspace = true
 
 [features]
 tracing = []
 
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
-cast_possible_truncation = "allow" # wire-format width casts
-cast_possible_wrap = "allow"       # wire-format width casts
-cast_sign_loss = "allow"           # wire-format width casts
-cast_lossless = "allow"            # wire-format width casts
-inline_always = "allow"            # hot-path inlining convention
-wildcard_imports = "allow"         # prelude glob is the import surface
-float_cmp = "allow"                # exact-roundtrip float eq in tests
-must_use_candidate = "allow"       # must_use applied deliberately
-module_name_repetitions = "allow"  # module-qualified names intentional
-too_many_lines = "allow"           # codegen fns
-needless_pass_by_value = "allow"   # proc-macro helpers consume owned AST
-default_trait_access = "allow"     # Default::default() clear in token code
-used_underscore_binding = "allow"  # _-prefixed fields mark retained AST
-needless_for_each = "allow"        # for_each idiomatic in tests
-similar_names = "allow"            # short domain names (lat/lon)
+wildcard_imports = "allow"        # the attribute parsers glob the symbol and type tables
+too_many_lines = "allow"          # codegen fns
+needless_pass_by_value = "allow"  # quote! helpers take the TokenStreams they splice
+default_trait_access = "allow"    # Default::default() clear in token code
+used_underscore_binding = "allow" # _-prefixed fields mark retained AST
+similar_names = "allow"           # decoder / decoded pairs in codegen

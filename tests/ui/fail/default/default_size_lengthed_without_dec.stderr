@@ -1,0 +1,5 @@
+error: `lengthed` belongs to the decoder, and this `default(..)` has no `dec`; add a `dec` here, or remove `lengthed`.
+ --> tests/ui/fail/default/default_size_lengthed_without_dec.rs:7:66
+  |
+7 |     default(typ = u16, enc = *tinyklv::enc::binary::be_u16, size(lengthed)),
+  |                                                                  ^^^^^^^^

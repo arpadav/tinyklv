@@ -19,13 +19,24 @@
 ///
 /// `head <= buf.len()` at all times. The fields are private and every method preserves this, so
 /// no external edit can desynchronise the cursor from the buffer
-#[derive(Debug)]
 pub(super) struct BufCursor {
     /// Backing storage; grows on [`Self::extend`] and is compacted from the front there
     buf: Vec<u8>,
 
     /// Offset of the first undecoded byte; `0 <= head <= buf.len()`
     head: usize,
+}
+/// [`BufCursor`] implementation of [`std::fmt::Debug`]
+///
+/// Prints the cursor and the buffer's length, never its bytes, which include those of packets
+/// already decoded until [`BufCursor::extend`] reclaims them
+impl std::fmt::Debug for BufCursor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BufCursor")
+            .field("head", &self.head)
+            .field("len", &self.buf.len())
+            .finish()
+    }
 }
 /// [`BufCursor`] implementation
 impl BufCursor {
@@ -176,5 +187,19 @@ impl BufCursor {
     pub(super) fn clear(&mut self) {
         self.buf.clear();
         self.head = 0;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BufCursor;
+
+    #[test]
+    /// Tests that the `Debug` output holds the cursor and the length, not the buffered bytes
+    fn debug_prints_lengths_not_bytes() {
+        let mut cursor = BufCursor::new();
+        cursor.extend(&[0xDE, 0xAD]);
+        cursor.advance(1);
+        assert_eq!(format!("{cursor:?}"), "BufCursor { head: 1, len: 2 }");
     }
 }

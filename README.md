@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/tinyklv.svg)](https://crates.io/crates/tinyklv)
 [![Documentation](https://img.shields.io/docsrs/tinyklv)](https://docs.rs/tinyklv)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/arpadav/tinyklv/blob/main/LICENSE)
 [![MSRV](https://img.shields.io/badge/rustc-1.95%2B-orange.svg)](https://www.rust-lang.org)
 
 The fastest derive-macro framework for encoding and decoding [Key-Length-Value
@@ -70,7 +70,7 @@ fn main() {
 }
 ```
 
-Full annotated version: [`examples/01_hello_world.rs`](https://github.com/arpadav/tinyklv/blob/main/examples/01_hello_world.rs).
+Full annotated version: [`examples/packets/01_hello_world.rs`](https://github.com/arpadav/tinyklv/blob/main/examples/packets/01_hello_world.rs).
 
 ## Speed
 
@@ -120,7 +120,7 @@ maintainable code in the suite. A hand-rolled decoder is a panic-adjacent
 slice-indexing loop with one `Option` per field to juggle, repeated for every
 record shape, plus a second hand-written sub-parser for every level of nesting.
 From the benchmark's `manual` nested decoder
-([`benches/suite/approaches/manual/nested.rs`](https://github.com/arpadav/tinyklv/blob/main/benches/suite/approaches/manual/nested.rs)):
+([`benches/suite/approaches/manual/compound.rs`](https://github.com/arpadav/tinyklv/blob/main/benches/suite/approaches/manual/compound.rs)):
 
 ```rust,ignore
 fn decode(body: &[u8]) -> Option<Platform> {
@@ -177,7 +177,7 @@ struct Platform {
 - Repeated decode with user-defined break conditions
 - Nested `Klv` structs - compose packets from sub-packets
 - Generic structs and lifetimes, `Option<T>` fields, per-field/container defaults
-- Stream type is user-selected, where any `winnow::Stream` works
+- Stream type is user-selected: any `winnow::Stream + StreamIsPartial`
 
 ## Documentation
 
@@ -192,7 +192,7 @@ Issues and pull requests welcome at
 
 ## License
 
-Licensed under the MIT License. See [LICENSE](LICENSE) for details.
+Licensed under the MIT License. See [LICENSE](https://github.com/arpadav/tinyklv/blob/main/LICENSE) for details.
 
 ## Support
 

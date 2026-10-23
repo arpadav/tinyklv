@@ -1,70 +1,63 @@
-//! Parsing of the container-level `key(..)` and `len(..)` sub-attributes
+//! Parsing of the container-level fused `keylen(..)` sub-attribute
 //!
-//! Defines [`Xcoder`], which holds the optional encoder and decoder for the
-//! key and length fields of a KLV container. Both are optional because
-//! `allow_unimplemented_encode` / `allow_unimplemented_decode` may suppress
-//! the missing-xcoder error. [`TryFrom<&syn::MetaList>`] drives the
-//! `parse_nested_meta` parse for `enc = ..` and `dec = ..`
+//! Defines [`KeylenXcoder`], the [`Codec`] of the fused key+length frame header, whose encoder
+//! takes no sigil. [`TryFrom<&syn::MetaList>`] drives the `parse_nested_meta` parse for
+//! `enc = ..` and `dec = ..`; the codec decides each frame's framing at run time, so `keylen(..)`
+//! takes no `size(..)`
 //!
 //! Author: aav
+// --------------------------------------------------
+// local
+// --------------------------------------------------
+use super::codec::Codec;
+use crate::ast::{
+    symbol,
+    types::{HeaderEncoder, XcoderType},
+};
+
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use quote::ToTokens;
 
-// --------------------------------------------------
-// local
-// --------------------------------------------------
-use crate::ast::attr::size::SizeSpec;
-use crate::ast::symbol;
-use crate::ast::types::{SiguledXcoder, XcoderType};
+/// The encoder and decoder of a fused key+length frame header
+pub(crate) type KeylenXcoder = Codec<XcoderType>;
 
-#[derive(Debug, Clone)]
-/// The encoder and decoder for a KLV key or length field
+/// [`KeylenXcoder`] implementation of [`TryFrom`] for [`syn::MetaList`]
 ///
-/// Both fields are optional because `allow_unimplemented_encode` or
-/// `allow_unimplemented_decode` may be set on the container, in which case
-/// a missing encoder or decoder is not an error
-pub struct Xcoder {
-    /// The encoder, or `None` when unimplemented encoding is allowed
-    pub enc: Option<SiguledXcoder>,
-    /// The decoder, or `None` when unimplemented decoding is allowed
-    pub dec: Option<XcoderType>,
-    /// The declared size shape of the key or length prefix (absent ⇒ variable-width); see [`SizeSpec`]
-    pub size: Option<SizeSpec>,
-}
-/// [`Xcoder`] implementation of [`TryFrom`] for [`syn::MetaList`]
-///
-/// Parses the `enc = ..` and `dec = ..` sub-fields from a `key(..)` or
-/// `len(..)` attribute list into an [`Xcoder`]. Unknown fields and duplicate
-/// encoder/decoder entries are returned as [`syn::Error`] values rather than
-/// stored internally, so the caller can surface them via the [`crate::Ctxt`]
-/// accumulator immediately
-impl TryFrom<&syn::MetaList> for Xcoder {
+/// Parses the `enc = ..` and `dec = ..` sub-fields from a `keylen(..)` attribute list into a
+/// [`KeylenXcoder`]. A `size(..)` is rejected naming where it belongs; it and any other unknown
+/// field or duplicate are returned as [`syn::Error`] values, so the caller can surface them via
+/// the [`crate::Ctxt`] accumulator immediately
+impl TryFrom<&syn::MetaList> for KeylenXcoder {
     type Error = syn::Error;
     fn try_from(input: &syn::MetaList) -> syn::Result<Self> {
         // --------------------------------------------------
         // init
         // --------------------------------------------------
-        let mut enc: Option<SiguledXcoder> = None;
+        let mut enc: Option<HeaderEncoder> = None;
         let mut dec: Option<XcoderType> = None;
-        let mut size: Option<SizeSpec> = None;
         // --------------------------------------------------
         // parse nested meta
         // --------------------------------------------------
         input.parse_nested_meta(|meta| {
             tk_syn_macros::handle_unique_nested_meta_values! {
                 meta;
-                err!(UnknownKeyLenField(meta.path));
-                3;
-                enc: symbol::pnm_parse_maybestr_encoder => err!(DuplicateEncoderInKeyLen),
-                dec: symbol::pnm_parse_maybestr_decoder => err!(DuplicateDecoderInKeyLen),
-                size: symbol::parse_pnm_size => err!(DuplicateSizeInKeyLen),
+                if meta.path == symbol::SIZE {
+                    err!(SizeInKeylen)
+                } else {
+                    err!(UnknownKeylenField(meta.path))
+                };
+                enc: symbol::pnm_parse_maybestr_header_encoder  => err!(DuplicateEncoderInHeader),
+                dec: symbol::pnm_parse_maybestr_decoder         => err!(DuplicateDecoderInHeader),
             }
         })?;
         // --------------------------------------------------
-        // return (size is validated during its own parse)
+        // return
         // --------------------------------------------------
-        Ok(Xcoder { enc, dec, size })
+        Ok(KeylenXcoder {
+            enc: enc.map(|HeaderEncoder(enc)| enc),
+            dec,
+        })
     }
 }

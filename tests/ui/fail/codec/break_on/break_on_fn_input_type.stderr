@@ -1,0 +1,23 @@
+error[E0631]: type mismatch in function arguments
+  --> tests/ui/fail/codec/break_on/break_on_fn_input_type.rs:15:16
+   |
+ 3 | fn stop(key: &u8, _input: &mut &[u16]) -> BreakType {
+   | --------------------------------------------------- found signature defined here
+...
+11 | #[derive(Klv)]
+   |          --- in this derive macro expansion
+...
+15 |     break_on = stop,
+   |                ^^^^ expected due to this
+   |
+   = note: expected function signature `for<'a, 'b> fn(&'a u8, &'b mut &[u8]) -> _`
+              found function signature `fn(&u8, &mut &[u16]) -> _`
+note: required by a bound in `tinyklv::__export::break_on`
+  --> src/lib.rs
+   |
+   |     pub fn break_on<K, S, F>(f: &F, key: &K, input: &mut S) -> crate::BreakType
+   |            -------- required by a bound in this function
+...
+   |         F: Fn(&K, &mut S) -> crate::BreakType,
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `break_on`
+   = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)

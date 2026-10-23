@@ -1,0 +1,5 @@
+error: Duplicate `break_on` field.
+  --> tests/ui/fail/break_on/field_duplicate.rs:18:75
+   |
+18 |     #[klv(key = 0x01, dec = tinyklv::dec::binary::u8, break_on = proceed, break_on = done)]
+   |                                                                           ^^^^^^^^^^^^^^^

@@ -1,0 +1,6 @@
+error: a `len(..)` with `size(exact = 0)` has no bytes to write a length in
+       every value or packet it frames is lost; use `exact = 1` or more, or remove `exact`
+ --> tests/ui/fail/size/len_prefix_zero_width.rs:9:22
+  |
+9 |         size(exact = 0),
+  |                      ^

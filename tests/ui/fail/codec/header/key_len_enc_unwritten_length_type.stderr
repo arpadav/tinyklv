@@ -1,0 +1,15 @@
+error[E0308]: mismatched types
+  --> tests/ui/fail/codec/header/key_len_enc_unwritten_length_type.rs:7:10
+   |
+ 7 | #[derive(Klv)]
+   |          ^^^ expected `u8`, found `usize`
+...
+10 |     len(dec = decb::u8_as_usize, enc = len_enc),
+   |                                        ------- arguments to this function are incorrect
+   |
+note: function defined here
+  --> tests/ui/fail/codec/header/key_len_enc_unwritten_length_type.rs:3:4
+   |
+ 3 | fn len_enc(len: u8, out: &mut Vec<u8>) {
+   |    ^^^^^^^ -------
+   = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)

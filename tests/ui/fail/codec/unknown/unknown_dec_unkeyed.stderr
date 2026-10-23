@@ -1,0 +1,32 @@
+error[E0308]: mismatched types
+  --> tests/ui/fail/codec/unknown/unknown_dec_unkeyed.rs:11:19
+   |
+ 7 | #[derive(Klv)]
+   |          --- in this derive macro expansion
+...
+11 |     unknown(dec = unknown_frame),
+   |                   ^^^^^^^^^^^^^
+   |                   |
+   |                   expected `&mut &[u8]`, found `u8`
+   |                   arguments to this function are incorrect
+   |
+note: function defined here
+  --> tests/ui/fail/codec/unknown/unknown_dec_unkeyed.rs:3:4
+   |
+ 3 | fn unknown_frame(input: &mut &[u8]) -> tinyklv::Result<Vec<u8>> {
+   |    ^^^^^^^^^^^^^ -----------------
+   = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0618]: expected function, found `Result<Vec<u8>, ContextError>`
+  --> tests/ui/fail/codec/unknown/unknown_dec_unkeyed.rs:11:19
+   |
+ 3 | fn unknown_frame(input: &mut &[u8]) -> tinyklv::Result<Vec<u8>> {
+   | --------------------------------------------------------------- `unknown_frame` defined here returns `Result<Vec<u8>, ContextError>`
+...
+ 7 | #[derive(Klv)]
+   |          --- in this derive macro expansion
+...
+11 |     unknown(dec = unknown_frame),
+   |                   ^^^^^^^^^^^^^ call expression requires function
+   |
+   = note: this error originates in the derive macro `Klv` (in Nightly builds, run with -Z macro-backtrace for more info)

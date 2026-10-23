@@ -12,9 +12,10 @@
 /// Encodes a value as a BER-encoded length, appending the bytes to `out`
 ///
 /// Generic over `T: OfBerCommon`, which covers `u8`..=`u128`. Values less
-/// than 128 are encoded in short form (1 byte); larger values use long form
-/// where the first byte carries `0x80 | num_bytes`, followed by the value's
-/// significant bytes in big-endian order, leading zeros stripped
+/// than 128 are encoded in short form (1 byte, X.690 §8.1.3.4); larger values
+/// use long form (§8.1.3.5) where the first byte carries `0x80 | num_bytes`,
+/// followed by the value's significant bytes in big-endian order, leading
+/// zeros stripped
 ///
 /// The decode counterpart ([`super::dec::ber_length`]) erases the type to
 /// [`usize`]. Use [`crate::codecs::ber::BerLength`] directly for a
@@ -47,9 +48,9 @@ pub fn ber_length<T: super::OfBerCommon>(input: T, out: &mut Vec<u8>) {
 /// Encodes a value as BER-OID variable-length bytes, appending them to `out`
 ///
 /// Each 7 bits of the input value occupy one output byte, with the most
-/// significant group first. All bytes except the last have their MSB set to 1
-/// (continuation); the last byte has MSB 0 (terminator). A value of 0 encodes
-/// to a single zero byte
+/// significant group first, in the fewest bytes (X.690 §8.19.2). All bytes
+/// except the last have their MSB set to 1 (continuation); the last byte has
+/// MSB 0 (terminator). A value of 0 encodes to a single zero byte
 ///
 /// # Arguments
 ///

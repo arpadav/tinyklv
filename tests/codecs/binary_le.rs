@@ -4,29 +4,12 @@
 //! floating-point types: `le_u16`/`le_i16`, `le_u32`/`le_i32`,
 //! `le_u64`/`le_i64`, `le_u128`/`le_i128`, `le_f32`, and `le_f64`. Includes
 //! byte-order assertions (low byte first), roundtrips across boundary values,
-//! short-input error cases, cursor non-advancement on failure, BE-vs-LE
-//! comparison tests, and float special values (NaN, inf, `E`). Also re-tests
-//! the single-byte `u8`/`i8` codecs for completeness
+//! short-input error cases, the cursor at the end of the input on a short
+//! read, BE-vs-LE comparison tests, and float special values (NaN, inf, `E`).
+//! The single-byte `u8`/`i8` codecs, which have no byte order, are tested once,
+//! in `binary_be`
 //!
 //! Author: aav
-#[test]
-/// Tests decoding a known single-byte `u8` value (`0x42`)
-fn u8_known_value() {
-    let mut input: &[u8] = &[0x42];
-    assert_eq!(tinyklv::dec::binary::u8(&mut input), Ok(0x42_u8));
-}
-
-#[test]
-/// Tests `u8` encode/`u8` decode roundtrip across boundary values
-fn u8_roundtrip() {
-    for val in [0_u8, 1, 127, 128, 255] {
-        let mut encoded = Vec::new();
-        tinyklv::enc::binary::u8(val, &mut encoded);
-        let decoded = tinyklv::dec::binary::u8(&mut encoded.as_slice()).unwrap();
-        assert_eq!(val, decoded);
-    }
-}
-
 #[test]
 /// Tests `le_u16` decodes bytes in little-endian order (low byte first)
 fn le_u16_known_value() {
@@ -66,15 +49,6 @@ fn le_u16_zero() {
 fn le_u16_max() {
     let mut input: &[u8] = &[0xFF, 0xFF];
     assert_eq!(tinyklv::dec::binary::le_u16(&mut input), Ok(u16::MAX));
-}
-
-#[test]
-/// Tests `le_u16` encoder emits little-endian byte order (low byte first)
-fn le_u16_byte_order() {
-    // 0x0102 LE: low byte [0x02] comes first
-    let mut encoded = Vec::new();
-    tinyklv::enc::binary::le_u16(0x0102_u16, &mut encoded);
-    assert_eq!(encoded, vec![0x02, 0x01]);
 }
 
 #[test]
@@ -122,17 +96,6 @@ fn le_u128_roundtrip() {
         let mut encoded = Vec::new();
         tinyklv::enc::binary::le_u128(val, &mut encoded);
         let decoded = tinyklv::dec::binary::le_u128(&mut encoded.as_slice()).unwrap();
-        assert_eq!(val, decoded);
-    }
-}
-
-#[test]
-/// Tests `i8` encode/decode roundtrip across signed boundary values
-fn i8_roundtrip() {
-    for val in [i8::MIN, -1_i8, 0, 1, i8::MAX] {
-        let mut encoded = Vec::new();
-        tinyklv::enc::binary::i8(val, &mut encoded);
-        let decoded = tinyklv::dec::binary::i8(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded);
     }
 }
@@ -290,10 +253,13 @@ fn le_short_input_errors() {
 }
 
 #[test]
-/// A failed little-endian fixed-width decode must NOT advance the cursor
-fn le_short_input_does_not_advance_cursor() {
+/// A short little-endian fixed-width decode leaves the cursor at the end of the input
+fn le_short_input_leaves_cursor_at_end() {
     let buf = [0x01, 0x02, 0x03];
     let mut input: &[u8] = &buf;
     assert!(tinyklv::dec::binary::le_u32(&mut input).is_err());
-    assert_eq!(input.len(), 3, "cursor advanced on a failed le_u32");
+    assert!(
+        input.is_empty(),
+        "cursor not at the end after a short le_u32"
+    );
 }

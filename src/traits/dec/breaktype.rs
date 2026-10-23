@@ -2,33 +2,47 @@
 //!
 //! The derive-generated decode loop (`decode_value` and the streaming `resume_partial`) reads
 //! key-length-value triples. When a container declares `#[klv(break_on = ..)]`, the macro evaluates
-//! the break expression after each key and length are decoded and branches on the resulting
-//! [`BreakType`] to decide what the loop does next. Without `break_on`, the loop always proceeds
+//! the break expression right after each key, before the loop reads its length (in `keylen` mode,
+//! right after the header), and branches on the resulting [`BreakType`] to decide what the loop
+//! does next. Without `break_on`, the loop always proceeds
 //!
 //! `break_on` accepts either a key literal - a decoded key equal to the literal yields
-//! [`BreakType::Done`] - or a function `fn(key, len) -> BreakType` returning any variant
+//! [`BreakType::Done`], leaving the terminator's length and value in the input (in `keylen` mode,
+//! its value) - or a function `fn(&K, &mut S) -> BreakType` handed the key and the input right
+//! after it. `Proceed` rewinds the input to just after the key, so the fn may read on to decide;
+//! every other variant leaves the input where the fn did, except that in `keylen` mode a `Skip` or
+//! `Done` that read nothing steps over a `Sliced` value, and ends the loop after an `Inline`
+//! header. A fn that reads past the key returns `Proceed` on a short read, so the item reads as cut
+//! and streaming waits for more
+//!
+//! A field's `#[klv(break_on = ..)]` is a function `fn(&value) -> BreakType`, evaluated after that
+//! field's value decodes: `Proceed` keeps the value, `Skip` discards it, `Done` keeps it and ends
+//! the decode, and `Abort` is an error. Encode writes the fields with a `break_on` last
 //!
 //! Author: aav
 
-/// The four possible outcomes of a per-field break check in the decode loop
+/// The four possible outcomes of a `break_on` check in the decode loop
 ///
-/// Produced by a `#[klv(break_on = ..)]` expression after each key and length are parsed. The
-/// derive-generated loop branches on this value to decide whether to decode the field, skip it,
-/// return early, or abort with an error
+/// Produced by a container's `#[klv(break_on = ..)]` expression right after each key, and by a
+/// field's after its value decodes. The derive-generated loop branches on this value to decide
+/// whether to decode the field, skip it, return early, or abort with an error. The variants below
+/// describe the container's check; the module docs give a field's
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum BreakType {
     /// Continue the decoding loop normally - decode the current field, then read the next triple
     ///
     /// This is the default outcome (and the only one when no `break_on` is declared). Named
     /// `Proceed` rather than reusing the `continue` keyword's sense: it does NOT skip the current
-    /// field's decode, it simply lets the loop carry on
+    /// field's decode, it simply lets the loop carry on from just after the key
     ///
     /// Equivalent to:
     ///
     /// ```rust ignore
     /// loop {
-    ///     match /* break_on(key, len) */ {
-    ///         BreakType::Proceed => (),
+    ///     let after_key = input.checkpoint();
+    ///     match /* break_on(&key, input) */ {
+    ///         BreakType::Proceed => input.reset(&after_key),
     ///         _ => ..., // see `BreakType`
     ///     }
     ///     // decoding logic
@@ -37,20 +51,19 @@ pub enum BreakType {
     /// ```
     Proceed,
 
-    /// Consume the current value and continue, without decoding it into a field
+    /// Continue from where the fn left the input, without decoding the item into a field
     ///
-    /// Useful for skipping reserved or not-yet-implemented tags: the value bytes are taken
-    /// (advancing past them) and the loop continues to the next triple
+    /// Useful for skipping reserved or not-yet-implemented tags: the fn reads past the item's
+    /// length and value itself, and the loop reads the next triple from there. In `keylen` mode, a
+    /// `Skip` that read nothing steps over a `Sliced` value, and ends the loop after an `Inline`
+    /// header, which has no length to step over it by
     ///
     /// Equivalent to:
     ///
     /// ```rust ignore
     /// loop {
-    ///     match /* break_on(key, len) */ {
-    ///         BreakType::Skip => {
-    ///             take(len).parse_next(input); // error handled in the macro expansion
-    ///             continue;
-    ///         },
+    ///     match /* break_on(&key, input) */ {
+    ///         BreakType::Skip => continue,
     ///         _ => ..., // see `BreakType`
     ///     }
     ///     // decoding logic
@@ -64,13 +77,14 @@ pub enum BreakType {
     /// This does not guarantee an [`Ok`] from [`crate::prelude::DecodeValue::decode_value`], since
     /// required fields might still be missing - it stops reading further triples and finalizes
     /// whatever has been accumulated. This is the outcome a `break_on = <literal>` produces when a
-    /// terminator key is matched
+    /// terminator key is matched, the input left right after the key. In `keylen` mode, a fn's
+    /// `Done` that read nothing first steps over a `Sliced` value
     ///
     /// Equivalent to:
     ///
     /// ```rust ignore
     /// loop {
-    ///     match /* break_on(key, len) */ {
+    ///     match /* break_on(&key, input) */ {
     ///         BreakType::Done => break,
     ///         _ => ..., // see `BreakType`
     ///     }
@@ -83,15 +97,15 @@ pub enum BreakType {
     /// Return an error immediately from [`crate::prelude::DecodeValue::decode_value`], surfacing no
     /// partially-decoded value
     ///
-    /// Use only for fatal conditions (e.g. an impossible length): an [`Err`] carrying the supplied
-    /// static message is **guaranteed** to return. The message flows through both the one-shot and
-    /// streaming decode paths
+    /// Use only for fatal conditions (e.g. a tamper-detection key): an [`Err`] carrying the
+    /// supplied static message is **guaranteed** to return. The message flows through both the
+    /// one-shot and streaming decode paths
     ///
     /// Equivalent to:
     ///
     /// ```rust ignore
     /// loop {
-    ///     match /* break_on(key, len) */ {
+    ///     match /* break_on(&key, input) */ {
     ///         BreakType::Abort(msg) => return Err(/* error labelled with msg */),
     ///         _ => ..., // see `BreakType`
     ///     }

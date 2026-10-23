@@ -2,9 +2,9 @@
 //!
 //! Verifies that the BER length and OID decoders fail gracefully on
 //! pathological inputs: long-form prefix bytes claiming more data than is
-//! present, the indefinite-form byte `0x80`, empty input, OID streams with
-//! no terminating byte (all continuation), and BER length / OID roundtrips
-//! for boundary values (`u16::MAX`, `u32::MAX`, large multi-byte OIDs)
+//! present, OID streams with no terminating byte (all continuation), and BER
+//! length / OID roundtrips for boundary values (`u16::MAX`, `u32::MAX`, large
+//! multi-byte OIDs)
 //!
 //! Author: aav
 // --------------------------------------------------
@@ -25,31 +25,6 @@ fn ber_length_0xff_claims_127_extra_bytes() {
 }
 
 #[test]
-/// Documents that BER prefix `0x80` (indefinite form) currently decodes as length 0 via a zero-byte fold, and accepts either Ok(0) or Err as valid behavior
-fn ber_length_0x80_claims_zero_extra_bytes() {
-    // 0x80 = long form with 0 extra bytes (indefinite form, not supported).
-    // The decoder reads 0 additional bytes from the stream.
-    // With 0 bytes to form a u128 from parse_length_u128, it folds to 0.
-    // This actually succeeds and returns 0 - document the actual behavior.
-    let mut input: &[u8] = &[0x80];
-    let result = decber::ber_length(&mut input);
-    // Behavior: 0x80 has num_bytes=0; parse_length_u128 with 0 bytes
-    // produces 0 via fold. This is technically "indefinite form" but
-    // the library decodes it as length 0.
-    if let Ok(len) = result {
-        assert_eq!(len, 0, "0x80 decodes as length 0");
-    } else { /* also acceptable if implementation rejects it */
-    }
-}
-
-#[test]
-/// Tests that `ber_length` on an entirely empty input errors
-fn ber_length_entirely_empty_fails() {
-    let mut input: &[u8] = &[];
-    assert!(decber::ber_length(&mut input).is_err());
-}
-
-#[test]
 /// Tests that BER prefix `0x8A` claiming 10 extra bytes fails when only three bytes follow
 fn ber_length_large_count_with_insufficient_data() {
     // 0x8A = long form, claims 10 extra bytes; only 3 follow
@@ -58,17 +33,10 @@ fn ber_length_large_count_with_insufficient_data() {
 }
 
 #[test]
-/// Tests that `ber_oid` errors on empty input
-fn ber_oid_empty_fails() {
-    let mut input: &[u8] = &[];
-    assert!(decber::ber_oid::<u64>(&mut input).is_err());
-}
-
-#[test]
 /// Tests that `ber_oid` errors when all bytes have the MSB set (continuation) and no terminator follows
 fn ber_oid_all_continuation_bytes_no_terminator() {
-    // All bytes have MSB set (0x80, 0x80): take_while_msb_set consumes them all,
-    // then take_one on empty input fails.
+    // All bytes have MSB set (0x80, 0x80): the run never reaches its terminator,
+    // and the input runs out
     let mut input: &[u8] = &[0x80, 0x80];
     assert!(decber::ber_oid::<u64>(&mut input).is_err());
 }
@@ -84,7 +52,7 @@ fn ber_oid_single_continuation_byte_no_terminator() {
 #[test]
 /// Tests that `ber_oid` errors on three continuation bytes with no terminator
 fn ber_oid_three_continuation_bytes_no_terminator() {
-    // 0x80 has MSB set - take_while_msb_set consumes all three, then take_one fails
+    // 0x80 has MSB set - all three continue the run, and the input ends before a terminator
     let mut input: &[u8] = &[0x80, 0x80, 0x80];
     assert!(decber::ber_oid::<u64>(&mut input).is_err());
 }

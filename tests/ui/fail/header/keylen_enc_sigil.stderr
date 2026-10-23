@@ -1,0 +1,6 @@
+error: An `enc` in key/len/keylen takes no `&` or `*` sigil.
+       The derive passes the key and length by value; sigils apply to field encoders only.
+  --> tests/ui/fail/header/keylen_enc_sigil.rs:12:34
+   |
+12 | #[klv(keylen(dec = header, enc = &header_enc))]
+   |                                  ^

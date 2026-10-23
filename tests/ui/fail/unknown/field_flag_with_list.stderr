@@ -1,0 +1,5 @@
+error: `unknown` is a flag and takes no list: write `unknown`
+  --> tests/ui/fail/unknown/field_flag_with_list.rs:16:11
+   |
+16 |     #[klv(unknown(dec = unknown_frame))]
+   |           ^^^^^^^

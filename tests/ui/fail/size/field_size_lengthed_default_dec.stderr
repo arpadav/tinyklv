@@ -1,0 +1,5 @@
+error: `lengthed` belongs to the decoder; give this field its own `dec`, or put `size(lengthed)` on the `default`.
+  --> tests/ui/fail/size/field_size_lengthed_default_dec.rs:11:28
+   |
+11 |     #[klv(key = 0x01, size(lengthed))]
+   |                            ^^^^^^^^

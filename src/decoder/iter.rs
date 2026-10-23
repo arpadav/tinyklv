@@ -15,33 +15,15 @@
 // local
 // --------------------------------------------------
 use super::{Decoder, Packet};
-use crate::traits::{
-    DecodePartial, DecodeValue, Partial, PartialIterator, ResumePartial, SeekSentinel,
+use crate::{
+    ErrorKind,
+    traits::{DecodePartial, DecodeValue, Partial, PartialIterator, ResumePartial, SeekSentinel},
 };
 
 // --------------------------------------------------
 // external
 // --------------------------------------------------
 use winnow::error::ContextError;
-
-/// Wraps a `&'static str` label into a [`ContextError`] anchored at the supplied input slice
-///
-/// Single construction path used by [`Decoder::next_resume`], [`Decoder::next_fresh`],
-/// and [`Decoder::finish`] so that label-to-error translation is consistent
-/// and does not repeat boilerplate at each call site. The `$input` expression
-/// supplies the position context for winnow's error reporting machinery
-macro_rules! label_to_context_error {
-    ($input:expr, $label:expr) => {{
-        use winnow::stream::Stream as _;
-        let cp = $input.checkpoint();
-        winnow::error::AddContext::add_context(
-            winnow::error::ContextError::new(),
-            &$input,
-            &cp,
-            winnow::error::StrContext::Label($label),
-        )
-    }};
-}
 
 #[derive(Debug)]
 #[non_exhaustive]
@@ -66,19 +48,44 @@ pub enum DecodeIterError {
     /// The bytes present in the buffer could not be parsed as the target type
     ///
     /// The [`Decoder`] has already advanced past the offending bytes
-    /// (drained the framed packet, or the consumed prefix in resume mode)
-    /// to guarantee forward progress on subsequent calls
+    /// (drained the framed packet, one byte of the sentinel of a packet whose length is
+    /// malformed, or the consumed prefix in resume mode) to guarantee forward progress on
+    /// subsequent calls
     Malformed(ContextError),
+}
+/// [`DecodeIterError`] implementation
+impl DecodeIterError {
+    /// What a [`DecodeIterError::Malformed`] error is, for a caller to match on instead of its
+    /// text
+    ///
+    /// # Returns
+    ///
+    /// [`ErrorKind::of`] the malformed packet's error, or `None` for [`DecodeIterError::Eof`] and
+    /// [`DecodeIterError::NeedMore`], which the variant already tells apart
+    #[must_use]
+    pub fn kind(&self) -> Option<ErrorKind> {
+        match self {
+            Self::Malformed(error) => ErrorKind::of(error),
+            Self::Eof | Self::NeedMore => None,
+        }
+    }
 }
 /// [`DecodeIterError`] implementation of [`std::error::Error`]
 ///
-/// No `source()` is provided: the `Malformed` cause is a [`winnow::error::ContextError`], which does
-/// not implement [`std::error::Error`] under this crate's winnow feature set, so it cannot be
-/// surfaced as `&dyn Error`. The context is still available through this error's [`Display`], which
-/// formats the inner `ContextError`
+/// The `source` of a [`DecodeIterError::Malformed`] is the cause its
+/// [`winnow::error::ContextError`] carries, such as the [`core::str::Utf8Error`] of a strict UTF-8
+/// value: a `ContextError` is not an [`std::error::Error`], and its labels are in this error's
+/// [`Display`]
 ///
 /// [`Display`]: core::fmt::Display
-impl std::error::Error for DecodeIterError {}
+impl std::error::Error for DecodeIterError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Malformed(error) => crate::__export::typed_cause(error),
+            Self::Eof | Self::NeedMore => None,
+        }
+    }
+}
 /// [`DecodeIterError`] implementation of [`core::fmt::Display`]
 impl core::fmt::Display for DecodeIterError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -94,10 +101,11 @@ impl core::fmt::Display for DecodeIterError {
 ///
 /// Created by [`Decoder::iter`] or via the [`IntoIterator`] impl on
 /// `&mut Decoder`. Yields `T` (the `Partial::Final` associated type) on each
-/// `next` call until the buffer is exhausted or a packet is incomplete
+/// `next` call until the buffer is exhausted, a packet is incomplete, or one is
+/// malformed
 ///
-/// Stopping iteration does not discard buffered bytes; call [`Decoder::feed`]
-/// to add more data then iterate again to continue decoding
+/// Stopping iteration keeps every buffered byte that may still begin a packet; call
+/// [`Decoder::feed`] to add more data then iterate again to continue decoding
 pub struct DecoderIter<'a, P, S> {
     pub(super) dec: &'a mut Decoder<P, S>,
 }
@@ -114,17 +122,15 @@ where
     ///
     /// Dispatches to resume mode or fresh mode depending on whether an in-flight
     /// partial is present. Resume mode continues a previously interrupted packet
-    /// without re-seeking the sentinel; fresh mode scans for the next sentinel,
-    /// reads the framed body length, and decodes from scratch
+    /// without seeking a sentinel; fresh mode scans for the next sentinel,
+    /// reads the framed body length, and decodes the body one-shot
     ///
     /// In resume mode a `NeedMore` result re-stores the updated partial and
-    /// returns `None` so the caller can feed more bytes. In fresh mode there are two
-    /// `NeedMore` paths: a sentinel that has not arrived in the buffer yet (the seek
-    /// misses), which retains the bytes for a later feed; versus a `NeedMore` from
-    /// inside a length-declared body, which is finalized best-effort - the body is
-    /// already framed to an exact length and is not resumable, so the assembled partial
-    /// is yielded as the value when all required fields are present, otherwise it is malformed
-    /// Malformed results always advance past the offending bytes to guarantee forward progress
+    /// returns `None` so the caller can feed more bytes. In fresh mode a packet that has not all
+    /// arrived in the buffer yet (the seek fails) retains the bytes that may begin it for a later
+    /// feed, while a complete body is decoded one-shot, which finalizes what the body holds: the
+    /// value when all required fields are present, otherwise malformed. Malformed results always
+    /// advance past the offending bytes to guarantee forward progress
     ///
     /// # Returns
     ///
@@ -220,9 +226,10 @@ where
         // compute consumed bytes and map the error
         // --------------------------------------------------
         let consumed = before - cursor.len();
-        let result = packet.map_err(|label| {
-            let ce = label_to_context_error!(self.buf.consumed_slice(start, consumed), label);
-            DecodeIterError::Malformed(ce)
+        let result = packet.map_err(|err| {
+            DecodeIterError::Malformed(
+                err.to_context_error(self.buf.consumed_slice(start, consumed)),
+            )
         });
         // --------------------------------------------------
         // advance past consumed bytes (O(1); no front drain)
@@ -243,29 +250,32 @@ where
 
     /// Seeks the next sentinel boundary and decodes the framed packet body
     ///
-    /// Runs [`crate::traits::SeekSentinel::seek_sentinel`] to locate and
+    /// Seeks as [`crate::traits::SeekSentinel::seek_sentinel`] does, without building the error of
+    /// a packet that is not all in the buffer yet, to locate and
     /// consume the packet framing (sentinel + length prefix), then calls
-    /// [`crate::traits::DecodePartial::decode_partial`] on the framed body
+    /// [`crate::traits::DecodeValue::decode_value`] on the framed body
     /// slice. The consumed bytes (framing + body) are advanced past in the buffer
     ///
-    /// A `NeedMore` result from `decode_partial` inside fresh mode means the parser
-    /// reached the end of the framed body without a definite end-of-packet. Because the
-    /// body was already framed to an exact length it is not resumable; instead the partial
-    /// is finalized best-effort - yielded as `T` when every required field is present,
+    /// The body is already framed to an exact length, so it is decoded one-shot rather than
+    /// resumed: what it holds is finalized, yielded as `T` when every required field is present,
     /// otherwise surfaced as [`DecodeIterError::Malformed`]
     ///
     /// Returns `Ok(T)` when decoding succeeds, or one of:
     /// * [`DecodeIterError::Eof`] - buffer is empty
-    /// * [`DecodeIterError::NeedMore`] - the sentinel has not arrived in the buffer
-    ///   yet (the seek missed); the bytes are retained and the cursor is not advanced
-    /// * [`DecodeIterError::Malformed`] - the body decode failed, or a best-effort
-    ///   finalize of an incomplete framed body found required fields missing
+    /// * [`DecodeIterError::NeedMore`] - the packet has not all arrived in the buffer yet;
+    ///   the cursor advances past the bytes the seek proved cannot begin a packet. A miss
+    ///   keeps only the last `sentinel_len - 1` bytes, and a found sentinel whose length or
+    ///   body is cut keeps the bytes from that sentinel on. A length counts as cut unless its
+    ///   decoder tags it [`ErrorKind::MalformedValue`]
+    /// * [`DecodeIterError::Malformed`] - the body decode failed, including a body
+    ///   missing a required field, or the packet length is malformed: the cursor moves one byte
+    ///   into its sentinel, where the next call searches on
     ///
-    /// Because a seek miss retains every buffered byte, a stream that never delivers the
-    /// sentinel (pure junk) - or a packet whose declared length never arrives - keeps the
-    /// buffer growing under repeated `feed` + `NeedMore`. Callers that must bound memory on
-    /// hostile input should cap the unproductive `NeedMore` window and [`Decoder::clear`] to
-    /// resync rather than feeding indefinitely
+    /// Stray bytes are scanned once and dropped, but a packet whose declared length never
+    /// arrives, or whose length fails without that tag, keeps the buffer growing under repeated
+    /// `feed` + `NeedMore`. Callers that must bound memory on hostile input should cap the
+    /// unproductive `NeedMore` window and [`Decoder::clear`] to resync rather than feeding
+    /// indefinitely
     fn next_fresh(&mut self) -> Result<T, DecodeIterError> {
         // --------------------------------------------------
         // early exit
@@ -279,11 +289,25 @@ where
         let mut cursor: &[u8] = self.buf.pending();
         let before = cursor.len();
         // --------------------------------------------------
-        // seek sentinel; a miss means sentinel not yet in buffer - retain bytes for later feed
+        // seek sentinel, building no error; a failed seek drops the bytes it proved cannot begin
+        // a packet. A packet length that can never be valid is returned once, its labelled error
+        // read again from the sentinel, the search moving one byte into it (never past the
+        // buffer); any other failure means the packet is not all in the buffer yet, so the rest is
+        // retained for a later feed
         // --------------------------------------------------
-        let body = match T::seek_sentinel(&mut cursor) {
-            Ok(b) => b,
-            Err(_) => return Err(DecodeIterError::NeedMore),
+        let body = match T::seek_unlabeled(&mut cursor) {
+            Ok(body) => body,
+            Err(kind) => {
+                let mut at_sentinel = cursor;
+                if kind == ErrorKind::MalformedValue
+                    && let Err(error) = T::seek_sentinel(&mut at_sentinel)
+                {
+                    self.buf.advance((before - cursor.len() + 1).min(before));
+                    return Err(DecodeIterError::Malformed(error));
+                }
+                self.buf.advance(before - cursor.len());
+                return Err(DecodeIterError::NeedMore);
+            }
         };
         // --------------------------------------------------
         // body is a complete length-delimited frame; decode it one-shot
@@ -299,5 +323,35 @@ where
         // surface decode error as malformed
         // --------------------------------------------------
         outcome.map_err(DecodeIterError::Malformed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DecodeIterError;
+    use crate::{__export::relabeled_error, ErrorKind, dec::string::to_string_utf8_strict};
+    use std::error::Error as _;
+    use winnow::stream::Stream as _;
+
+    #[test]
+    /// Tests that a malformed packet's `source` is its error's typed cause, past the label a
+    /// relabelled error carries it under
+    fn malformed_source_is_the_typed_cause() {
+        let mut input: &[u8] = &[0xFF];
+        let checkpoint = input.checkpoint();
+        let invalid = to_string_utf8_strict(1)(&mut input).unwrap_err();
+        let error = relabeled_error(
+            &input,
+            &checkpoint,
+            "`Note::text`",
+            invalid,
+            ErrorKind::MalformedValue,
+        );
+        let malformed = DecodeIterError::Malformed(error);
+        assert!(
+            malformed
+                .source()
+                .is_some_and(<dyn std::error::Error>::is::<core::str::Utf8Error>)
+        );
     }
 }

@@ -28,8 +28,17 @@ use crate::prelude::*;
 ///
 /// # Returns
 ///
-/// `Ok(len)` where `len` is the decoded length as a [`usize`], or an error if the
-/// stream is empty or contains too few bytes for the declared long-form length
+/// `Ok(len)` where `len` is the decoded length as a [`usize`]
+///
+/// # Errors
+///
+/// - Runs out of bytes: the cursor is left at the end of the input
+/// - The length does not fit a [`usize`]: the cursor is rewound to where it started
+/// - The first byte is `0x80`, BER's indefinite form, or `0xFF`, which X.690 §8.1.3.5 c)
+///   reserves: the cursor is rewound to where it started
+///
+/// Running out of bytes is [`crate::ErrorKind::Truncated`], the others
+/// [`crate::ErrorKind::MalformedValue`]
 ///
 /// # Example
 ///
@@ -43,9 +52,7 @@ use crate::prelude::*;
 /// assert_eq!(ber_length(&mut long).unwrap(), 201_usize);
 /// ```
 pub fn ber_length(input: &mut &[u8]) -> crate::Result<usize> {
-    super::BerLength::<u128>::decode_value
-        .map(|value| value.as_u128() as usize)
-        .parse_next(input)
+    super::BerLength::<usize>::decode_value(input).map(|length| length.value())
 }
 
 #[inline(always)]
@@ -65,8 +72,19 @@ pub fn ber_length(input: &mut &[u8]) -> crate::Result<usize> {
 ///
 /// # Returns
 ///
-/// `Ok(value)` with the decoded integer, or an error if the stream ends before
-/// a terminator byte is reached or the accumulated value overflows `T`
+/// `Ok(value)` with the decoded integer
+///
+/// # Errors
+///
+/// - Runs out of bytes: the cursor is left at the end of the input
+/// - The value does not fit `T`: the cursor is rewound to where it started. A run holds at most
+///   `ceil(bits(T) / 7)` bytes, leading `0x80` padding included, so a run whose byte at that
+///   position is still a continuation byte is rejected there, without reading further
+///
+/// Running out of bytes is [`crate::ErrorKind::Truncated`], the other
+/// [`crate::ErrorKind::MalformedValue`]
+///
+/// Padding within that limit is read, though X.690 §8.19.2 forbids a sender to write it
 ///
 /// # Example
 ///
@@ -78,7 +96,5 @@ pub fn ber_length(input: &mut &[u8]) -> crate::Result<usize> {
 /// assert_eq!(value, 23298_u64);
 /// ```
 pub fn ber_oid<T: super::OfBerCommon>(input: &mut &[u8]) -> crate::Result<T> {
-    super::BerOid::<T>::decode_value
-        .map(|oid| oid.value())
-        .parse_next(input)
+    super::BerOid::<T>::decode_value(input).map(|oid| oid.value())
 }

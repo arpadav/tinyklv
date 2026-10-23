@@ -1,0 +1,5 @@
+error: An `unknown` field takes no other setting: the struct's `unknown(dec = <..>, enc = <..>)` decodes and encodes its frames. Remove the other settings from this field.
+  --> tests/ui/fail/unknown/field_with_key.rs:17:20
+   |
+17 |     #[klv(unknown, key = 0x02)]
+   |                    ^^^

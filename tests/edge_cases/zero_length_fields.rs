@@ -29,14 +29,6 @@ fn to_string_utf8_zero_len_returns_empty() {
 }
 
 #[test]
-/// Tests that `to_string_utf8(0)` succeeds and returns an empty string on empty input
-fn to_string_utf8_zero_len_on_empty_returns_empty() {
-    let mut input: &[u8] = &[];
-    let result = to_string_utf8(0)(&mut input).unwrap();
-    assert_eq!(result, "");
-}
-
-#[test]
 /// Tests that `to_string_utf16_le(0)` returns an empty string without consuming any input bytes
 fn to_string_utf16_le_zero_len_returns_empty() {
     let mut input: &[u8] = &[0x41, 0x00];
@@ -76,7 +68,7 @@ fn be_u64_lengthed_zero_returns_zero() {
 fn enc_be_u16_lengthed_zero_produces_empty() {
     let mut result = Vec::new();
     encb::be_u16_lengthed(0)(0x1234_u16, &mut result);
-    assert!(result.is_empty());
+    assert_eq!(result, b"");
 }
 
 #[test]
@@ -84,7 +76,7 @@ fn enc_be_u16_lengthed_zero_produces_empty() {
 fn enc_le_u32_lengthed_zero_produces_empty() {
     let mut result = Vec::new();
     encb::le_u32_lengthed(0)(0xDEADBEEF_u32, &mut result);
-    assert!(result.is_empty());
+    assert_eq!(result, b"");
 }
 
 #[test]
@@ -92,7 +84,7 @@ fn enc_le_u32_lengthed_zero_produces_empty() {
 fn enc_be_u64_lengthed_zero_produces_empty() {
     let mut result = Vec::new();
     encb::be_u64_lengthed(0)(u64::MAX, &mut result);
-    assert!(result.is_empty());
+    assert_eq!(result, b"");
 }
 
 /// KLV struct used to verify zero-length field semantics via the derive macro
@@ -116,7 +108,7 @@ struct ZeroLenOptional {
 
     #[klv(
         key = 0x02,
-        size(var),
+        size(lengthed),
         dec = decs::to_string_utf8,
         enc = &encs::from_string_utf8
     )]

@@ -8,7 +8,8 @@
 //! * Big-endian, little-endian, and native-endian numeric decoders for all
 //!   standard integer and float types
 //! * Variable-length ("lengthed") decoders that handle under/over-length
-//!   byte slices via truncation or zero-padding
+//!   byte slices via truncation or zero-padding, and leave the cursor at the
+//!   end of the input when it holds fewer than `len` bytes
 //! * `usize` wrapper variants for length-field parsing
 //!
 //! String decoders live in [`crate::codecs::string::dec`]
@@ -17,7 +18,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::prelude::*;
+use crate::{codecs::take_or_finish, prelude::*};
 
 // --------------------------------------------------
 // external
@@ -32,8 +33,11 @@ macro_rules! wrap {
         #[doc = concat!(" Big-endian decoder for `", stringify!($ty), "`: takes `size_of::<", stringify!($ty), ">()` bytes and `from_be_bytes`")]
         #[doc = ""]
         #[doc = " A single sized read + `from_be_bytes` (one bounds check, one load + byte-swap), rather"]
-        #[doc = " than winnow's runtime-bounded shift/add integer loop. On insufficient input it returns the"]
-        #[doc = " same `take`-style backtrack error and leaves the cursor unadvanced"]
+        #[doc = " than winnow's runtime-bounded shift/add integer loop"]
+        #[doc = ""]
+        #[doc = " # Errors"]
+        #[doc = ""]
+        #[doc = " - Runs out of bytes: `take`'s backtrack error, the cursor left at the end of the input"]
         #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
@@ -44,7 +48,9 @@ macro_rules! wrap {
         #[doc = " ```"]
         pub fn [<be_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
             const N: usize = ::core::mem::size_of::<$ty>();
-            let bytes = take(N).parse_next(input)?;
+            let bytes = take(N).parse_next(input).inspect_err(|_| {
+                let _ = input.finish();
+            })?;
             // SAFETY: `take(N)` yielded a slice of exactly `N` bytes, so reading `[u8; N]` from its
             // start is in-bounds; `u8` has alignment 1, so the pointer is always aligned for `[u8; N]`.
             let array = unsafe { *bytes.as_ptr().cast::<[u8; N]>() };
@@ -55,8 +61,11 @@ macro_rules! wrap {
         #[doc = concat!(" Little-endian decoder for `", stringify!($ty), "`: takes `size_of::<", stringify!($ty), ">()` bytes and `from_le_bytes`")]
         #[doc = ""]
         #[doc = " A single sized read + `from_le_bytes` (one bounds check, one load), rather than winnow's"]
-        #[doc = " runtime-bounded shift/add integer loop. On insufficient input it returns the same"]
-        #[doc = " `take`-style backtrack error and leaves the cursor unadvanced"]
+        #[doc = " runtime-bounded shift/add integer loop"]
+        #[doc = ""]
+        #[doc = " # Errors"]
+        #[doc = ""]
+        #[doc = " - Runs out of bytes: `take`'s backtrack error, the cursor left at the end of the input"]
         #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
@@ -67,8 +76,10 @@ macro_rules! wrap {
         #[doc = " ```"]
         pub fn [<le_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
             const N: usize = ::core::mem::size_of::<$ty>();
-            let bytes = take(N).parse_next(input)?;
-            // SAFETY: as for `be_` above - `take(N)` guarantees exactly `N` bytes and `u8` is align-1.
+            let bytes = take(N).parse_next(input).inspect_err(|_| {
+                let _ = input.finish();
+            })?;
+            // SAFETY: as for `be_` above - `take(N)` guarantees exactly `N` bytes and `u8` is align-1
             let array = unsafe { *bytes.as_ptr().cast::<[u8; N]>() };
             Ok($ty::from_le_bytes(array))
         }
@@ -81,8 +92,11 @@ macro_rules! wrap {
         #[doc = concat!(" Big-endian decoder for `", stringify!($ty), "`: takes `size_of::<", stringify!($ty), ">()` bytes and `from_be_bytes`")]
         #[doc = ""]
         #[doc = " A single sized read + `from_be_bytes` (one bounds check, one load + byte-swap), rather"]
-        #[doc = " than winnow's runtime-bounded shift/add integer loop. On insufficient input it returns the"]
-        #[doc = " same `take`-style backtrack error and leaves the cursor unadvanced"]
+        #[doc = " than winnow's runtime-bounded shift/add integer loop"]
+        #[doc = ""]
+        #[doc = " # Errors"]
+        #[doc = ""]
+        #[doc = " - Runs out of bytes: `take`'s backtrack error, the cursor left at the end of the input"]
         #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
@@ -93,7 +107,9 @@ macro_rules! wrap {
         #[doc = " ```"]
         pub fn [<be_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
             const N: usize = ::core::mem::size_of::<$ty>();
-            let bytes = take(N).parse_next(input)?;
+            let bytes = take(N).parse_next(input).inspect_err(|_| {
+                let _ = input.finish();
+            })?;
             let array = <[u8; N]>::try_from(bytes).expect("take(N) yields exactly N bytes");
             Ok($ty::from_be_bytes(array))
         }
@@ -102,8 +118,11 @@ macro_rules! wrap {
         #[doc = concat!(" Little-endian decoder for `", stringify!($ty), "`: takes `size_of::<", stringify!($ty), ">()` bytes and `from_le_bytes`")]
         #[doc = ""]
         #[doc = " A single sized read + `from_le_bytes` (one bounds check, one load), rather than winnow's"]
-        #[doc = " runtime-bounded shift/add integer loop. On insufficient input it returns the same"]
-        #[doc = " `take`-style backtrack error and leaves the cursor unadvanced"]
+        #[doc = " runtime-bounded shift/add integer loop"]
+        #[doc = ""]
+        #[doc = " # Errors"]
+        #[doc = ""]
+        #[doc = " - Runs out of bytes: `take`'s backtrack error, the cursor left at the end of the input"]
         #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
@@ -114,7 +133,9 @@ macro_rules! wrap {
         #[doc = " ```"]
         pub fn [<le_ $ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
             const N: usize = ::core::mem::size_of::<$ty>();
-            let bytes = take(N).parse_next(input)?;
+            let bytes = take(N).parse_next(input).inspect_err(|_| {
+                let _ = input.finish();
+            })?;
             let array = <[u8; N]>::try_from(bytes).expect("take(N) yields exactly N bytes");
             Ok($ty::from_le_bytes(array))
         }
@@ -125,6 +146,10 @@ macro_rules! wrap_native {
         #[inline] // not always inline: thin winnow::binary delegation; the optimizer inlines the small wrapper, no need to force it across crate boundaries
         #[doc = concat!(" Wrapper for [`winnow::binary::", stringify!($ty), "`] with implied native-endianness generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
+        #[doc = " # Errors"]
+        #[doc = ""]
+        #[doc = " - Runs out of bytes: the cursor is left at the end of the input"]
+        #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
         #[doc = " ```"]
@@ -133,13 +158,21 @@ macro_rules! wrap_native {
         #[doc = concat!(" assert_eq!(result, Ok(1 as ", stringify!($ty), "));")]
         #[doc = " ```"]
         pub fn [<$ty>](input: &mut &[u8]) -> winnow::Result<$ty> {
-            winnow::binary::$ty(winnow::binary::Endianness::Native).parse_next(input)
+            winnow::binary::$ty(winnow::binary::Endianness::Native)
+                .parse_next(input)
+                .inspect_err(|_| {
+                    let _ = input.finish();
+                })
         }
     }};
 
     (simple $ty:ty) => { pastey::paste! {
         #[inline] // not always inline: thin winnow::binary delegation; the optimizer inlines the small wrapper, no need to force it across crate boundaries
         #[doc = concat!(" Wrapper for [`winnow::binary::", stringify!($ty), "`] with implied native-endianness generics `<&[prim@u8], winnow::error::ContextError>`")]
+        #[doc = ""]
+        #[doc = " # Errors"]
+        #[doc = ""]
+        #[doc = " - Runs out of bytes: the cursor is left at the end of the input"]
         #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
@@ -185,6 +218,10 @@ macro_rules! as_usize {
         #[doc = ""]
         #[doc = concat!(" See: [`", stringify!($parser), "()`] for the direct [`prim@", stringify!($parser), "`] implementation.")]
         #[doc = ""]
+        #[doc = " # Errors"]
+        #[doc = ""]
+        #[doc = " - Runs out of bytes: the cursor is left at the end of the input"]
+        #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
         #[doc = " ```"]
@@ -201,6 +238,10 @@ macro_rules! as_usize {
         #[doc = ""]
         #[doc = concat!(" See: [`be_", stringify!($parser), "`] for the direct [`prim@", stringify!($parser), "`] implementation.")]
         #[doc = ""]
+        #[doc = " # Errors"]
+        #[doc = ""]
+        #[doc = " - Runs out of bytes: the cursor is left at the end of the input"]
+        #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
         #[doc = " ```"]
@@ -216,6 +257,10 @@ macro_rules! as_usize {
         #[doc = concat!(" [`usize`] wrapper for [`winnow::binary::le_", stringify!($parser), "`] with implied generics `<&[prim@u8], winnow::error::ContextError>`")]
         #[doc = ""]
         #[doc = concat!(" See: [`le_", stringify!($parser), "`] for the direct [`prim@", stringify!($parser), "`] implementation.")]
+        #[doc = ""]
+        #[doc = " # Errors"]
+        #[doc = ""]
+        #[doc = " - Runs out of bytes: the cursor is left at the end of the input"]
         #[doc = ""]
         #[doc = " # Example"]
         #[doc = ""]
@@ -248,7 +293,7 @@ macro_rules! lengthed_be {
         #[doc = $doc]
         pub fn [<be_ $type _lengthed>](len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<$type> {
             move |input| {
-                let value = take(len).parse_next(input)?;
+                let value = take_or_finish(len).parse_next(input)?;
                 if len > $len {
                     let mut value = &value[value.len() - $len..];
                     [<be_ $type>](&mut value)
@@ -276,7 +321,7 @@ macro_rules! lengthed_le {
         #[doc = $doc]
         pub fn [<le_ $type _lengthed>](len: usize) -> impl Fn(&mut &[u8]) -> winnow::Result<$type> {
             move |input| {
-                let value = take(len).parse_next(input)?;
+                let value = take_or_finish(len).parse_next(input)?;
                 if len > $precision_len {
                     let mut value = &value[..$precision_len];
                     [<le_ $type>](&mut value)
@@ -298,8 +343,8 @@ lengthed_be!(
 Converts a [`prim@u8`] slice of any length into a [`prim@u8`] value
 using big-endian encoding.
 
-* len 3: [SKIP, SKIP, VAL] -> [VAL]
-* len 1: [VAL] -> [VAL]
+* len 3: `[SKIP, SKIP, VAL] -> [VAL]`
+* len 1: `[VAL] -> [VAL]`
 
 # Example
 
@@ -318,8 +363,8 @@ lengthed_be!(
 Converts a [`prim@u8`] slice of any length into a [`prim@u16`] value
 using big-endian encoding.
 
-* len 8: [SKIP, SKIP, SKIP, SKIP, SKIP, SKIP, VAL, VAL] -> [VAL, VAL]
-* len 1: [VAL] -> [0x00, VAL]
+* len 8: `[SKIP, SKIP, SKIP, SKIP, SKIP, SKIP, VAL, VAL] -> [VAL, VAL]`
+* len 1: `[VAL] -> [0x00, VAL]`
 
 # Example
 
@@ -342,8 +387,8 @@ lengthed_be!(
 Converts a [`prim@u8`] slice of any length into a [`prim@u32`] value
 using big-endian encoding.
 
-* len 8: [SKIP, SKIP, SKIP, SKIP, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL]
-* len 1: [VAL] -> [0x00, 0x00, 0x00, VAL]
+* len 8: `[SKIP, SKIP, SKIP, SKIP, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL]`
+* len 1: `[VAL] -> [0x00, 0x00, 0x00, VAL]`
 
 # Example
 
@@ -363,9 +408,9 @@ lengthed_be!(u64, 8, "
 Converts a [`prim@u8`] slice of any length into a [`prim@u64`] value
 using big-endian encoding.
 
-* len 10: [SKIP, SKIP, VAL, VAL, VAL, VAL, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL, VAL, VAL, VAL, VAL]
-* len 1: [VAL] -> [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, VAL]
-* len 5: [VAL, VAL, VAL, VAL, VAL] -> [0x00, 0x00, 0x00, VAL, VAL, VAL, VAL, VAL]
+* len 10: `[SKIP, SKIP, VAL, VAL, VAL, VAL, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL, VAL, VAL, VAL, VAL]`
+* len 1: `[VAL] -> [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, VAL]`
+* len 5: `[VAL, VAL, VAL, VAL, VAL] -> [0x00, 0x00, 0x00, VAL, VAL, VAL, VAL, VAL]`
 
 # Example
 
@@ -405,8 +450,8 @@ lengthed_be!(
 Converts a [`prim@u8`] slice of any length into an [`prim@i8`] value
 using big-endian encoding.
 
-* len 3: [SKIP, SKIP, VAL] -> [VAL]
-* len 1: [VAL] -> [VAL]
+* len 3: `[SKIP, SKIP, VAL] -> [VAL]`
+* len 1: `[VAL] -> [VAL]`
 
 # Example
 
@@ -423,8 +468,8 @@ lengthed_be!(
 Converts a [`prim@u8`] slice of any length into an [`prim@i16`] value
 using big-endian encoding.
 
-* len 4: [SKIP, SKIP, VAL, VAL] -> [VAL, VAL]
-* len 1: [VAL] -> [0x00, VAL]
+* len 4: `[SKIP, SKIP, VAL, VAL] -> [VAL, VAL]`
+* len 1: `[VAL] -> [0x00, VAL]`
 
 # Example
 
@@ -441,8 +486,8 @@ lengthed_be!(
 Converts a [`prim@u8`] slice of any length into an [`prim@i32`] value
 using big-endian encoding.
 
-* len 8: [SKIP, SKIP, SKIP, SKIP, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL]
-* len 2: [VAL, VAL] -> [0x00, 0x00, VAL, VAL]
+* len 8: `[SKIP, SKIP, SKIP, SKIP, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL]`
+* len 2: `[VAL, VAL] -> [0x00, 0x00, VAL, VAL]`
 
 # Example
 
@@ -460,7 +505,7 @@ Converts a [`prim@u8`] slice of any length into an [`prim@i64`] value
 using big-endian encoding.
 
 * len 10: takes last 8 bytes
-* len 4: [VAL, VAL, VAL, VAL] -> [0x00, 0x00, 0x00, 0x00, VAL, VAL, VAL, VAL]
+* len 4: `[VAL, VAL, VAL, VAL] -> [0x00, 0x00, 0x00, 0x00, VAL, VAL, VAL, VAL]`
 
 # Example
 
@@ -495,8 +540,8 @@ lengthed_le!(
 Converts a [`prim@u8`] slice of any length into a [`prim@u8`] value
 using little-endian encoding.
 
-* len 3: [VAL, SKIP, SKIP] -> [VAL]
-* len 1: [VAL] -> [VAL]
+* len 3: `[VAL, SKIP, SKIP] -> [VAL]`
+* len 1: `[VAL] -> [VAL]`
 
 # Example
 
@@ -513,8 +558,8 @@ lengthed_le!(
 Converts a [`prim@u8`] slice of any length into a [`prim@u16`] value
 using little-endian encoding.
 
-* len 8: [VAL, VAL, SKIP, SKIP, SKIP, SKIP, SKIP, SKIP] -> [VAL, VAL]
-* len 1: [VAL] -> [VAL, 0x00]
+* len 8: `[VAL, VAL, SKIP, SKIP, SKIP, SKIP, SKIP, SKIP] -> [VAL, VAL]`
+* len 1: `[VAL] -> [VAL, 0x00]`
 
 # Example
 
@@ -537,9 +582,9 @@ lengthed_le!(
 Converts a [`prim@u8`] slice of any length into a [`prim@u32`] value
 using little-endian encoding.
 
-* len 8: [VAL, VAL, VAL, VAL, SKIP, SKIP, SKIP, SKIP] -> [VAL, VAL, VAL, VAL]
-* len 1: [VAL] -> [VAL, 0x00, 0x00, 0x00]
-* len 3: [VAL, VAL, VAL] -> [VAL, VAL, VAL, 0x00]
+* len 8: `[VAL, VAL, VAL, VAL, SKIP, SKIP, SKIP, SKIP] -> [VAL, VAL, VAL, VAL]`
+* len 1: `[VAL] -> [VAL, 0x00, 0x00, 0x00]`
+* len 3: `[VAL, VAL, VAL] -> [VAL, VAL, VAL, 0x00]`
 
 # Example
 
@@ -562,9 +607,9 @@ lengthed_le!(u64, 8, "
 Converts a [`prim@u8`] slice of any length into a [`prim@u64`] value
 using little-endian encoding.
 
-* len 8: [VAL, VAL, VAL, VAL, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL, VAL, VAL, VAL, VAL]
-* len 1: [VAL] -> [VAL, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
-* len 7: [VAL, VAL, VAL, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL, VAL, VAL, VAL, 0x00]
+* len 8: `[VAL, VAL, VAL, VAL, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL, VAL, VAL, VAL, VAL]`
+* len 1: `[VAL] -> [VAL, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]`
+* len 7: `[VAL, VAL, VAL, VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL, VAL, VAL, VAL, 0x00]`
 
 # Example
 
@@ -607,8 +652,8 @@ lengthed_le!(
 Converts a [`prim@u8`] slice of any length into an [`prim@i8`] value
 using little-endian encoding.
 
-* len 3: [VAL, SKIP, SKIP] -> [VAL]
-* len 1: [VAL] -> [VAL]
+* len 3: `[VAL, SKIP, SKIP] -> [VAL]`
+* len 1: `[VAL] -> [VAL]`
 
 # Example
 
@@ -625,8 +670,8 @@ lengthed_le!(
 Converts a [`prim@u8`] slice of any length into an [`prim@i16`] value
 using little-endian encoding.
 
-* len 4: [VAL, VAL, SKIP, SKIP] -> [VAL, VAL]
-* len 1: [VAL] -> [VAL, 0x00]
+* len 4: `[VAL, VAL, SKIP, SKIP] -> [VAL, VAL]`
+* len 1: `[VAL] -> [VAL, 0x00]`
 
 # Example
 
@@ -643,8 +688,8 @@ lengthed_le!(
 Converts a [`prim@u8`] slice of any length into an [`prim@i32`] value
 using little-endian encoding.
 
-* len 8: [VAL, VAL, VAL, VAL, SKIP, SKIP, SKIP, SKIP] -> [VAL, VAL, VAL, VAL]
-* len 2: [VAL, VAL] -> [VAL, VAL, 0x00, 0x00]
+* len 8: `[VAL, VAL, VAL, VAL, SKIP, SKIP, SKIP, SKIP] -> [VAL, VAL, VAL, VAL]`
+* len 2: `[VAL, VAL] -> [VAL, VAL, 0x00, 0x00]`
 
 # Example
 
@@ -662,7 +707,7 @@ Converts a [`prim@u8`] slice of any length into an [`prim@i64`] value
 using little-endian encoding.
 
 * len 10: takes first 8 bytes
-* len 4: [VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL, 0x00, 0x00, 0x00, 0x00]
+* len 4: `[VAL, VAL, VAL, VAL] -> [VAL, VAL, VAL, VAL, 0x00, 0x00, 0x00, 0x00]`
 
 # Example
 

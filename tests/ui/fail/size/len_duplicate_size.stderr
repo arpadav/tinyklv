@@ -1,0 +1,5 @@
+error: Duplicate `size` field. Only one size per key/len is allowed.
+ --> tests/ui/fail/size/len_duplicate_size.rs:6:67
+  |
+6 |     len(dec = tinyklv::dec::binary::u8_as_usize, size(exact = 1), size(exact = 1)),
+  |                                                                   ^^^^^^^^^^^^^^^

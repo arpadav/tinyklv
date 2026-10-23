@@ -10,8 +10,21 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use tinyklv::ErrorKind;
 use tinyklv::dec::string as deca;
 use tinyklv::enc::string as enca;
+
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+/// A field no ASCII value decoder accepts: a digit, a symbol, then a letter
+const NO_VALUE: &[u8] = b"1-X";
+
+/// Two digits, short of [`PAST_SHORT`]
+const SHORT: &[u8] = b"12";
+
+/// A length one byte past [`SHORT`]
+const PAST_SHORT: usize = SHORT.len() + 1;
 
 #[test]
 /// Tests decoding a base-10 unsigned integer from ASCII text
@@ -191,4 +204,78 @@ fn roundtrip_all() {
         let decoded = deca::hex_u32(encoded.len())(&mut encoded.as_slice()).unwrap();
         assert_eq!(val, decoded, "hex roundtrip failed for {val}");
     }
+}
+
+#[test]
+/// Tests that every family of ASCII value decoders, short of `len` bytes, is truncation, leaving
+/// the cursor at the end of the input
+fn short_input_is_truncated() {
+    let ends_truncated = |decode: &dyn Fn(&mut &[u8]) -> tinyklv::Result<()>| {
+        let mut input = SHORT;
+        let kind = decode(&mut input).err().as_ref().and_then(ErrorKind::of);
+        kind == Some(ErrorKind::Truncated) && input.is_empty()
+    };
+    assert!(
+        ends_truncated(&|input| deca::u8(PAST_SHORT)(input).map(drop)),
+        "u8"
+    );
+    assert!(
+        ends_truncated(&|input| deca::i8(PAST_SHORT)(input).map(drop)),
+        "i8"
+    );
+    assert!(
+        ends_truncated(&|input| deca::f32(PAST_SHORT)(input).map(drop)),
+        "f32"
+    );
+    assert!(
+        ends_truncated(&|input| deca::hex_u8(PAST_SHORT)(input).map(drop)),
+        "hex_u8"
+    );
+    assert!(
+        ends_truncated(&|input| deca::digit(PAST_SHORT)(input).map(drop)),
+        "digit"
+    );
+}
+
+#[test]
+/// Tests that every family of ASCII value decoders rejects a field it cannot parse as a malformed
+/// value named by the family's label, rewinding the cursor to where the field started
+fn a_rejected_field_is_malformed_and_rewinds() {
+    let rejects = |decode: &dyn Fn(&mut &[u8]) -> tinyklv::Result<()>, label: &str| {
+        let mut input = NO_VALUE;
+        let error = decode(&mut input).expect_err(label);
+        assert_eq!(
+            ErrorKind::of(&error),
+            Some(ErrorKind::MalformedValue),
+            "{label}"
+        );
+        assert_eq!(error.to_string(), format!("invalid {label}"));
+        assert_eq!(input, NO_VALUE, "{label}: cursor not rewound");
+    };
+    let len = NO_VALUE.len();
+    rejects(
+        &|input| deca::u32(len)(input).map(drop),
+        "ASCII base-10 `u32`",
+    );
+    rejects(
+        &|input| deca::i32(len)(input).map(drop),
+        "ASCII base-10 `i32`",
+    );
+    rejects(&|input| deca::f64(len)(input).map(drop), "ASCII `f64`");
+    rejects(
+        &|input| deca::hex_u16(len)(input).map(drop),
+        "ASCII base-16 `u16`",
+    );
+    rejects(
+        &|input| deca::alpha(len)(input).map(drop),
+        "ASCII alphabetic string",
+    );
+    rejects(
+        &|input| deca::digit(len)(input).map(drop),
+        "ASCII decimal-digit string",
+    );
+    rejects(
+        &|input| deca::alphanumeric(len)(input).map(drop),
+        "ASCII alphanumeric string",
+    );
 }

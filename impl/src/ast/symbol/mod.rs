@@ -28,38 +28,50 @@ use syn::parse::Parser;
 // constants
 // --------------------------------------------------
 /// The top-level KLV attribute name (e.g. `#[klv(..)]`)
-pub(crate) const KLV_ATTR: Symbol = Symbol(crate::ATTR_NAME);
+pub(crate) const KLV_ATTR: Symbol = Symbol("klv");
 /// The `key` sub-attribute identifier
 pub(crate) const KEY: Symbol = Symbol("key");
+/// The `oneof(K => Enum::Variant(Type), ..)` value of a field's `key`: the frames of each `K`
+/// carry a `Type`, decoded and encoded with its type's codec, and the field holds it as
+/// `Enum::Variant`; the last one decoded wins
+pub(crate) const ONEOF: Symbol = Symbol("oneof");
 /// The `typ` sub-attribute identifier
 pub(crate) const TYPE: Symbol = Symbol("typ");
 /// The `debug` sub-attribute identifier
 pub(crate) const DEBUG: Symbol = Symbol("debug");
 /// The `len` sub-attribute identifier
 pub(crate) const LENGTH: Symbol = Symbol("len");
+/// The `keylen` sub-attribute identifier
+pub(crate) const KEYLEN: Symbol = Symbol("keylen");
 /// The `enc` sub-attribute identifier
 pub(crate) const ENCODER: Symbol = Symbol("enc");
 /// The `dec` sub-attribute identifier
 pub(crate) const DECODER: Symbol = Symbol("dec");
 /// The `size` sub-attribute identifier for `key(..)`/`len(..)`/fields; see
-/// [`SizeSpec`](crate::ast::attr::size::SizeSpec)
+/// [`SizeSpec`](crate::ast::attr::size::SizeSpec) and
+/// [`SizeBytes`](crate::ast::attr::size::SizeBytes)
 pub(crate) const SIZE: Symbol = Symbol("size");
-/// The `var` inner keyword of `size(..)`
-pub(crate) const VAR: Symbol = Symbol("var");
+/// The `implicit` inner keyword of a field's `size(..)`
+pub(crate) const IMPLICIT: Symbol = Symbol("implicit");
+/// The `lengthed` inner keyword of a field's `size(..)`
+pub(crate) const LENGTHED: Symbol = Symbol("lengthed");
 /// The `exact = N` inner keyword of `size(..)`
 pub(crate) const EXACT: Symbol = Symbol("exact");
-/// The `hint = N` inner keyword of `size(..)`
-pub(crate) const HINT: Symbol = Symbol("hint");
+/// The `reserve = N` inner keyword of `size(..)`
+pub(crate) const RESERVE: Symbol = Symbol("reserve");
 /// The `stream` sub-attribute identifier
 pub(crate) const STREAM: Symbol = Symbol("stream");
 /// The `default` sub-attribute identifier
 pub(crate) const DEFAULT: Symbol = Symbol("default");
 /// The `sentinel` sub-attribute identifier
 pub(crate) const SENTINEL: Symbol = Symbol("sentinel");
-/// The `break_on` container sub-attribute identifier
+/// The `value = b".."` of a `sentinel(..)` list: the bytes each packet starts with
+pub(crate) const SENTINEL_VALUE: Symbol = Symbol("value");
+/// The `break_on` sub-attribute identifier
 ///
-/// Accepts either a key literal (a decoded key equal to it stops the loop -
-/// [`tinyklv::BreakType::Done`]) or a function path `fn(key, len) -> BreakType`
+/// On the container, either a key literal (a decoded key equal to it stops the loop -
+/// [`tinyklv::BreakType::Done`]) or a function path `fn(&key, &mut input) -> BreakType`. On a
+/// field, a function path `fn(&value) -> BreakType`
 pub(crate) const BREAK_ON: Symbol = Symbol("break_on");
 /// The field-level `default` sub-attribute identifier
 ///
@@ -69,8 +81,25 @@ pub(crate) const BREAK_ON: Symbol = Symbol("break_on");
 pub(crate) const DEFAULT_VALUE: Symbol = Symbol("default");
 /// The `latebind` sub-attribute identifier for post-decode conversion/mutation
 pub(crate) const LATEBIND: Symbol = Symbol("latebind");
+/// The `skip_if_default` flag of a field or a `default(..)`: the field's frame is left out of
+/// the encode when the field equals its type's `Default::default()`
+pub(crate) const SKIP_IF_DEFAULT: Symbol = Symbol("skip_if_default");
+/// The `skip_if` sub-attribute of a field or a `default(..)`: the field's frame is left out of
+/// the encode when the user's `fn(&T) -> bool` returns `true`
+pub(crate) const SKIP_IF: Symbol = Symbol("skip_if");
+/// The `unknown` sub-attribute identifier
+///
+/// On the container, the `unknown(dec = .., enc = ..)` codec of the frames whose key no field
+/// declares. On a field, the flag of the one field that keeps them
+pub(crate) const UNKNOWN_FRAMES: Symbol = Symbol("unknown");
 /// The `deny_unknown_keys` sub-attribute identifier
 pub(crate) const DENY_UNKNOWN_KEYS: Symbol = Symbol("deny_unknown_keys");
+/// The `strict` sub-attribute identifier
+///
+/// Opt-in container flag. When set, a header-sized value its decoder fails on, or leaves bytes of
+/// unread, is a malformed value; without it, the value is dropped and its field keeps the value it
+/// had
+pub(crate) const STRICT: Symbol = Symbol("strict");
 /// The `allow_unimplemented_decode` sub-attribute identifier
 pub(crate) const ALLOW_UNIMPLEMENTED_DECODE: Symbol = Symbol("allow_unimplemented_decode");
 /// The `allow_unimplemented_encode` sub-attribute identifier
@@ -91,31 +120,48 @@ pub(crate) const TRAIT_FALLBACK: Symbol = Symbol("trait_fallback");
 pub(crate) static CONT_SYMBOLS: Symbols = Symbols(&[
     KEY,
     LENGTH,
+    KEYLEN,
     STREAM,
     DEFAULT,
     SENTINEL,
     BREAK_ON,
+    UNKNOWN_FRAMES,
+    DEBUG,
     DENY_UNKNOWN_KEYS,
+    STRICT,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,
     TRAIT_FALLBACK,
 ]);
 
 /// Container-level symbols that accept list syntax (e.g. `key(..)`)
-pub(crate) static CONT_LIST_SYMBOLS: Symbols = Symbols(&[KEY, LENGTH, DEFAULT]);
+pub(crate) static CONT_LIST_SYMBOLS: Symbols =
+    Symbols(&[KEY, LENGTH, KEYLEN, DEFAULT, SENTINEL, UNKNOWN_FRAMES]);
 
 /// Container-level default list symbols (type, encoder, decoder, value size)
-pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols = Symbols(&[TYPE, ENCODER, DECODER, SIZE]);
+pub(crate) static CONT_DEFAULT_LIST_SYMBOLS: Symbols =
+    Symbols(&[TYPE, ENCODER, DECODER, SIZE, SKIP_IF_DEFAULT, SKIP_IF]);
 
 /// Container-level name-value symbols (e.g. `stream = ..`)
 pub(crate) static CONT_NV_SYMBOLS: Symbols = Symbols(&[STREAM, SENTINEL, BREAK_ON]);
 
 /// All valid field-level symbols accepted by the `#[klv(..)]` attribute
-pub(crate) static FIELD_SYMBOLS: Symbols =
-    Symbols(&[KEY, ENCODER, DECODER, SIZE, LATEBIND, DEFAULT_VALUE]);
+pub(crate) static FIELD_SYMBOLS: Symbols = Symbols(&[
+    KEY,
+    ENCODER,
+    DECODER,
+    SIZE,
+    LATEBIND,
+    DEFAULT_VALUE,
+    BREAK_ON,
+    SKIP_IF_DEFAULT,
+    SKIP_IF,
+    UNKNOWN_FRAMES,
+]);
 
-/// Valid inner keywords of the `size(..)` list (`var`, `exact = N`, `hint = N`)
-pub(crate) static SIZE_FIELDS: Symbols = Symbols(&[VAR, EXACT, HINT]);
+/// Valid inner keywords of a field's or a `default(..)`'s `size(..)` list (`implicit`,
+/// `lengthed`, `exact = N`, `reserve = N`)
+pub(crate) static SIZE_FIELDS: Symbols = Symbols(&[IMPLICIT, LENGTHED, EXACT, RESERVE]);
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 /// A symbol for KLV attributes
@@ -135,26 +181,36 @@ impl std::fmt::Display for Symbol {
 pub(crate) const UNKNOWN: Symbol = Symbol("<unknown>");
 
 /// All known [`Symbol`] constants that [`Symbol::from`] can resolve against
-/// Lookup is linear - the set is tiny (<20) and resolution runs at macro-expansion time
+///
+/// Lookup is linear - the set is tiny (a couple dozen entries) and resolution runs at
+/// macro-expansion time
 const KNOWN: &[Symbol] = &[
     KLV_ATTR,
     KEY,
+    ONEOF,
     TYPE,
     DEBUG,
     LENGTH,
+    KEYLEN,
     ENCODER,
     DECODER,
     SIZE,
-    VAR,
+    IMPLICIT,
+    LENGTHED,
     EXACT,
-    HINT,
+    RESERVE,
     STREAM,
     DEFAULT,
     SENTINEL,
+    SENTINEL_VALUE,
     BREAK_ON,
     DEFAULT_VALUE,
     LATEBIND,
+    SKIP_IF_DEFAULT,
+    SKIP_IF,
+    UNKNOWN_FRAMES,
     DENY_UNKNOWN_KEYS,
+    STRICT,
     ALLOW_UNIMPLEMENTED_DECODE,
     ALLOW_UNIMPLEMENTED_ENCODE,
     TRAIT_FALLBACK,
@@ -162,19 +218,18 @@ const KNOWN: &[Symbol] = &[
 
 /// [`Symbol`] implementation of [`From`] for [`syn::Path`]
 ///
-/// Resolves the path's last segment against [`KNOWN`]. If the ident matches a known
-/// KLV symbol, returns that constant (with its `&'static str` backing). Otherwise
-/// returns [`UNKNOWN`] - callers must treat this as the "default" match arm and
-/// emit errors referencing the original `syn::Path`, not the [`Symbol`]'s string
+/// Resolves a one-ident path against [`KNOWN`]. If the ident matches a known
+/// KLV symbol, returns that constant (with its `&'static str` backing). Otherwise,
+/// a path of several segments (`x::key`) included, returns [`UNKNOWN`] - callers must
+/// treat this as the "default" match arm and emit errors referencing the original
+/// `syn::Path`, not the [`Symbol`]'s string
 impl From<&syn::Path> for Symbol {
     fn from(path: &syn::Path) -> Self {
-        let last = path.segments.last().expect("path has no segments");
-        for sym in KNOWN {
-            if last.ident == sym.0 {
-                return *sym;
-            }
-        }
-        UNKNOWN
+        KNOWN
+            .iter()
+            .copied()
+            .find(|sym| path.is_ident(sym.0))
+            .unwrap_or(UNKNOWN)
     }
 }
 
@@ -228,5 +283,19 @@ impl std::fmt::Display for Symbols<'_> {
         symbols
             .iter()
             .try_for_each(|symbol| write!(f, "`{}` ", symbol.0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{KEY, Symbol, UNKNOWN};
+
+    #[test]
+    /// Verifies only a one-ident path is a symbol, so `#[klv(x::key(..))]` is no `key(..)`
+    fn a_qualified_path_is_no_symbol() {
+        let key: syn::Path = syn::parse_quote!(key);
+        let qualified: syn::Path = syn::parse_quote!(x::key);
+        assert!(Symbol::from(&key) == KEY);
+        assert!(Symbol::from(&qualified) == UNKNOWN);
     }
 }

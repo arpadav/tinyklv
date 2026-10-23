@@ -9,7 +9,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use tinyklv::{dec::binary as decb, enc::binary as encb, prelude::*};
+use tinyklv::{dec::binary as decb, enc::binary as encb};
 
 /// A fixed 5-byte raw record: a `kind` tag plus a big-endian `f32`. Packed back-to-back
 /// into the length-delimited `sensors` field; the byte-packing is shared by serde_klv,
@@ -66,6 +66,12 @@ impl Reading {
     ///
     /// `Some(Vec<Reading>)` when `bytes.len()` is an exact multiple of
     /// [`Reading::WIDTH`], or `None` if there is a trailing partial record
+    #[allow(
+        unknown_lints,
+        clippy::chunks_exact_to_as_chunks,
+        reason = "the timed code stays as the `main` baseline measured it; 1.95, the MSRV, has \
+                  no `chunks_exact_to_as_chunks`"
+    )]
     pub(crate) fn unpack(bytes: &[u8]) -> Option<Vec<Reading>> {
         // --------------------------------------------------
         // split into fixed-width chunks and convert each to a reading

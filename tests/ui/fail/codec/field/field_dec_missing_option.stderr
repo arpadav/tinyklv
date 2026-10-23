@@ -1,0 +1,12 @@
+error: No decoder is found for the `u16` value of field `level`.
+
+       If decoding is not required, use `#[klv(allow_unimplemented_decode)]` on the struct.
+
+       Otherwise, you can:
+           a. add a default decoder for all `u16` types using `#[klv(default(typ = u16, dec = <..>))]` on the struct
+           b. add a decoder to `level` using `#[klv(dec = <..>)]`
+           c. set `#[klv(trait_fallback)]` on the struct to fall back to try and use `tinyklv::DecodeValue` trait implementation
+  --> tests/ui/fail/codec/field/field_dec_missing_option.rs:11:5
+   |
+11 |     level: Option<u16>,
+   |     ^^^^^

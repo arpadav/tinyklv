@@ -1,0 +1,23 @@
+error: No encoder is found for the `Payload :: Name(String)` arm of field `payload`.
+
+       If encoding is not required, use `#[klv(allow_unimplemented_encode)]` on the struct.
+
+       Otherwise, you can:
+           a. add a default encoder for all `String` types using `#[klv(default(typ = String, enc = <..>))]` on the struct
+           b. set `#[klv(trait_fallback)]` on the struct to fall back to try and use `tinyklv::EncodeValue` trait implementation
+  --> tests/ui/fail/oneof/arm_without_codec.rs:16:73
+   |
+16 |     #[klv(key = oneof(0x01 => Payload::Count(u8), 0x02 => Payload::Name(String)))]
+   |                                                                         ^^^^^^
+
+error: No decoder is found for the `Payload :: Name(String)` arm of field `payload`.
+
+       If decoding is not required, use `#[klv(allow_unimplemented_decode)]` on the struct.
+
+       Otherwise, you can:
+           a. add a default decoder for all `String` types using `#[klv(default(typ = String, dec = <..>))]` on the struct
+           b. set `#[klv(trait_fallback)]` on the struct to fall back to try and use `tinyklv::DecodeValue` trait implementation
+  --> tests/ui/fail/oneof/arm_without_codec.rs:16:73
+   |
+16 |     #[klv(key = oneof(0x01 => Payload::Count(u8), 0x02 => Payload::Name(String)))]
+   |                                                                         ^^^^^^

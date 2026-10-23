@@ -1,0 +1,5 @@
+error: Duplicate `strict` attribute. A flag is set once; remove one.
+ --> tests/ui/fail/flag/strict_twice.rs:8:5
+  |
+8 |     strict,
+  |     ^^^^^^

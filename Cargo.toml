@@ -1,22 +1,43 @@
 [package]
 name = "tinyklv"
+version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "The fastest derive-macro Key-Length-Value (KLV) framework in Rust"
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+keywords.workspace = true
+categories.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+include = ["/src", "/CHANGELOG.md", "/LICENSE", "/README.md"]
+publish = true
+
+[package.metadata.docs.rs]
+# `full`, not every feature: `bench`'s native-type impls are provisional, not public API
+features = ["full"]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[workspace]
+members = ["impl"]
+
+[workspace.package]
 version = "0.2.0-rc.1"
 authors = ["Arpad Voros <arpadav@gmail.com>"]
 license = "MIT"
-description = "The fastest derive-macro Key-Length-Value (KLV) framework in Rust"
 repository = "https://github.com/arpadav/tinyklv"
 homepage = "https://arpadvoros.com/tinyklv"
 documentation = "https://docs.rs/tinyklv"
-readme = "README.md"
 keywords = ["decode", "encode", "klv", "parsing", "tlv"]
 categories = ["development-tools", "encoding", "parsing"]
 edition = "2024"
 rust-version = "1.95"
-exclude = ["book", "examples", "tests", "benches", "plans"]
-publish = true
 
-[workspace]
-members = ["impl"]
+[workspace.dependencies]
+# the helper crates, each pinned to `[workspace.package]`'s version
+tinyklv-impl = { path = "impl", version = "=0.2.0-rc.1" }
+tk-syn-macros = { path = "impl/tk-syn-macros", version = "=0.2.0-rc.1" }
 
 [[test]]
 name = "codecs"
@@ -31,23 +52,438 @@ name = "edge_cases"
 path = "tests/edge_cases/main.rs"
 
 [[test]]
+name = "framing"
+path = "tests/framing/main.rs"
+
+[[test]]
+name = "keylen"
+path = "tests/keylen/main.rs"
+
+[[test]]
 name = "proptest_roundtrip"
 path = "tests/proptest_roundtrip/main.rs"
+
+[[test]]
+name = "ui"
+path = "tests/ui/main.rs"
+
+[[example]]
+name = "01_hello_world"
+path = "examples/packets/01_hello_world.rs"
+test = true
+harness = false
+
+[[example]]
+name = "02_custom_key_types"
+path = "examples/packets/02_custom_key_types.rs"
+test = true
+harness = false
+
+[[example]]
+name = "03_strings_and_types"
+path = "examples/packets/03_strings_and_types.rs"
+test = true
+harness = false
+
+[[example]]
+name = "04_optional_fields"
+path = "examples/packets/04_optional_fields.rs"
+test = true
+harness = false
+
+[[example]]
+name = "05_basic_roundtrip"
+path = "examples/packets/05_basic_roundtrip.rs"
+test = true
+harness = false
+
+[[example]]
+name = "06_custom_encoder_decoder"
+path = "examples/packets/06_custom_encoder_decoder.rs"
+test = true
+harness = false
+
+[[example]]
+name = "07_sentinel_seeking"
+path = "examples/streams/07_sentinel_seeking.rs"
+test = true
+harness = false
+
+[[example]]
+name = "08_nested_packets"
+path = "examples/packets/08_nested_packets.rs"
+test = true
+harness = false
+
+[[example]]
+name = "09_ber_keyed"
+path = "examples/packets/09_ber_keyed.rs"
+test = true
+harness = false
+required-features = ["ber"]
+
+[[example]]
+name = "10_defaults"
+path = "examples/packets/10_defaults.rs"
+test = true
+harness = false
+
+[[example]]
+name = "11_repeated_extraction"
+path = "examples/streams/11_repeated_extraction.rs"
+test = true
+harness = false
+
+[[example]]
+name = "12_enum_dispatch_stream"
+path = "examples/streams/12_enum_dispatch_stream.rs"
+test = true
+harness = false
+
+[[example]]
+name = "13_variable_length_fields"
+path = "examples/packets/13_variable_length_fields.rs"
+test = true
+harness = false
+required-features = ["ber"]
+
+[[example]]
+name = "14_break_condition_custom"
+path = "examples/packets/14_break_condition_custom.rs"
+test = true
+harness = false
+
+[[example]]
+name = "15_tokio_stream_e2e"
+path = "examples/streams/15_tokio_stream_e2e.rs"
+test = true
+harness = false
+
+[[example]]
+name = "16_latebind"
+path = "examples/packets/16_latebind.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_basics_first_packet"
+path = "examples/book/basics/book_basics_first_packet.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_basics_keys_not_positions"
+path = "examples/book/basics/book_basics_keys_not_positions.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_basics_sentinels"
+path = "examples/book/basics/book_basics_sentinels.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_basics_default_codecs"
+path = "examples/book/basics/book_basics_default_codecs.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_codecs_custom_decoder"
+path = "examples/book/codecs/book_codecs_custom_decoder.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_codecs_value_traits"
+path = "examples/book/codecs/book_codecs_value_traits.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_codecs_sigils"
+path = "examples/book/codecs/book_codecs_sigils.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_codecs_macros"
+path = "examples/book/codecs/book_codecs_macros.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_codecs_macros_chrono"
+path = "examples/book/codecs/book_codecs_macros_chrono.rs"
+test = true
+harness = false
+required-features = ["chrono"]
+
+[[example]]
+name = "book_codecs_latebind"
+path = "examples/book/codecs/book_codecs_latebind.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_codecs_latebind_mut"
+path = "examples/book/codecs/book_codecs_latebind_mut.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_codecs_trait_fallback"
+path = "examples/book/codecs/book_codecs_trait_fallback.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_codecs_nested"
+path = "examples/book/codecs/book_codecs_nested.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_sizes_subslice"
+path = "examples/book/sizes/book_sizes_subslice.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_sizes_lengthed"
+path = "examples/book/sizes/book_sizes_lengthed.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_sizes_exact"
+path = "examples/book/sizes/book_sizes_exact.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_sizes_reserve"
+path = "examples/book/sizes/book_sizes_reserve.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_sizes_implicit_exact"
+path = "examples/book/sizes/book_sizes_implicit_exact.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_sizes_implicit"
+path = "examples/book/sizes/book_sizes_implicit.rs"
+test = true
+harness = false
+required-features = ["ber"]
+
+[[example]]
+name = "book_sizes_implicit_varint"
+path = "examples/book/sizes/book_sizes_implicit_varint.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_sizes_len_slot"
+path = "examples/book/sizes/book_sizes_len_slot.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_sizes_keylen"
+path = "examples/book/sizes/book_sizes_keylen.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_sizes_keylen_wiretype"
+path = "examples/book/sizes/book_sizes_keylen_wiretype.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_presence_option"
+path = "examples/book/presence/book_presence_option.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_presence_default_value"
+path = "examples/book/presence/book_presence_default_value.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_presence_skip_if"
+path = "examples/book/presence/book_presence_skip_if.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_presence_skip_if_fn"
+path = "examples/book/presence/book_presence_skip_if_fn.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_presence_oneof"
+path = "examples/book/presence/book_presence_oneof.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_unknown_deny"
+path = "examples/book/unknown/book_unknown_deny.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_unknown_keep"
+path = "examples/book/unknown/book_unknown_keep.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_unknown_strict"
+path = "examples/book/unknown/book_unknown_strict.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_control_break_on_key"
+path = "examples/book/control/book_control_break_on_key.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_control_break_on_fn"
+path = "examples/book/control/book_control_break_on_fn.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_control_field_break_on"
+path = "examples/book/control/book_control_field_break_on.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_streams_drain_frames"
+path = "examples/book/streams/book_streams_drain_frames.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_streams_decoder"
+path = "examples/book/streams/book_streams_decoder.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_streams_decode_partial"
+path = "examples/book/streams/book_streams_decode_partial.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_streams_tokio"
+path = "examples/book/streams/book_streams_tokio.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_tooling_debug"
+path = "examples/book/tooling/book_tooling_debug.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_tooling_one_direction"
+path = "examples/book/tooling/book_tooling_one_direction.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_tooling_encode_only"
+path = "examples/book/tooling/book_tooling_encode_only.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_ref_size"
+path = "examples/book/ref/book_ref_size.rs"
+test = true
+harness = false
+required-features = ["ber"]
+
+[[example]]
+name = "book_ref_container"
+path = "examples/book/ref/book_ref_container.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_ref_keylen"
+path = "examples/book/ref/book_ref_keylen.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_ref_break_on"
+path = "examples/book/ref/book_ref_break_on.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_ref_unknown"
+path = "examples/book/ref/book_ref_unknown.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_ref_field"
+path = "examples/book/ref/book_ref_field.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_ref_sigils"
+path = "examples/book/ref/book_ref_sigils.rs"
+test = true
+harness = false
+
+[[example]]
+name = "book_ref_codecs"
+path = "examples/book/ref/book_ref_codecs.rs"
+test = true
+harness = false
+required-features = ["ber"]
+
+[[example]]
+name = "book_ref_limits"
+path = "examples/book/ref/book_ref_limits.rs"
+test = true
+harness = false
+required-features = ["ber"]
 
 [dependencies]
 # --------------------------------------------------
 # external
 # --------------------------------------------------
-chrono = { version = "0.4.45", optional = true }
+chrono = { version = "0.4.45", optional = true, default-features = false, features = ["std"] }
 memchr = "2.8.0"
-num-traits = "0.2.19"
+num-traits = { version = "0.2.19", optional = true }
 pastey = "0.2.3"
 tracing = { version = "0.1.44", optional = true }
-winnow = { version = "1.0.2", features = ["binary", "parser"] }
+winnow = { version = "1.0.2", default-features = false, features = ["binary", "parser", "std"] }
 # --------------------------------------------------
 # workspace
 # --------------------------------------------------
-tinyklv-impl = { path = "impl", version = "0.2.0-rc.1" }
+tinyklv-impl.workspace = true
 
 [dev-dependencies]
 criterion = "^0.8"
@@ -66,6 +502,7 @@ serde_bytes = "^0.11"
 serde_klv = "^0.3"
 tlv_parser = "^0.10"
 tokio = { version = "^1.52", features = ["macros", "rt-multi-thread", "sync"] }
+trybuild = "1.0.121"
 
 [[bench]]
 # the suite uses the native-type codecs behind `bench`; without the feature it is skipped
@@ -79,15 +516,23 @@ name = "streaming_compaction"
 harness = false
 
 [[bench]]
-# safe `try_from(..).expect(..)` vs unchecked `unsafe` conversion in the fixed-width int decoders
+# the fixed-width int decoders (safe `try_from` vs unchecked `unsafe`), the BER decoders and
+# encoders, and an exact-sized slice decode; without `ber` it is skipped
 name = "int_decode"
+harness = false
+required-features = ["ber"]
+
+[[bench]]
+# a varint with a length prefix vs `size(implicit)`, and what opting in to `unknown(..)` costs
+name = "framing_modes"
 harness = false
 
 [features]
-default = []
+default = ["ber"]
 ascii = ["winnow/ascii"]
 bench = ["chrono"] # for benchmarking
-full = ["ascii", "chrono"]
+ber = ["dep:num-traits"]
+full = ["ascii", "ber", "chrono"]
 tracing = ["dep:tracing", "tinyklv-impl/tracing"]
 simd = ["winnow/simd"]
 
@@ -102,26 +547,20 @@ cast_possible_wrap = "allow"          # wire-format width casts
 cast_sign_loss = "allow"              # wire-format width casts
 cast_lossless = "allow"               # wire-format width casts
 inline_always = "allow"               # hot-path inlining convention
-wildcard_imports = "allow"            # prelude glob is the import surface
 float_cmp = "allow"                   # exact-roundtrip float eq in tests
 must_use_candidate = "allow"          # must_use applied deliberately
-module_name_repetitions = "allow"     # module-qualified names intentional
-too_many_lines = "allow"              # codegen/decode fns
-needless_for_each = "allow"           # for_each idiomatic in tests
-missing_errors_doc = "allow"          # decoders all return Result
-missing_panics_doc = "allow"          # decoders all return Result
-similar_names = "allow"               # short domain names (lat/lon)
+too_many_lines = "allow"              # the codec round-trip test
+needless_for_each = "allow"           # for_each chains in tests and the Vec encoder
+similar_names = "allow"               # per-width names in the codec tests (random_u16, random_u32)
 cast_precision_loss = "allow"         # scale/precision casts in codecs
 unreadable_literal = "allow"          # numeric test fixtures
 iter_not_returning_iterator = "allow" # bounded Decoder iterator surface
 into_iter_without_iter = "allow"      # bounded Decoder iterator surface
-double_must_use = "allow"             # deliberate on must_use returns
 manual_let_else = "allow"             # test/example exemption
 struct_field_names = "allow"          # test/example exemption
-many_single_char_names = "allow"      # single-char loop vars in tests
-trivially_copy_pass_by_ref = "allow"  # small-Copy-by-ref in tests
-match_same_arms = "allow"             # explicit match in tests
-doc_markdown = "allow"                # doc-backtick nits in tests
+many_single_char_names = "allow"      # one-letter field slots in the hand-written bench decoder
+trivially_copy_pass_by_ref = "allow"  # the `&K` / `&T` a break_on fn or an encoder is handed
+doc_markdown = "allow"                # crate names in the bench docs, terms in the README
 
 [profile.dev]
 opt-level = 0

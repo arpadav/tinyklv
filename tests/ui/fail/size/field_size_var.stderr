@@ -1,0 +1,6 @@
+error: Unknown `size` sub-attribute: `var`.
+       Expected `reserve` `lengthed` `implicit` `exact` .
+  --> tests/ui/fail/size/field_size_var.rs:10:72
+   |
+10 |     #[klv(key = 0x01, dec = tinyklv::dec::string::to_string_utf8, size(var))]
+   |                                                                        ^^^

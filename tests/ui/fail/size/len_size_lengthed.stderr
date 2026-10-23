@@ -1,0 +1,6 @@
+error: Unknown `size` sub-attribute in key/len: `lengthed`.
+       Expected `exact = <..>` or `reserve = <..>`; `lengthed` goes in a field's `size(..)`.
+ --> tests/ui/fail/size/len_size_lengthed.rs:6:55
+  |
+6 |     len(dec = tinyklv::dec::binary::u8_as_usize, size(lengthed)),
+  |                                                       ^^^^^^^^

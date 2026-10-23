@@ -1,0 +1,211 @@
+/* -------------------------------------------------- */
+/* color tokens */
+/* -------------------------------------------------- */
+:root {
+    --klv-s: #6639ba;           /* purple */
+    --klv-k: #0550ae;           /* blue */
+    --klv-l: #8a5300;           /* amber */
+    --klv-v: #116329;           /* green */
+    --klv-j: #59636e;           /* grey */
+    --klv-u: #99286e;           /* pink */
+    --klv-role: #555e68;
+    --klv-comment: #57606a;
+    --klv-add: rgba(46, 160, 67, 0.14);
+    --klv-del: rgba(248, 81, 73, 0.14);
+    --klv-attr-k: #1d5396;
+    --klv-attr-l: #774f13;
+    --klv-attr-v: #1c582e;
+    --klv-attr-s: #6b4ba8;
+    --klv-attr-u: #89386a;
+    --klv-attr-sigil: #9e323a;
+    --klv-name: #61666c;
+}
+
+/* rust's darker page: its byte colors and `klv` grey are darker too, for 4.5:1 */
+.rust {
+    --klv-s: #6136b0;
+    --klv-k: #054ea9;
+    --klv-l: #764700;
+    --klv-v: #105f27;
+    --klv-j: #4b545d;
+    --klv-u: #8f2567;
+    --klv-name: #575c62;
+}
+
+.coal, .navy, .ayu {
+    --klv-s: #d2a8ff;
+    --klv-k: #79c0ff;
+    --klv-l: #e3b341;
+    --klv-v: #7ee787;
+    --klv-j: #9198a1;
+    --klv-u: #f47fcf;
+    --klv-role: #8b949e;
+    --klv-comment: #9da5ae;
+    --klv-add: rgba(46, 160, 67, 0.18);
+    --klv-del: rgba(248, 81, 73, 0.18);
+    --klv-attr-k: #8cbfec;
+    --klv-attr-l: #ccaa58;
+    --klv-attr-v: #8dd893;
+    --klv-attr-s: #d2b4f3;
+    --klv-attr-u: #e48fc9;
+    --klv-attr-sigil: #eb8c86;
+    --klv-name: #a9adb0;
+}
+
+/* ayu's own comments are dimmer than coal's and navy's; its code text is warmer */
+.ayu {
+    --klv-comment: #828c97;
+    --klv-name: #b0ab9c;
+}
+
+/* no JS: mdbook picks coal from the OS setting; only keywords written into the page show */
+@media (prefers-color-scheme: dark) {
+    html:not(.js) {
+        --klv-attr-k: #8cbfec;
+        --klv-attr-l: #ccaa58;
+        --klv-attr-v: #8dd893;
+        --klv-attr-s: #d2b4f3;
+        --klv-attr-u: #e48fc9;
+        --klv-attr-sigil: #eb8c86;
+        --klv-name: #a9adb0;
+    }
+}
+
+/* -------------------------------------------------- */
+/* wire bytes */
+/* -------------------------------------------------- */
+span.klv {
+    font-family: var(--mono-font);
+    font-size: var(--code-font-size);
+}
+
+/* one item (letter, gap, bytes) never wraps on screen; `pre`, not `nowrap`, keeps a double
+   space. on paper a long run wraps instead of running off the page */
+.klv-item {
+    white-space: pre;
+}
+
+@media print {
+    .klv-item {
+        white-space: pre-wrap;
+    }
+}
+
+/* 1ch + 0.25ch at 0.8em is one full-size column, so the bytes stay aligned; no inline-block,
+   which would let a line break between the letter and its bytes */
+.klv-role {
+    font-size: 0.8em;
+    letter-spacing: 0.25ch;
+    color: var(--klv-role);
+}
+
+/* a soft tint in the byte's own color marks one group, e.g. `09 2E`, as one unit */
+.klv-s, .klv-k, .klv-l, .klv-v, .klv-j, .klv-u {
+    background: color-mix(in srgb, currentColor 13%, transparent);
+    border-radius: 3px;
+}
+
+.klv-s { color: var(--klv-s); }
+.klv-k { color: var(--klv-k); }
+.klv-l { color: var(--klv-l); }
+.klv-v { color: var(--klv-v); }
+.klv-j { color: var(--klv-j); }
+.klv-u { color: var(--klv-u); }
+
+.klv-comment {
+    color: var(--klv-comment);
+    font-style: italic;
+}
+
+/* a search hit's padding would clip the italic text next to it */
+.klv-comment mark {
+    padding: 0;
+    margin: 0;
+}
+
+/* -------------------------------------------------- */
+/* attribute keywords */
+/* -------------------------------------------------- */
+/* the byte hues, a little less saturated: a keyword names a role, a byte is one */
+.klv-attr-k { color: var(--klv-attr-k); }
+.klv-attr-l { color: var(--klv-attr-l); }
+.klv-attr-v { color: var(--klv-attr-v); }
+.klv-attr-s { color: var(--klv-attr-s); }
+.klv-attr-u { color: var(--klv-attr-u); }
+.klv-attr-sigil { color: var(--klv-attr-sigil); }
+
+/* the `klv` of `#[klv(`: a grey a step off the code text */
+.klv-name { color: var(--klv-name); }
+
+/* highlight.js's own colors inside `#[klv(..)]`: the light theme's orange is the sigils' red */
+.hljs .klv-plain {
+    color: inherit;
+}
+
+/* a keyword written straight into a table cell or a line of text */
+:is(td, li, p) :is([class^="klv-attr-"], .klv-name):not(pre *) {
+    font-family: var(--mono-font);
+    font-size: var(--code-font-size);
+}
+
+/* -------------------------------------------------- */
+/* diffs */
+/* -------------------------------------------------- */
+/* klv.js wraps a diff's lines in one box as wide as its longest line */
+.klv-diff {
+    display: inline-block;
+    min-width: 100%;
+}
+
+/* a line's tint spans the whole box, past the visible width when the block scrolls */
+.hljs-addition, .hljs-deletion {
+    display: inline-block;
+    min-width: 100%;
+    color: inherit;
+}
+
+.hljs-addition { background: var(--klv-add); }
+.hljs-deletion { background: var(--klv-del); }
+
+/* the tint is the only `+` / `-` cue besides the first column; print it */
+.hljs-addition, .hljs-deletion {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+/* -------------------------------------------------- */
+/* folds */
+/* -------------------------------------------------- */
+details[open] {
+    border-left: 3px solid var(--table-header-bg);
+    padding-left: 1em;
+    margin-bottom: 1em;
+}
+
+/* -------------------------------------------------- */
+/* tables */
+/* -------------------------------------------------- */
+/* a table in <div class="wide"> spans the page; every other table keeps its natural width */
+.wide table {
+    width: 100%;
+}
+
+/* a byte run in a table cell stays on one line; the table scrolls on a phone instead */
+td span.klv {
+    white-space: nowrap;
+}
+
+/* a wide table may run past the text column when the window has room */
+@media (min-width: 1300px) {
+    .wide .table-wrapper {
+        /* clear of the page-turn arrows, about 110px each side */
+        width: min(1050px, calc(100vw - var(--sidebar-width) - 220px));
+        margin-left: 50%;
+        transform: translateX(-50%);
+    }
+}
+
+/* run output and compiler errors wrap at the text column instead of scrolling sideways */
+main pre > code.language-text {
+    white-space: pre-wrap;
+}

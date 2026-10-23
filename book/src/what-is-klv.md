@@ -1,94 +1,61 @@
 # What is KLV?
 
-**K**ey–**L**ength–**V**alue is a framing pattern: each logical field in a
-stream of bytes is prefixed by a key (identifier) and a length (size of the
-value in bytes), followed by the value payload. Stacking these triples back
-to back gives you a self-describing record:
+KLV (key, length, value) lays out binary data as items. Each item has three parts, back to back:
 
-```text
-┌─────┬─────┬───────────┬─────┬─────┬───────────┐
-│ KEY │ LEN │ VALUE ... │ KEY │ LEN │ VALUE ... │
-└─────┴─────┴───────────┴─────┴─────┴───────────┘
+| part | holds | bytes |
+|---|---|---|
+| key | which field the item is | <span class="klv">k 02</span> |
+| length | how many value bytes follow | <span class="klv">l 02</span> |
+| value | the field's data | <span class="klv">v 09 2E</span> |
+
+Items follow one another:
+
+```klv
+k 01 l 01 v 2A        // key 01: 1 byte, 42
+k 02 l 02 v 09 2E     // key 02: 2 bytes, 2350
 ```
 
-And in order to find the start of your KLV packet/frame in a sea of streamed
-data, you use a key called a _sentinel_ (magic bytes). This is usually a unique
-identifier of 16+ bytes to indicate the start of a stream. That is immediately
-followed by a length header and you have a full KLV packet:
+## Sentinel
 
-```text
-┌────────────────┬─────────────────┬───────────────────┐
-│ KEY (SENTINEL) │ LEN (FRAME LEN) │ DATA (KLV's ...)  │
-└────────────────┴─────────────────┴───────────────────┘
+On a live link, each packet starts with a sentinel: fixed bytes that mark where it begins. The length of the packet's body follows, then its items. The sentinel works as the packet's key, so a packet is itself a key, a length and a value:
+
+```klv
+j DE AD 00 00         // junk before the packet
+s 53 45 4E 53 4F 52   // sentinel: "SENSOR"
+l 07                  // the body: 7 bytes
+    k 01 l 01 v 2A
+    k 02 l 02 v 09 2E
 ```
 
-## The KLV pattern
+## Nesting
 
-As you can tell, the entire packet also follows this Key Length Value format, enabling
-it to be nested and use similar logic during encoding and decoding.
+A value can hold items of its own, laid out the same way:
 
-Here is an example of a complex, nested KLV packet:
-
-```text
-┌───────────────────────────────────────────────────────┐
-│ .. other data ..                                      │
-├─────────────────────────┬─────────────────────────────┤
-│ 0x03 0x05 .. (SENTINEL) │ 0x13 (PKT LEN = 19 bytes)   │
-├─────────────────────────┴─────────────────────────────┤
-│ KLV #1 (simple value)                                 │
-│ ┌────────┬────────┬─────────────────────────────────┐ │
-│ │ K 0x01 │ L 0x02 │ V 0xAA 0xBB                     │ │
-│ └────────┴────────┴─────────────────────────────────┘ │
-├───────────────────────────────────────────────────────┤
-│ KLV #2 (value is a nested KLV train)                  │
-│ ┌────────┬────────┬─────────────────────────────────┐ │
-│ │ K 0x02 │ L 0x08 │ V (nested KLV, 8 bytes)         │ │
-│ └────────┴────────┤                                 │ │
-│                   │ ┌────────┬────────┬───────────┐ │ │
-│                   │ │ K 0x03 │ L 0x06 │ V 0x04 .. │ │ │
-│                   │ └────────┴────────┴───────────┘ │ │
-│                   └─────────────────────────────────┘ │
-├───────────────────────────────────────────────────────┤
-│ KLV #3 (simple value)                                 │
-│ ┌────────┬────────┬─────────────────────────────────┐ │
-│ │ K 0x05 │ L 0x03 │ V 0xDE 0xAD 0xFF                │ │
-│ └────────┴────────┴─────────────────────────────────┘ │
-├───────────────────────────────────────────────────────┤
-│ .. other data ..                                      │
-└───────────────────────────────────────────────────────┘
+```klv
+k 03 l 0C                     // key 03: 12 bytes, which are two items
+    k 01 l 04 v 03 11 7A D0   // lat 51477200
+    k 02 l 04 v FF FE 10 CC   // lon -126772
 ```
 
-This enabled:
+## What it gives you
 
-- **Forward compatibility.** Unknown keys can be skipped - the length tells
-  the parser how many bytes to drop. Adding a field does not break old
-  decoders.
-- **Self-describing.** A decoder does not need to know field offsets up front.
-- **Stream-resyncable.** When you lose framing on a noisy transport (UDP,
-  radio, RS-422), the sentinel lets you skip garbage and rejoin the stream at
-  the next frame boundary.
+| property | what it means |
+|---|---|
+| forward compatible | an old decoder skips a key it does not know, since the length says how many bytes to skip |
+| self-describing | the key names the field, so items need no fixed offset and can come in any order |
+| resyncable | on a noisy link (UDP, radio, RS-422), the sentinel lets a decoder skip junk and find the next packet |
 
-## Design choices `tinyklv` leaves to you
+## What tinyklv leaves to you
 
-The KLV *shape is fixed*, but the concrete encoding of each part is not:
+The layout is fixed. How each part is written is yours to choose:
 
-| Part | Typical choices |
-|------|-----------------|
-| Sentinel | Any fixed 16+ bytes is common |
-| Key | 1-byte `u8`, 2-byte `u16`, or multi-byte BER-OID |
-| Length | 1-byte `u8`, BER variable-width, or explicit 4-byte `u32` |
-| Value | Anything |
+| part | common choices |
+|---|---|
+| sentinel | any fixed bytes, often 16 |
+| key | a 1-byte `u8`, a 2-byte `u16`, a BER-OID |
+| length | a 1-byte `u8`, a BER length, a 4-byte `u32` |
+| value | anything |
 
-`tinyklv` provides codec functions for each of these (see
-[Codecs reference](./reference/codecs.md)) and lets you mix them on a
-per-container and per-field basis.
+tinyklv ships [codecs](./reference/codecs.md) for keys, lengths and values, and you can mix them per struct and per field.
 
-Move on to [Tutorial 01 - First packet](./tutorial/fundamentals/01-first-packet.md) to see
-how these pieces compose.
-
-## Where you see KLV in the wild
-
-- Airborne and ground-sensor telemetry carried inside MPEG-TS video streams
-- Satellite and UAV command-and-control buses
-- Industrial sensor packets on CANbus/RS-485
-- Custom in-house binary protocols that evolved from a "just enough" spec
+**Next:** [First packet](./tutorial/1-basics/01-first-packet.md)

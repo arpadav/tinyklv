@@ -5,29 +5,29 @@
 //! Partial's `Final` type as enough bytes arrive. It is the user-facing API
 //! for parsing KLV from fragmented transports (short TCP reads, ring
 //! buffers, UDP re-assembly) where a single logical packet may straddle
-//! multiple reads, AND for resuming a packet whose body was cut mid-decode
-//! (delivered through [`crate::decoder::Packet::NeedMore`])
+//! multiple reads
 //!
 //! # Two modes of operation
 //!
-//! * **Fresh mode** (`partial = None`): [`Decoder::next`] uses
+//! * **Fresh mode** (no partial in flight): [`Decoder::next`] uses
 //!   [`crate::traits::SeekSentinel`] to locate each packet boundary and
-//!   then runs [`crate::traits::DecodePartial::decode_partial`] on the
-//!   framed body. This is the original sentinel-framed streaming flow
+//!   then decodes the framed body one-shot with
+//!   [`crate::traits::DecodeValue::decode_value`]. A packet not yet all in
+//!   the buffer stays there until a later [`Decoder::feed`] completes it
 //!
-//! * **Resume mode** (`partial = Some(p)`): the decoder was constructed
-//!   from a [`Packet::NeedMore`] return inside `decode_partial` and
-//!   already carries a half-built packet. [`Decoder::next`] resumes
-//!   directly into the existing partial without re-seeking the sentinel,
-//!   so previously-decoded fields are not lost
+//! * **Resume mode** (a partial in flight): entered only when
+//!   [`crate::traits::PartialIterator::next_resume`], called directly,
+//!   decodes the buffered bytes as a body with no sentinel and runs out of
+//!   them, keeping the half-built packet. [`Decoder::next`] then resumes
+//!   directly into that partial without seeking a sentinel, so
+//!   previously-decoded fields are not lost
 //!
-//! # Framing requirement (fresh mode only)
+//! # Framing requirement
 //!
-//! In fresh mode, the final type `T` (`P::Final`) must implement
+//! The final type `T` (`P::Final`) must implement
 //! [`crate::traits::SeekSentinel`]. Without a sentinel there is no way to
-//! tell one packet's bytes from the next inside a continuous byte stream
-//! Resume mode bypasses the sentinel entirely - the partial is already
-//! past the framing
+//! tell one packet's bytes from the next inside a continuous byte stream.
+//! The bound holds in resume mode too, which never seeks
 //!
 //! See [`crate::traits::DecodePartial`] for the underlying trait,
 //! [`crate::decoder::Packet`] for the two-state signal (`Ready` / `NeedMore`), and
@@ -35,21 +35,23 @@
 // --------------------------------------------------
 // mods
 // --------------------------------------------------
-#[macro_use]
-mod iter;
 mod buf;
+mod iter;
 mod pkt;
 
 // --------------------------------------------------
 // re-exports
 // --------------------------------------------------
-pub use iter::*;
-pub use pkt::*;
+pub use iter::{DecodeIterError, DecoderIter};
+pub use pkt::Packet;
 
 // --------------------------------------------------
 // local
 // --------------------------------------------------
-use crate::traits::{DecodePartial, Partial, PartialIterator, ResumePartial, SeekSentinel};
+use crate::{
+    ErrorKind,
+    traits::{DecodePartial, Partial, PartialError, PartialIterator, ResumePartial, SeekSentinel},
+};
 use buf::BufCursor;
 
 // --------------------------------------------------
@@ -60,22 +62,27 @@ use core::marker::PhantomData;
 // --------------------------------------------------
 // constants
 // --------------------------------------------------
-/// Empty byte slice used as a positional anchor when constructing errors at [`Decoder::finish`] time, where no live input exists
-const EMPTY: &[u8] = &[];
+/// The error of a [`Decoder::finish`] that finds bytes left in the buffer
+const BYTES_LEFT: PartialError = PartialError::new(&(
+    ErrorKind::Truncated,
+    "end of stream (bytes are left in the decoder)",
+));
 
 /// Owned-buffer streaming decoder, parameterised on the [`Partial`] type
 ///
 /// Accepts bytes via [`feed`](Self::feed) and yields decoded values via
-/// [`next`](Self::next). A `None` from `next` means "need more bytes,
-/// call `feed` again" - malformed packets are silently skipped (the
-/// framed bytes are drained to guarantee forward progress)
+/// [`next`](Self::next). A `None` from `next` means no packet came out of
+/// that call: the buffer is empty or holds part of a packet, so call `feed`
+/// again, or the packet it reached was malformed. A malformed packet's bytes
+/// are drained, so the next call moves on to whatever follows it. Calling
+/// [`PartialIterator::next_fresh`] instead tells the cases apart
 ///
 /// # Example
 ///
 /// ```ignore
-/// // feed bytes as they arrive; `next` yields each ready packet. A partial packet
-/// // is carried internally across `feed` calls - no manual resume is needed
-/// let mut dec: Decoder<MyPacketPartial, &[u8]> = Decoder::new();
+/// // feed bytes as they arrive; `next` yields each ready packet. A packet cut
+/// // across reads stays buffered across `feed` calls - no manual resume is needed
+/// let mut dec: Decoder<MyPacketPartialPacket, &[u8]> = Decoder::new();
 /// let mut scratch = [0u8; 2048];
 /// loop {
 ///     let n = socket.recv(&mut scratch)?;
@@ -129,7 +136,7 @@ impl<P, S> Decoder<P, S> {
     /// use tinyklv::Decoder;
     ///
     /// // type inference requires the partial type to be known from context
-    /// // let mut dec: Decoder<MyPacketPartial, &[u8]> = Decoder::new();
+    /// // let mut dec: Decoder<MyPacketPartialPacket, &[u8]> = Decoder::new();
     /// ```
     #[inline]
     pub fn new() -> Self {
@@ -176,7 +183,7 @@ impl<P, S> Decoder<P, S> {
     /// Borrows the in-flight partial, if any
     ///
     /// Returns `Some(&P)` only when the decoder is in resume mode - i.e., after
-    /// a [`Packet::NeedMore`] result was stored and before the next
+    /// [`PartialIterator::next_resume`] stored a half-built packet and before the next
     /// [`Self::next`] call successfully completes the packet. Returns `None`
     /// when the decoder is in fresh mode
     ///
@@ -191,11 +198,8 @@ impl<P, S> Decoder<P, S> {
 
     /// Consumes the decoder and returns the in-flight partial, if one exists
     ///
-    /// Used by the derive-generated `decode_partial` wrapper to convert a
-    /// "buffer fully consumed with `NeedMore` still pending" state into a
-    /// finalisation decision at the fresh-mode boundary. Callers outside of
-    /// generated code rarely need this directly; prefer [`Self::finish`] on the
-    /// `&[u8]` specialisation when the upstream signals end-of-stream
+    /// Prefer [`Self::finish`] on the `&[u8]` specialisation when the upstream signals
+    /// end-of-stream: it finalizes the partial into the value instead
     ///
     /// # Returns
     ///
@@ -227,9 +231,9 @@ impl<P, S> Decoder<P, S> {
     ///
     /// Before appending, the consumed prefix from already-decoded packets is reclaimed - in O(1)
     /// when the buffer is fully consumed, otherwise only when the freed prefix is at least as large
-    /// as the live tail it must shift (see [`BufCursor::extend`]). This amortises compaction to at
-    /// most once per feed rather than once per decoded packet, so a burst of `next` calls between
-    /// two feeds advances the cursor without moving any bytes
+    /// as the live tail it must shift. This amortises compaction to at most once per feed rather
+    /// than once per decoded packet, so a burst of `next` calls between two feeds advances the
+    /// cursor without moving any bytes
     ///
     /// # Arguments
     ///
@@ -243,10 +247,10 @@ impl<P, S> Decoder<P, S> {
     /// Returns a borrowing iterator that yields decoded values from the buffer
     ///
     /// The returned [`DecoderIter`] borrows `self` mutably and yields `T`
-    /// values (the `Partial::Final` type) until the buffer is exhausted or a
-    /// packet is incomplete. Buffered-but-undecoded bytes are retained between
-    /// iterations so that a later [`Self::feed`] + re-iteration can pick up
-    /// where decoding stopped
+    /// values (the `Partial::Final` type) until the buffer is exhausted, a
+    /// packet is incomplete, or one is malformed. Buffered bytes that may still
+    /// begin a packet are retained between iterations so that a later
+    /// [`Self::feed`] + re-iteration can pick up where decoding stopped
     ///
     /// # Returns
     ///
@@ -259,10 +263,10 @@ impl<P, S> Decoder<P, S> {
     /// Decodes and returns the next complete value from the buffer, if one is available
     ///
     /// Calls [`Self::iter`] and pulls one item. Returns `None` when the buffer
-    /// contains no complete packet (EOF, incomplete, or malformed). Malformed
-    /// packets are silently skipped - the framed bytes are drained - to keep
-    /// the decoder advancing. Call [`Self::buffered`] afterward to inspect
-    /// remaining bytes
+    /// holds no complete packet (EOF or incomplete) or the packet it reached is
+    /// malformed. A malformed packet's bytes are drained, so the next call moves
+    /// past it to any packet buffered after it. Call [`Self::buffered`] afterward
+    /// to inspect remaining bytes
     ///
     /// # Returns
     ///
@@ -287,39 +291,42 @@ impl<P, S> Decoder<P, S> {
 ///
 /// This specialisation adds [`Decoder::finish`], which is only meaningful
 /// on `&[u8]` streams where the end-of-stream condition is definite. When
-/// the decoder carries an in-flight partial, [`Decoder::next`] resumes
-/// [`DecodePartial::decode_partial`] without re-seeking the sentinel because
-/// the partial state already contains the bytes consumed past the framing
+/// the decoder carries an in-flight partial, [`Decoder::next`] resumes it with
+/// [`ResumePartial::resume_partial`] without seeking a sentinel, because
+/// the partial state already holds the fields decoded so far
 impl<P, T> Decoder<P, &[u8]>
 where
     P: Partial<Final = T> + Default,
     for<'a> T:
         DecodePartial<&'a [u8], Partial = P> + ResumePartial<&'a [u8]> + SeekSentinel<&'a [u8]>,
 {
-    /// Force-finalises the in-flight partial, consuming the decoder
+    /// Ends the stream, consuming the decoder: whether it ended cleanly, and the value of the
+    /// in-flight partial, if any
     ///
-    /// Call this when the upstream transport signals end-of-stream and you
-    /// want either the accumulated partial surfaced as `T` (if all required
-    /// fields are present) or a definitive error. The decoder is consumed
-    /// and the buffered bytes are discarded - no further decoding is possible
-    /// after this call
-    ///
-    /// If no partial is in-flight, a default partial is finalised; depending
-    /// on the `T` type this may succeed (all fields optional) or fail (required
-    /// fields missing)
+    /// Call this when the upstream transport signals end-of-stream, once [`Self::next`] returns
+    /// `None`. Only [`PartialIterator::next_resume`] stores a partial, so a stream that
+    /// [`Self::next`] decoded whole ends in `Ok(None)`
     ///
     /// # Returns
     ///
-    /// `Ok(T)` when the partial can be finalised with all required fields satisfied,
-    /// or `Err(DecodeIterError::Malformed)` when required fields are absent
-    pub fn finish(self) -> Result<T, DecodeIterError> {
-        let partial = self.partial.unwrap_or_default();
-        partial.finalize().map_err(|label| {
-            // --------------------------------------------------
-            // no live input at finish time, so the error carries
-            // the label anchored at EMPTY
-            // --------------------------------------------------
-            DecodeIterError::Malformed(label_to_context_error!(EMPTY, label))
-        })
+    /// `Ok(None)` when no partial is in flight and no byte is buffered, `Ok(Some(T))` when the
+    /// in-flight partial finalizes and no byte is buffered
+    ///
+    /// # Errors
+    ///
+    /// - Bytes are left in the buffer, a packet [`Self::next`] did not decode or one cut short:
+    ///   [`DecodeIterError::Malformed`] of kind [`ErrorKind::Truncated`]
+    /// - The in-flight partial lacks a required field: [`DecodeIterError::Malformed`] of kind
+    ///   [`ErrorKind::MissingRequired`]
+    /// - A stream that ends in bytes beginning no packet, such as trailing zeros, is `Truncated`
+    ///   too: the decoder keeps up to a sentinel's length less one of them, in case they begin one
+    pub fn finish(self) -> Result<Option<T>, DecodeIterError> {
+        let rest = self.buf.pending();
+        let finished = if rest.is_empty() {
+            self.partial.map(P::finalize).transpose()
+        } else {
+            Err(BYTES_LEFT)
+        };
+        finished.map_err(|error| DecodeIterError::Malformed(error.to_context_error(rest)))
     }
 }

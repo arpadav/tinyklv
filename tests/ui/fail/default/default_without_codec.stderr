@@ -1,0 +1,5 @@
+error: No `default(typ = u16, ..)` sets an `enc` or a `dec`: at least one is required.
+ --> tests/ui/fail/default/default_without_codec.rs:7:19
+  |
+7 |     default(typ = u16, size(exact = 2)),
+  |                   ^^^

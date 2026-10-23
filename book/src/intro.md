@@ -1,32 +1,43 @@
 # Introduction
 
-`tinyklv` is a derive-macro framework for encoding and decoding
-[Key-Length-Value (KLV)](https://en.wikipedia.org/wiki/KLV) binary streams in
-Rust. It is built on top of [`winnow`](https://crates.io/crates/winnow) parser
-combinators.
+tinyklv is a derive macro for reading and writing [KLV](./what-is-klv.md) (key, length, value) binary data in Rust. It is built on [winnow](https://crates.io/crates/winnow) parser combinators.
 
-`tinyklv` is protocol-agnostic, and is usually used to create protocols. The
-derive macro generates encoder/decoder trait implementations, allowing for
-byte-stream data to be generated and parsed on the fly.
+- `#[derive(Klv)]` on a struct gives it a decoder and an encoder
+- it ships no standard: you choose how each key, length and value is read and written
 
-## Who this is for
+## Who it is for
 
-Anyone decoding or emitting binary framed data in Rust. Some examples may
-include telemetry parsers, video metadata tools, embedded protocol handlers,
-and test harnesses for custom binary formats. 
+Anyone who reads or writes framed binary data in Rust, such as:
 
-Prior exposure to `winnow` helps but is not required. 
-This book introduces parser-combinator concepts where they matter.
+- telemetry carried in MPEG-TS video, from airborne and ground sensors
+- UAV and satellite command buses
+- sensor packets on CAN bus or RS-485
+- in-house binary protocols, and their test harnesses
 
-## Quick start
+Knowing winnow helps, but is not needed: where a page uses it, the page explains it.
 
-```sh
-cargo add tinyklv
+## Dependency
+
+```toml
+[dependencies]
+tinyklv = "0.2"
 ```
 
-Then head to [Tutorial 01 - First packet](./tutorial/fundamentals/01-first-packet.md).
+## Run the examples
+
+Every tutorial page has an example you can run, in the tinyklv repository:
+
+```sh
+git clone https://github.com/arpadav/tinyklv
+cd tinyklv
+cargo run --example book_basics_first_packet   # one page's example
+examples/run-examples.sh                        # every example
+```
+
+Each page's "Run this example" gives its command and what it prints.
 
 ## Stability
 
-`tinyklv` is pre-1.0. The public surface is stable under the `#[derive(Klv)]`
-macro, but the crate is still moving toward its first tagged release.
+tinyklv is pre-1.0, so a minor version may change the API. This book describes 0.2.
+
+**Next:** [How to read this book](./how-to-read.md)

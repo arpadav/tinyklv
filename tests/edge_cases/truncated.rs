@@ -11,6 +11,7 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+#[cfg(feature = "ber")]
 use tinyklv::dec::ber as decber;
 use tinyklv::dec::binary as decb;
 use tinyklv::dec::string as decs;
@@ -100,6 +101,7 @@ fn be_u32_lengthed_asks_more_than_available() {
     assert!(decb::be_u32_lengthed(6)(&mut input).is_err());
 }
 
+#[cfg(feature = "ber")]
 #[test]
 /// Tests that BER prefix `0x82` (claims 2 extra bytes) errors when only 1 byte follows
 fn ber_length_truncated_claims_2_has_1() {
@@ -108,6 +110,7 @@ fn ber_length_truncated_claims_2_has_1() {
     assert!(decber::ber_length(&mut input).is_err());
 }
 
+#[cfg(feature = "ber")]
 #[test]
 /// Tests that BER prefix `0x83` (claims 3 extra bytes) errors when only 2 bytes follow
 fn ber_length_truncated_claims_3_has_2() {
@@ -116,6 +119,7 @@ fn ber_length_truncated_claims_3_has_2() {
     assert!(decber::ber_length(&mut input).is_err());
 }
 
+#[cfg(feature = "ber")]
 #[test]
 /// Tests that BER prefix `0x84` (claims 4 extra bytes) errors when no bytes follow
 fn ber_length_truncated_claims_4_has_0() {

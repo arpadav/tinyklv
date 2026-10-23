@@ -3,12 +3,11 @@
 //! Note: this is not yet folded into the crate, but could be later. For
 //! now, gated behind the opt-in `bench` feature.
 //!
-//! Hand-written [`DecodeValue`](crate::DecodeValue) / [`EncodeValue`](crate::EncodeValue) impls
-//! for common `std` / `chrono` types, so a derived KLV struct can use them as **first-class
-//! fields** - `timestamp: DateTime<Utc>`, `addr: Ipv4Addr`, ... - and decode straight into them
-//! with no per-field `dec`/`enc` attribute and no separate "raw" struct. This is only sound
-//! *inside* tinyklv: the traits are ours, so impl-ing them for foreign types is coherence-legal
-//! here (a downstream crate could not)
+//! Hand-written [`DecodeValue`] / [`EncodeValue`] impls for common `std` / `chrono` types, so a
+//! derived KLV struct can use them as **first-class fields** - `timestamp: DateTime<Utc>`,
+//! `addr: Ipv4Addr`, ... - and decode straight into them with no per-field `dec`/`enc` attribute
+//! and no separate "raw" struct. This is only sound *inside* tinyklv: the traits are ours, so
+//! impl-ing them for foreign types is coherence-legal here (a downstream crate could not)
 //!
 //! Gated behind the opt-in `bench` feature; the name is provisional (this could be exposed as a
 //! stable `native` surface one day). It exists today to drive the `NativeNested` benchmark record
@@ -53,13 +52,18 @@ impl DecodeValue<&[u8]> for DateTime<Utc> {
 ///
 /// Encodes as a big-endian `i64` of nanoseconds since the Unix epoch
 ///
-/// # Safety
+/// # Panics
 ///
 /// Uses `expect` to unwrap [`chrono::DateTime::timestamp_nanos_opt`]; this panics
 /// if the timestamp falls outside the `i64` nanosecond range (roughly ±292 years
 /// from epoch). Timestamps produced by normal system clocks or the benchmark
 /// fixtures are well within that range
 impl EncodeValue for DateTime<Utc> {
+    #[allow(
+        clippy::expect_used,
+        reason = "encode cannot fail, and a timestamp past the i64 nanosecond range has no wire \
+                  form: the panic is documented, and never reached by the bench fixtures"
+    )]
     fn encode_value(&self, out: &mut Vec<u8>) {
         // infallible for the bounded timestamps `RngSample` emits (well inside the i64-ns range)
         encb::be_i64(
@@ -118,8 +122,9 @@ impl DecodeValue<&[u8]> for Duration {
 }
 /// [`Duration`] implementation of [`EncodeValue`]
 ///
-/// Encodes as a big-endian `u64` of nanoseconds; the cast is lossless because
-/// any [`Duration`] created from `u64` nanoseconds has `as_nanos() <= u64::MAX`
+/// Encodes as a big-endian `u64` of nanoseconds; the cast is lossless for any
+/// [`Duration`] created from `u64` nanoseconds, whose `as_nanos() <= u64::MAX`,
+/// and truncates a longer one
 impl EncodeValue for Duration {
     fn encode_value(&self, out: &mut Vec<u8>) {
         // lossless: any `Duration::from_nanos(u64)` has `as_nanos() <= u64::MAX`

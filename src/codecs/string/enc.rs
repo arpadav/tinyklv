@@ -108,7 +108,7 @@ macro_rules! ascii_display {
         pastey::paste! {
             #[cfg(feature = "ascii")]
             #[inline(always)]
-            #[doc = concat!("Encodes a [`", stringify!($ty), "`] as its base-10 ASCII text.")]
+            #[doc = concat!("Encodes a [`prim@", stringify!($ty), "`] as its base-10 ASCII text.")]
             pub fn [<$ty>](input: $ty, out: &mut Vec<u8>) {
                 // write the formatted digits straight into `out`; `Vec<u8>: io::Write`
                 // never errors, so the formatting never allocates an intermediate `String`
@@ -125,7 +125,7 @@ macro_rules! ascii_hex {
         pastey::paste! {
             #[cfg(feature = "ascii")]
             #[inline(always)]
-            #[doc = concat!("Encodes a [`", stringify!($ty), "`] as lower-case base-16 ASCII text.")]
+            #[doc = concat!("Encodes a [`prim@", stringify!($ty), "`] as lower-case base-16 ASCII text.")]
             pub fn [<hex_ $ty>](input: $ty, out: &mut Vec<u8>) {
                 // format hex digits straight into `out`; `Vec<u8>: io::Write` never errors,
                 // so this never allocates an intermediate `String`

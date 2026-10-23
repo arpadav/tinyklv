@@ -15,8 +15,9 @@ Pre-release carrying breaking changes to the encode side and to decode-loop cont
   (`Proceed` / `Skip` / `Done` / `Abort`) for decode-loop control. Accepts a key
   literal (a decoded key equal to it ends the loop) or a `fn(key, len) -> BreakType`.
 - `size(..)` attribute model for field values and container defaults:
-  `size(var)` selects length-parameterized decoders, `size(exact = N)` marks a
-  fixed-width encoded value, and `size(hint = N)` supplies a soft reserve hint.
+  `size(lengthed)` selects length-parameterized decoders, `size(exact = N)` marks a
+  fixed-width value (decode rejects a frame length other than `N`), and
+  `size(reserve = N)` supplies a soft encode reserve.
 
 ### Changed
 

@@ -12,8 +12,10 @@
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+#[cfg(feature = "ber")]
 use tinyklv::dec::ber as decber;
 use tinyklv::dec::binary as decb;
+#[cfg(feature = "ber")]
 use tinyklv::enc::ber as encber;
 use tinyklv::enc::binary as encb;
 
@@ -57,7 +59,9 @@ boundary_roundtrip!(
     u32,
     encb::be_u32,
     decb::be_u32,
-    [0, 1, 255, 256, 65535, 65536, 2147483647, 2147483648, 4294967295]
+    [
+        0, 1, 255, 256, 65535, 65536, 2147483647, 2147483648, 4294967295
+    ]
 );
 
 boundary_roundtrip!(
@@ -123,6 +127,7 @@ boundary_roundtrip!(
     [i64::MIN, -1, 0, 1, i64::MAX]
 );
 
+#[cfg(feature = "ber")]
 #[test]
 /// Tests BER length roundtrip at the lower boundary value `0`
 fn ber_length_boundary_0() {
@@ -132,6 +137,7 @@ fn ber_length_boundary_0() {
     assert_eq!(decoded, 0_usize);
 }
 
+#[cfg(feature = "ber")]
 #[test]
 /// Tests BER length roundtrip at the short-form upper boundary `127` (1-byte encoding)
 fn ber_length_boundary_127() {
@@ -142,6 +148,7 @@ fn ber_length_boundary_127() {
     assert_eq!(decoded, 127_usize);
 }
 
+#[cfg(feature = "ber")]
 #[test]
 /// Tests BER length roundtrip at `128`, the first long-form value (encoding must exceed 1 byte)
 fn ber_length_boundary_128() {
@@ -152,6 +159,7 @@ fn ber_length_boundary_128() {
     assert_eq!(decoded, 128_usize);
 }
 
+#[cfg(feature = "ber")]
 #[test]
 /// Tests BER length roundtrip at `255`, a common 1-extra-byte long-form boundary
 fn ber_length_boundary_255() {
@@ -161,6 +169,7 @@ fn ber_length_boundary_255() {
     assert_eq!(decoded, 255_usize);
 }
 
+#[cfg(feature = "ber")]
 #[test]
 /// Tests BER length roundtrip at `256`, the first value requiring 2 long-form bytes
 fn ber_length_boundary_256() {
@@ -170,6 +179,7 @@ fn ber_length_boundary_256() {
     assert_eq!(decoded, 256_usize);
 }
 
+#[cfg(feature = "ber")]
 #[test]
 /// Tests BER length roundtrip at the upper boundary `u32::MAX`
 fn ber_length_boundary_u32_max() {

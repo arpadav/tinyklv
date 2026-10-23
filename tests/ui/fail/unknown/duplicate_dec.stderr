@@ -1,0 +1,5 @@
+error: Duplicate `dec` field in `unknown(..)`. Only one method of decoding unknown frames is allowed.
+  --> tests/ui/fail/unknown/duplicate_dec.rs:11:34
+   |
+11 |     unknown(dec = unknown_frame, dec = unknown_frame),
+   |                                  ^^^^^^^^^^^^^^^^^^^

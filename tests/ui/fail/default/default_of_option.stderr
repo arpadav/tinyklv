@@ -1,0 +1,5 @@
+error: A `default(typ = Option<..>)` fills no field: an `Option` field takes the `default` of the type it holds. Use `typ = i32`.
+ --> tests/ui/fail/default/default_of_option.rs:7:19
+  |
+7 |     default(typ = Option<i32>, dec = tinyklv::dec::binary::be_i32, enc = *tinyklv::enc::binary::be_i32),
+  |                   ^^^^^^^^^^^

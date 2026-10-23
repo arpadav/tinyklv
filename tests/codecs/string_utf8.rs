@@ -1,17 +1,27 @@
 //! UTF-8 string codec tests (`to_string_utf8`, `to_string_utf8_strict`, `from_string_utf8`)
 //!
 //! Tests the lossy and strict UTF-8 decoders and the encoder. Covers
-//! ASCII decoding, multi-byte Unicode (Latin-1, CJK, emoji), empty-string
-//! encode/decode, lossy acceptance of invalid bytes with U+FFFD replacement,
-//! strict rejection of invalid bytes, cursor advancement (partial consumption),
-//! and the difference between lossy and strict behavior on invalid sequences
+//! ASCII decoding, multi-byte Unicode (Latin-1, CJK, emoji), lossy acceptance
+//! of invalid bytes with U+FFFD replacement, strict acceptance of valid bytes,
+//! and cursor advancement (partial consumption). Strict rejection of invalid
+//! bytes is tested in `edge_cases::invalid_strings`
 //!
 //! Author: aav
 // --------------------------------------------------
 // local
 // --------------------------------------------------
+use tinyklv::ErrorKind;
 use tinyklv::codecs::string::dec::{to_string_utf8, to_string_utf8_strict};
 use tinyklv::codecs::string::enc::from_string_utf8;
+
+// --------------------------------------------------
+// constants
+// --------------------------------------------------
+/// Two bytes of text, short of [`PAST_SHORT`]
+const SHORT: &[u8] = b"he";
+
+/// A length one byte past [`SHORT`]
+const PAST_SHORT: usize = SHORT.len() + 1;
 
 #[test]
 /// Tests that `to_string_utf8(6)` decodes ASCII bytes to `"AF-101"`
@@ -78,40 +88,6 @@ fn utf8_emoji_roundtrip() {
 }
 
 #[test]
-/// Tests that `to_string_utf8(0)` decodes an empty input to an empty string
-fn utf8_empty_string_decode() {
-    let mut input: &[u8] = &[];
-    let result = to_string_utf8(0)(&mut input).unwrap();
-    assert_eq!(result, "");
-}
-
-#[test]
-/// Tests that `from_string_utf8("")` produces an empty byte vector
-fn utf8_empty_string_encode() {
-    let mut encoded = Vec::new();
-    from_string_utf8("", &mut encoded);
-    assert!(encoded.is_empty());
-}
-
-#[test]
-/// Tests that lossy `to_string_utf8` returns Ok with U+FFFD for invalid bytes `0xFF 0xFE`
-fn utf8_lossy_invalid_bytes_ok() {
-    // 0xFF, 0xFE are not valid UTF-8
-    let mut input: &[u8] = &[0xFF, 0xFE];
-    let result = to_string_utf8(2)(&mut input);
-    assert!(
-        result.is_ok(),
-        "lossy decoder should succeed on invalid bytes"
-    );
-    let s = result.unwrap();
-    // The replacement character U+FFFD is the expected output
-    assert!(
-        s.contains('\u{FFFD}'),
-        "should contain replacement character for invalid bytes"
-    );
-}
-
-#[test]
 /// Tests that lossy `to_string_utf8` preserves valid leading ASCII and replaces following invalid bytes
 fn utf8_lossy_mixed_valid_invalid() {
     // 'A' followed by invalid 0xFF
@@ -128,17 +104,6 @@ fn utf8_strict_valid_bytes_ok() {
     let result = to_string_utf8_strict(6)(&mut input);
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), "AF-101");
-}
-
-#[test]
-/// Tests that `to_string_utf8_strict(2)` errors on invalid UTF-8 bytes `0xFF 0xFE`
-fn utf8_strict_invalid_bytes_err() {
-    let mut input: &[u8] = &[0xFF, 0xFE];
-    let result = to_string_utf8_strict(2)(&mut input);
-    assert!(
-        result.is_err(),
-        "strict decoder should fail on invalid UTF-8"
-    );
 }
 
 #[test]
@@ -159,4 +124,32 @@ fn utf8_partial_consumption() {
     assert_eq!(result, "AF-101");
     // Remaining bytes still in input
     assert_eq!(input, &[0xAA, 0xBB]);
+}
+
+#[test]
+/// Tests that a UTF-8 decode short of `len` bytes is truncation, leaving the cursor at the end of
+/// the input
+fn utf8_short_input_is_truncated() {
+    let mut input = SHORT;
+    let result = to_string_utf8(PAST_SHORT)(&mut input);
+    assert_eq!(
+        result.as_ref().err().and_then(ErrorKind::of),
+        Some(ErrorKind::Truncated),
+        "{result:?}"
+    );
+    assert!(
+        input.is_empty(),
+        "cursor not at the end after a short to_string_utf8"
+    );
+    let mut input = SHORT;
+    let result = to_string_utf8_strict(PAST_SHORT)(&mut input);
+    assert_eq!(
+        result.as_ref().err().and_then(ErrorKind::of),
+        Some(ErrorKind::Truncated),
+        "{result:?}"
+    );
+    assert!(
+        input.is_empty(),
+        "cursor not at the end after a short to_string_utf8_strict"
+    );
 }

@@ -1,0 +1,6 @@
+error: The `String` value of field `name` has `size(lengthed)` but no `dec = ..` was set.
+       The trait fallback (`<String as ::tinyklv::DecodeValue<..>>::decode_value`) has no length argument - supply an explicit `dec` or change the `size`.
+  --> tests/ui/fail/size/field_size_lengthed_fallback.rs:12:5
+   |
+12 |     name: String,
+   |     ^^^^
