@@ -1,212 +1,143 @@
 # Limits
 
-tinyklv decodes what the wire says and does not repair it: a malformed packet is
-the generator's problem, not the parser's. A packet that fails is handed back,
-its bytes left for you to skip or keep. The `Decoder` keeps a packet a chunk
-boundary cut until a later `feed` completes it, and reports one that can never
-decode once, then moves on.
+tinyklv decodes what the bytes say, and does not repair them. These are the cases where that can surprise you, and what to do about each.
 
 ## Malformed input
 
-None of these is handled by tinyklv, by design.
-
 ### A length that never arrives
 
-A packet length in range, but past anything your protocol sends, makes the
-`Decoder` wait for that many bytes: a length of 2^31 waits for 2 GiB. Cap the
-bytes buffered while no packet comes out, then `clear()`, or reject the length
-as `MalformedValue`, and the `Decoder` reports the packet once and moves on:
+A packet length that its decoder accepts, but far past anything your protocol sends, makes the `Decoder` wait for that many bytes: a length of 2^31 waits for 2 GiB. Reject such a length in the length decoder, tagged `ErrorKind::MalformedValue`. The `Decoder` then reports that packet once, and moves on:
 
 ```rust,ignore
-fn packet_len(input: &mut &[u8]) -> tinyklv::Result<usize> {
-    let len = decb::be_u32_as_usize(input)?;
-    if len > MAX_PACKET {
-        let mut error = ContextError::new();
-        error.push(StrContext::Label("packet length past MAX_PACKET"));
-        return Err(ErrorKind::MalformedValue.tag(error));
-    }
-    Ok(len)
-}
+{{#include ../../../examples/book/ref/book_ref_limits.rs:packet_len}}
 ```
 
-### A header that fails to read
+Or cap the bytes you buffer while no packet comes out, and call `clear`.
 
-A `keylen` header that fails, such as a lone `80` BER length, reads as
-truncation: one-shot decode finalizes what it has, streaming waits. So does a
-key + len length, unless the struct has `unknown(..)`, which rejects one failing
-short of the end of the input: with BER lengths, `01 01 0A 02 80 03 01 0C`
-decodes `{ a: 10, b: None, c: None }`. Check that the input is empty after the
-decode.
+### A length that fails to read
+
+With `key` and `len`, a length its decoder rejects ends the decode, as if the input were cut there. The fields before it are returned, and the rest stays in the input, with no error. With BER lengths:
+
+```klv
+k 01 l 01 v 0A     // 1. a = 10
+k 02 l 80          // 2. 80 is no BER length: decoding ends, and returns a = 10
+k 03 l 01 v 0C     // 3. not read: from key 02 on, the bytes stay in the input
+```
+
+Check that the input is empty after decoding. With [`unknown`](./container-attributes.md#unknown) on the struct, such a length is an error instead, `ErrorKind::MalformedValue`.
 
 ### What `strict` does not check
 
-`strict` checks each value its header sizes, not the input as a whole, so it
-misses:
+`strict` checks each value that has a length, not the input as a whole. It lets these through:
 
-- bytes after the top-level struct: `01 01 07 02` decodes `{ a: 7 }`, `02` left;
-- an item cut at the end of a sentinel body: `AA BB 05 01 01 07 02 02` decodes
-  `{ a: 7, b: 0 }`;
-- a `size(implicit, exact = N)` value whose decoder fails, left unset;
-- a `Vec` value's cut last element: a `Vec` of `be_u16` on `01 02 03` is `[258]`;
-- a kept `Sliced` unknown item whose decoder returns `Ok` early.
+| case | what you get |
+|---|---|
+| bytes after the struct | they stay in the input |
+| an item the end of a packet's body cuts short | the field is left unset |
+| a value of `size(implicit, exact = N)` its decoder rejects | the field is left unset |
+| a `Vec` value whose last element is cut short | the `Vec` without that element |
+| under `keylen`, a kept unknown item its decoder reads only in part | the rest of its value is dropped |
 
-Check that the input is empty after the decode, and element counts in your own
-type.
+Check that the input is empty after decoding, and count the elements of a `Vec` in your own type.
 
 ### Non-canonical BER
 
-The BER codecs accept non-minimal forms that still fit: padded OID groups
-(`80 80 05` is 5), a long-form length for a short value (`81 05` is 5), and an
-`FF` first length byte, which X.690 reserves. Emit minimal BER; reject the rest
-in your own codec.
+The BER decoders accept forms longer than they need to be: padded BER-OID groups and a long-form length for a short value. A first length byte of FF, which X.690 reserves, is rejected. The encoders write only the shortest form. To reject the longer forms, write your own decoder.
 
-### An item that consumes nothing
+```klv
+v 80 80 05    // ber_oid reads 5
+l 81 05       // ber_length reads 5
+```
 
-In key + len, a key decoder that only peeks, beside a `size(implicit)` decoder
-that consumes nothing, loops forever. A key decoder must consume its key, an
-`implicit` one its value.
+### An item that reads nothing
+
+With a separate key and length codec, a key decoder that only peeks at its key, beside an `implicit` value decoder that reads nothing, reads the same item forever: the decode never returns. Under `keylen`, the same item is an error, `ErrorKind::NoProgress`. A key decoder must consume its key, and an `implicit` decoder its value.
 
 ## Untrusted input
 
-None of these is handled by tinyklv, by design.
+### Deep nesting
 
-### Recursion depth
+A struct that holds itself, such as through an `Option<Box<T>>`, decodes each level by recursion. Deep enough nesting overflows the stack, and the process aborts. In a release build, a one-field struct overflows a 2 MiB thread, the default for a spawned thread, at about 14,500 levels: some 58 KB of input. Cap the size of untrusted packets, or decode on a thread with a larger stack.
 
-A struct that contains itself, through `Box`, `Vec` or `Option`, decodes each
-level by recursion, so deep enough nesting overflows the stack and aborts: in
-release, a one-field struct overflows a 2 MiB thread, the std and tokio default,
-at about 14,500 levels (58 KB of input). Cap untrusted packet sizes, or decode
-on a thread with a larger stack.
+### Many unknown items
 
-### Kept unknown items
+A [`#[klv(unknown)]`](./field-attributes.md#unknown) field keeps every unknown item a packet holds, however many. To bound them, give the field a type of your own that drops items past a limit.
 
-A `#[klv(unknown)]` field keeps every unknown item. Its type needs only
-`Default`, `push((key, value))` and `&T: IntoIterator`, so a type of your own
-can drop items past your limit.
+### Lengths your decoder trusts
 
-### Lengths read from the wire
-
-tinyklv's codecs allocate only for bytes that are there: `take(len)` borrows,
-and a `Vec<T>` pre-allocates at most 4 KiB. A decoder of yours may trust a
-length: `Vec::with_capacity(len)` on a length of 2^62 aborts. Size buffers from
-the slice you are handed.
+tinyklv's codecs allocate only for bytes that are there, and a `Vec` value sets aside at most 4 KiB before it reads. A decoder of yours may trust a length instead: `Vec::with_capacity` with a length of 2^62 aborts the process. Size a buffer from the bytes your decoder is handed, not from a length it reads.
 
 ### Lengths past `usize`
 
-The `*_as_usize` length decoders cast with `as`, so a `u128` length above
-`usize::MAX`, or a `u64` one above 4 GiB on a 32-bit target, wraps: 2^64 + 5
-reads as 5. For hostile peers, use a length decoder that fails through
-`usize::try_from`.
+The `_as_usize` length decoders wrap a length too large for a `usize`. A `u128` length of 2^64 + 5 reads as 5, and so does a `u64` length of 2^32 + 5 on a 32-bit machine. For untrusted input, write a length decoder that rejects a length it cannot hold.
 
-### Values too long for their length
+### Text that grows when written back
 
-On encode, a value longer than its length codec can express is dropped, and
-logged through `tracing` or `eprintln!`, when its length is back-filled into a
-`len(size(exact = N))` slot, and written under a wrapped length (a debug build
-panics) when a `*_from_usize` encoder writes it first. A relay decoding text
-with the lossy `to_string_utf8`, which writes invalid bytes back as three-byte
-`U+FFFD`s, can so grow a value and forge the next field. Size length codecs for
-your largest value; relay text with `to_string_utf8_strict`.
+`to_string_utf8` reads each invalid byte as U+FFFD, which is 3 bytes in UTF-8. A relay that decodes text with it, then encodes it again, can grow a value past what its length can say; [`len`](./container-attributes.md#len) lists what then happens. Relay text with `to_string_utf8_strict`, which rejects invalid bytes.
 
-### Reserve hints
-
-A `size(reserve = N)` or `exact` total above `i32::MAX` reserves nothing; only
-the hint is lost. Keep hints under 2 GiB.
-
-## Streaming
-
-None of these is handled by tinyklv, by design.
-
-### `drain_frames` never fails
-
-It stops at the first packet that fails, cut or malformed, returns the ones
-before it, and leaves the input at that packet's sentinel, where
-`T::decode_frame` returns the error.
-
-### `Decoder::next` stops at a malformed packet
-
-`next` returns `None` at a malformed packet, so a `while let Some` loop, or
-`iter()`, stops with good packets still buffered behind it. `next_fresh()`
-(`PartialIterator`) returns the error and moves on.
-
-### A streamed `Vec` element cut short
-
-`Vec<T>::decode_partial` pushes an element a chunk boundary cut once its
-required fields are in, and its rest starts the next element: `01 01 07 02`
-gives `[{ a: 7, b: None }]`, leaving `02`. Give each element a sentinel and use
-the `Decoder`, or decode the `Vec` one-shot.
-
-## `break_on`
-
-### A literal leaves the terminator's length
-
-A `break_on` literal ends the loop right after the key, leaving the
-terminator's length and value (under `keylen`, its value). A `Vec` of such
-structs reads them as its next element, and `strict` rejects a nested one:
-`01 01 07 FF 00 01 01 08 FF 00` gives `[{ temp: Some(7) }, { temp: None }]`.
-Read them in a fn before `Done`:
-
-```rust,ignore
-fn end(key: &u8, input: &mut &[u8]) -> BreakType {
-    if *key != 0xFF {
-        return BreakType::Proceed;
-    }
-    match winnow::binary::length_take(decb::u8_as_usize).parse_next(input) {
-        Ok(_) => BreakType::Done,
-        Err(_) => BreakType::Proceed,
-    }
-}
+```klv
+v FF FE       // to_string_utf8 reads 2 U+FFFD: 6 bytes when written back
 ```
 
-Under `keylen`, the fn's `Done` steps over a `Sliced` value it did not read.
+## Streams
 
-### `Skip` and `Done` under `keylen`
+### `drain_frames` stops at a bad packet
 
-A `Skip` or `Done` that read nothing steps over a `Sliced` value, but an
-`Inline` one has no length, so the loop ends after its header. Read an `Inline`
-value in the fn before `Skip`.
+`drain_frames` returns the packets before the first one that fails, cut short or malformed, and does not return the error. The input is left just after the last packet it returns, so any packet after the bad one is not read. Call `decode_frame` there: it returns the error, and moves the input past the bad packet.
 
-### `Proceed` on a short read under `keylen`
+### `Decoder::next` stops at a bad packet
 
-Without `unknown(..)`, a fn that returns `Proceed` on a short read hands the
-loop the item, and an unknown `Inline` one ends it: with key `10` `Inline` and a
-fn reading two bytes, `10 AA` is `Ready`, nothing decoded. Add `unknown(..)`,
-and the loop waits.
+At a malformed packet, `next` drops the packet's bytes and returns `None`. A `while let` loop over `next` then stops, though good packets may be buffered behind it. So does `iter`. Call `next` again to go on, or use `next_fresh`, which returns the error.
 
-### Field `break_on`
+### A `Vec` element cut short
 
-Fields with a `break_on` encode last, in declaration order, so when the first
-returns `Done` the second is never decoded: let at most one return `Done`. A
-streaming `Abort` error carries only your message: name the field in it.
+`Vec<T>::decode_partial` keeps an element the input cuts short, once the element's required fields are in, and the rest of it starts the next read:
 
-## Codecs and attributes
+```klv
+k 01 l 01 v 07    // a = 7
+k 02              // cut short: the Vec holds the element, and 02 is left
+```
 
-### Error kinds
+Give each element a sentinel and use the `Decoder`, or decode the `Vec` once all of it has arrived.
 
-`ErrorKind::of` returns the outermost classification: under `strict`, a nested
-struct missing a field and an odd-length UTF-16 value both read as
-`MalformedValue`. The UTF-8, ASCII and date codecs tag none. The kind is stored
-as a label, so it shows in `Debug` and `context()`, and takes part in `==`:
-compare kinds, not errors.
+### A key literal inside a `Vec`
 
-### `exact` widths
+A `break_on` key literal leaves the end item's length and value in the input. In a `Vec` of such structs, the next element starts there, and reads them as an item:
 
-`key(.., size(exact = N))` only sizes the encode reserve; the key's width is
-what its encoder writes, so use a fixed-width key codec. A codec that normalizes
-its value cannot round-trip under `size(exact = N)` once that changes its width.
+```klv
+k 01 l 01 v 07    // 1st element: temp = 7
+k FF              // key FF: the 1st element ends
+u 00 01 01        // the 2nd reads key 00, length 1: no field, skipped
+u 08 FF 00        // key 08, length 255: cut short; the 2nd ends, temp None
+```
 
-### Fields at their default
+Read the end item in a function instead, before it returns `Done`, as [`break_on`](./container-attributes.md#a-function) shows.
 
-tinyklv writes every field it encodes, where proto3 leaves out one at its
-default. Add `skip_if_default` or `skip_if` to such fields. Not handled by
-tinyklv, by design: presence on the wire is explicit.
+### `Proceed` on a short read, under `keylen`
 
-### Names and attributes
+Under `keylen`, a break function may return `Proceed` when it has too few bytes to decide. Without `unknown`, an unknown `Inline` key then ends the decode, as if the packet were whole: the streaming decode returns it ready, without the fields after it. With [`unknown`](./container-attributes.md#unknown) on the struct, the decode waits for more bytes instead.
 
-- A `stream` type with a lifetime or generics is quoted: `stream = "&'a [u8]"`.
-- The derive adds a `<Name>PartialPacket` type beside each struct it decodes,
-  and `decoder()` to one with a `sentinel`: rename your item that collides.
-- `sentinel` beside `keylen(..)` is a compile error, there being no packet
-  length codec: make the `keylen` struct the one field of a key + len struct
-  with the `sentinel`
-  ([12 - Nested packets](../tutorial/advanced/12-nested-packets.md)).
+## Errors and names
+
+### The kind of a nested error
+
+`ErrorKind::of` returns the outermost kind. Under `strict`, a nested struct missing a field is `MalformedValue`, as is a UTF-16 value of an odd length. Their inner kinds, `MissingRequired` and `WrongLength`, are not the ones read back.
+
+### Names the derive adds
+
+The derive adds a type, `<Name>PartialPacket`, beside each struct it decodes, and a method, `decoder()`, to one with a sentinel. An item of your own with either name is a compile error: rename it.
+
+## Run this example
+
+```sh
+cargo run --example book_ref_limits
+```
+
+<details>
+<summary>Full example: the limits above</summary>
+
+```rust
+{{#include ../../../examples/book/ref/book_ref_limits.rs:all}}
+```
+
+</details>
